@@ -4,14 +4,7 @@ import store from '../utils/Store.ts'
 
 class UserController {
     private readonly api: UsersAPI = API
-    private users: number[] = []
     private user: User | object = {}
-
-    constructor() {
-        this.api
-        this.users
-        this.user
-    }
 
     private handleError(method: string, error: unknown) {
         console.error(`Ошибка при выполнении ${method}:`, error)
@@ -21,7 +14,7 @@ class UserController {
         try {
             const foundUsers = await this.api.searchUsers(login)
 
-            return (this.users = foundUsers.map(user => user.id))
+            return foundUsers.map(user => user.id)
         } catch (e: unknown) {
             this.handleError('поиска пользователя', e)
 

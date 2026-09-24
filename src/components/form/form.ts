@@ -63,7 +63,10 @@ export class Form extends Block<FormProps> {
                 },
             },
         })
-        Boolean(props.user) && this._setProfile()
+
+        if (props.user != null) {
+            this._setProfile()
+        }
     }
 
     _setProfile() {
@@ -113,6 +116,6 @@ export class Form extends Block<FormProps> {
     }
 
     render() {
-        return this.compile(template, this.props as Record<string, string>)
+        return this.compile(template, this.props)
     }
 }

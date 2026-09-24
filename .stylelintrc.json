@@ -4,7 +4,14 @@
     "property-no-vendor-prefix": [
       true,
       {
-        "ignoreProperties": ["text", "text-size-adjust", "border-radius"]
+        "ignoreProperties": [
+          "-webkit-text-size-adjust",
+          "-moz-text-size-adjust",
+          "-ms-text-size-adjust",
+          "-webkit-border-radius",
+          "-moz-border-radius",
+          "-ms-border-radius"
+        ]
       }
     ],
     "font-family-name-quotes": "always-unless-keyword",
@@ -17,7 +24,6 @@
     ],
     "scss/double-slash-comment-empty-line-before": ["always"],
     "scss/double-slash-comment-whitespace-inside": "never",
-    "scss/at-import-partial-extension": "never",
     "scss/at-else-closing-brace-newline-after": "always-last-in-chain",
     "scss/at-else-closing-brace-space-after": "always-intermediate",
     "scss/at-else-empty-line-before": "never",

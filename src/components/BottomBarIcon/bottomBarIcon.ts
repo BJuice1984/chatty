@@ -19,6 +19,6 @@ export class BottomBarIcon extends Block<BottomBarIconProps> {
     }
 
     render() {
-        return this.compile(template, this.props as Record<string, string>)
+        return this.compile(template, this.props)
     }
 }

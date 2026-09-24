@@ -18,6 +18,6 @@ export class UserAvatar extends Block<UserAvatarProps> {
     }
 
     render() {
-        return this.compile(template, this.props as Record<string, string>)
+        return this.compile(template, this.props)
     }
 }

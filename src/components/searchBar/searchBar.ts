@@ -79,6 +79,6 @@ export class SearchBar extends Block<SearchBarProps> {
     }
 
     render() {
-        return this.compile(template, this.props as Record<string, string>)
+        return this.compile(template, this.props)
     }
 }

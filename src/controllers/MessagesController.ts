@@ -78,7 +78,7 @@ class MessagesController {
 
         const messagesState = store.getState().messages
         const currentMessages: Message[] = Array.isArray(messagesState?.[id])
-            ? (messagesState?.[id] as unknown as Message[])
+            ? (messagesState?.[id])
             : []
 
         messagesToAdd = [...currentMessages, ...messagesToAdd]

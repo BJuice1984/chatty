@@ -1,6 +1,5 @@
 import API, {
     ChatInfo,
-    ChatUser,
     ChatsAPI,
     CreateChatData,
     TokenResponse,
@@ -80,10 +79,9 @@ class ChatsController {
     }
 
     async getChatUsers(id: number) {
-        let users: ChatUser[] = []
-
         try {
-            users = await this.api.getUsers(id)
+            const users = await this.api.getUsers(id)
+
             users.forEach(user => {
                 user.onClick = () => void this.deleteChatUsers({ users: [user.id], chatId: id })
             })

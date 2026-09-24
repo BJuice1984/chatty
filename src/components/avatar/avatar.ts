@@ -24,6 +24,6 @@ export class Avatar extends Block<AvatarProps> {
     }
 
     render() {
-        return this.compile(template, this.props as Record<string, string>)
+        return this.compile(template, this.props)
     }
 }

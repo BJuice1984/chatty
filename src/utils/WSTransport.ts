@@ -1,6 +1,6 @@
 import EventBus from '../core/EventBus.ts'
 
-// eslint-disable-next-line no-shadow
+
 export enum WSTransportEvents {
     // eslint-disable-next-line no-unused-vars
     Connected = 'connected',
@@ -9,7 +9,7 @@ export enum WSTransportEvents {
     // eslint-disable-next-line no-unused-vars
     Message = 'message',
     // eslint-disable-next-line no-unused-vars
-    Close = 'close',
+    Close = 'close'
 }
 
 interface WSTransportMessage {

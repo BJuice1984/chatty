@@ -38,6 +38,6 @@ export class InputFile extends Block<InputFileProps> {
     }
 
     render() {
-        return this.compile(template, this.props as Record<string, string>)
+        return this.compile(template, this.props)
     }
 }

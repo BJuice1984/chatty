@@ -18,6 +18,6 @@ export class ChatAvatar extends Block<ChatAvatarProps> {
     }
 
     render() {
-        return this.compile(template, this.props as Record<string, string>)
+        return this.compile(template, this.props)
     }
 }

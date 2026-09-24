@@ -69,7 +69,7 @@ class ChatPageBase extends Block {
     }
 
     render() {
-        return this.compile(template, this.props as Record<string, unknown>)
+        return this.compile(template, this.props)
     }
 }
 

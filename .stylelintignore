@@ -1,3 +1,3 @@
 dist/**
-src/scss/libs/*.css
+src/scss/libs/**
 src/scss/utils/scrollbar.scss

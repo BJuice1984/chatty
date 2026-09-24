@@ -1,18 +1,15 @@
 {
   "require": [
-    "./mochaSetup.ts",
-    "ts-node/register"
+    "./mochaSetup.ts"
   ],
-  "loader": "ts-node/esm",
+  "node-option": [
+    "import=tsx"
+  ],
   "extensions": [
     "ts",
     "tsx"
   ],
   "spec": [
     "src/**/*.test.*"
-  ],
-  "node-option": [
-    "experimental-specifier-resolution=node",
-    "loader=ts-node/esm"
   ]
 }

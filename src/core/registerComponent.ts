@@ -1,6 +1,5 @@
-import Handlebars from 'handlebars'
+import Handlebars, { HelperOptions } from 'handlebars'
 import Block from './Block.ts'
-import { HelperOptions } from 'handlebars'
 
 interface CustomData {
     root: {
@@ -17,7 +16,7 @@ interface CustomData {
 
 export function registerComponent(name: string, Component: typeof Block) {
     if (name in Handlebars.helpers) {
-        throw `The ${name} component is already registered!`
+        throw new Error(`The ${name} component is already registered!`)
     }
 
     // eslint-disable-next-line func-names
@@ -28,7 +27,7 @@ export function registerComponent(name: string, Component: typeof Block) {
         const customData = data as CustomData // Уточняем тип данных
 
         if (Boolean(hash) && typeof hash === 'object' && 'ref' in hash) {
-            // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
+
             const hashRef = hash.ref as string // Явное приведение типа
 
             ;(customData.root.__refs = customData.root.__refs || {})[hashRef] = component

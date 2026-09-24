@@ -16,7 +16,7 @@ export function merge(lhs: Indexed, rhs: Indexed): Indexed {
             } else {
                 lhs[p] = rhs[p]
             }
-        } catch (e) {
+        } catch {
             lhs[p] = rhs[p]
         }
     }

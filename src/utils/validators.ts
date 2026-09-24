@@ -16,7 +16,7 @@ export const phoneValidator = (value: string) => {
 }
 
 export const mailValidator = (value: string) => {
-    return /^\w+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/.test(value)
+    return /^\w+@[a-z0-9.-]+\.[a-z]{2,}$/i.test(value)
 }
 
 export const emptyValidator = (value: string) => {

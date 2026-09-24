@@ -7,10 +7,6 @@ import ChatsController from './ChatsController.ts'
 class AuthController {
     private readonly api: AuthAPI = API
 
-    constructor() {
-        this.api
-    }
-
     async signin(data: SigninData) {
         try {
             await this.api.signin(data)

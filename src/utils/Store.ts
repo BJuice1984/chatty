@@ -4,10 +4,10 @@ import Block from '../core/Block.ts'
 import { Message } from '../controllers/MessagesController.ts'
 import { ChatUser } from '../api/ChatsApi.ts'
 
-// eslint-disable-next-line no-shadow
+
 export enum StoreEvents {
     // eslint-disable-next-line no-unused-vars
-    Updated = 'updated',
+    Updated = 'updated'
 }
 
 export interface AppState {
