@@ -16,7 +16,7 @@
 
 ## Установка
 1. Создайте папку папку **Chatty**
-2. Склонируйте репозитарий с помощью `git clone https://github.com/BJuice1984/middle.messenger.praktikum.yandex.git` в папку **Chatty**;
+2. Склонируйте репозитарий с помощью `git clone https://github.com/BJuice1984/chatty.git` в папку **chatty**;
 3. Перейдите в папку **Chatty**;
 4. В терминале введите команду `npm i`;
 5. Дождитесь окончания установки всех зависимостей;
