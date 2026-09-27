@@ -1,1 +1,1 @@
-npm run test && npm run eslint:fix && npm run stylelint:fix
+npm run verify
