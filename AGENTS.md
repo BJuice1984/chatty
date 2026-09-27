@@ -30,6 +30,8 @@ npm run cm           # интерактивный conventional-commit через
 
 Поток данных однонаправленный: **компонент → контроллер → API → бэкенд**, ответ пишется в **Store**, событие Store обновляет пропсы страниц.
 
+Зависимости по слоям идут только вниз: `pages → components → controllers → api → utils → core/helpers` (UI не ходит на бэкенд сам — только через контроллеры; DTO-типы из API-файлов в UI — техдолг). Правило следит PostToolUse-guard, см. раздел «Агентский жизненный цикл (ALK)».
+
 - `src/main.ts` — входная точка: регистрирует все компоненты как Handlebars-хелперы, объявляет маршруты, на DOMContentLoaded получает пользователя и чаты; при ошибке редиректит на логин.
 - `src/core/Block.ts` — базовый компонент. Жизненный цикл на `EventBus` (`init → render → componentDidMount/componentDidUpdate`). Пропсы обёрнуты в Proxy: запись через `setProps` эмитит `FLOW_CDU` и перерисовывает блок. Значения-инстансы `Block` в пропсах автоматически раскладываются в `this.children`. Шаблон рендерится через `compile()` (Handlebars + вставка детей через `__children`, ссылки через `__refs`).
 - `src/core/registerComponent.ts` — превращает класс компонента в Handlebars-хелпер, чтобы компоненты вкладывались друг в друга прямо в `.hbs`-шаблонах.
@@ -50,6 +52,8 @@ npm run cm           # интерактивный conventional-commit через
 - Локальный профиль `.alk/project-profile.json` (пресет `feature-implementation`, adapter `claude`) гитигнорится и **не коммитится**; для точечных задач — one-off `--preset quick-change` без смены дефолта.
 - План-пакеты живут в `tasks/<plan-id>/` и коммитятся; рантайм прогонов — `work/<plan-id>/` (гитигнор). Конвенции и операторские команды ALK — в `tasks/README.md`.
 - Evidence-команда план-манифестов — `npm run verify` (см. slash-команду `/verify`): вердикты `verify: PASS/FAIL at <stage>`.
+- Входной скилл для агентов — `chatty-dev` (`.claude/skills/chatty-dev/SKILL.md`): слои, workflow, guard; активируется по description в новой сессии.
+- Автоматический архитектурный guard (PostToolUse): `.claude/hooks/scripts/guard-architecture.mjs` — блокирует импорты вверх по слоям и runtime-импорты `api/` из UI, предупреждает о типах из `api/` в UI. CLI: `node .claude/hooks/scripts/guard-architecture.mjs --all [--strict]`; исторический долг — `TRANSITIONAL_DEBT` в скрипте (починил — удали запись).
 - Ветки прогонов — `feature/<plan-id>` от main, результат — PR в main; `sprint_*` и `deploy` не трогать.
 - Стабильные принципы проекта для агентов — `docs/project-principles.json`; при правке пересчитывайте `principlesDigest` (процедура — в `tasks/README.md`).
 
@@ -63,4 +67,5 @@ npm run cm           # интерактивный conventional-commit через
 - Окончания строк — LF везде (`.gitattributes` с `eol=lf`); на Windows не отключайте.
 - CI (`.github/workflows/tests.yml`) — автотесты Практикума (bats). Запускается **только на PR из веток `sprint_N` в main** и требует, чтобы репозиторий был публичным. Дополнительно `.github/workflows/verify.yml` гоняет `npm run verify` на всех PR и прямых пушах в main.
 - Деплой — Netlify из `dist/` по `netlify.toml` (SPA-редирект `/* → /index.html`).
+- Значимые изменения (код, агентская среда, документация) сопровождайте записью в `docs/progress/progress_log.md` — новые записи сверху.
 - Репозиторий GitHub: `BJuice1984/chatty` (origin по SSH).

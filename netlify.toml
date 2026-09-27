@@ -2,6 +2,10 @@
 publish = "dist"
 command = "npm run build"
 
+[build.environment]
+# engines: ^20.19.0 || >=22.12.0; engine-strict=true делает несовпадение фатальным
+NODE_VERSION = "22"
+
 [[redirects]]
   from = "/*"
   to = "/index.html"
