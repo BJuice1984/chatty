@@ -18,23 +18,7 @@ import AuthController from '../../controllers/AuthController.ts'
 import { withStore } from '../../utils/Store.ts'
 import UserController from '../../controllers/UserController.ts'
 import { ChangeUserData } from '../../api/UserApi.ts'
-
-export interface Input {
-    label: string
-    name: string
-    validateMessage: string
-    // eslint-disable-next-line no-unused-vars
-    validate: (value: string) => boolean
-}
-
-export interface Button {
-    label: string
-    classType: string
-    type: string
-    onClick?: () => void
-    // eslint-disable-next-line no-unused-vars
-    handleSubmitClick?: (alue: ChangeUserData) => void
-}
+import { Button, Input } from '../../utils/types.ts'
 
 interface ProfilePageUser {
     first_name: string
@@ -48,7 +32,7 @@ interface ProfilePageUser {
 
 interface ProfilePageProps {
     inputs: Input[]
-    buttons: Button[]
+    buttons: Button<ChangeUserData>[]
     user: ProfilePageUser
     [key: string]: unknown
 }

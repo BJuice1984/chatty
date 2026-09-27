@@ -2,7 +2,7 @@ import { ChatUser } from '../../api/ChatsApi.ts'
 import ChatsController from '../../controllers/ChatsController.ts'
 import MessagesController, { Message } from '../../controllers/MessagesController.ts'
 import Block from '../../core/Block.ts'
-import { Button, Input } from '../../pages/profile/profile.ts'
+import { Button, Input } from '../../utils/types.ts'
 import { AppState, withStore } from '../../utils/Store.ts'
 import { emptyValidationMessage } from '../../utils/constants.ts'
 import { emptyValidator } from '../../utils/validators.ts'
@@ -13,7 +13,7 @@ interface MessengerProps {
     selectedChatUsers: ChatUser[]
     messages: Message[]
     inputs: Input[]
-    buttons: Button[]
+    buttons: Button<{ message: string }>[]
     [key: string]: unknown
 }
 
