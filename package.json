@@ -14,7 +14,9 @@
     "stylelint": "stylelint '**/*{.css,.scss}'",
     "stylelint:fix": "stylelint '**/*{.css,.scss}' --fix",
     "prepare": "husky",
-    "test": "mocha"
+    "test": "mocha",
+    "typecheck": "tsc --noEmit",
+    "verify": "npm run typecheck && npm run test && npm run eslint && npm run stylelint"
   },
   "engines": {
     "node": "^20.19.0 || >=22.12.0"
