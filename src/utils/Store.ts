@@ -13,7 +13,7 @@ export enum StoreEvents {
 export interface AppState {
     chatUsers?: ChatUser[] | undefined
     selectedChat?: number
-    messages?: Message[]
+    messages?: Record<number, Message[]>
     user?: {
         display_name: string
         first_name: string

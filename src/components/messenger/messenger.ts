@@ -78,7 +78,7 @@ const withMessenger = withStore((state: AppState) => {
         }
     }
 
-    const messages = state.messages[selectedChatId] as unknown as Message[]
+    const messages = state.messages[selectedChatId]
 
     const typedMessages = messages.map((message: Message) => ({
         ...message,

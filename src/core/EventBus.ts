@@ -19,21 +19,25 @@ export default class EventBus<
     }
 
     off<Event extends MapInterface<E>>(event: Event, callback: Handler<Args[Event]>) {
-        if (!this.listeners[event]) {
+        const listeners = this.listeners[event]
+
+        if (!listeners) {
             throw new Error(`Нет события: ${event}`)
         }
 
-        this.listeners[event] = this.listeners[event].filter(listener => {
+        this.listeners[event] = listeners.filter(listener => {
             return listener !== callback
         })
     }
 
     emit<Event extends MapInterface<E>>(event: Event, ...args: Args[Event]) {
-        if (!this.listeners[event]) {
+        const listeners = this.listeners[event]
+
+        if (!listeners) {
             return
         }
 
-        this.listeners[event].forEach(listener => {
+        listeners.forEach(listener => {
             listener(...args)
         })
     }
