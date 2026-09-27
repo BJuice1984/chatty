@@ -13,6 +13,7 @@
 ```bash
 npm run dev          # vite dev-сервер на порту 3000
 npm run build        # проверка типов (tsc) + сборка в dist/
+npm run typecheck    # только проверка типов (tsc --noEmit)
 npm start            # build + express-статика из dist/ на порту 3000
 npm test             # mocha (конфиг .mocharc.json, стек tsx + chai + sinon + jsdom)
 npm test -- src/core/Block.test.ts       # один файл тестов
@@ -21,6 +22,7 @@ npm run eslint       # проверка src/ (flat config в eslint.config.js)
 npm run eslint:fix   # автофикс
 npm run stylelint    # проверка **/*{.css,.scss}
 npm run stylelint:fix
+npm run verify       # единый гейт: typecheck + test + eslint + stylelint (fail-fast на первой стадии)
 npm run cm           # интерактивный conventional-commit через commitizen
 ```
 
@@ -40,13 +42,25 @@ npm run cm           # интерактивный conventional-commit через
 - Стили — SCSS в `src/scss/` (миксины, переменные, normalize в `libs/`).
 - `server/server.js` — express-статика из `dist/` (для проверки прод-сборки локально).
 
+## Агентский жизненный цикл (ALK)
+
+Репозиторий — харнесс для плагина agent-lifecycle-kit (планирование → ревью → freeze → worker-пакеты → аудиты). Правила среды:
+
+- CLI: `agent-lifecycle` (PyPI `agent-lifecycle-kit`, версия строго равна версии плагина; Python 3.11–3.14). На Windows — через `py -3.12 ...`; если команда не резолвится, эквивалент: `py -3.12 -m agent_lifecycle <подкоманда>`.
+- Локальный профиль `.alk/project-profile.json` (пресет `feature-implementation`, adapter `claude`) гитигнорится и **не коммитится**; для точечных задач — one-off `--preset quick-change` без смены дефолта.
+- План-пакеты живут в `tasks/<plan-id>/` и коммитятся; рантайм прогонов — `work/<plan-id>/` (гитигнор). Конвенции и операторские команды ALK — в `tasks/README.md`.
+- Evidence-команда план-манифестов — `npm run verify` (см. slash-команду `/verify`): вердикты `verify: PASS/FAIL at <stage>`.
+- Ветки прогонов — `feature/<plan-id>` от main, результат — PR в main; `sprint_*` и `deploy` не трогать.
+- Стабильные принципы проекта для агентов — `docs/project-principles.json`; при правке пересчитывайте `principlesDigest` (процедура — в `tasks/README.md`).
+
 ## Соглашения и ограничения
 
 - Стиль кода enforced линтерами: отступы 4 пробела, одинарные кавычки, без точек с запятой, trailing-запятые в многострочных литералах. Не спорьте с `@stylistic`-правилами — запускайте `eslint:fix`.
 - Импорты пишутся с расширением `.ts` (`moduleResolution: bundler`, `allowImportingTsExtensions`).
 - Тесты (`src/**/*.test.*`) исключены из eslint; `src/scss/libs/**` и `src/scss/utils/scrollbar.scss` — из stylelint.
-- Pre-commit хук husky сам запускает `test + eslint:fix + stylelint:fix` — автофиксы попадают в коммит; после коммита проверяйте, что хук ничего не «исправил» лишнего.
-- CI (`.github/workflows/tests.yml`) — автотесты Практикума (bats). Запускается **только на PR из веток `sprint_N` в main** и требует, чтобы репозиторий был публичным. Прямые пушу в main CI не проверяют.
+- Pre-commit хук husky запускает `npm run verify` — строгий гейт без автофиксов. Нужны фиксы — запускайте `npm run eslint:fix` / `npm run stylelint:fix` руками до коммита.
+- Commit-msg хук прогоняет commitlint (conventional commits; интерактивно — `npm run cm`). Аварийный обход через `--no-verify` нежелателен.
+- Окончания строк — LF везде (`.gitattributes` с `eol=lf`); на Windows не отключайте.
+- CI (`.github/workflows/tests.yml`) — автотесты Практикума (bats). Запускается **только на PR из веток `sprint_N` в main** и требует, чтобы репозиторий был публичным. Дополнительно `.github/workflows/verify.yml` гоняет `npm run verify` на всех PR и прямых пушах в main.
 - Деплой — Netlify из `dist/` по `netlify.toml` (SPA-редирект `/* → /index.html`).
-- Коммит-сообщения — conventional commits (`npm run cm`; конфиг commitlint есть, но commit-msg хук не подключён).
 - Репозиторий GitHub: `BJuice1984/chatty` (origin по SSH).

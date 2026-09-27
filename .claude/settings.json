@@ -1,0 +1,29 @@
+{
+    "permissions": {
+        "allow": [
+            "Bash(npm run verify)",
+            "Bash(npm run typecheck)",
+            "Bash(npm run test)",
+            "Bash(npm run test:*)",
+            "Bash(npm test)",
+            "Bash(npm test:*)",
+            "Bash(npm run eslint)",
+            "Bash(npm run eslint:fix)",
+            "Bash(npm run stylelint)",
+            "Bash(npm run stylelint:fix)",
+            "Bash(agent-lifecycle:*)",
+            "Bash(py -3.12 -m agent_lifecycle:*)",
+            "Bash(npx --no -- commitlint:*)",
+            "Bash(git status)",
+            "Bash(git status:*)",
+            "Bash(git diff)",
+            "Bash(git diff:*)",
+            "Bash(git log:*)",
+            "Bash(git show:*)",
+            "Bash(git branch)",
+            "Bash(git branch:*)",
+            "Bash(git ls-files:*)",
+            "Bash(git check-ignore:*)"
+        ]
+    }
+}
