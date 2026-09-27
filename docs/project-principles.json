@@ -1,0 +1,48 @@
+{
+  "schemaVersion": "agent-project-principles.v1",
+  "principlesId": "chatty",
+  "revision": 1,
+  "entries": [
+    {
+      "id": "typescript-59-pin",
+      "category": "tooling",
+      "statement": "TypeScript stays pinned to ~5.9 until typescript-eslint announces TS 7 support.",
+      "rationale": "TS 7 is a native compiler without the JS API required by @typescript-eslint; upgrading breaks lint tooling."
+    },
+    {
+      "id": "framework-free-block-architecture",
+      "category": "architecture",
+      "statement": "Components stay on the custom Block class with Handlebars templates; no UI frameworks.",
+      "rationale": "The project is an educational framework-free messenger; introducing a framework defeats its purpose."
+    },
+    {
+      "id": "ts-extension-imports",
+      "category": "tooling",
+      "statement": "Imports are written with the .ts extension (moduleResolution: bundler).",
+      "rationale": "allowImportingTsExtensions is enabled; extensionless or .js imports fail typecheck."
+    },
+    {
+      "id": "single-verify-gate",
+      "category": "quality",
+      "statement": "Evidence verdicts come from the repository's single deterministic verification chain (typecheck, tests, lint), never from prose.",
+      "rationale": "Plan manifests cite this chain as their validation command; conclusions must be reproducible."
+    },
+    {
+      "id": "protected-course-ci",
+      "category": "process",
+      "statement": "The bats workflow (tests.yml) and the sprint_* / deploy branches belong to the course pipeline and stay untouched.",
+      "rationale": "Course CI runs external Yandex Practicum autotests on sprint PRs; modifying it breaks the educational flow."
+    }
+  ],
+  "authority": {
+    "principlesRole": "defaults-and-constraints",
+    "sourceOfTruth": "frozen-plan-and-lock",
+    "semanticReview": "independent-review"
+  },
+  "source": {
+    "kind": "project-local",
+    "path": "docs/project-principles.json"
+  },
+  "productionPromotionClaimed": false,
+  "principlesDigest": "08c9897823aafc239ee0f42725cf60b25707c434bb40bec5929ffc5c8bbf6bc0"
+}

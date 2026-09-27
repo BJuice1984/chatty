@@ -23,3 +23,7 @@ dist-ssr
 *.sln
 .eslintcache
 *.sw?
+
+# Agent lifecycle (ALK): локальные артефакты, не коммитятся
+.alk/
+work/
