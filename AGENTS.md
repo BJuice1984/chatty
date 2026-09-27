@@ -65,4 +65,5 @@ npm run cm           # интерактивный conventional-commit через
 - Окончания строк — LF везде (`.gitattributes` с `eol=lf`); на Windows не отключайте.
 - CI (`.github/workflows/tests.yml`) — автотесты Практикума (bats). Запускается **только на PR из веток `sprint_N` в main** и требует, чтобы репозиторий был публичным. Дополнительно `.github/workflows/verify.yml` гоняет `npm run verify` на всех PR и прямых пушах в main.
 - Деплой — Netlify из `dist/` по `netlify.toml` (SPA-редирект `/* → /index.html`).
+- Значимые изменения (код, агентская среда, документация) сопровождайте записью в `docs/progress/progress_log.md` — новые записи сверху.
 - Репозиторий GitHub: `BJuice1984/chatty` (origin по SSH).
