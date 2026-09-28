@@ -1,0 +1,8 @@
+{
+    "taskCount": 1,
+    "executableOwners": ["worker-frontend-cutover"],
+    "capabilityHints": ["typescript", "xhr", "websocket", "vite", "handlebars", "browser"],
+    "riskFlags": {"architecture": true, "security": true, "performance": true, "browser": true, "data": true, "release": true, "externalEnvironment": true},
+    "requirementsBytes": 4500,
+    "externalSpecification": true
+}

@@ -1,0 +1,8 @@
+{
+    "taskCount": 1,
+    "executableOwners": ["worker-backend-chat"],
+    "capabilityHints": ["python", "fastapi", "websocket", "postgresql", "minio", "pytest", "authorization"],
+    "riskFlags": {"architecture": true, "security": true, "performance": true, "browser": false, "data": true, "release": true, "externalEnvironment": true},
+    "requirementsBytes": 4400,
+    "externalSpecification": true
+}

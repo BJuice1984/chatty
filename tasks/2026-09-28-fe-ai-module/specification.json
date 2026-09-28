@@ -1,0 +1,9 @@
+{
+    "revision": 1,
+    "id": "SPEC-FE-AI",
+    "title": "AI assistant frontend module",
+    "intent": "Render AI search/typing/results/error states and safe document attachments as a self-contained feature module.",
+    "requirements": [{"id": "REQ-FE-AI", "title": "AI assistant UX and rendering safety", "description": "Create the AI feature controller/store/ports and Block/Handlebars views with safe attachment URLs, explicit states and no arbitrary HTML rendering.", "priority": "P1", "source": "tasks/2026-09-28-ai-messenger-master-plan.md:63-65,105-107", "acceptanceIds": ["AC-AI-UI-1", "AC-AI-UI-2"], "evidenceIds": ["EV-AI-UI-1", "EV-AI-UI-2"], "owner": "WS-FE-AI"}],
+    "constraints": ["Stage 7 owns adapters/composition/shared message component.", "Stage 9 owns bot backend behavior.", "Use safe URL allowlist and text rendering; no raw HTML.", "No cloud/production claim."],
+    "nonGoals": ["bot provider", "RAG internals", "WS reconnect", "production deployment"]
+}

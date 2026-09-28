@@ -1,0 +1,9 @@
+{
+    "revision": 1,
+    "id": "SPEC-BE-BOT",
+    "title": "Durable AI bot",
+    "intent": "Answer AI-chat messages through a local provider and document-search tool with durable bounded execution and authorized attachments.",
+    "requirements": [{"id": "REQ-BE-BOT", "title": "Durable AI bot", "description": "Persist bot runs, enforce one active run per source message, use authorized RAG search, bound retries/timeouts and optionally attach a permitted file_id.", "priority": "P0", "source": "tasks/2026-09-28-ai-messenger-master-plan.md:83-87", "acceptanceIds": ["AC-BOT-1", "AC-BOT-2"], "evidenceIds": ["EV-BOT-1", "EV-BOT-2"], "owner": "WS-BE-BOT"}],
+    "constraints": ["Stage 6 chat/file and stage 8 RAG contracts are consumed.", "Provider/model names are configurable and local by default.", "No cloud fallback or unbounded retries.", "No frontend or central router writes."],
+    "nonGoals": ["model training", "cloud provider", "frontend AI UI", "production deployment"]
+}

@@ -4,6 +4,43 @@
 > Новые записи — сверху. Одна запись = одна завершённая порция работы:
 > что и почему сделали, где смотреть, чем проверили.
 
+## 2026-09-28 — ALK: program draft разделён на 11 stage packages
+
+**Что:** после ревью program-level черновика он заменён индексом
+`tasks/2026-09-28-ai-messenger-program/program-overview.md` и 11 самостоятельными
+ALK-пакетами по master-plan: frontend stages 1–4, backend stages 5–6, cutover,
+RAG, bot, AI UI и hardening/docs. Для каждого пакета закреплены отдельный
+`plan-id`, branch/PR boundary, owner, write set, predecessor gate, acceptance/evidence
+contract, security/release gates, manual checklist при необходимости и S2 tier digest.
+
+Ownership остаётся disjoint: root npm metadata принадлежит backend skeleton,
+`MessagesController` — env stage, `TRANSITIONAL_DEBT` handoff — kernel stage, guard
+map — module stage, legacy deletion — migration stage, adapters/composition —
+cutover stage, file contract — chat stage, shared `WSTransport`/history/docs — final
+stage. В старом каталоге больше нет исполняемого program manifest.
+
+**Проверено:** ALK `tier resolve` для всех 11 пакетов; для каждого
+`plan check --require-completeness`, `plan acceptance-check`, `plan refs-check` и
+read-only `plan verify` — PASS. Дополнительно проверено отсутствие пересечений
+между 166 stage write paths. Код и runtime-сценарии не запускались;
+`plan.lock.json` намеренно отсутствует до независимого review/freeze.
+
+**Открыто:** каждый пакет остаётся `DRAFT`; перед execution нужны независимый
+plan audit, явный freeze и создание lock уже на конкретном stage package.
+
+## 2026-09-28 — Черновой ALK-план AI-messenger program
+
+**Что:** в ветке `feature/agent-harness` создан S2 plan package
+`tasks/2026-09-28-ai-messenger-program/` для реализации мастер-плана: спецификация,
+developer overview, DAG из 14 workstreams, write-set ownership, acceptance/evidence
+контракты, security/release gates и независимый review request. План намеренно остаётся
+`DRAFT`: реализация не авторизована, `plan.lock.json` до независимого ревью не создаётся.
+
+**Проверено:** `tier resolve` подтвердил S2, затем `specification check`,
+`plan check --require-completeness`, `plan acceptance-check`, `plan refs-check`
+и read-only `plan verify` — PASS.
+Команды проекта и runtime-сценарии не запускались; отсутствие lock ожидаемо до freeze.
+
 ## 2026-09-27 — Фикс деплоя Netlify (EBADENGINE)
 
 **Что:** `netlify.toml` теперь пиннит `NODE_VERSION = "22"` в

@@ -1,0 +1,10 @@
+{
+    "status": "RESOLVED",
+    "tier": "S2",
+    "requestedTier": "S2",
+    "reason": "architecture-risk, browser-risk, performance-risk and external-specification-required",
+    "independentReviewRequired": true,
+    "requestPath": "tasks/2026-09-28-kernel-router-store/tier-request.json",
+    "resolutionPath": "tasks/2026-09-28-kernel-router-store/tier-resolution.json",
+    "requestDigest": "5a6ee5102efec9f5682aa9a16e08c2f6ef3f9e81b07cd71dcd7fe938a0973069"
+}

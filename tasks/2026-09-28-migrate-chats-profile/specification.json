@@ -1,0 +1,9 @@
+{
+    "revision": 1,
+    "id": "SPEC-FE-MIGRATION",
+    "title": "Chats and profile feature migration",
+    "intent": "Move chats and profile behind feature-owned modules and remove bounded legacy UI/API paths after replacement is proven.",
+    "requirements": [{"id": "REQ-FE-MIGRATION", "title": "Feature-owned chats and profile", "description": "Create chats/profile modules, controllers, stores, ports and pages, preserve the message compatibility adapter, and delete the listed legacy paths only after migration evidence.", "priority": "P0", "source": "tasks/2026-09-28-ai-messenger-master-plan.md:34-38,94-104", "acceptanceIds": ["AC-FE-MIGRATE-1", "AC-FE-MIGRATE-2"], "evidenceIds": ["EV-FE-MIGRATE-1", "EV-FE-MIGRATE-2"], "owner": "WS-FE-MIGRATE"}],
+    "constraints": ["Stage 3 auth module remains the auth owner.", "Stage 1 MessagesController compatibility adapter is retained.", "API/WS adapter and composition files belong to stage 7.", "No backend or course CI changes."],
+    "nonGoals": ["own-backend cutover", "AI UI", "WS reconnect hardening", "production deployment"]
+}
