@@ -1,0 +1,9 @@
+{
+    "revision": 1,
+    "id": "SPEC-HARDEN-DOCS",
+    "title": "WebSocket hardening, history and local release docs",
+    "intent": "Make reconnect/close/history behavior deterministic and document a reproducible local release boundary without production claims.",
+    "requirements": [{"id": "REQ-HARDEN-DOCS", "title": "Runtime hardening and release boundary", "description": "Add reconnect/backoff, cleanup and history pagination, then document local own-backend operation, rollback/preflight and progress while preserving repository governance.", "priority": "P1", "source": "tasks/2026-09-28-ai-messenger-master-plan.md:108,126-132", "acceptanceIds": ["AC-HARDEN-1", "AC-HARDEN-2"], "evidenceIds": ["EV-HARDEN-1", "EV-HARDEN-2"], "owner": "WS-HARDEN-DOCS"}],
+    "constraints": ["Stage 7 owns mode-specific adapters; shared WSTransport is hardened here.", "History uses backend before_id/limit contract.", "Docs do not alter course CI/deploy or principles authority.", "No production promotion."],
+    "nonGoals": ["new backend domains", "cloud deployment", "data migration", "OCR"]
+}

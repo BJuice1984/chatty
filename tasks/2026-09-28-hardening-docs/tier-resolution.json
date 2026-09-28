@@ -1,0 +1,10 @@
+{
+    "status": "RESOLVED",
+    "tier": "S2",
+    "requestedTier": "S2",
+    "reason": "architecture-risk, browser-risk, externalEnvironment-risk, performance-risk, security-risk and external-specification-required",
+    "independentReviewRequired": true,
+    "requestPath": "tasks/2026-09-28-hardening-docs/tier-request.json",
+    "resolutionPath": "tasks/2026-09-28-hardening-docs/tier-resolution.json",
+    "requestDigest": "4bfb3bedc62140d09396ab165da0a6249b3cef0d509f94bfc83df6ea46f86dd3"
+}

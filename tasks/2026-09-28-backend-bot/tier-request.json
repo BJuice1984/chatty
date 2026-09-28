@@ -1,0 +1,8 @@
+{
+    "taskCount": 1,
+    "executableOwners": ["worker-backend-bot"],
+    "capabilityHints": ["python", "fastapi", "asyncio", "ollama", "langchain", "postgresql", "security"],
+    "riskFlags": {"architecture": true, "security": true, "performance": true, "browser": false, "data": true, "release": true, "externalEnvironment": true},
+    "requirementsBytes": 4300,
+    "externalSpecification": true
+}

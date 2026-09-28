@@ -1,0 +1,8 @@
+{
+    "taskCount": 1,
+    "executableOwners": ["worker-backend-rag"],
+    "capabilityHints": ["python", "pgvector", "ollama", "document-parsers", "postgresql", "security"],
+    "riskFlags": {"architecture": true, "security": true, "performance": true, "browser": false, "data": true, "release": true, "externalEnvironment": true},
+    "requirementsBytes": 4700,
+    "externalSpecification": true
+}

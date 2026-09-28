@@ -1,0 +1,8 @@
+{
+    "taskCount": 1,
+    "executableOwners": ["worker-backend-foundation"],
+    "capabilityHints": ["python", "fastapi", "sqlalchemy", "alembic", "postgresql", "docker", "security"],
+    "riskFlags": {"architecture": true, "security": true, "performance": true, "browser": false, "data": true, "release": true, "externalEnvironment": true},
+    "requirementsBytes": 4300,
+    "externalSpecification": true
+}

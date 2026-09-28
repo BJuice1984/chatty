@@ -1,0 +1,11 @@
+{
+    "revision": 1,
+    "id": "SPEC-KERNEL",
+    "title": "Lifecycle-safe frontend kernel",
+    "intent": "Make Router, Store and Block lifecycle behavior deterministic without changing the public component architecture.",
+    "requirements": [
+        {"id": "REQ-KERNEL", "title": "Router, Store and Block lifecycle", "description": "Add parameterized/lazy routes, typed slice updates, shallow comparison and deterministic destroy/unsubscribe behavior, with a debt handoff for the architecture guard.", "priority": "P0", "source": "tasks/2026-09-28-ai-messenger-master-plan.md:46-55", "acceptanceIds": ["AC-KERNEL-1", "AC-KERNEL-2"], "evidenceIds": ["EV-KERNEL-1", "EV-KERNEL-2"], "owner": "WS-KERNEL"}
+    ],
+    "constraints": ["Consume stage 1 configuration; do not rewrite it.", "Preserve Block + Handlebars.", "Do not edit guard debt map; emit handoff only.", "No backend or page migration."],
+    "nonGoals": ["feature registration", "auth migration", "backend", "production deployment"]
+}
