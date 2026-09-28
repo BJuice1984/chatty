@@ -4,6 +4,22 @@
 > Новые записи — сверху. Одна запись = одна завершённая порция работы:
 > что и почему сделали, где смотреть, чем проверили.
 
+## 2026-09-28 — Архитектурная документация docs/arch/
+
+**Что:** полная документация архитектуры в `docs/arch/` (5 документов +
+бэклог): `README.md` (слои, поток данных, диаграмма), `component-system.md`
+(Block/EventBus/registerComponent, жизненный цикл), `routing-and-state.md`
+(Router, Store, withStore), `data-layer.md` (контроллеры, API, HTTPTransport
+на XHR, WSTransport), `build-and-infra.md` (vite-плагин .hbs, тесты, CI,
+Netlify). Найденные шероховатости собраны в `known-issues.md` (7 пунктов с
+чекбоксами: ре-рендер на каждый setProps, withStore без селективности, нет
+fallback 404, commitlint теперь подключён — пункт закрыт, и др.). В AGENTS.md
+добавлена ссылка на docs/arch и исправлена неточность (HTTPTransport —
+XMLHttpRequest, не fetch).
+
+**Проверено:** документация описывает код по фактическому чтению исходников;
+`npm run verify` зелёный (typecheck + 15 тестов + eslint + stylelint).
+
 ## 2026-09-27 — Фикс деплоя Netlify (EBADENGINE)
 
 **Что:** `netlify.toml` теперь пиннит `NODE_VERSION = "22"` в

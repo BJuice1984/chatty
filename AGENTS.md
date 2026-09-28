@@ -39,10 +39,12 @@ npm run cm           # интерактивный conventional-commit через
 - `src/utils/Store.ts` — глобальное состояние на EventBus, `StoreEvents.Updated`. Типы состояния — `AppState`. Пишут в Store контроллеры (`store.set('chats', ...)`).
 - `src/controllers/` — синглтоны (`export default new ...Controller()`), единственное место бизнес-логики; вызывают API и пишут в Store.
 - `src/api/` — классы над `BaseApi`, работают через `HTTPTransport`. Бэкенд курса: `https://ya-praktikum.tech/api/v2` (`HTTPTransport.API_URL`).
-- `src/utils/HTTPTransport.ts` — обёртка над fetch (+ `src/helpers/fetchWithRetry.ts`). `src/utils/WSTransport.ts` — WebSocket для сообщений чата (`MessagesController`).
+- `src/utils/HTTPTransport.ts` — обёртка над XMLHttpRequest. `src/utils/WSTransport.ts` — WebSocket для сообщений чата (`MessagesController`).
 - Шаблоны `.hbs` лежат рядом с компонентами и предкомпилируются кастомным плагином `vite-plugin-handelbars-precompile.ts` (обратите внимание на опечатку «handelbars» в имени файла — она в коде и путях).
 - Стили — SCSS в `src/scss/` (миксины, переменные, normalize в `libs/`).
 - `server/server.js` — express-статика из `dist/` (для проверки прод-сборки локально).
+
+Подробная архитектурная документация с диаграммами — в `docs/arch/` (начните с `docs/arch/README.md`).
 
 ## Агентский жизненный цикл (ALK)
 
