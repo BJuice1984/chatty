@@ -1,8 +1,8 @@
 {
-    "revision": 1,
+    "revision": 2,
     "id": "SPEC-ENV-API",
     "title": "Typed environment and request boundary",
-    "intent": "Make frontend API, WebSocket and file endpoints configurable while preserving Practicum compatibility.",
+    "intent": "After the backend deployment foundation is accepted on dev, make frontend API, WebSocket and file endpoints configurable while preserving Practicum compatibility.",
     "requirements": [
         {
             "id": "REQ-ENV-API",
@@ -19,7 +19,8 @@
         "TypeScript remains pinned to ~5.9.",
         "Practicum development mode remains selectable.",
         "No secret is committed or emitted in evidence.",
-        "Course CI, sprint_* branches, deploy and backend paths are out of scope."
+        "Course CI, sprint_* branches and deploy files remain out of scope.",
+        "The backend package owns the service implementation; this package consumes its accepted endpoint contract."
     ],
     "nonGoals": ["Router/Store/Block migration", "feature-module migration", "backend implementation", "production deployment"]
 }
