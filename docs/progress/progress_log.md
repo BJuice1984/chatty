@@ -19,6 +19,27 @@ XMLHttpRequest, не fetch).
 
 **Проверено:** документация описывает код по фактическому чтению исходников;
 `npm run verify` зелёный (typecheck + 15 тестов + eslint + stylelint).
+## 2026-09-28 — ALK: первый контур переведён на backend → frontend
+
+**Что:** после уточнения scope мастер-план и program index переведены на
+последовательный первый контур backend → frontend. Локальная модель исключена из
+первого запуска: её
+развёртывание считается внешним фактом, а проверка Ollama/model перенесена в
+отдельный будущий gate. Пакет `2026-09-28-backend-skeleton` обновлён до revision 2
+как первая минимальная внутренняя backend-поставка: health/readiness, auth, миграции,
+Compose, root/backend verify и внутренний runbook. Пакет
+`2026-09-28-env-api-abstraction` зафиксирован как следующий frontend-пакет после
+приёмки backend в `dev`.
+
+**Проверено:** JSON-манифест backend синхронизирован со specification, acceptance,
+health ownership и runbook; runtime-код ещё не создавался. Независимый ALK audit и
+freeze намеренно остаются впереди; `plan.lock.json` не создавался.
+
+**Открыто:** baseline `dev@d79de677facf8b06290523f9589808069f6cf621` создан
+локально и опубликован на `origin`; остаются независимый review и freeze. Живые
+Docker/PostgreSQL/MinIO проверки выполняются на внутреннем хосте и фиксируются как
+`PASS` либо `UNAVAILABLE`.
+
 ## 2026-09-28 — ALK: program draft разделён на 11 stage packages
 
 **Что:** после ревью program-level черновика он заменён индексом

@@ -1,8 +1,8 @@
-# Stage 1 — Environment and API abstraction
+# Second implementation package — frontend environment/API boundary
 
-This package is the first implementation stage from `tasks/2026-09-28-ai-messenger-master-plan.md`. Its roadmap alias is `env-api-abstraction`; the repository ALK package id is `2026-09-28-env-api-abstraction`.
+This package follows the backend deployment foundation. Its roadmap alias is `env-api-abstraction`; the repository ALK package id is `2026-09-28-env-api-abstraction`. The execution PR targets `dev`; this plan was authored on `feature/agent-harness`.
 
-The execution branch must be created from `main` at the accepted base revision and named `feature/2026-09-28-env-api-abstraction`. This package is authored on `feature/agent-harness`; that branch is only the planning source and is not an execution authorization.
+Create `feature/2026-09-28-env-api-abstraction` from the accepted backend commit on `dev`. The feature branch is only an execution branch; independent review, freeze and the predecessor PR acceptance remain required.
 
 ## Scope
 
@@ -12,6 +12,6 @@ The worker owns only the paths listed in the manifest. It must not migrate pages
 
 ## Required evidence
 
-`npm run verify` is the deterministic gate. Add focused env/transport tests for URL joining, mode selection, CSRF forwarding, WS origin input, and error normalization. Run a bounded template scan for public URL literals. Practicum smoke is manual evidence; if the external service is unavailable, record `UNAVAILABLE` with the missing dependency and reproduction command.
+`npm run verify` is the deterministic gate. Add focused env/transport tests for URL joining, mode selection, CSRF forwarding, WS origin input, and error normalization. Run a bounded template scan for public URL literals. After backend acceptance, run a bounded own-mode health/auth compatibility smoke and a Practicum smoke; if either external service is unavailable, record `UNAVAILABLE` with the missing dependency and reproduction command.
 
 No secrets belong in `.env.example`, the plan, or evidence. No production promotion is claimed.

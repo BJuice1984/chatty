@@ -1,7 +1,9 @@
-# Stage 5 — Owned backend skeleton
+# First implementation package — backend deployment foundation
 
-Roadmap alias: `backend-skeleton`; ALK package id: `2026-09-28-backend-skeleton`. Create `feature/2026-09-28-backend-skeleton` from accepted `main`; this plan was authored on `feature/agent-harness`.
+Roadmap alias: `backend-skeleton`; ALK package id: `2026-09-28-backend-skeleton`. This is the first product implementation package in the revised sequence: backend deployment foundation, then frontend environment/API boundary. The local integration baseline is now `dev@d79de677facf8b06290523f9589808069f6cf621`; publish the remote `dev` ref before opening the implementation PR. This plan was authored on `feature/agent-harness`.
 
-Build the reproducible FastAPI foundation: typed settings, SQLAlchemy/Alembic/PostgreSQL with pgvector-ready base, cookie JWT auth with refresh rotation/logout, roles, CSRF/origin controls, upload limits, seed data, Docker Compose services and deterministic backend verification. The root package scripts are owned here so later stages consume one `verify:backend`/`verify:all` contract.
+Build the smallest deployable internal-network backend: typed settings, SQLAlchemy/Alembic/PostgreSQL with pgvector-ready base, cookie JWT auth with refresh rotation/logout, roles, CSRF/origin controls, upload limits, health/readiness, seed data, Docker Compose services, an internal deployment document and deterministic backend verification. The root package scripts are owned here so later stages consume one `verify:backend`/`verify:all` contract.
 
-The app/router composition created here is a stable discovery seam for later domain routers; this stage does not implement chats, documents or bot behavior. Docker/Ollama/Practicum live checks are external gates and must be reported as `UNAVAILABLE` if absent. Never commit credentials.
+The app/router composition created here is a stable discovery seam for later domain routers; this stage does not implement chats, documents, bot behavior, frontend wiring or local-model verification. Ollama is deliberately out of scope for this package: the already deployed model is consumed only by a later, separate verification task. Docker/PostgreSQL/MinIO live checks are deployment evidence and must be reported as `UNAVAILABLE` if the target environment is unavailable. Never commit credentials.
+
+At draft/freeze time the implementation outputs do not need to exist on `dev`: the worker creates the backend paths, the root `verify:backend`/`verify:all` scripts and `docs/deployment/internal-backend.md` listed in the manifest before running the post-write validation commands. Their absence in the planning checkout is intentional, not an acceptance waiver.

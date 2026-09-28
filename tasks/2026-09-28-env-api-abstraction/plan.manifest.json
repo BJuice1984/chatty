@@ -1,10 +1,10 @@
 {
     "schemaVersion": "agent-plan-manifest.v1",
     "status": "DRAFT",
-    "planRevision": 1,
+    "planRevision": 2,
     "package": {
         "id": "2026-09-28-env-api-abstraction",
-        "title": "Stage 1: environment and API abstraction",
+        "title": "Second package: frontend environment and API abstraction",
         "workspaceRoot": ".",
         "artifactRoot": "work/2026-09-28-env-api-abstraction",
         "planArtifactRoot": "tasks/2026-09-28-env-api-abstraction"
@@ -37,7 +37,7 @@
     },
     "specification": {
         "tier": "S2",
-        "intent": "Make frontend API, WebSocket and file endpoints configurable while preserving Practicum compatibility.",
+        "intent": "After the backend deployment foundation is accepted on dev, make frontend API, WebSocket and file endpoints configurable while preserving Practicum compatibility.",
         "status": "DRAFT",
         "source": "tasks/2026-09-28-env-api-abstraction/specification.json",
         "requirements": [
@@ -61,10 +61,10 @@
             "requirementsBytes": 3600,
             "externalSpecification": true
         },
-        "revision": 1,
+        "revision": 2,
         "artifact": "tasks/2026-09-28-env-api-abstraction/specification.json",
-        "goal": "A reviewed, deterministic implementation plan for stage 1.",
-        "constraints": ["TypeScript remains pinned to ~5.9.", "Practicum development mode remains selectable.", "No secret is committed or emitted in evidence.", "Course CI, sprint_* branches, deploy and backend paths are out of scope."],
+        "goal": "A reviewed, deterministic second implementation package for the frontend boundary after backend acceptance.",
+        "constraints": ["TypeScript remains pinned to ~5.9.", "Practicum development mode remains selectable.", "No secret is committed or emitted in evidence.", "Course CI, sprint_* branches and deploy files remain out of scope.", "The backend package owns the service implementation; this package consumes its accepted endpoint contract."],
         "nonGoals": ["Router/Store/Block migration", "feature-module migration", "backend implementation", "production deployment"],
         "scope": {"in": ["typed environment", "HTTP/WS/file endpoint abstraction", "compatibility transport tests"], "out": ["kernel migration", "backend", "production"]}
     },
@@ -82,7 +82,7 @@
             "readOnly": ["src/core/Block.ts", "src/utils/WSTransport.ts"],
             "forbiddenWrites": [],
             "leadOwned": [],
-            "launchGate": "Create feature/2026-09-28-env-api-abstraction from main@d79de677facf8b06290523f9589808069f6cf621; no unowned changes are present.",
+            "launchGate": "After 2026-09-28-backend-skeleton is accepted into dev, create feature/2026-09-28-env-api-abstraction from that accepted dev commit and open the implementation PR into dev; no unowned changes are present.",
             "capabilityHints": ["typescript", "vite", "handlebars", "browser"],
             "requiredTools": ["node", "npm"],
             "contextRefs": ["developer-overview.md", "plan.md", "src/utils/HTTPTransport.ts", "src/controllers/MessagesController.ts"],
@@ -102,29 +102,29 @@
         ],
         "evidence": [
             {"id": "EV-ENV-API-1", "description": "Verify receipt plus focused environment and transport tests.", "source": "WS-ENV-API", "validation": "npm run verify", "artifactPath": "work/2026-09-28-env-api-abstraction/evidence/WS-ENV-API/EV-ENV-API-1.json", "required": true},
-            {"id": "EV-ENV-API-2", "description": "Bounded template scan and Practicum compatibility smoke receipt.", "source": "WS-ENV-API", "validation": "bounded repository scan and manual Practicum smoke", "artifactPath": "work/2026-09-28-env-api-abstraction/evidence/WS-ENV-API/EV-ENV-API-2.json", "required": true}
+            {"id": "EV-ENV-API-2", "description": "Bounded template scan plus internal-backend and Practicum compatibility smoke receipt.", "source": "WS-ENV-API", "validation": "bounded repository scan and manual own-mode/Practicum smoke", "artifactPath": "work/2026-09-28-env-api-abstraction/evidence/WS-ENV-API/EV-ENV-API-2.json", "required": true}
         ],
         "releaseGate": "Both criteria have receipts and unavailable external service evidence is explicitly labeled.",
         "qualityFloor": "No criterion is accepted from prose alone."
     },
     "validation": {
         "commands": ["npm run verify", "npm run build"],
-        "extraEvidence": [{"id": "EV-ENV-API-2", "kind": "bounded-template-scan-and-practicum-smoke", "timeoutSeconds": 600}]
+        "extraEvidence": [{"id": "EV-ENV-API-2", "kind": "bounded-template-scan-and-internal-backend-practicum-smoke", "timeoutSeconds": 600}]
     },
     "orchestration": {"startMode": "reviewed-plan", "remediationMode": "ask", "maxPlanReviewRounds": 3, "maxTaskAttempts": 2, "maxParallelTasks": 1, "maxValidationRunsPerTask": 2, "maxToolCallsPerIteration": 30, "maxUsageIterationsPerAttempt": 8, "maxToolCallsPerTask": 100, "maxToolCallsPerRun": 250, "maxReportedTokensPerTask": 12000, "maxReportedTokensPerRun": 16000, "maxEvidenceArtifactBytes": 1048576, "maxEvidenceBytesPerTask": 4194304, "maxEvidenceBytesPerRun": 4194304, "maxTaskWallSeconds": 2400, "maxRunWallSeconds": 7200, "maxContextBytes": 100000, "maxRenderedPacketBytes": 40000, "stateFile": "work/2026-09-28-env-api-abstraction/run.state.json", "eventLog": "work/2026-09-28-env-api-abstraction/events.jsonl", "stepReviewRequired": true, "finalAuditRequired": true},
     "implementationAudit": {"required": true, "finalRequired": true},
     "developerOverview": "tasks/2026-09-28-env-api-abstraction/developer-overview.md",
-    "releaseTarget": {"kind": "local-only", "environment": "Vite frontend with optional Practicum backend", "productionPromotionClaimed": false},
-    "releaseImpact": "Changes frontend endpoint configuration and compatibility transport without changing runtime backend ownership.",
+    "releaseTarget": {"kind": "local-only", "environment": "Vite frontend against the accepted internal backend or Practicum backend", "productionPromotionClaimed": false},
+    "releaseImpact": "Changes frontend endpoint configuration and compatibility transport after backend acceptance without changing runtime backend ownership.",
     "nonGoals": ["Router/Store/Block migration", "feature-module migration", "backend implementation", "production deployment"],
     "finalAuditGates": ["[AC-ENV-API-1|EV-ENV-API-1] deterministic transport boundary passes", "[AC-ENV-API-2|EV-ENV-API-2] compatibility and URL hygiene pass"],
     "securityGates": [{"id": "SEC-CONFIG", "statement": "No secret is exposed in frontend configuration or evidence.", "evidenceIds": ["EV-ENV-API-2"]}, {"id": "SEC-REQUEST", "statement": "State-changing requests and WS origin inputs have explicit security configuration.", "evidenceIds": ["EV-ENV-API-1"]}],
-    "sandbox": {"network": "off-by-default-for-deterministic-checks", "externalServices": ["Practicum backend"], "secrets": "no-secrets-in-plan-or-evidence", "productionPromotion": false},
-    "runtimePolicy": {"implementationAuthorized": false, "productionPromotionClaimed": false, "unavailableDependencyPolicy": "record UNAVAILABLE; never convert to PASS", "preservationInvariants": ["sprint_* and deploy branches are out of scope", "course CI workflows, netlify.toml and unowned paths remain unchanged", "execution branch is based on main"], "manualEvidenceRequired": ["bounded Practicum compatibility smoke"]},
+    "sandbox": {"network": "off-by-default-for-deterministic-checks", "externalServices": ["accepted internal backend", "Practicum backend"], "secrets": "no-secrets-in-plan-or-evidence", "productionPromotion": false},
+    "runtimePolicy": {"implementationAuthorized": false, "productionPromotionClaimed": false, "unavailableDependencyPolicy": "record UNAVAILABLE; never convert to PASS", "preservationInvariants": ["sprint_* and deploy branches are out of scope", "course CI workflows, netlify.toml and unowned paths remain unchanged", "execution branch is based on the accepted backend commit in dev"], "manualEvidenceRequired": ["bounded internal backend compatibility smoke", "bounded Practicum compatibility smoke"]},
     "budgetPolicy": {"units": "tokens-and-resources", "reroute": "pause-and-review", "maxTotalTokens": 16000, "maxParallelWorkstreams": 1, "maxRunWallSeconds": 7200, "criticalPathWallSeconds": 1800, "aggregateWorkstreamWallSeconds": 1800, "retryReserveWallSeconds": 900},
     "budgets": {"defaultWorkstreamTokens": 12000, "maxEvidenceBytesPerRun": 4194304},
     "contextLimits": {"profile": "small-context-profile.v1", "maxPlanContextBytes": 100000, "maxRenderedPacketBytes": 40000, "smallContextPacketBytes": 24000, "maxReferenceFilesPerPacket": 10, "includeOnlyOwnedWrites": true, "excludeRuntimeWorkArtifacts": true},
-    "dependsOn": [],
+    "dependsOn": ["2026-09-28-backend-skeleton"],
     "reviewMesh": {"enabledByDefault": false, "blockingRequiresPlanOptIn": true, "requiresExplicitActivation": true, "budgetUnits": "tokens-and-resources", "budgetCap": {"maxInvocations": 0, "maxInputTokens": 0, "maxOutputTokens": 0}, "independencePolicy": {"mode": "single-independent-audit-required"}, "reviewerModelClasses": [], "liveCallsAllowed": false},
     "contextCheckpointPolicy": {"enabled": true, "maxCheckpointBytes": 131072, "store": "work/2026-09-28-env-api-abstraction/checkpoints"},
     "controllerGates": {"beforeExecution": ["plan completeness PASS", "independent plan audit PASS", "explicit freeze"], "afterEachWave": ["ownership audit", "validation receipts", "no unresolved High finding"], "beforeCompletion": ["final implementation audit PASS", "all final audit gates PASS"]},
@@ -132,5 +132,5 @@
     "repositoryReferences": [{"id": "REF-ROADMAP", "repoId": "chatty", "owner": "codex", "access": "read-only", "paths": ["tasks/2026-09-28-ai-messenger-master-plan.md"]}, {"id": "REF-ALK", "repoId": "chatty", "owner": "codex", "access": "read-only", "paths": ["tasks/README.md"]}, {"id": "REF-HTTP", "repoId": "chatty", "owner": "codex", "access": "read-only", "paths": ["src/utils/HTTPTransport.ts"]}],
     "tierResolution": {"status": "RESOLVED", "tier": "S2", "requestedTier": "S2", "reason": "architecture-risk, browser-risk, externalEnvironment-risk, security-risk and external-specification-required", "independentReviewRequired": true, "requestPath": "tasks/2026-09-28-env-api-abstraction/tier-request.json", "resolutionPath": "tasks/2026-09-28-env-api-abstraction/tier-resolution.json", "requestDigest": "0c66d1df28c9056b81e53a02162dc55a2ce1be41c0e5cdf19330b496b7f87070"},
     "taskTemplates": {"frontend": "small-context packet with owned source files and npm validation"},
-    "compatibility": {"baseFrontend": "main@d79de677facf8b06290523f9589808069f6cf621", "practicumMode": "development", "ownMode": "own", "dataMigration": "none", "legacyMessagesController": "retained until cutover and hardening"}
+    "compatibility": {"baseFrontend": "main@d79de677facf8b06290523f9589808069f6cf621", "practicumMode": "development", "ownMode": "own", "dataMigration": "none", "legacyMessagesController": "retained until cutover and hardening", "backendFoundation": "accepted in dev before own mode"}
 }
