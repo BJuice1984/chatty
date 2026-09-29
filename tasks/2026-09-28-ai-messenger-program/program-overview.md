@@ -2,11 +2,11 @@
 
 This directory is the roadmap index for `tasks/2026-09-28-ai-messenger-master-plan.md`; it is not an executable ALK package. The program is intentionally split into the eleven stage-specific packages below. Each package has its own plan id, branch, review, freeze, worker packet and PR.
 
-All stage packages are currently `DRAFT`, were authored from `feature/agent-harness`, and have no `plan.lock.json`. The first delivery contour is sequential and targets `dev`: backend deployment foundation first, then frontend environment/API boundary. The remaining packages retain their declared `main@d79de677facf8b06290523f9589808069f6cf621` planning base until their own execution baseline is revised. The harness branch is a planning source only; implementation remains unauthorized until the individual package passes independent review and freeze.
+The backend package `2026-09-28-backend-skeleton` is `FROZEN` at revision 2 with an independent `READY_TO_FREEZE` review and `plan.lock.json`; the other ten stage packages remain `DRAFT`. The first delivery contour is sequential and targets `dev`: backend deployment foundation first, then frontend environment/API boundary. The remaining packages retain their declared `main@d79de677facf8b06290523f9589808069f6cf621` planning base until their own execution baseline is revised. The harness branch is a planning source only; implementation remains unauthorized until the individual package passes independent review and freeze.
 
 ## Current first contour
 
-1. `2026-09-28-backend-skeleton` — first PR into `dev`: smallest internal-network backend bundle with health/readiness, auth, database/migrations, Compose and deterministic verification.
+1. `2026-09-28-backend-skeleton` — `FROZEN`; first PR into `dev`: smallest internal-network backend bundle with health/readiness, auth, database/migrations, Compose and deterministic verification.
 2. `2026-09-28-env-api-abstraction` — second PR into `dev`, after the backend PR is accepted: frontend endpoint/environment boundary and compatibility transport.
 3. Continue with chat/WS/files and the remaining domain/cutover packages only after the preceding package has passed validation, implementation audit and PR acceptance.
 
