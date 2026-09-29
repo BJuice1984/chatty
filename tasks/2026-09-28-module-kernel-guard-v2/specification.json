@@ -1,0 +1,9 @@
+{
+    "revision": 1,
+    "id": "SPEC-MODULE-GUARD",
+    "title": "Feature module architecture and guard v2",
+    "intent": "Create a typed module registry, strict import guard and auth feature boundary after the kernel debt handoff.",
+    "requirements": [{"id": "REQ-MODULE-AUTH", "title": "Module kernel and auth boundary", "description": "Register feature modules, detect collisions and forbidden runtime imports, and move auth behavior behind owned ports and pages.", "priority": "P0", "source": "tasks/2026-09-28-ai-messenger-master-plan.md:46-65", "acceptanceIds": ["AC-MODULE-1"], "evidenceIds": ["EV-MODULE-1"], "owner": "WS-MODULE-AUTH"}],
+    "constraints": ["Stage 2 debt handoff is a prerequisite.", "Guard debt map is owned only by this stage.", "No cross-feature runtime imports.", "No legacy page deletion or backend code."],
+    "nonGoals": ["chats/profile migration", "API cutover", "backend", "production deployment"]
+}

@@ -1,0 +1,26 @@
+{
+    "revision": 2,
+    "id": "SPEC-ENV-API",
+    "title": "Typed environment and request boundary",
+    "intent": "After the backend deployment foundation is accepted on dev, make frontend API, WebSocket and file endpoints configurable while preserving Practicum compatibility.",
+    "requirements": [
+        {
+            "id": "REQ-ENV-API",
+            "title": "Environment and transport abstraction",
+            "description": "Expose validated mode-specific HTTP, WebSocket and file endpoint configuration; forward explicit CSRF inputs for state-changing requests and remove hardcoded public URLs from templates.",
+            "priority": "P0",
+            "source": "tasks/2026-09-28-ai-messenger-master-plan.md:56-62",
+            "acceptanceIds": ["AC-ENV-API-1", "AC-ENV-API-2"],
+            "evidenceIds": ["EV-ENV-API-1", "EV-ENV-API-2"],
+            "owner": "WS-ENV-API"
+        }
+    ],
+    "constraints": [
+        "TypeScript remains pinned to ~5.9.",
+        "Practicum development mode remains selectable.",
+        "No secret is committed or emitted in evidence.",
+        "Course CI, sprint_* branches and deploy files remain out of scope.",
+        "The backend package owns the service implementation; this package consumes its accepted endpoint contract."
+    ],
+    "nonGoals": ["Router/Store/Block migration", "feature-module migration", "backend implementation", "production deployment"]
+}

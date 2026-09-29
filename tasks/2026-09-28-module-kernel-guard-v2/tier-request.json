@@ -1,0 +1,8 @@
+{
+    "taskCount": 1,
+    "executableOwners": ["worker-frontend-modules"],
+    "capabilityHints": ["typescript", "handlebars", "architecture-scan", "module-registry"],
+    "riskFlags": {"architecture": true, "security": true, "performance": false, "browser": true, "data": false, "release": true, "externalEnvironment": false},
+    "requirementsBytes": 3500,
+    "externalSpecification": true
+}

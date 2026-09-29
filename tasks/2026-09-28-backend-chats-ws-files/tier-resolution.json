@@ -1,0 +1,10 @@
+{
+    "status": "RESOLVED",
+    "tier": "S2",
+    "requestedTier": "S2",
+    "reason": "architecture-risk, externalEnvironment-risk, performance-risk, security-risk and external-specification-required",
+    "independentReviewRequired": true,
+    "requestPath": "tasks/2026-09-28-backend-chats-ws-files/tier-request.json",
+    "resolutionPath": "tasks/2026-09-28-backend-chats-ws-files/tier-resolution.json",
+    "requestDigest": "661d5d3148e7717838f5f208458556582c1772a563deaafe488e58a67f377f04"
+}

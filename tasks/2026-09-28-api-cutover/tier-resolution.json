@@ -1,0 +1,10 @@
+{
+    "status": "RESOLVED",
+    "tier": "S2",
+    "requestedTier": "S2",
+    "reason": "architecture-risk, browser-risk, externalEnvironment-risk, performance-risk, security-risk and external-specification-required",
+    "independentReviewRequired": true,
+    "requestPath": "tasks/2026-09-28-api-cutover/tier-request.json",
+    "resolutionPath": "tasks/2026-09-28-api-cutover/tier-resolution.json",
+    "requestDigest": "aefc004d6e1881da91d2d4d2013e095b2912916b8b85b0a64dab06766366e821"
+}

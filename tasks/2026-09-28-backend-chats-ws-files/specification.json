@@ -1,0 +1,9 @@
+{
+    "revision": 1,
+    "id": "SPEC-BE-CHAT",
+    "title": "Authorized chats, WebSocket and files",
+    "intent": "Implement chat membership, message history, typed WebSocket events and authenticated object storage access on the owned backend.",
+    "requirements": [{"id": "REQ-BE-CHAT", "title": "Chats, WS and files", "description": "Provide member-authorized chats, ordered history pagination, message send/receive envelopes and authenticated upload/download through MinIO-compatible storage.", "priority": "P0", "source": "tasks/2026-09-28-ai-messenger-master-plan.md:74-82", "acceptanceIds": ["AC-BE-CHAT-1", "AC-BE-CHAT-2"], "evidenceIds": ["EV-BE-CHAT-1", "EV-BE-CHAT-2"], "owner": "WS-BE-CHAT"}],
+    "constraints": ["Stage 5 auth/app/router seam is consumed, not rewritten.", "Membership checks are server-side on HTTP, WS and files.", "File contract is explicit for RAG and bot consumers.", "No frontend or course CI writes."],
+    "nonGoals": ["document ingestion", "AI bot", "frontend cutover", "production deployment"]
+}

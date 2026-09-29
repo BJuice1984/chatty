@@ -19,6 +19,109 @@ XMLHttpRequest, не fetch).
 
 **Проверено:** документация описывает код по фактическому чтению исходников;
 `npm run verify` зелёный (typecheck + 15 тестов + eslint + stylelint).
+## 2026-09-29 — ALK: backend revision 3 refrozen and worker packets compiled
+
+**Что:** после compile-blocker revision 2 создан отдельный пакет
+`tasks/2026-09-28-backend-skeleton-r3/`; revision 2 и её lock сохранены без
+изменений. Исправлен только формат `workstreams[0].artifactPaths`: ALK 2.15
+получает шаблоны `result`/`review` под прежним evidence-root. Обновлены
+package-local ссылки, выполнены независимый повторный audit
+`READY_TO_FREEZE` и `plan.lock.json` revision 3.
+
+**Проверено:** manifest digest
+`2ffcc9757346065348353c7524ba39c39472dca1d0731eb2b9ba60099e0d1710`,
+`lock-create` (`filesystemVerified: true`), `plan check`, acceptance, refs и
+`plan verify` — PASS. Standard worker packet compiled with digest
+`1576ebab8f990ea5d4aec385c35ec96e29bcbd1deb131f80d457b95f0af80cf3`, compact
+packet (`4k-strict`) — `e5bc9774052812288c4a8b80cbe78b468f574400cd7cad4a9173f5b47d936456`.
+`plan delta` r2→r3 подтвердил отсутствие изменений требований, acceptance,
+evidence, budgets, gates и write-set. `audit package --strict` остаётся
+`REVIEW_REQUIRED` до появления implementation/final-audit receipts — это ожидаемо.
+
+**Открыто:** implementation остаётся `implementationAuthorized: false`; локальная
+модель и live Docker/PostgreSQL/MinIO не проверялись. Следующий контролируемый шаг
+— execution worker `WS-BE-SKELETON` на ветке
+`feature/2026-09-28-backend-skeleton` с PR в `dev`.
+
+## 2026-09-29 — ALK: backend skeleton frozen
+
+**Что:** пакет `2026-09-28-backend-skeleton` переведён в `FROZEN` на revision 2.
+К манифесту привязан независимый review
+`tasks/2026-09-28-backend-skeleton/plan-review.json` с вердиктом
+`READY_TO_FREEZE`; создан immutable lock
+`tasks/2026-09-28-backend-skeleton/plan.lock.json`. Зафиксированный baseline —
+`dev@d79de677facf8b06290523f9589808069f6cf621`, опубликованный как `origin/dev`.
+
+**Проверено:** `plan lock-create` (`filesystemVerified: true`),
+`plan check --require-completeness`, `plan acceptance-check`, `plan refs-check` и
+`plan verify` с lock — PASS. `audit package --strict` остановлен на ожидаемом
+`REVIEW_REQUIRED`, поскольку implementation/final-audit receipt появится только
+после выполнения worker-пакета. Локальная модель, Docker/PostgreSQL/MinIO и
+runtime-код не запускались.
+
+**Открыто:** implementation остаётся `implementationAuthorized: false`. Следующий
+шаг — отдельный execution worker на ветке
+`feature/2026-09-28-backend-skeleton` с PR в `dev`; frontend-пакет остаётся DRAFT
+до приёмки этого PR.
+
+## 2026-09-28 — ALK: первый контур переведён на backend → frontend
+
+**Что:** после уточнения scope мастер-план и program index переведены на
+последовательный первый контур backend → frontend. Локальная модель исключена из
+первого запуска: её
+развёртывание считается внешним фактом, а проверка Ollama/model перенесена в
+отдельный будущий gate. Пакет `2026-09-28-backend-skeleton` обновлён до revision 2
+как первая минимальная внутренняя backend-поставка: health/readiness, auth, миграции,
+Compose, root/backend verify и внутренний runbook. Пакет
+`2026-09-28-env-api-abstraction` зафиксирован как следующий frontend-пакет после
+приёмки backend в `dev`.
+
+**Проверено:** JSON-манифест backend синхронизирован со specification, acceptance,
+health ownership и runbook; runtime-код ещё не создавался. Структурные ALK-гейты и
+второй независимый read-only audit дали `READY_TO_FREEZE`; `plan.lock.json` пока не
+создавался до явного freeze.
+
+**Открыто:** baseline `dev@d79de677facf8b06290523f9589808069f6cf621` создан
+локально и опубликован на `origin`; остаются независимый review и freeze. Живые
+Docker/PostgreSQL/MinIO проверки выполняются на внутреннем хосте и фиксируются как
+`PASS` либо `UNAVAILABLE`.
+
+## 2026-09-28 — ALK: program draft разделён на 11 stage packages
+
+**Что:** после ревью program-level черновика он заменён индексом
+`tasks/2026-09-28-ai-messenger-program/program-overview.md` и 11 самостоятельными
+ALK-пакетами по master-plan: frontend stages 1–4, backend stages 5–6, cutover,
+RAG, bot, AI UI и hardening/docs. Для каждого пакета закреплены отдельный
+`plan-id`, branch/PR boundary, owner, write set, predecessor gate, acceptance/evidence
+contract, security/release gates, manual checklist при необходимости и S2 tier digest.
+
+Ownership остаётся disjoint: root npm metadata принадлежит backend skeleton,
+`MessagesController` — env stage, `TRANSITIONAL_DEBT` handoff — kernel stage, guard
+map — module stage, legacy deletion — migration stage, adapters/composition —
+cutover stage, file contract — chat stage, shared `WSTransport`/history/docs — final
+stage. В старом каталоге больше нет исполняемого program manifest.
+
+**Проверено:** ALK `tier resolve` для всех 11 пакетов; для каждого
+`plan check --require-completeness`, `plan acceptance-check`, `plan refs-check` и
+read-only `plan verify` — PASS. Дополнительно проверено отсутствие пересечений
+между 166 stage write paths. Код и runtime-сценарии не запускались;
+`plan.lock.json` намеренно отсутствует до независимого review/freeze.
+
+**Открыто:** каждый пакет остаётся `DRAFT`; перед execution нужны независимый
+plan audit, явный freeze и создание lock уже на конкретном stage package.
+
+## 2026-09-28 — Черновой ALK-план AI-messenger program
+
+**Что:** в ветке `feature/agent-harness` создан S2 plan package
+`tasks/2026-09-28-ai-messenger-program/` для реализации мастер-плана: спецификация,
+developer overview, DAG из 14 workstreams, write-set ownership, acceptance/evidence
+контракты, security/release gates и независимый review request. План намеренно остаётся
+`DRAFT`: реализация не авторизована, `plan.lock.json` до независимого ревью не создаётся.
+
+**Проверено:** `tier resolve` подтвердил S2, затем `specification check`,
+`plan check --require-completeness`, `plan acceptance-check`, `plan refs-check`
+и read-only `plan verify` — PASS.
+Команды проекта и runtime-сценарии не запускались; отсутствие lock ожидаемо до freeze.
 
 ## 2026-09-27 — Фикс деплоя Netlify (EBADENGINE)
 
