@@ -1,0 +1,65 @@
+services:
+  api:
+    build:
+      context: ./backend
+    environment:
+      CHATTY_ENVIRONMENT: ${CHATTY_ENVIRONMENT:-development}
+      CHATTY_DATABASE_URL: postgresql+psycopg://${POSTGRES_USER:-chatty}:${POSTGRES_PASSWORD:-}@db:5432/${POSTGRES_DB:-chatty}
+      CHATTY_JWT_SECRET: ${CHATTY_JWT_SECRET:-}
+      CHATTY_ALLOWED_ORIGINS: ${CHATTY_ALLOWED_ORIGINS:-["http://localhost:3000"]}
+      CHATTY_COOKIE_SECURE: ${CHATTY_COOKIE_SECURE:-false}
+      CHATTY_SEED_ADMIN_EMAIL: ${CHATTY_SEED_ADMIN_EMAIL:-}
+      CHATTY_SEED_ADMIN_PASSWORD: ${CHATTY_SEED_ADMIN_PASSWORD:-}
+    command: >-
+      sh -c "alembic upgrade head && python -m app.seed &&
+      uvicorn app.main:app --host 0.0.0.0 --port 8000"
+    ports:
+      - "${API_BIND_IP:-127.0.0.1}:8000:8000"
+    depends_on:
+      db:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health')"]
+      interval: 10s
+      timeout: 5s
+      retries: 6
+    networks:
+      - chatty-internal
+
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-chatty}
+      POSTGRES_USER: ${POSTGRES_USER:-chatty}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-}
+    volumes:
+      - chatty-postgres:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-chatty} -d ${POSTGRES_DB:-chatty}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    networks:
+      - chatty-internal
+
+  minio:
+    image: minio/minio:latest
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER:-}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:-}
+    volumes:
+      - chatty-minio:/data
+    ports:
+      - "${MINIO_BIND_IP:-127.0.0.1}:9000:9000"
+      - "${MINIO_CONSOLE_BIND_IP:-127.0.0.1}:9001:9001"
+    networks:
+      - chatty-internal
+
+volumes:
+  chatty-postgres:
+  chatty-minio:
+
+networks:
+  chatty-internal:
+    driver: bridge
