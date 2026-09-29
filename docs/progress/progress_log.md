@@ -32,8 +32,9 @@ Compose, root/backend verify и внутренний runbook. Пакет
 приёмки backend в `dev`.
 
 **Проверено:** JSON-манифест backend синхронизирован со specification, acceptance,
-health ownership и runbook; runtime-код ещё не создавался. Независимый ALK audit и
-freeze намеренно остаются впереди; `plan.lock.json` не создавался.
+health ownership и runbook; runtime-код ещё не создавался. Структурные ALK-гейты и
+второй независимый read-only audit дали `READY_TO_FREEZE`; `plan.lock.json` пока не
+создавался до явного freeze.
 
 **Открыто:** baseline `dev@d79de677facf8b06290523f9589808069f6cf621` создан
 локально и опубликован на `origin`; остаются независимый review и freeze. Живые
