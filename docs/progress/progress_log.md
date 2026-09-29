@@ -4,6 +4,30 @@
 > Новые записи — сверху. Одна запись = одна завершённая порция работы:
 > что и почему сделали, где смотреть, чем проверили.
 
+## 2026-09-29 — ALK: backend revision 3 refrozen and worker packets compiled
+
+**Что:** после compile-blocker revision 2 создан отдельный пакет
+`tasks/2026-09-28-backend-skeleton-r3/`; revision 2 и её lock сохранены без
+изменений. Исправлен только формат `workstreams[0].artifactPaths`: ALK 2.15
+получает шаблоны `result`/`review` под прежним evidence-root. Обновлены
+package-local ссылки, выполнены независимый повторный audit
+`READY_TO_FREEZE` и `plan.lock.json` revision 3.
+
+**Проверено:** manifest digest
+`2ffcc9757346065348353c7524ba39c39472dca1d0731eb2b9ba60099e0d1710`,
+`lock-create` (`filesystemVerified: true`), `plan check`, acceptance, refs и
+`plan verify` — PASS. Standard worker packet compiled with digest
+`1576ebab8f990ea5d4aec385c35ec96e29bcbd1deb131f80d457b95f0af80cf3`, compact
+packet (`4k-strict`) — `e5bc9774052812288c4a8b80cbe78b468f574400cd7cad4a9173f5b47d936456`.
+`plan delta` r2→r3 подтвердил отсутствие изменений требований, acceptance,
+evidence, budgets, gates и write-set. `audit package --strict` остаётся
+`REVIEW_REQUIRED` до появления implementation/final-audit receipts — это ожидаемо.
+
+**Открыто:** implementation остаётся `implementationAuthorized: false`; локальная
+модель и live Docker/PostgreSQL/MinIO не проверялись. Следующий контролируемый шаг
+— execution worker `WS-BE-SKELETON` на ветке
+`feature/2026-09-28-backend-skeleton` с PR в `dev`.
+
 ## 2026-09-29 — ALK: backend skeleton frozen
 
 **Что:** пакет `2026-09-28-backend-skeleton` переведён в `FROZEN` на revision 2.

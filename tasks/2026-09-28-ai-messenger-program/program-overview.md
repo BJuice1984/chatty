@@ -2,11 +2,11 @@
 
 This directory is the roadmap index for `tasks/2026-09-28-ai-messenger-master-plan.md`; it is not an executable ALK package. The program is intentionally split into the eleven stage-specific packages below. Each package has its own plan id, branch, review, freeze, worker packet and PR.
 
-The backend package `2026-09-28-backend-skeleton` is `FROZEN` at revision 2 with an independent `READY_TO_FREEZE` review and `plan.lock.json`; the other ten stage packages remain `DRAFT`. The first delivery contour is sequential and targets `dev`: backend deployment foundation first, then frontend environment/API boundary. The remaining packages retain their declared `main@d79de677facf8b06290523f9589808069f6cf621` planning base until their own execution baseline is revised. The harness branch is a planning source only; implementation remains unauthorized until the individual package passes independent review and freeze.
+The active backend package `2026-09-28-backend-skeleton` is `FROZEN` at revision 3 in `tasks/2026-09-28-backend-skeleton-r3/`, with an independent `READY_TO_FREEZE` review and `plan.lock.json`; revision 2 remains preserved as historical freeze input in `tasks/2026-09-28-backend-skeleton/`. The other ten stage packages remain `DRAFT`. The first delivery contour is sequential and targets `dev`: backend deployment foundation first, then frontend environment/API boundary. The remaining packages retain their declared `main@d79de677facf8b06290523f9589808069f6cf621` planning base until their own execution baseline is revised. The harness branch is a planning source only; implementation remains unauthorized until the individual package passes independent review and freeze.
 
 ## Current first contour
 
-1. `2026-09-28-backend-skeleton` — `FROZEN`; first PR into `dev`: smallest internal-network backend bundle with health/readiness, auth, database/migrations, Compose and deterministic verification.
+1. `2026-09-28-backend-skeleton` — `FROZEN` revision 3; first PR into `dev`: smallest internal-network backend bundle with health/readiness, auth, database/migrations, Compose and deterministic verification.
 2. `2026-09-28-env-api-abstraction` — second PR into `dev`, after the backend PR is accepted: frontend endpoint/environment boundary and compatibility transport.
 3. Continue with chat/WS/files and the remaining domain/cutover packages only after the preceding package has passed validation, implementation audit and PR acceptance.
 
@@ -20,7 +20,7 @@ The already deployed local model is deliberately outside this first contour. Its
 | 2. kernel-router-store | `tasks/2026-09-28-kernel-router-store/` | `feature/2026-09-28-kernel-router-store` | Router, Store, Block lifecycle and debt handoff | 1 |
 | 3. module-kernel-guard-v2 | `tasks/2026-09-28-module-kernel-guard-v2/` | `feature/2026-09-28-module-kernel-guard-v2` | Module registry, strict guard and auth feature | 2 |
 | 4. migrate-chats-profile | `tasks/2026-09-28-migrate-chats-profile/` | `feature/2026-09-28-migrate-chats-profile` | Chats/profile feature migration and evidence-gated legacy deletion | 3 |
-| 5. backend-skeleton | `tasks/2026-09-28-backend-skeleton/` | `feature/2026-09-28-backend-skeleton` | FastAPI/auth/database/Compose/root verification foundation | first package; PR into `dev` |
+| 5. backend-skeleton | `tasks/2026-09-28-backend-skeleton-r3/` | `feature/2026-09-28-backend-skeleton` | FastAPI/auth/database/Compose/root verification foundation | first package; PR into `dev` |
 | 6. backend-chats-ws-files | `tasks/2026-09-28-backend-chats-ws-files/` | `feature/2026-09-28-backend-chats-ws-files` | Authorized chats, WS, MinIO files and file contract | 5 |
 | 7. api-cutover | `tasks/2026-09-28-api-cutover/` | `feature/2026-09-28-api-cutover` | Practicum/own adapters, composition root and WS gateway | 4, 5, 6 |
 | 8. backend-docs-rag | `tasks/2026-09-28-backend-docs-rag/` | `feature/2026-09-28-backend-docs-rag` | Parsers, embeddings, ready/failed states and scoped retrieval | 5, 6 |
