@@ -19,6 +19,27 @@ XMLHttpRequest, не fetch).
 
 **Проверено:** документация описывает код по фактическому чтению исходников;
 `npm run verify` зелёный (typecheck + 15 тестов + eslint + stylelint).
+## 2026-09-29 — ALK: backend skeleton frozen
+
+**Что:** пакет `2026-09-28-backend-skeleton` переведён в `FROZEN` на revision 2.
+К манифесту привязан независимый review
+`tasks/2026-09-28-backend-skeleton/plan-review.json` с вердиктом
+`READY_TO_FREEZE`; создан immutable lock
+`tasks/2026-09-28-backend-skeleton/plan.lock.json`. Зафиксированный baseline —
+`dev@d79de677facf8b06290523f9589808069f6cf621`, опубликованный как `origin/dev`.
+
+**Проверено:** `plan lock-create` (`filesystemVerified: true`),
+`plan check --require-completeness`, `plan acceptance-check`, `plan refs-check` и
+`plan verify` с lock — PASS. `audit package --strict` остановлен на ожидаемом
+`REVIEW_REQUIRED`, поскольку implementation/final-audit receipt появится только
+после выполнения worker-пакета. Локальная модель, Docker/PostgreSQL/MinIO и
+runtime-код не запускались.
+
+**Открыто:** implementation остаётся `implementationAuthorized: false`. Следующий
+шаг — отдельный execution worker на ветке
+`feature/2026-09-28-backend-skeleton` с PR в `dev`; frontend-пакет остаётся DRAFT
+до приёмки этого PR.
+
 ## 2026-09-28 — ALK: первый контур переведён на backend → frontend
 
 **Что:** после уточнения scope мастер-план и program index переведены на
