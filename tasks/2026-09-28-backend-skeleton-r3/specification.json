@@ -1,0 +1,9 @@
+{
+    "revision": 2,
+    "id": "SPEC-BE-SKELETON",
+    "title": "Internal-network backend deployment foundation",
+    "intent": "Provide the smallest secure, reproducible backend bundle for internal deployment before frontend wiring or local-model verification.",
+    "requirements": [{"id": "REQ-BE-SKELETON", "title": "Backend foundation and internal deployment", "description": "Create FastAPI settings, health/readiness, database/session/migrations, cookie JWT auth, roles, seed, Compose and deterministic backend verification with a stable domain-router seam for later stages.", "priority": "P0", "source": "tasks/2026-09-28-ai-messenger-master-plan.md:20-24,69-77,91-92", "acceptanceIds": ["AC-BE-SKELETON-1", "AC-BE-SKELETON-2"], "evidenceIds": ["EV-BE-SKELETON-1", "EV-BE-SKELETON-2"], "owner": "WS-BE-SKELETON"}],
+    "constraints": ["Secrets come from environment only.", "Cookie state changes require CSRF/origin checks.", "The target is an internal network; no public model endpoint is required.", "Course CI and deploy files remain untouched.", "Later domain stages consume the app/router seam and do not rewrite its ownership."],
+    "nonGoals": ["frontend wiring", "chat/WS/files", "RAG", "AI bot", "Ollama/model verification", "production deployment"]
+}
