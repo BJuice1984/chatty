@@ -1,5 +1,6 @@
 import WSTransport, { WSTransportEvents } from '../utils/WSTransport.ts'
 import store from '../utils/Store.ts'
+import { chatWebSocketUrl } from '../utils/env.ts'
 
 export interface Message {
     chat_id: number
@@ -28,9 +29,11 @@ class MessagesController {
 
         const userId = store.getState().user?.id
 
-        const wsTransport = new WSTransport(
-            `wss://ya-praktikum.tech/ws/chats/${userId}/${id}/${token}`
-        )
+        if (userId == null) {
+            throw new Error('User is not authenticated')
+        }
+
+        const wsTransport = new WSTransport(chatWebSocketUrl(userId, id, token))
 
         this.sockets.set(id, wsTransport)
 

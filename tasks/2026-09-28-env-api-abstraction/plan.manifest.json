@@ -1,7 +1,7 @@
 {
     "schemaVersion": "agent-plan-manifest.v1",
-    "status": "DRAFT",
-    "planRevision": 2,
+    "status": "FROZEN",
+    "planRevision": 5,
     "package": {
         "id": "2026-09-28-env-api-abstraction",
         "title": "Second package: frontend environment and API abstraction",
@@ -10,12 +10,13 @@
         "planArtifactRoot": "tasks/2026-09-28-env-api-abstraction"
     },
     "planFiles": [
-        "tasks/2026-09-28-env-api-abstraction/plan.manifest.json",
-        "tasks/2026-09-28-env-api-abstraction/developer-overview.md",
-        "tasks/2026-09-28-env-api-abstraction/specification.json",
-        "tasks/2026-09-28-env-api-abstraction/plan.md",
         "tasks/2026-09-28-env-api-abstraction/acceptance-criteria.md",
+        "tasks/2026-09-28-env-api-abstraction/developer-overview.md",
         "tasks/2026-09-28-env-api-abstraction/plan-review-request.md",
+        "tasks/2026-09-28-env-api-abstraction/plan-review.json",
+        "tasks/2026-09-28-env-api-abstraction/plan.manifest.json",
+        "tasks/2026-09-28-env-api-abstraction/plan.md",
+        "tasks/2026-09-28-env-api-abstraction/specification.json",
         "tasks/2026-09-28-env-api-abstraction/tier-request.json",
         "tasks/2026-09-28-env-api-abstraction/tier-resolution.json"
     ],
@@ -29,11 +30,11 @@
     "author": {
         "id": "codex",
         "surface": "agent-first-planning",
-        "runId": "2026-09-28-env-api-abstraction-draft"
+        "runId": "2026-09-29-env-api-abstraction-revision-5"
     },
     "baseRevision": {
-        "ref": "main",
-        "sha": "d79de677facf8b06290523f9589808069f6cf621"
+        "ref": "dev",
+        "sha": "840f1928815a35f01cfc9f7627d72ed6d116f1a8"
     },
     "specification": {
         "tier": "S2",
@@ -61,7 +62,7 @@
             "requirementsBytes": 3600,
             "externalSpecification": true
         },
-        "revision": 2,
+        "revision": 5,
         "artifact": "tasks/2026-09-28-env-api-abstraction/specification.json",
         "goal": "A reviewed, deterministic second implementation package for the frontend boundary after backend acceptance.",
         "constraints": ["TypeScript remains pinned to ~5.9.", "Practicum development mode remains selectable.", "No secret is committed or emitted in evidence.", "Course CI, sprint_* branches and deploy files remain out of scope.", "The backend package owns the service implementation; this package consumes its accepted endpoint contract."],
@@ -78,7 +79,7 @@
             "owner": "worker-frontend-env",
             "reviewer": "independent-frontend-reviewer",
             "dependsOn": [],
-            "writes": [".env.development", ".env.example", ".env.own.example", ".gitignore", "src/utils/env.ts", "src/utils/env.test.ts", "src/utils/HTTPTransport.ts", "src/utils/HTTPTransport.test.ts", "src/controllers/MessagesController.ts", "src/api/errors.ts", "src/components/avatar/chatAvatar/chatAvatar.hbs", "src/components/avatar/userAvatar/userAvatar.hbs"],
+            "writes": [".env.development", ".env.example", ".env.own.example", ".gitignore", "src/utils/env.ts", "src/utils/env.test.ts", "src/utils/HTTPTransport.ts", "src/utils/HTTPTransport.test.ts", "src/controllers/MessagesController.ts", "src/api/errors.ts", "src/components/avatar/chatAvatar/chatAvatar.ts", "src/components/avatar/chatAvatar/chatAvatar.hbs", "src/components/avatar/userAvatar/userAvatar.ts", "src/components/avatar/userAvatar/userAvatar.hbs"],
             "readOnly": ["src/core/Block.ts", "src/utils/WSTransport.ts"],
             "forbiddenWrites": [],
             "leadOwned": [],
@@ -89,16 +90,16 @@
             "acceptanceIds": ["AC-ENV-API-1", "AC-ENV-API-2"],
             "evidenceIds": ["EV-ENV-API-1", "EV-ENV-API-2"],
             "executionPolicy": {"maxAttempts": 2, "maxWallSeconds": 1800},
-            "artifactPaths": ["work/2026-09-28-env-api-abstraction/evidence/WS-ENV-API"],
+            "artifactPaths": {"result": "work/2026-09-28-env-api-abstraction/evidence/WS-ENV-API/task-result.json", "review": "work/2026-09-28-env-api-abstraction/evidence/WS-ENV-API/task-review.json"},
             "required": true,
-            "plannedItems": ["typed mode config", "safe URL joining", "CSRF and WS origin inputs", "compatibility adapter", "template scan", "focused tests"],
+            "plannedItems": ["typed mode config", "safe URL joining", "CSRF and WS origin inputs", "transport-neutral errors", "avatar adapters", "compatibility adapter", "template scan", "focused tests"],
             "qualityFloor": "No hardcoded backend resource URL or secret remains; Practicum mode is selectable and the compatibility controller remains usable."
         }
     ],
     "acceptance": {
         "criteria": [
             {"id": "AC-ENV-API-1", "title": "Deterministic transport boundary", "requirementIds": ["REQ-ENV-API"], "evidenceIds": ["EV-ENV-API-1"], "independentEvidenceIds": [], "statement": "npm run verify passes and focused tests prove mode selection, safe URL joining, CSRF forwarding, WS origin input and normalized errors.", "description": "Frontend request-boundary behavior is deterministic.", "source": "acceptance-criteria.md", "priority": "P0"},
-            {"id": "AC-ENV-API-2", "title": "Compatibility and URL hygiene", "requirementIds": ["REQ-ENV-API"], "evidenceIds": ["EV-ENV-API-2"], "independentEvidenceIds": [], "statement": "Templates contain no hardcoded public backend URL, Practicum mode remains selectable and the message-controller compatibility contract remains usable.", "description": "External availability is reported as PASS or UNAVAILABLE, never silently converted to PASS.", "source": "acceptance-criteria.md", "priority": "P0"}
+            {"id": "AC-ENV-API-2", "title": "Compatibility and URL hygiene", "requirementIds": ["REQ-ENV-API"], "evidenceIds": ["EV-ENV-API-2"], "independentEvidenceIds": [], "statement": "Own mode consumes the accepted backend health/auth contract; templates contain no hardcoded public backend URL, Practicum mode remains selectable and the message-controller compatibility contract remains usable.", "description": "External availability is reported as PASS or UNAVAILABLE, never silently converted to PASS.", "source": "acceptance-criteria.md", "priority": "P0"}
         ],
         "evidence": [
             {"id": "EV-ENV-API-1", "description": "Verify receipt plus focused environment and transport tests.", "source": "WS-ENV-API", "validation": "npm run verify", "artifactPath": "work/2026-09-28-env-api-abstraction/evidence/WS-ENV-API/EV-ENV-API-1.json", "required": true},
@@ -128,9 +129,9 @@
     "reviewMesh": {"enabledByDefault": false, "blockingRequiresPlanOptIn": true, "requiresExplicitActivation": true, "budgetUnits": "tokens-and-resources", "budgetCap": {"maxInvocations": 0, "maxInputTokens": 0, "maxOutputTokens": 0}, "independencePolicy": {"mode": "single-independent-audit-required"}, "reviewerModelClasses": [], "liveCallsAllowed": false},
     "contextCheckpointPolicy": {"enabled": true, "maxCheckpointBytes": 131072, "store": "work/2026-09-28-env-api-abstraction/checkpoints"},
     "controllerGates": {"beforeExecution": ["plan completeness PASS", "independent plan audit PASS", "explicit freeze"], "afterEachWave": ["ownership audit", "validation receipts", "no unresolved High finding"], "beforeCompletion": ["final implementation audit PASS", "all final audit gates PASS"]},
-    "planReview": {"required": true, "requestPath": "tasks/2026-09-28-env-api-abstraction/plan-review-request.md", "reviewerClass": "independent-plan-reviewer", "maxRounds": 3, "implementationAuthorized": false},
+    "planReview": {"required": true, "requestPath": "tasks/2026-09-28-env-api-abstraction/plan-review-request.md", "report": "tasks/2026-09-28-env-api-abstraction/plan-review.json", "reviewedRevision": 5, "verdict": "READY_TO_FREEZE", "reviewerClass": "independent-plan-reviewer", "maxRounds": 3, "implementationAuthorized": false},
     "repositoryReferences": [{"id": "REF-ROADMAP", "repoId": "chatty", "owner": "codex", "access": "read-only", "paths": ["tasks/2026-09-28-ai-messenger-master-plan.md"]}, {"id": "REF-ALK", "repoId": "chatty", "owner": "codex", "access": "read-only", "paths": ["tasks/README.md"]}, {"id": "REF-HTTP", "repoId": "chatty", "owner": "codex", "access": "read-only", "paths": ["src/utils/HTTPTransport.ts"]}],
     "tierResolution": {"status": "RESOLVED", "tier": "S2", "requestedTier": "S2", "reason": "architecture-risk, browser-risk, externalEnvironment-risk, security-risk and external-specification-required", "independentReviewRequired": true, "requestPath": "tasks/2026-09-28-env-api-abstraction/tier-request.json", "resolutionPath": "tasks/2026-09-28-env-api-abstraction/tier-resolution.json", "requestDigest": "0c66d1df28c9056b81e53a02162dc55a2ce1be41c0e5cdf19330b496b7f87070"},
     "taskTemplates": {"frontend": "small-context packet with owned source files and npm validation"},
-    "compatibility": {"baseFrontend": "main@d79de677facf8b06290523f9589808069f6cf621", "practicumMode": "development", "ownMode": "own", "dataMigration": "none", "legacyMessagesController": "retained until cutover and hardening", "backendFoundation": "accepted in dev before own mode"}
+    "compatibility": {"baseFrontend": "dev@840f1928815a35f01cfc9f7627d72ed6d116f1a8", "practicumMode": "development", "ownMode": "own", "dataMigration": "none", "legacyMessagesController": "retained until cutover and hardening", "backendFoundation": "accepted in dev before own mode"}
 }

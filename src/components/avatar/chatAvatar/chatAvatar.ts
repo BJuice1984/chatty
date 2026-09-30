@@ -1,9 +1,10 @@
 import Block from '../../../core/Block.ts'
+import { fileUrl } from '../../../utils/env.ts'
 import template from './chatAvatar.hbs'
 
-interface ChatAvatarProps {
+export interface ChatAvatarProps {
     onClick?: () => void
-    avatar: string
+    src?: string
     [key: string]: unknown
 }
 
@@ -18,6 +19,11 @@ export class ChatAvatar extends Block<ChatAvatarProps> {
     }
 
     render() {
-        return this.compile(template, this.props)
+        const src = this.props.src
+
+        return this.compile(template, {
+            ...this.props,
+            src: src !== undefined && src !== '' ? fileUrl(src) : src,
+        })
     }
 }

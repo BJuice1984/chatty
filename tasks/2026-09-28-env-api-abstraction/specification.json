@@ -1,5 +1,5 @@
 {
-    "revision": 2,
+    "revision": 5,
     "id": "SPEC-ENV-API",
     "title": "Typed environment and request boundary",
     "intent": "After the backend deployment foundation is accepted on dev, make frontend API, WebSocket and file endpoints configurable while preserving Practicum compatibility.",
