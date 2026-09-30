@@ -8,6 +8,11 @@ services:
       CHATTY_JWT_SECRET: ${CHATTY_JWT_SECRET:-}
       CHATTY_ALLOWED_ORIGINS: ${CHATTY_ALLOWED_ORIGINS:-["http://localhost:3000"]}
       CHATTY_COOKIE_SECURE: ${CHATTY_COOKIE_SECURE:-false}
+      CHATTY_OBJECT_STORAGE_ENDPOINT: ${CHATTY_OBJECT_STORAGE_ENDPOINT:-http://object-storage:9000}
+      CHATTY_OBJECT_STORAGE_BUCKET: ${CHATTY_OBJECT_STORAGE_BUCKET:-chatty-files}
+      CHATTY_OBJECT_STORAGE_REGION: ${CHATTY_OBJECT_STORAGE_REGION:-us-east-1}
+      CHATTY_OBJECT_STORAGE_ACCESS_KEY: ${OBJECT_STORAGE_ACCESS_KEY:?OBJECT_STORAGE_ACCESS_KEY must be set}
+      CHATTY_OBJECT_STORAGE_SECRET_KEY: ${OBJECT_STORAGE_SECRET_KEY:?OBJECT_STORAGE_SECRET_KEY must be set}
       CHATTY_SEED_ADMIN_EMAIL: ${CHATTY_SEED_ADMIN_EMAIL:-}
       CHATTY_SEED_ADMIN_PASSWORD: ${CHATTY_SEED_ADMIN_PASSWORD:-}
     command: >-
@@ -17,6 +22,8 @@ services:
       - "${API_BIND_IP:-127.0.0.1}:8000:8000"
     depends_on:
       db:
+        condition: service_healthy
+      object-storage:
         condition: service_healthy
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health')"]

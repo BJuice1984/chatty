@@ -4,7 +4,8 @@ from collections.abc import Iterable
 
 from fastapi import APIRouter
 
-from app.api.v1.endpoints import auth
+from app.api.v1.endpoints import auth, chats, files
+from app.ws.router import router as websocket_router
 
 
 _domain_routers: list[APIRouter] = []
@@ -19,6 +20,9 @@ def register_domain_router(router: APIRouter) -> None:
 def build_api_router(domain_routers: Iterable[APIRouter] | None = None) -> APIRouter:
     router = APIRouter()
     router.include_router(auth.router)
+    router.include_router(chats.router)
+    router.include_router(files.router)
+    router.include_router(websocket_router)
     for domain_router in [*_domain_routers, *(domain_routers or [])]:
         router.include_router(domain_router)
     return router

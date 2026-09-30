@@ -36,6 +36,11 @@ class Settings(BaseSettings):
     csrf_cookie_name: str = 'chatty_csrf'
     csrf_header_name: str = 'X-CSRF-Token'
     max_upload_bytes: int = Field(default=10 * 1024 * 1024, ge=1, le=1024 * 1024 * 1024)
+    object_storage_endpoint: str = 'http://object-storage:9000'
+    object_storage_bucket: str = 'chatty-files'
+    object_storage_region: str = 'us-east-1'
+    object_storage_access_key: str = ''
+    object_storage_secret_key: str = ''
     seed_admin_email: str | None = None
     seed_admin_password: str | None = None
 
