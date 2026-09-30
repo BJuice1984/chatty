@@ -1,19 +1,552 @@
 {
-    "schemaVersion": "agent-plan-manifest.v1",
-    "status": "DRAFT",
-    "planRevision": 1,
-    "package": {"id": "2026-09-28-backend-chats-ws-files", "title": "Stage 6: backend chats, WebSocket and files", "workspaceRoot": ".", "artifactRoot": "work/2026-09-28-backend-chats-ws-files", "planArtifactRoot": "tasks/2026-09-28-backend-chats-ws-files"},
-    "planFiles": ["tasks/2026-09-28-backend-chats-ws-files/plan.manifest.json", "tasks/2026-09-28-backend-chats-ws-files/developer-overview.md", "tasks/2026-09-28-backend-chats-ws-files/specification.json", "tasks/2026-09-28-backend-chats-ws-files/plan.md", "tasks/2026-09-28-backend-chats-ws-files/acceptance-criteria.md", "tasks/2026-09-28-backend-chats-ws-files/plan-review-request.md", "tasks/2026-09-28-backend-chats-ws-files/tier-request.json", "tasks/2026-09-28-backend-chats-ws-files/tier-resolution.json"],
-    "packageIntegrity": {"required": true, "lockSchemaVersion": "agent-plan-lock.v2", "inventorySource": "planFiles", "undeclaredTopLevelFiles": "reject", "allowedUnlistedFiles": ["plan.lock.json"]},
-    "author": {"id": "codex", "surface": "agent-first-planning", "runId": "2026-09-28-backend-chats-ws-files-draft"},
-    "baseRevision": {"ref": "main", "sha": "d79de677facf8b06290523f9589808069f6cf621"},
-    "specification": {"tier": "S2", "intent": "Implement chat membership, message history, typed WebSocket events and authenticated object storage access on the owned backend.", "status": "DRAFT", "source": "tasks/2026-09-28-backend-chats-ws-files/specification.json", "requirements": [{"id": "REQ-BE-CHAT", "title": "Chats, WS and files", "description": "Provide member-authorized chats, ordered history pagination, message send/receive envelopes and authenticated upload/download through MinIO-compatible storage.", "priority": "P0", "source": "tasks/2026-09-28-ai-messenger-master-plan.md:74-82", "acceptanceIds": ["AC-BE-CHAT-1", "AC-BE-CHAT-2"], "evidenceIds": ["EV-BE-CHAT-1", "EV-BE-CHAT-2"], "owner": "WS-BE-CHAT"}], "tierResolutionRequest": {"requestedTier": "S2", "taskCount": 1, "executableOwners": ["worker-backend-chat"], "capabilityHints": ["python", "fastapi", "websocket", "postgresql", "minio", "pytest", "authorization"], "riskFlags": {"architecture": true, "security": true, "performance": true, "browser": false, "data": true, "release": true, "externalEnvironment": true}, "requirementsBytes": 4400, "externalSpecification": true}, "revision": 1, "artifact": "tasks/2026-09-28-backend-chats-ws-files/specification.json", "goal": "A reviewed, deterministic implementation plan for stage 6.", "constraints": ["Stage 5 auth/app/router seam is consumed, not rewritten.", "Membership checks are server-side on HTTP, WS and files.", "File contract is explicit for RAG and bot consumers.", "No frontend or course CI writes."], "nonGoals": ["document ingestion", "AI bot", "frontend cutover", "production deployment"], "scope": {"in": ["chats", "members", "messages", "WS", "files", "file contract"], "out": ["RAG", "bot", "frontend", "production"]}},
-    "readOnly": ["tasks/2026-09-28-ai-messenger-master-plan.md", "tasks/README.md", "backend/app/main.py", "backend/app/api/v1/router.py", "backend/app/core/security.py", "backend/app/models/user.py"],
-    "forbiddenWrites": [".alk", "work", ".github/workflows/tests.yml", ".github/workflows/verify.yml", "netlify.toml", "package.json", "package-lock.json", "backend/app/main.py", "backend/app/api/v1/router.py"],
-    "leadOwned": [],
-    "workstreams": [{"id": "WS-BE-CHAT", "title": "Chats, WebSocket and files", "owner": "worker-backend-chat", "reviewer": "independent-backend-reviewer", "dependsOn": [], "writes": ["backend/app/models/chat.py", "backend/app/models/message.py", "backend/app/models/file.py", "backend/app/schemas/chat.py", "backend/app/schemas/message.py", "backend/app/schemas/file.py", "backend/app/repositories/chats.py", "backend/app/repositories/messages.py", "backend/app/repositories/files.py", "backend/app/services/chats.py", "backend/app/services/messages.py", "backend/app/services/files.py", "backend/app/api/v1/endpoints/chats.py", "backend/app/api/v1/endpoints/files.py", "backend/app/ws/hub.py", "backend/app/ws/router.py", "backend/alembic/versions/002_chat_messages_files.py", "backend/tests/unit/chat", "backend/tests/integration/chat"], "readOnly": ["backend/app/main.py", "backend/app/api/v1/router.py", "backend/app/core/security.py", "backend/app/models/user.py"], "forbiddenWrites": ["package.json", "package-lock.json", "backend/app/main.py", "backend/app/api/v1/router.py"], "leadOwned": [], "launchGate": "Stage 5 accepted and feature/2026-09-28-backend-chats-ws-files is based on main@d79de677facf8b06290523f9589808069f6cf621; consume its router discovery seam.", "capabilityHints": ["python", "websocket", "minio", "pytest", "authorization"], "requiredTools": ["python3", "docker"], "contextRefs": ["developer-overview.md", "plan.md", "backend/app/core/security.py", "backend/app/api/v1/router.py"], "acceptanceIds": ["AC-BE-CHAT-1", "AC-BE-CHAT-2"], "evidenceIds": ["EV-BE-CHAT-1", "EV-BE-CHAT-2"], "executionPolicy": {"maxAttempts": 2, "maxWallSeconds": 4800}, "artifactPaths": ["work/2026-09-28-backend-chats-ws-files/evidence/WS-BE-CHAT"], "required": true, "plannedItems": ["membership", "history pagination", "WS envelope", "MinIO", "negative authorization", "file contract handoff"], "qualityFloor": "No unauthenticated or non-member chat/file/message operation succeeds; the file contract is explicit and versioned in evidence."}],
-    "acceptance": {"criteria": [{"id": "AC-BE-CHAT-1", "title": "Chat, WS and files", "requirementIds": ["REQ-BE-CHAT"], "evidenceIds": ["EV-BE-CHAT-1"], "independentEvidenceIds": [], "statement": "Membership authorization, ordered history pagination, typed WS send/receive and authenticated file upload/download pass deterministic tests.", "description": "Unauthorized operations are rejected.", "source": "acceptance-criteria.md", "priority": "P0"}, {"id": "AC-BE-CHAT-2", "title": "File contract handoff", "requirementIds": ["REQ-BE-CHAT"], "evidenceIds": ["EV-BE-CHAT-2"], "independentEvidenceIds": [], "statement": "The accepted file contract is explicit and consumable by stages 8 and 9; non-member and unauthenticated negative cases are recorded.", "description": "Downstream RAG/bot work does not infer file semantics from UI.", "source": "acceptance-criteria.md", "priority": "P0"}], "evidence": [{"id": "EV-BE-CHAT-1", "description": "Chat/WS/file unit and bounded integration receipt.", "source": "WS-BE-CHAT", "validation": "backend/verify.sh chat gate", "artifactPath": "work/2026-09-28-backend-chats-ws-files/evidence/WS-BE-CHAT/EV-BE-CHAT-1.json", "required": true}, {"id": "EV-BE-CHAT-2", "description": "File contract and negative authorization handoff receipt.", "source": "WS-BE-CHAT", "validation": "bounded file contract/security review", "artifactPath": "work/2026-09-28-backend-chats-ws-files/evidence/WS-BE-CHAT/EV-BE-CHAT-2.json", "required": true}], "releaseGate": "Chat/file tests and downstream contract handoff are accepted.", "qualityFloor": "No criterion is accepted from prose alone."},
-    "validation": {"commands": ["backend/verify.sh", "python3 -m pytest backend/tests/unit/chat", "docker compose config --quiet"], "extraEvidence": [{"id": "EV-BE-CHAT-2", "kind": "membership-file-contract-review", "timeoutSeconds": 1200}]},
-    "orchestration": {"startMode": "reviewed-plan", "remediationMode": "ask", "maxPlanReviewRounds": 3, "maxTaskAttempts": 2, "maxParallelTasks": 1, "maxValidationRunsPerTask": 2, "maxToolCallsPerIteration": 30, "maxUsageIterationsPerAttempt": 10, "maxToolCallsPerTask": 180, "maxToolCallsPerRun": 400, "maxReportedTokensPerTask": 20000, "maxReportedTokensPerRun": 26000, "maxEvidenceArtifactBytes": 1048576, "maxEvidenceBytesPerTask": 4194304, "maxEvidenceBytesPerRun": 4194304, "maxTaskWallSeconds": 6000, "maxRunWallSeconds": 16000, "maxContextBytes": 160000, "maxRenderedPacketBytes": 50000, "stateFile": "work/2026-09-28-backend-chats-ws-files/run.state.json", "eventLog": "work/2026-09-28-backend-chats-ws-files/events.jsonl", "stepReviewRequired": true, "finalAuditRequired": true},
-    "implementationAudit": {"required": true, "finalRequired": true}, "developerOverview": "tasks/2026-09-28-backend-chats-ws-files/developer-overview.md", "releaseTarget": {"kind": "local-only", "environment": "Docker Compose API/PostgreSQL/MinIO/WebSocket", "productionPromotionClaimed": false}, "releaseImpact": "Adds authorized backend chat, WS and file contracts consumed by later RAG/bot stages.", "nonGoals": ["document ingestion", "AI bot", "frontend cutover", "production deployment"], "finalAuditGates": ["[AC-BE-CHAT-1|EV-BE-CHAT-1] chat, WS and file evidence passes", "[AC-BE-CHAT-2|EV-BE-CHAT-2] file contract handoff passes"], "securityGates": [{"id": "SEC-MEMBERSHIP", "statement": "Chat, message, WS and file operations enforce membership.", "evidenceIds": ["EV-BE-CHAT-1", "EV-BE-CHAT-2"]}, {"id": "SEC-FILE", "statement": "File size/type/storage and authenticated download boundaries are explicit.", "evidenceIds": ["EV-BE-CHAT-2"]}], "sandbox": {"network": "off-by-default-for-deterministic-checks", "externalServices": ["docker", "postgresql", "minio"], "secrets": "no-secrets-in-plan-or-evidence", "productionPromotion": false}, "runtimePolicy": {"implementationAuthorized": false, "productionPromotionClaimed": false, "unavailableDependencyPolicy": "record UNAVAILABLE; never convert to PASS", "preservationInvariants": ["course CI, netlify.toml, sprint_* and deploy remain unchanged", "stage 5 composition files and root package metadata remain untouched"], "manualEvidenceRequired": ["bounded WS and MinIO flow"]}, "budgetPolicy": {"units": "tokens-and-resources", "reroute": "pause-and-review", "maxTotalTokens": 26000, "maxParallelWorkstreams": 1, "maxRunWallSeconds": 16000, "criticalPathWallSeconds": 6000, "aggregateWorkstreamWallSeconds": 6000, "retryReserveWallSeconds": 2500}, "budgets": {"defaultWorkstreamTokens": 20000, "maxEvidenceBytesPerRun": 4194304}, "contextLimits": {"profile": "small-context-profile.v1", "maxPlanContextBytes": 160000, "maxRenderedPacketBytes": 50000, "smallContextPacketBytes": 32000, "maxReferenceFilesPerPacket": 14, "includeOnlyOwnedWrites": true, "excludeRuntimeWorkArtifacts": true}, "dependsOn": ["2026-09-28-backend-skeleton"], "reviewMesh": {"enabledByDefault": false, "blockingRequiresPlanOptIn": true, "requiresExplicitActivation": true, "budgetUnits": "tokens-and-resources", "budgetCap": {"maxInvocations": 0, "maxInputTokens": 0, "maxOutputTokens": 0}, "independencePolicy": {"mode": "single-independent-audit-required"}, "reviewerModelClasses": [], "liveCallsAllowed": false}, "contextCheckpointPolicy": {"enabled": true, "maxCheckpointBytes": 131072, "store": "work/2026-09-28-backend-chats-ws-files/checkpoints"}, "controllerGates": {"beforeExecution": ["plan completeness PASS", "independent plan audit PASS", "explicit freeze"], "afterEachWave": ["ownership audit", "validation receipts", "no unresolved High finding"], "beforeCompletion": ["final implementation audit PASS", "all final audit gates PASS"]}, "planReview": {"required": true, "requestPath": "tasks/2026-09-28-backend-chats-ws-files/plan-review-request.md", "reviewerClass": "independent-plan-reviewer", "maxRounds": 3, "implementationAuthorized": false}, "repositoryReferences": [{"id": "REF-ROADMAP", "repoId": "chatty", "owner": "codex", "access": "read-only", "paths": ["tasks/2026-09-28-ai-messenger-master-plan.md"]}, {"id": "REF-ALK", "repoId": "chatty", "owner": "codex", "access": "read-only", "paths": ["tasks/README.md"]}, {"id": "REF-BE-FOUNDATION", "repoId": "chatty", "owner": "codex", "access": "read-only", "paths": ["backend/app/main.py", "backend/app/core/security.py"]}], "tierResolution": {"status": "RESOLVED", "tier": "S2", "requestedTier": "S2", "reason": "architecture-risk, externalEnvironment-risk, performance-risk, security-risk and external-specification-required", "independentReviewRequired": true, "requestPath": "tasks/2026-09-28-backend-chats-ws-files/tier-request.json", "resolutionPath": "tasks/2026-09-28-backend-chats-ws-files/tier-resolution.json", "requestDigest": "661d5d3148e7717838f5f208458556582c1772a563deaafe488e58a67f377f04"}, "taskTemplates": {"backend": "small-context packet with chat/domain files and backend verify"}, "compatibility": {"baseBackend": "main@d79de677facf8b06290523f9589808069f6cf621", "practicumMode": "development", "ownMode": "own", "fileContract": "explicit handoff to RAG and bot"}
+  "schemaVersion": "agent-plan-manifest.v1",
+  "status": "FROZEN",
+  "planRevision": 4,
+  "package": {
+    "id": "2026-09-28-backend-chats-ws-files",
+    "title": "Stage 6: backend chats, WebSocket and files",
+    "workspaceRoot": ".",
+    "artifactRoot": "work/2026-09-28-backend-chats-ws-files",
+    "planArtifactRoot": "tasks/2026-09-28-backend-chats-ws-files"
+  },
+  "planFiles": [
+    "tasks/2026-09-28-backend-chats-ws-files/acceptance-criteria.md",
+    "tasks/2026-09-28-backend-chats-ws-files/developer-overview.md",
+    "tasks/2026-09-28-backend-chats-ws-files/plan-review-request.md",
+    "tasks/2026-09-28-backend-chats-ws-files/plan-review.json",
+    "tasks/2026-09-28-backend-chats-ws-files/plan.manifest.json",
+    "tasks/2026-09-28-backend-chats-ws-files/plan.md",
+    "tasks/2026-09-28-backend-chats-ws-files/specification.json",
+    "tasks/2026-09-28-backend-chats-ws-files/tier-request.json",
+    "tasks/2026-09-28-backend-chats-ws-files/tier-resolution.json"
+  ],
+  "packageIntegrity": {
+    "required": true,
+    "lockSchemaVersion": "agent-plan-lock.v2",
+    "inventorySource": "planFiles",
+    "undeclaredTopLevelFiles": "reject",
+    "allowedUnlistedFiles": [
+      "plan.lock.json"
+    ]
+  },
+  "author": {
+    "id": "codex",
+    "surface": "agent-first-planning",
+    "runId": "2026-09-30-backend-chats-ws-files-revision-4"
+  },
+  "baseRevision": {
+    "ref": "dev",
+    "sha": "f56318c5fce969b3243b69c8365b8880b6813e84"
+  },
+  "specification": {
+    "tier": "S2",
+    "intent": "Implement chat membership, deterministic message history, typed WebSocket events and authenticated RustFS S3-compatible object storage access on the owned backend.",
+    "status": "FROZEN",
+    "source": "tasks/2026-09-28-backend-chats-ws-files/specification.json",
+    "requirements": [
+      {
+        "id": "REQ-BE-CHAT",
+        "title": "Chats, WS and files",
+        "description": "Provide member-authorized chats, deterministic cursor history pagination, idempotent message send/receive envelopes compatible with the current {type, content} shape and authenticated upload/download through the existing RustFS S3-compatible service.",
+        "priority": "P0",
+        "source": "tasks/2026-09-28-ai-messenger-master-plan.md:74-82",
+        "acceptanceIds": [
+          "AC-BE-CHAT-1",
+          "AC-BE-CHAT-2"
+        ],
+        "evidenceIds": [
+          "EV-BE-CHAT-1",
+          "EV-BE-CHAT-2"
+        ],
+        "owner": "WS-BE-CHAT"
+      }
+    ],
+    "tierResolutionRequest": {
+      "requestedTier": "S2",
+      "taskCount": 1,
+      "executableOwners": [
+        "worker-backend-chat"
+      ],
+      "capabilityHints": [
+        "python",
+        "fastapi",
+        "websocket",
+        "postgresql",
+        "s3-compatible-storage",
+        "pytest",
+        "authorization"
+      ],
+      "riskFlags": {
+        "architecture": true,
+        "security": true,
+        "performance": true,
+        "browser": false,
+        "data": true,
+        "release": true,
+        "externalEnvironment": true
+      },
+      "requirementsBytes": 5200,
+      "externalSpecification": true
+    },
+    "revision": 4,
+    "artifact": "tasks/2026-09-28-backend-chats-ws-files/specification.json",
+    "goal": "A reviewed, deterministic implementation plan for stage 6.",
+    "constraints": [
+      "Stage 5 auth/database seam is consumed; controller-owned router registration is the only central composition change.",
+      "Membership checks are server-side on HTTP, WS and files.",
+      "File contract is explicit for RAG and bot consumers, with backend-authorized streaming downloads and server-generated object keys.",
+      "RustFS endpoint, credentials, bucket and boto3 synchronous S3 client dependency are controller-owned integration seams; bucket provisioning is idempotent and no MinIO service is introduced.",
+      "No frontend, course CI or local-model integration writes."
+    ],
+    "nonGoals": [
+      "document ingestion",
+      "AI bot",
+      "frontend cutover",
+      "production deployment",
+      "local model/provider integration"
+    ],
+    "scope": {
+      "in": [
+        "chats",
+        "members",
+        "messages",
+        "WS",
+        "RustFS-backed files",
+        "file contract",
+        "controller-owned router/storage wiring"
+      ],
+      "out": [
+        "RAG",
+        "bot",
+        "frontend",
+        "production",
+        "local model"
+      ]
+    }
+  },
+  "readOnly": [
+    "tasks/2026-09-28-ai-messenger-master-plan.md",
+    "tasks/README.md",
+    "backend/app/main.py",
+    "backend/app/core/security.py",
+    "backend/app/models/user.py"
+  ],
+  "forbiddenWrites": [
+    ".alk",
+    "work",
+    ".github/workflows/tests.yml",
+    ".github/workflows/verify.yml",
+    "netlify.toml",
+    "package.json",
+    "package-lock.json",
+    "backend/app/main.py"
+  ],
+  "leadOwned": [
+    {
+      "path": "backend/app/api/v1/router.py",
+      "owner": "controller",
+      "reason": "Register the worker-owned chat/file HTTP and WebSocket routers through the stage 5 composition seam."
+    },
+    {
+      "path": "backend/app/core/config.py",
+      "owner": "controller",
+      "reason": "Expose typed RustFS endpoint, bucket and credential settings without putting secrets in the worker write set."
+    },
+    {
+      "path": "backend/pyproject.toml",
+      "owner": "controller",
+      "reason": "Add boto3 (synchronous S3 client, constrained to the project runtime dependency policy) required by the RustFS adapter; async endpoints use a thread boundary."
+    },
+    {
+      "path": "docker-compose.yml",
+      "owner": "controller",
+      "reason": "Pass object-storage settings to the API container and preserve the existing RustFS service identity."
+    }
+  ],
+  "workstreams": [
+    {
+      "id": "WS-BE-CHAT",
+      "title": "Chats, WebSocket and files",
+      "owner": "worker-backend-chat",
+      "reviewer": "independent-backend-reviewer",
+      "dependsOn": [],
+      "writes": [
+        "backend/app/models/chat.py",
+        "backend/app/models/message.py",
+        "backend/app/models/file.py",
+        "backend/app/schemas/chat.py",
+        "backend/app/schemas/message.py",
+        "backend/app/schemas/file.py",
+        "backend/app/repositories/chats.py",
+        "backend/app/repositories/messages.py",
+        "backend/app/repositories/files.py",
+        "backend/app/services/chats.py",
+        "backend/app/services/messages.py",
+        "backend/app/services/files.py",
+        "backend/app/api/v1/endpoints/chats.py",
+        "backend/app/api/v1/endpoints/files.py",
+        "backend/app/ws/hub.py",
+        "backend/app/ws/router.py",
+        "backend/alembic/versions/002_chat_messages_files.py",
+        "backend/tests/unit/chat",
+        "backend/tests/integration/chat"
+      ],
+      "readOnly": [
+        "backend/app/main.py",
+        "backend/app/core/security.py",
+        "backend/app/models/user.py"
+      ],
+      "forbiddenWrites": [
+        "package.json",
+        "package-lock.json",
+        "backend/app/main.py"
+      ],
+      "leadOwned": [],
+      "launchGate": "Stage 5 and the env/API boundary are accepted in origin/dev at the exact declared base SHA; before execution the controller must verify that origin/dev still contains that SHA. Create feature/2026-09-28-backend-chats-ws-files from the accepted dev baseline and open its PR into dev.",
+      "capabilityHints": [
+        "python",
+        "websocket",
+        "s3-compatible-storage",
+        "pytest",
+        "authorization"
+      ],
+      "requiredTools": [
+        "python3",
+        "docker"
+      ],
+      "contextRefs": [
+        "developer-overview.md",
+        "plan.md",
+        "backend/app/core/security.py",
+        "backend/app/core/deps.py",
+        "backend/app/core/config.py",
+        "backend/app/api/v1/router.py",
+        "backend/app/api/v1/endpoints/auth.py",
+        "backend/app/db/session.py",
+        "backend/app/db/base.py",
+        "backend/app/models/user.py",
+        "backend/tests/conftest.py",
+        "docker-compose.yml"
+      ],
+      "acceptanceIds": [
+        "AC-BE-CHAT-1",
+        "AC-BE-CHAT-2"
+      ],
+      "evidenceIds": [
+        "EV-BE-CHAT-1",
+        "EV-BE-CHAT-2"
+      ],
+      "executionPolicy": {
+        "maxAttempts": 2,
+        "maxWallSeconds": 4800
+      },
+      "artifactPaths": {
+        "result": "work/2026-09-28-backend-chats-ws-files/evidence/WS-BE-CHAT/task-result.json",
+        "review": "work/2026-09-28-backend-chats-ws-files/evidence/WS-BE-CHAT/task-review.json"
+      },
+      "required": true,
+      "plannedItems": [
+        "membership",
+        "bounded cursor history pagination",
+        "message idempotency",
+        "typed WS envelope",
+        "boto3 synchronous RustFS S3-compatible adapter",
+        "idempotent bucket ensure",
+        "negative authorization",
+        "file contract handoff"
+      ],
+      "qualityFloor": "No unauthenticated or non-member chat/file/message operation succeeds; deterministic tests do not require live services; the file contract is explicit and versioned in evidence; all controller-owned seams are wired without reintroducing a MinIO service."
+    }
+  ],
+  "acceptance": {
+    "criteria": [
+      {
+        "id": "AC-BE-CHAT-1",
+        "title": "Chat, WS and files",
+        "requirementIds": [
+          "REQ-BE-CHAT"
+        ],
+        "evidenceIds": [
+          "EV-BE-CHAT-1"
+        ],
+        "independentEvidenceIds": [],
+        "statement": "Membership authorization, deterministic cursor history pagination, per-sender message idempotency, typed master-plan-compatible {type, content} WS send/receive and authenticated RustFS-backed file upload/download pass deterministic in-process tests.",
+        "description": "Unauthorized operations are rejected.",
+        "source": "acceptance-criteria.md",
+        "priority": "P0"
+      },
+      {
+        "id": "AC-BE-CHAT-2",
+        "title": "File contract handoff",
+        "requirementIds": [
+          "REQ-BE-CHAT"
+        ],
+        "evidenceIds": [
+          "EV-BE-CHAT-2"
+        ],
+        "independentEvidenceIds": [],
+        "statement": "The versioned file contract explicitly defines identity, ownership, chat binding, server-generated object key, content metadata, lifecycle status and authorized streaming download; non-member/unauthenticated negative cases and the router/storage integration handoff are recorded.",
+        "description": "Downstream RAG/bot work does not infer file semantics from UI.",
+        "source": "acceptance-criteria.md",
+        "priority": "P0"
+      }
+    ],
+    "evidence": [
+      {
+        "id": "EV-BE-CHAT-1",
+        "description": "Deterministic in-process chat/WS/file unit and integration receipt plus the separate live-check disposition.",
+        "source": "WS-BE-CHAT",
+        "validation": "backend/verify.sh plus (cd backend && PYTHONPATH=. python3 -m pytest tests/unit/chat tests/integration/chat)",
+        "artifactPath": "work/2026-09-28-backend-chats-ws-files/evidence/WS-BE-CHAT/EV-BE-CHAT-1.json",
+        "required": true
+      },
+      {
+        "id": "EV-BE-CHAT-2",
+        "description": "File contract, negative authorization and controller-owned router/RustFS wiring handoff receipt.",
+        "source": "WS-BE-CHAT",
+        "validation": "bounded file contract/security review and compose wiring check",
+        "artifactPath": "work/2026-09-28-backend-chats-ws-files/evidence/WS-BE-CHAT/EV-BE-CHAT-2.json",
+        "required": true
+      }
+    ],
+    "releaseGate": "Chat/file tests, controller-owned router/storage wiring and downstream contract handoff are accepted.",
+    "qualityFloor": "No criterion is accepted from prose alone."
+  },
+  "validation": {
+    "commands": [
+      "backend/verify.sh",
+      "(cd backend && PYTHONPATH=. python3 -m pytest tests/unit/chat tests/integration/chat)",
+      "OBJECT_STORAGE_ACCESS_KEY=ci-access OBJECT_STORAGE_SECRET_KEY=ci-secret docker compose config --quiet"
+    ],
+    "extraEvidence": [
+      {
+        "id": "EV-BE-CHAT-2",
+        "kind": "membership-file-contract-rustfs-wiring-review",
+        "timeoutSeconds": 1200
+      }
+    ]
+  },
+  "orchestration": {
+    "startMode": "reviewed-plan",
+    "remediationMode": "ask",
+    "maxPlanReviewRounds": 3,
+    "maxTaskAttempts": 2,
+    "maxParallelTasks": 1,
+    "maxValidationRunsPerTask": 2,
+    "maxToolCallsPerIteration": 30,
+    "maxUsageIterationsPerAttempt": 10,
+    "maxToolCallsPerTask": 180,
+    "maxToolCallsPerRun": 400,
+    "maxReportedTokensPerTask": 20000,
+    "maxReportedTokensPerRun": 26000,
+    "maxEvidenceArtifactBytes": 1048576,
+    "maxEvidenceBytesPerTask": 4194304,
+    "maxEvidenceBytesPerRun": 4194304,
+    "maxTaskWallSeconds": 6000,
+    "maxRunWallSeconds": 16000,
+    "maxContextBytes": 160000,
+    "maxRenderedPacketBytes": 50000,
+    "stateFile": "work/2026-09-28-backend-chats-ws-files/run.state.json",
+    "eventLog": "work/2026-09-28-backend-chats-ws-files/events.jsonl",
+    "stepReviewRequired": true,
+    "finalAuditRequired": true
+  },
+  "implementationAudit": {
+    "required": true,
+    "finalRequired": true
+  },
+  "developerOverview": "tasks/2026-09-28-backend-chats-ws-files/developer-overview.md",
+  "releaseTarget": {
+    "kind": "local-only",
+    "environment": "Docker Compose API/PostgreSQL/RustFS/WebSocket",
+    "productionPromotionClaimed": false
+  },
+  "releaseImpact": "Adds authorized backend chat, WS and RustFS-compatible file contracts consumed by later RAG/bot stages.",
+  "nonGoals": [
+    "document ingestion",
+    "AI bot",
+    "frontend cutover",
+    "production deployment",
+    "local model/provider integration"
+  ],
+  "finalAuditGates": [
+    "[AC-BE-CHAT-1|EV-BE-CHAT-1] chat, WS and RustFS file evidence passes",
+    "[AC-BE-CHAT-2|EV-BE-CHAT-2] file contract and controller wiring handoff passes"
+  ],
+  "securityGates": [
+    {
+      "id": "SEC-MEMBERSHIP",
+      "statement": "Chat, message, WS and file operations enforce authentication and membership.",
+      "evidenceIds": [
+        "EV-BE-CHAT-1",
+        "EV-BE-CHAT-2"
+      ]
+    },
+    {
+      "id": "SEC-FILE",
+      "statement": "File size/type/storage, server-generated object keys and authenticated streaming download boundaries are explicit.",
+      "evidenceIds": [
+        "EV-BE-CHAT-2"
+      ]
+    },
+    {
+      "id": "SEC-SECRETS",
+      "statement": "RustFS credentials are injected through runtime environment only and never committed or emitted in evidence.",
+      "evidenceIds": [
+        "EV-BE-CHAT-2"
+      ]
+    }
+  ],
+  "sandbox": {
+    "network": "off-by-default-for-deterministic-checks",
+    "externalServices": [
+      "docker",
+      "postgresql",
+      "RustFS"
+    ],
+    "secrets": "no-secrets-in-plan-or-evidence",
+    "productionPromotion": false
+  },
+  "runtimePolicy": {
+    "implementationAuthorized": false,
+    "productionPromotionClaimed": false,
+    "unavailableDependencyPolicy": "record UNAVAILABLE; never convert to PASS",
+    "preservationInvariants": [
+      "course CI, netlify.toml, sprint_* and deploy remain unchanged",
+      "worker changes stay inside the frozen domain write set",
+      "controller may change only the declared router, config, dependency and Compose seams",
+      "local model remains outside this package"
+    ],
+    "manualEvidenceRequired": [
+      "bounded WebSocket and RustFS flow",
+      "negative unauthenticated and non-member matrix"
+    ]
+  },
+  "budgetPolicy": {
+    "units": "tokens-and-resources",
+    "reroute": "pause-and-review",
+    "maxTotalTokens": 26000,
+    "maxParallelWorkstreams": 1,
+    "maxRunWallSeconds": 16000,
+    "criticalPathWallSeconds": 6000,
+    "aggregateWorkstreamWallSeconds": 6000,
+    "retryReserveWallSeconds": 2500
+  },
+  "budgets": {
+    "defaultWorkstreamTokens": 20000,
+    "maxEvidenceBytesPerRun": 4194304
+  },
+  "contextLimits": {
+    "profile": "small-context-profile.v1",
+    "maxPlanContextBytes": 160000,
+    "maxRenderedPacketBytes": 50000,
+    "smallContextPacketBytes": 32000,
+    "maxReferenceFilesPerPacket": 14,
+    "includeOnlyOwnedWrites": true,
+    "excludeRuntimeWorkArtifacts": true
+  },
+  "dependsOn": [
+    "2026-09-28-backend-skeleton"
+  ],
+  "reviewMesh": {
+    "enabledByDefault": false,
+    "blockingRequiresPlanOptIn": true,
+    "requiresExplicitActivation": true,
+    "budgetUnits": "tokens-and-resources",
+    "budgetCap": {
+      "maxInvocations": 0,
+      "maxInputTokens": 0,
+      "maxOutputTokens": 0
+    },
+    "independencePolicy": {
+      "mode": "single-independent-audit-required"
+    },
+    "reviewerModelClasses": [],
+    "liveCallsAllowed": false
+  },
+  "contextCheckpointPolicy": {
+    "enabled": true,
+    "maxCheckpointBytes": 131072,
+    "store": "work/2026-09-28-backend-chats-ws-files/checkpoints"
+  },
+  "controllerGates": {
+    "beforeExecution": [
+      "plan completeness PASS",
+      "independent plan audit PASS",
+      "exact dev baseline verified",
+      "explicit freeze"
+    ],
+    "afterEachWave": [
+      "ownership audit including lead-owned seams",
+      "validation receipts",
+      "no unresolved High finding"
+    ],
+    "beforeCompletion": [
+      "final implementation audit PASS",
+      "all final audit gates PASS"
+    ]
+  },
+  "planReview": {
+    "required": true,
+    "requestPath": "tasks/2026-09-28-backend-chats-ws-files/plan-review-request.md",
+    "report": "tasks/2026-09-28-backend-chats-ws-files/plan-review.json",
+    "reviewedRevision": 4,
+    "verdict": "READY_TO_FREEZE",
+    "reviewerClass": "independent-plan-reviewer",
+    "maxRounds": 3,
+    "implementationAuthorized": false
+  },
+  "repositoryReferences": [
+    {
+      "id": "REF-ROADMAP",
+      "repoId": "chatty",
+      "owner": "codex",
+      "access": "read-only",
+      "paths": [
+        "tasks/2026-09-28-ai-messenger-master-plan.md"
+      ]
+    },
+    {
+      "id": "REF-ALK",
+      "repoId": "chatty",
+      "owner": "codex",
+      "access": "read-only",
+      "paths": [
+        "tasks/README.md"
+      ]
+    },
+    {
+      "id": "REF-BE-FOUNDATION",
+      "repoId": "chatty",
+      "owner": "codex",
+      "access": "read-only",
+      "paths": [
+        "backend/app/main.py",
+        "backend/app/core/security.py",
+        "backend/app/core/config.py",
+        "backend/app/api/v1/router.py",
+        "docker-compose.yml",
+        "backend/pyproject.toml"
+      ]
+    }
+  ],
+  "tierResolution": {
+    "status": "RESOLVED",
+    "tier": "S2",
+    "requestedTier": "S2",
+    "reason": "architecture-risk, externalEnvironment-risk, performance-risk, security-risk and external-specification-required",
+    "independentReviewRequired": true,
+    "requestPath": "tasks/2026-09-28-backend-chats-ws-files/tier-request.json",
+    "resolutionPath": "tasks/2026-09-28-backend-chats-ws-files/tier-resolution.json",
+    "requestDigest": "c7a52f11f1ead5754a54eafb7fe017315d70d5d2979c6948925968ea9aeee640"
+  },
+  "taskTemplates": {
+    "backend": "small-context packet with chat/domain files and backend verify"
+  },
+  "compatibility": {
+    "baseBackend": "origin/dev@f56318c5fce969b3243b69c8365b8880b6813e84",
+    "practicumMode": "development",
+    "ownMode": "own",
+    "fileContract": "explicit RustFS S3-compatible handoff to RAG and bot"
+  }
 }
