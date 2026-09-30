@@ -1,9 +1,10 @@
 import Block from '../../../core/Block.ts'
+import { fileUrl } from '../../../utils/env.ts'
 import template from './userAvatar.hbs'
 
-interface UserAvatarProps {
+export interface UserAvatarProps {
     onClick?: () => void
-    avatar: string
+    avatar?: string
     [key: string]: unknown
 }
 
@@ -18,6 +19,11 @@ export class UserAvatar extends Block<UserAvatarProps> {
     }
 
     render() {
-        return this.compile(template, this.props)
+        const avatar = this.props.avatar
+
+        return this.compile(template, {
+            ...this.props,
+            avatar: avatar !== undefined && avatar !== '' ? fileUrl(avatar) : avatar,
+        })
     }
 }
