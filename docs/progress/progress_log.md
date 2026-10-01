@@ -4,6 +4,19 @@
 > Новые записи — сверху. Одна запись = одна завершённая порция работы:
 > что и почему сделали, где смотреть, чем проверили.
 
+## 2026-10-01 — ALK: backend chats ownership refreeze
+
+**Что:** пакет `tasks/2026-09-28-backend-chats-ws-files/` переведён на
+revision 5 для явной фиксации controller-owned артефактов, которые должны
+сохраняться в implementation delta: самого frozen plan-пакета и этого журнала.
+Требования, acceptance/evidence, worker write-set, runtime-код и baseline не
+изменялись; локальная модель по-прежнему исключена из review.
+
+**Проверяется:** после нового plan review будут пересозданы lock и worker packet,
+а workflow будет переадоптирован на revision 5 с повтором task evidence,
+ownership/implementation audit и final audit. Revision 4 и предыдущие runtime
+evidence сохраняются как предшествующий run-артефакт.
+
 ## 2026-09-30 — ALK: backend chats/WebSocket/files frozen and launched
 
 **Что:** пакет `tasks/2026-09-28-backend-chats-ws-files/` переведён на revision 4

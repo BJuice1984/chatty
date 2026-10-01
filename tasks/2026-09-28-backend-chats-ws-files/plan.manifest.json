@@ -1,7 +1,7 @@
 {
   "schemaVersion": "agent-plan-manifest.v1",
   "status": "FROZEN",
-  "planRevision": 4,
+  "planRevision": 5,
   "package": {
     "id": "2026-09-28-backend-chats-ws-files",
     "title": "Stage 6: backend chats, WebSocket and files",
@@ -32,7 +32,7 @@
   "author": {
     "id": "codex",
     "surface": "agent-first-planning",
-    "runId": "2026-09-30-backend-chats-ws-files-revision-4"
+    "runId": "2026-10-01-backend-chats-ws-files-revision-5"
   },
   "baseRevision": {
     "ref": "dev",
@@ -161,6 +161,16 @@
       "path": "docker-compose.yml",
       "owner": "controller",
       "reason": "Pass object-storage settings to the API container and preserve the existing RustFS service identity."
+    },
+    {
+      "path": "tasks/2026-09-28-backend-chats-ws-files",
+      "owner": "controller",
+      "reason": "The controller owns frozen plan-package artifacts retained in the implementation delta."
+    },
+    {
+      "path": "docs/progress/progress_log.md",
+      "owner": "controller",
+      "reason": "The controller maintains the repository progress log for this implementation package."
     }
   ],
   "workstreams": [
@@ -490,7 +500,7 @@
     "required": true,
     "requestPath": "tasks/2026-09-28-backend-chats-ws-files/plan-review-request.md",
     "report": "tasks/2026-09-28-backend-chats-ws-files/plan-review.json",
-    "reviewedRevision": 4,
+    "reviewedRevision": 5,
     "verdict": "READY_TO_FREEZE",
     "reviewerClass": "independent-plan-reviewer",
     "maxRounds": 3,
