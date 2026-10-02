@@ -12,10 +12,13 @@ revision 5 для явной фиксации controller-owned артефакт�
 Требования, acceptance/evidence, worker write-set, runtime-код и baseline не
 изменялись; локальная модель по-прежнему исключена из review.
 
-**Проверяется:** после нового plan review будут пересозданы lock и worker packet,
-а workflow будет переадоптирован на revision 5 с повтором task evidence,
-ownership/implementation audit и final audit. Revision 4 и предыдущие runtime
-evidence сохраняются как предшествующий run-артефакт.
+**Проверено:** независимый внешний plan audit дал `READY_TO_FREEZE`; lock и
+worker packet пересозданы на revision 5. Workflow переадоптирован и завершён:
+`WS-BE-CHAT` принят, implementation/final/package audits — `PASS`, state —
+`COMPLETE` (revision 13). Повторно прошли backend tests/Alembic, `npm run
+verify`, Compose config/build, live RustFS upload/download, typed WebSocket,
+negative authz и health checks. Revision 4 и прежние runtime evidence сохранены
+как предшествующие run-артефакты. Локальная модель не использовалась.
 
 ## 2026-09-30 — ALK: backend chats/WebSocket/files frozen and launched
 
