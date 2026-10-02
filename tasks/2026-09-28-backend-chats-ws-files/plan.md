@@ -1,7 +1,8 @@
 # Implementation plan
 
-1. Define chat/member/message/file models, schemas and repositories against the stage 5 database/auth contract.
-2. Implement service authorization, ordered history with bounded pagination, idempotent message creation and typed event envelopes.
-3. Add HTTP chat/file endpoints and WebSocket hub/router with cookie-auth and membership checks.
-4. Add migrations, unit/integration tests and a file contract handoff including `file_id`, status, content type, size, owner and authorized download behavior.
-5. Run deterministic tests and bounded Docker/MinIO/WS flows, reporting missing services as `UNAVAILABLE`.
+1. Define chat/member/message/file models, schemas and repositories against the stage 5 database/auth contract. Keep message ordering deterministic with `(created_at, id)` and make `client_message_id` idempotent per sender and chat.
+2. Implement service authorization for every operation, bounded cursor history (`before_id` plus a capped limit), idempotent message creation and typed compatibility envelopes using the master-plan shape `{type, content}`; `history` carries `{before_id, limit}` and failures use the typed `error` event.
+3. Add HTTP chat/file endpoints and a WebSocket hub/router with cookie authentication, Origin validation, membership checks on handshake and every message operation, and bounded disconnect/error handling.
+4. Add the migration, deterministic in-process unit/integration tests and a versioned file-contract handoff. The contract must define `file_id`, `chat_id`, `owner_id`, server-generated `object_key`, original name, content type, byte size, lifecycle status and timestamps; downloads are backend-authorized streams and never public object URLs.
+5. Keep RustFS integration S3-compatible: the worker uses a synchronous `boto3` S3 client behind a storage protocol and calls it through a thread boundary from async endpoints; the adapter idempotently ensures the configured bucket before upload. The controller wires `object-storage` endpoint/credentials/bucket into the API container and registers the domain routers through the stage 5 seam. No MinIO service or MinIO-specific compose naming may be introduced.
+6. Run deterministic backend tests, migration/head checks and `OBJECT_STORAGE_ACCESS_KEY=ci-access OBJECT_STORAGE_SECRET_KEY=ci-secret docker compose config --quiet`, then bounded Docker/RustFS/WebSocket flows. Tests under `backend/tests` must not require live Docker/RustFS; missing live dependencies are reported as `UNAVAILABLE` with the exact unavailable check.

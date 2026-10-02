@@ -4,6 +4,40 @@
 > Новые записи — сверху. Одна запись = одна завершённая порция работы:
 > что и почему сделали, где смотреть, чем проверили.
 
+## 2026-10-01 — ALK: backend chats ownership refreeze
+
+**Что:** пакет `tasks/2026-09-28-backend-chats-ws-files/` переведён на
+revision 5 для явной фиксации controller-owned артефактов, которые должны
+сохраняться в implementation delta: самого frozen plan-пакета и этого журнала.
+Требования, acceptance/evidence, worker write-set, runtime-код и baseline не
+изменялись; локальная модель по-прежнему исключена из review.
+
+**Проверено:** независимый внешний plan audit дал `READY_TO_FREEZE`; lock и
+worker packet пересозданы на revision 5. Workflow переадоптирован и завершён:
+`WS-BE-CHAT` принят, implementation/final/package audits — `PASS`, state —
+`COMPLETE` (revision 13). Повторно прошли backend tests/Alembic, `npm run
+verify`, Compose config/build, live RustFS upload/download, typed WebSocket,
+negative authz и health checks. Revision 4 и прежние runtime evidence сохранены
+как предшествующие run-артефакты. Локальная модель не использовалась.
+
+## 2026-09-30 — ALK: backend chats/WebSocket/files frozen and launched
+
+**Что:** пакет `tasks/2026-09-28-backend-chats-ws-files/` переведён на revision 4
+с exact baseline `origin/dev@f56318c5fce969b3243b69c8365b8880b6813e84`. После
+исправления ALK-совместимого формата `artifactPaths` выполнен повторный внешний
+read-only audit; локальная модель в review не использовалась. Созданы immutable
+`plan.lock.json` и worker packet для `WS-BE-CHAT`; локальная модель/provider
+интеграция остаётся вне этого этапа.
+
+**Проверено:** external audit `PASS`, `plan check --require-completeness`,
+`plan verify` с lock, acceptance/refs checks и task compile — PASS. Manifest
+digest: `50c2f0d20420172199a8f2451dae8bc88ce3ada72bb3e59d0ff636ee99191129`;
+packet set hash: `1394f3747547df8c8b324c7040a79116db279909b0fc7babc4b072db11b21130`.
+
+**Открыто:** execution authorization получена, `WS-BE-CHAT` запущен на ветке
+`feature/2026-09-28-backend-chats-ws-files`; далее — реализация domain-кода,
+контроллерских integration seams, deterministic tests и независимый task audit.
+
 ## 2026-09-28 — Архитектурная документация docs/arch/
 
 **Что:** полная документация архитектуры в `docs/arch/` (5 документов +
