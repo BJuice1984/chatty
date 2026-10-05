@@ -68,4 +68,60 @@ describe('Block', () => {
         pageComponent.dispatchComponentDidMount()
         expect(componentDidMountMock.calledOnce).to.be.true
     })
+
+    it('should remove element from DOM and detach events on destroy', () => {
+        const handlerStub = sinon.stub()
+        const pageComponent = new PageClass({
+            events: {
+                click: handlerStub,
+            },
+        })
+        const container = document.createElement('div')
+        container.appendChild(pageComponent.element!)
+
+        expect(container.contains(pageComponent.element!)).to.be.true
+
+        pageComponent.destroy()
+
+        expect(container.childElementCount).to.eq(0)
+        expect(pageComponent.element).to.be.null
+
+        const detachedEvent = new MouseEvent('click')
+        handlerStub.resetHistory()
+        document.dispatchEvent(detachedEvent)
+        expect(handlerStub.called).to.be.false
+    })
+
+    it('should unsubscribe lifecycle events on destroy', () => {
+        const pageComponent = new PageClass()
+        const componentDidMountMock = sinon.stub(pageComponent, 'componentDidMount')
+
+        pageComponent.destroy()
+        pageComponent.dispatchComponentDidMount()
+
+        expect(componentDidMountMock.called).to.be.false
+    })
+
+    it('should destroy children recursively', () => {
+        const child = new PageClass({ text: 'child' })
+        const parent = new PageClass({ text: 'parent' })
+
+        parent.children['child'] = child
+
+        const childDestroySpy = sinon.spy(child, 'destroy')
+
+        parent.destroy()
+
+        expect(childDestroySpy.calledOnce).to.be.true
+    })
+
+    it('should be idempotent on repeated destroy', () => {
+        const pageComponent = new PageClass()
+        const removeSpy = sinon.spy(pageComponent.element!, 'remove')
+
+        pageComponent.destroy()
+        pageComponent.destroy()
+
+        expect(removeSpy.calledOnce).to.be.true
+    })
 })

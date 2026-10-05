@@ -47,13 +47,60 @@ export interface ComponentProps {
     }[]
 }
 
+export function shallowEqual<T>(lhs: T, rhs: T): boolean {
+    if (lhs === rhs) {
+        return true
+    }
+
+    if (typeof lhs !== 'object' || lhs === null ||
+        typeof rhs !== 'object' || rhs === null) {
+        return false
+    }
+
+    const lhsKeys = Object.keys(lhs)
+    const rhsKeys = Object.keys(rhs)
+
+    if (lhsKeys.length !== rhsKeys.length) {
+        return false
+    }
+
+    return lhsKeys.every(key =>
+        (lhs as Record<string, unknown>)[key] === (rhs as Record<string, unknown>)[key]
+    )
+}
+
+function getSlice(state: AppState, keypath: string): unknown {
+    return keypath.split('.').reduce<unknown>((acc, key) => {
+        if (typeof acc !== 'object' || acc === null) {
+            return undefined
+        }
+
+        return (acc as Record<string, unknown>)[key]
+    }, state)
+}
+
 export class Store extends EventBus {
     private state: AppState = {}
 
     public set(keypath: string, data: unknown) {
+        const previous = getSlice(this.state, keypath)
+
+        // helpers.set мутирует вложенные объекты, поэтому сравниваем с копией
+        const previousSnapshot = typeof previous === 'object' && previous !== null
+            ? { ...previous as Record<string, unknown> }
+            : previous
+
         set(this.state, keypath, data)
 
+        if (shallowEqual(previousSnapshot, data)) {
+            return
+        }
+
         this.emit(StoreEvents.Updated, this.getState())
+    }
+
+    public update<K extends keyof AppState>(slice: K, data: AppState[K]) {
+        this.set(slice, data)
     }
 
     public getState() {
@@ -67,21 +114,36 @@ const store = new Store()
 // eslint-disable-next-line no-unused-vars
 export function withStore(mapStateToProps: (state: AppState) => ComponentProps) {
     return function wrap(Component: typeof Block) {
-        let previousState: ComponentProps
-
         return class WithStore extends Component {
+            private readonly storeHandler: () => void
+            private previousState: ComponentProps
+
             constructor(props: ComponentProps) {
-                previousState = mapStateToProps(store.getState())
+                const initialState = mapStateToProps(store.getState())
 
-                super({ ...props, ...previousState })
+                super({ ...props, ...initialState })
 
-                store.on(StoreEvents.Updated, () => {
+                this.previousState = initialState
+
+                this.storeHandler = () => {
                     const stateProps = mapStateToProps(store.getState())
 
-                    previousState = stateProps
+                    if (shallowEqual(stateProps, this.previousState)) {
+                        return
+                    }
+
+                    this.previousState = stateProps
 
                     this.setProps({ ...stateProps })
-                })
+                }
+
+                store.on(StoreEvents.Updated, this.storeHandler)
+            }
+
+            destroy() {
+                store.off(StoreEvents.Updated, this.storeHandler)
+
+                super.destroy()
             }
         }
     }
