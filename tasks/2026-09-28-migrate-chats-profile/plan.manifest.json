@@ -1,19 +1,524 @@
 {
     "schemaVersion": "agent-plan-manifest.v1",
-    "status": "DRAFT",
-    "planRevision": 1,
-    "package": {"id": "2026-09-28-migrate-chats-profile", "title": "Stage 4: chats and profile feature migration", "workspaceRoot": ".", "artifactRoot": "work/2026-09-28-migrate-chats-profile", "planArtifactRoot": "tasks/2026-09-28-migrate-chats-profile"},
-    "planFiles": ["tasks/2026-09-28-migrate-chats-profile/plan.manifest.json", "tasks/2026-09-28-migrate-chats-profile/developer-overview.md", "tasks/2026-09-28-migrate-chats-profile/specification.json", "tasks/2026-09-28-migrate-chats-profile/plan.md", "tasks/2026-09-28-migrate-chats-profile/acceptance-criteria.md", "tasks/2026-09-28-migrate-chats-profile/plan-review-request.md", "tasks/2026-09-28-migrate-chats-profile/tier-request.json", "tasks/2026-09-28-migrate-chats-profile/tier-resolution.json"],
-    "packageIntegrity": {"required": true, "lockSchemaVersion": "agent-plan-lock.v2", "inventorySource": "planFiles", "undeclaredTopLevelFiles": "reject", "allowedUnlistedFiles": ["plan.lock.json"]},
-    "author": {"id": "codex", "surface": "agent-first-planning", "runId": "2026-09-28-migrate-chats-profile-draft"},
-    "baseRevision": {"ref": "main", "sha": "d79de677facf8b06290523f9589808069f6cf621"},
-    "specification": {"tier": "S2", "intent": "Move chats and profile behind feature-owned modules and remove bounded legacy UI/API paths after replacement is proven.", "status": "DRAFT", "source": "tasks/2026-09-28-migrate-chats-profile/specification.json", "requirements": [{"id": "REQ-FE-MIGRATION", "title": "Feature-owned chats and profile", "description": "Create chats/profile modules, controllers, stores, ports and pages, preserve the message compatibility adapter, and delete the listed legacy paths only after migration evidence.", "priority": "P0", "source": "tasks/2026-09-28-ai-messenger-master-plan.md:34-38,94-104", "acceptanceIds": ["AC-FE-MIGRATE-1", "AC-FE-MIGRATE-2"], "evidenceIds": ["EV-FE-MIGRATE-1", "EV-FE-MIGRATE-2"], "owner": "WS-FE-MIGRATE"}], "tierResolutionRequest": {"requestedTier": "S2", "taskCount": 1, "executableOwners": ["worker-frontend-features"], "capabilityHints": ["typescript", "handlebars", "vite", "migration"], "riskFlags": {"architecture": true, "security": true, "performance": false, "browser": true, "data": true, "release": true, "externalEnvironment": true}, "requirementsBytes": 4200, "externalSpecification": true}, "revision": 1, "artifact": "tasks/2026-09-28-migrate-chats-profile/specification.json", "goal": "A reviewed, deterministic implementation plan for stage 4.", "constraints": ["Stage 3 auth module remains the auth owner.", "Stage 1 MessagesController compatibility adapter is retained.", "API/WS adapter and composition files belong to stage 7.", "No backend or course CI changes."], "nonGoals": ["own-backend cutover", "AI UI", "WS reconnect hardening", "production deployment"], "scope": {"in": ["chats feature", "profile feature", "bounded legacy deletion"], "out": ["auth", "backend", "AI UI", "production"]}},
-    "readOnly": ["tasks/2026-09-28-ai-messenger-master-plan.md", "tasks/README.md", "src/features/auth", "src/controllers/MessagesController.ts", "src/core/registerComponent.ts"],
-    "forbiddenWrites": [".alk", "work", ".github/workflows/tests.yml", ".github/workflows/verify.yml", "netlify.toml", "src/features/auth", "src/features/chats/api", "src/features/chats/ws", "src/features/profile/api"],
-    "leadOwned": [],
-    "workstreams": [{"id": "WS-FE-MIGRATE", "title": "Chats and profile feature migration", "owner": "worker-frontend-features", "reviewer": "independent-frontend-reviewer", "dependsOn": [], "writes": ["src/features/chats/module.ts", "src/features/chats/controller.ts", "src/features/chats/store.ts", "src/features/chats/ports.ts", "src/features/chats/pages/chat/chat.ts", "src/features/chats/pages/chat/chat.hbs", "src/features/profile/module.ts", "src/features/profile/controller.ts", "src/features/profile/store.ts", "src/features/profile/ports.ts", "src/features/profile/pages/profile/profile.ts", "src/features/profile/pages/profile/profile.hbs", "src/pages/404/404.hbs", "src/pages/404/404.ts", "src/pages/500/500.hbs", "src/pages/500/500.ts", "src/pages/chat/chat.hbs", "src/pages/chat/chat.ts", "src/pages/login/login.hbs", "src/pages/login/login.ts", "src/pages/pages.ts", "src/pages/profile/profile.hbs", "src/pages/profile/profile.ts", "src/pages/register/register.hbs", "src/pages/register/register.ts", "src/controllers/AuthController.ts", "src/controllers/ChatsController.ts", "src/controllers/UserController.ts", "src/api/AuthApi.ts", "src/api/ChatsApi.ts", "src/api/UserApi.ts", "src/api/BaseApi.ts"], "readOnly": ["src/controllers/MessagesController.ts", "src/features/auth"], "forbiddenWrites": [], "leadOwned": [], "launchGate": "Stage 3 accepted; create feature/2026-09-28-migrate-chats-profile from main@d79de677facf8b06290523f9589808069f6cf621; replacement feature paths compile before legacy deletion.", "capabilityHints": ["typescript", "handlebars", "vite", "migration"], "requiredTools": ["node", "npm"], "contextRefs": ["developer-overview.md", "plan.md", "src/main.ts", "src/controllers/MessagesController.ts"], "acceptanceIds": ["AC-FE-MIGRATE-1", "AC-FE-MIGRATE-2"], "evidenceIds": ["EV-FE-MIGRATE-1", "EV-FE-MIGRATE-2"], "executionPolicy": {"maxAttempts": 2, "maxWallSeconds": 3000}, "artifactPaths": ["work/2026-09-28-migrate-chats-profile/evidence/WS-FE-MIGRATE"], "required": true, "plannedItems": ["chats module", "profile module", "ports", "equivalent pages", "legacy inventory", "Practicum smoke", "safe deletion"], "qualityFloor": "Every deleted legacy path has a feature replacement; MessagesController remains and adapter/composition paths are untouched."}],
-    "acceptance": {"criteria": [{"id": "AC-FE-MIGRATE-1", "title": "Feature migration boundary", "requirementIds": ["REQ-FE-MIGRATION"], "evidenceIds": ["EV-FE-MIGRATE-1"], "independentEvidenceIds": [], "statement": "Chats and profile compile behind feature-owned ports and preserve the Block/Handlebars UI contract.", "description": "Feature migration is self-contained.", "source": "acceptance-criteria.md", "priority": "P0"}, {"id": "AC-FE-MIGRATE-2", "title": "Legacy removal after proof", "requirementIds": ["REQ-FE-MIGRATION"], "evidenceIds": ["EV-FE-MIGRATE-2"], "independentEvidenceIds": [], "statement": "Listed legacy paths are removed only after replacement and bounded Practicum smoke; MessagesController remains.", "description": "Deletion is evidence-gated.", "source": "acceptance-criteria.md", "priority": "P0"}], "evidence": [{"id": "EV-FE-MIGRATE-1", "description": "Feature compile, focused boundary tests and verify receipt.", "source": "WS-FE-MIGRATE", "validation": "npm run verify", "artifactPath": "work/2026-09-28-migrate-chats-profile/evidence/WS-FE-MIGRATE/EV-FE-MIGRATE-1.json", "required": true}, {"id": "EV-FE-MIGRATE-2", "description": "Old-to-new inventory, deletion diff and bounded Practicum smoke receipt.", "source": "WS-FE-MIGRATE", "validation": "bounded migration review and Practicum smoke", "artifactPath": "work/2026-09-28-migrate-chats-profile/evidence/WS-FE-MIGRATE/EV-FE-MIGRATE-2.json", "required": true}], "releaseGate": "Replacement, deletion inventory and external smoke evidence are accepted.", "qualityFloor": "No criterion is accepted from prose alone."},
-    "validation": {"commands": ["npm run verify", "npm run build"], "extraEvidence": [{"id": "EV-FE-MIGRATE-2", "kind": "migration-deletion-and-practicum-smoke", "timeoutSeconds": 900}]},
-    "orchestration": {"startMode": "reviewed-plan", "remediationMode": "ask", "maxPlanReviewRounds": 3, "maxTaskAttempts": 2, "maxParallelTasks": 1, "maxValidationRunsPerTask": 2, "maxToolCallsPerIteration": 30, "maxUsageIterationsPerAttempt": 8, "maxToolCallsPerTask": 150, "maxToolCallsPerRun": 340, "maxReportedTokensPerTask": 18000, "maxReportedTokensPerRun": 22000, "maxEvidenceArtifactBytes": 1048576, "maxEvidenceBytesPerTask": 4194304, "maxEvidenceBytesPerRun": 4194304, "maxTaskWallSeconds": 3600, "maxRunWallSeconds": 11000, "maxContextBytes": 150000, "maxRenderedPacketBytes": 45000, "stateFile": "work/2026-09-28-migrate-chats-profile/run.state.json", "eventLog": "work/2026-09-28-migrate-chats-profile/events.jsonl", "stepReviewRequired": true, "finalAuditRequired": true},
-    "implementationAudit": {"required": true, "finalRequired": true}, "developerOverview": "tasks/2026-09-28-migrate-chats-profile/developer-overview.md", "releaseTarget": {"kind": "local-only", "environment": "Vite frontend with Practicum compatibility", "productionPromotionClaimed": false}, "releaseImpact": "Replaces legacy chat/profile UI paths with feature-owned paths after smoke evidence.", "nonGoals": ["own-backend cutover", "AI UI", "WS reconnect hardening", "production deployment"], "finalAuditGates": ["[AC-FE-MIGRATE-1|EV-FE-MIGRATE-1] feature migration passes", "[AC-FE-MIGRATE-2|EV-FE-MIGRATE-2] deletion is evidence-gated"], "securityGates": [{"id": "SEC-BOUNDARY", "statement": "Feature runtime imports remain within allowed layer and feature boundaries.", "evidenceIds": ["EV-FE-MIGRATE-1"]}, {"id": "SEC-COMPAT", "statement": "MessagesController compatibility path remains available until cutover.", "evidenceIds": ["EV-FE-MIGRATE-2"]}], "sandbox": {"network": "off-by-default-for-deterministic-checks", "externalServices": ["Practicum backend"], "secrets": "no-secrets-in-plan-or-evidence", "productionPromotion": false}, "runtimePolicy": {"implementationAuthorized": false, "productionPromotionClaimed": false, "unavailableDependencyPolicy": "record UNAVAILABLE; never convert to PASS", "preservationInvariants": ["course CI, netlify.toml, sprint_* and deploy remain unchanged", "MessagesController and stage 7 adapter paths remain"], "manualEvidenceRequired": ["bounded Practicum smoke"]}, "budgetPolicy": {"units": "tokens-and-resources", "reroute": "pause-and-review", "maxTotalTokens": 22000, "maxParallelWorkstreams": 1, "maxRunWallSeconds": 11000, "criticalPathWallSeconds": 3600, "aggregateWorkstreamWallSeconds": 3600, "retryReserveWallSeconds": 1500}, "budgets": {"defaultWorkstreamTokens": 18000, "maxEvidenceBytesPerRun": 4194304}, "contextLimits": {"profile": "small-context-profile.v1", "maxPlanContextBytes": 150000, "maxRenderedPacketBytes": 45000, "smallContextPacketBytes": 30000, "maxReferenceFilesPerPacket": 14, "includeOnlyOwnedWrites": true, "excludeRuntimeWorkArtifacts": true}, "dependsOn": ["2026-09-28-module-kernel-guard-v2"], "reviewMesh": {"enabledByDefault": false, "blockingRequiresPlanOptIn": true, "requiresExplicitActivation": true, "budgetUnits": "tokens-and-resources", "budgetCap": {"maxInvocations": 0, "maxInputTokens": 0, "maxOutputTokens": 0}, "independencePolicy": {"mode": "single-independent-audit-required"}, "reviewerModelClasses": [], "liveCallsAllowed": false}, "contextCheckpointPolicy": {"enabled": true, "maxCheckpointBytes": 131072, "store": "work/2026-09-28-migrate-chats-profile/checkpoints"}, "controllerGates": {"beforeExecution": ["plan completeness PASS", "independent plan audit PASS", "explicit freeze"], "afterEachWave": ["ownership audit", "validation receipts", "no unresolved High finding"], "beforeCompletion": ["final implementation audit PASS", "all final audit gates PASS"]}, "planReview": {"required": true, "requestPath": "tasks/2026-09-28-migrate-chats-profile/plan-review-request.md", "reviewerClass": "independent-plan-reviewer", "maxRounds": 3, "implementationAuthorized": false}, "repositoryReferences": [{"id": "REF-ROADMAP", "repoId": "chatty", "owner": "codex", "access": "read-only", "paths": ["tasks/2026-09-28-ai-messenger-master-plan.md"]}, {"id": "REF-ALK", "repoId": "chatty", "owner": "codex", "access": "read-only", "paths": ["tasks/README.md"]}, {"id": "REF-MSG", "repoId": "chatty", "owner": "codex", "access": "read-only", "paths": ["src/controllers/MessagesController.ts"]}], "tierResolution": {"status": "RESOLVED", "tier": "S2", "requestedTier": "S2", "reason": "architecture-risk, browser-risk, externalEnvironment-risk, security-risk and external-specification-required", "independentReviewRequired": true, "requestPath": "tasks/2026-09-28-migrate-chats-profile/tier-request.json", "resolutionPath": "tasks/2026-09-28-migrate-chats-profile/tier-resolution.json", "requestDigest": "0889644ed1322cfc65a211c2b2e53e1f6cd579dbdf48d6a60ea96b2a7ebd63e6"}, "taskTemplates": {"frontend": "small-context packet with feature-owned files and npm validation"}, "compatibility": {"baseFrontend": "main@d79de677facf8b06290523f9589808069f6cf621", "practicumMode": "development", "ownMode": "own", "dataMigration": "none", "legacyMessagesController": "retained"}
+    "status": "FROZEN",
+    "planRevision": 4,
+    "package": {
+        "id": "2026-09-28-migrate-chats-profile",
+        "title": "Stage 4: chats and profile feature migration",
+        "workspaceRoot": ".",
+        "artifactRoot": "work/2026-09-28-migrate-chats-profile",
+        "planArtifactRoot": "tasks/2026-09-28-migrate-chats-profile"
+    },
+    "planFiles": [
+        "tasks/2026-09-28-migrate-chats-profile/acceptance-criteria.md",
+        "tasks/2026-09-28-migrate-chats-profile/developer-overview.md",
+        "tasks/2026-09-28-migrate-chats-profile/plan-review-request.md",
+        "tasks/2026-09-28-migrate-chats-profile/plan-review.json",
+        "tasks/2026-09-28-migrate-chats-profile/plan.manifest.json",
+        "tasks/2026-09-28-migrate-chats-profile/plan.md",
+        "tasks/2026-09-28-migrate-chats-profile/specification.json",
+        "tasks/2026-09-28-migrate-chats-profile/tier-request.json",
+        "tasks/2026-09-28-migrate-chats-profile/tier-resolution.json"
+    ],
+    "packageIntegrity": {
+        "required": true,
+        "lockSchemaVersion": "agent-plan-lock.v2",
+        "inventorySource": "planFiles",
+        "undeclaredTopLevelFiles": "reject",
+        "allowedUnlistedFiles": [
+            "plan.lock.json"
+        ]
+    },
+    "author": {
+        "id": "codex",
+        "surface": "agent-first-planning",
+        "runId": "2026-10-05-migrate-chats-profile-revision-4"
+    },
+    "baseRevision": {
+        "ref": "dev",
+        "sha": "c3c6fca89caee23a37d4fb94cdbb2c46e7e93f40"
+    },
+    "specification": {
+        "tier": "S2",
+        "intent": "Move chats and profile behind feature-owned modules and remove bounded legacy UI/API paths after replacement is proven.",
+        "status": "DRAFT",
+        "source": "tasks/2026-09-28-migrate-chats-profile/specification.json",
+        "requirements": [
+            {
+                "id": "REQ-FE-MIGRATION",
+                "title": "Feature-owned chats and profile",
+                "description": "Create chats/profile modules, controllers, stores, ports and pages, preserve the message compatibility adapter, and delete the listed legacy paths only after migration evidence.",
+                "priority": "P0",
+                "source": "tasks/2026-09-28-ai-messenger-master-plan.md:34-38,94-104",
+                "acceptanceIds": [
+                    "AC-FE-MIGRATE-1",
+                    "AC-FE-MIGRATE-2"
+                ],
+                "evidenceIds": [
+                    "EV-FE-MIGRATE-1",
+                    "EV-FE-MIGRATE-2"
+                ],
+                "owner": "WS-FE-MIGRATE"
+            }
+        ],
+        "tierResolutionRequest": {
+            "requestedTier": "S2",
+            "taskCount": 1,
+            "executableOwners": [
+                "worker-frontend-features"
+            ],
+            "capabilityHints": [
+                "typescript",
+                "handlebars",
+                "vite",
+                "migration"
+            ],
+            "riskFlags": {
+                "architecture": true,
+                "security": true,
+                "performance": false,
+                "browser": true,
+                "data": true,
+                "release": true,
+                "externalEnvironment": true
+            },
+            "requirementsBytes": 4200,
+            "externalSpecification": true
+        },
+        "revision": 2,
+        "artifact": "tasks/2026-09-28-migrate-chats-profile/specification.json",
+        "goal": "A reviewed, deterministic implementation plan for stage 4.",
+        "constraints": [
+            "Stage 3 auth module remains the auth owner.",
+            "Stage 1 MessagesController compatibility adapter is retained.",
+            "Api/ws adapter files belong to stage 7; the legacy src/api classes are preserved read-only until the cutover deletes them with its adapters.",
+            "Composition-root wiring (main.ts to createApp) moved from stage 7 into this stage because legacy deletion requires it.",
+            "No backend or course CI changes."
+        ],
+        "nonGoals": [
+            "own-backend cutover",
+            "AI UI",
+            "WS reconnect hardening",
+            "production deployment"
+        ],
+        "scope": {
+            "in": [
+                "chats feature",
+                "profile feature",
+                "bounded legacy deletion"
+            ],
+            "out": [
+                "auth",
+                "backend",
+                "AI UI",
+                "production"
+            ]
+        }
+    },
+    "readOnly": [
+        "tasks/2026-09-28-ai-messenger-master-plan.md",
+        "tasks/README.md",
+        "src/features/auth",
+        "src/api/AuthApi.ts",
+        "src/api/BaseApi.ts",
+        "src/api/ChatsApi.ts",
+        "src/api/UserApi.ts",
+        "src/controllers/MessagesController.ts",
+        "src/core/registerComponent.ts"
+    ],
+    "forbiddenWrites": [
+        ".alk",
+        "work",
+        ".github/workflows/tests.yml",
+        ".github/workflows/verify.yml",
+        "netlify.toml",
+        "src/features/auth",
+        "src/features/chats/api",
+        "src/features/chats/ws",
+        "src/features/profile/api"
+    ],
+    "leadOwned": [
+        {
+            "path": "tasks/2026-09-28-migrate-chats-profile",
+            "owner": "controller",
+            "reason": "The controller owns frozen plan-package artifacts retained in the implementation delta."
+        },
+        {
+            "path": "docs/progress/progress_log.md",
+            "owner": "controller",
+            "reason": "The controller maintains the repository progress log for this implementation package."
+        }
+    ],
+    "workstreams": [
+        {
+            "id": "WS-FE-MIGRATE",
+            "title": "Chats and profile feature migration",
+            "owner": "worker-frontend-features",
+            "reviewer": "independent-frontend-reviewer",
+            "dependsOn": [],
+            "writes": [
+                "src/main.ts",
+                "src/features/index.ts",
+                "src/utils/Store.ts",
+                ".claude/hooks/scripts/guard-architecture.mjs",
+                "src/features/chats/module.ts",
+                "src/features/chats/controller.ts",
+                "src/features/chats/store.ts",
+                "src/features/chats/ports.ts",
+                "src/features/chats/pages/chat/chat.ts",
+                "src/features/chats/pages/chat/chat.hbs",
+                "src/features/profile/module.ts",
+                "src/features/profile/controller.ts",
+                "src/features/profile/store.ts",
+                "src/features/profile/ports.ts",
+                "src/features/profile/pages/profile/profile.ts",
+                "src/features/profile/pages/profile/profile.hbs",
+                "src/pages/chat/chat.hbs",
+                "src/pages/chat/chat.ts",
+                "src/pages/login/login.hbs",
+                "src/pages/login/login.ts",
+                "src/pages/pages.ts",
+                "src/pages/profile/profile.hbs",
+                "src/pages/profile/profile.ts",
+                "src/pages/register/register.hbs",
+                "src/pages/register/register.ts",
+                "src/controllers/AuthController.ts",
+                "src/controllers/ChatsController.ts",
+                "src/controllers/UserController.ts",
+                "src/utils/types.ts",
+                "src/components/messenger/messenger.ts",
+                "src/components/messenger/messenger.hbs",
+                "src/components/chatListUser/chatListUser.ts",
+                "src/components/chatListUser/chatListUser.hbs",
+                "src/components/form-container/form-container.ts",
+                "src/components/form-container/form-container.hbs",
+                "src/components/components.ts",
+                "src/components/input/inputFile/inputFile.ts",
+                "src/components/input/inputFile/inputFile.hbs",
+                "src/components/avatar/avatar.ts",
+                "src/components/avatar/avatar.hbs"
+            ],
+            "readOnly": [
+                "src/controllers/MessagesController.ts",
+                "src/features/auth"
+            ],
+            "forbiddenWrites": [],
+            "leadOwned": [],
+            "launchGate": "Stage 3 is accepted in origin/dev at the exact declared base SHA; before execution the controller must verify that origin/dev still contains that SHA. Create feature/2026-09-28-migrate-chats-profile from the accepted dev baseline and open its PR into dev. Composition-root ownership moves from stage 7 to this stage (main.ts rewires to createApp over features/index.ts); stage 7 keeps the api/ws adapters AND the deletion of the legacy src/api classes (AuthApi, BaseApi, ChatsApi, UserApi are preserved read-only for the cutover adapters). This stage deletes the legacy feature pages (login, register, chat, profile), pages.ts and the Auth/Chats/User controllers only after replacement feature paths compile; the error pages src/pages/404 and src/pages/500 stay in place (no feature owns them; main.ts imports them directly). Shared components (messenger, chatListUser, form-container, input/inputFile, avatar, components barrel) are rewired to DTO types from src/utils/types.ts and receive behavior through props instead of controller imports. Removable debt-map entries are exactly: the seven ui-type-api-import records (four in deleted pages, three in rewritten components) and the ChatUser-from-api half of the Store.ts layer-direction entry; the Store.ts entry itself stays (the Message import from the preserved MessagesController remains).",
+            "capabilityHints": [
+                "typescript",
+                "handlebars",
+                "vite",
+                "migration"
+            ],
+            "requiredTools": [
+                "node",
+                "npm"
+            ],
+            "contextRefs": [
+                "developer-overview.md",
+                "plan.md",
+                "src/main.ts",
+                "src/controllers/MessagesController.ts"
+            ],
+            "acceptanceIds": [
+                "AC-FE-MIGRATE-1",
+                "AC-FE-MIGRATE-2"
+            ],
+            "evidenceIds": [
+                "EV-FE-MIGRATE-1",
+                "EV-FE-MIGRATE-2"
+            ],
+            "executionPolicy": {
+                "maxAttempts": 2,
+                "maxWallSeconds": 3000
+            },
+            "artifactPaths": {
+                "result": "work/2026-09-28-migrate-chats-profile/evidence/WS-FE-MIGRATE/task-result-{attempt}.json",
+                "review": "work/2026-09-28-migrate-chats-profile/evidence/WS-FE-MIGRATE/task-review-{attempt}.json"
+            },
+            "required": true,
+            "plannedItems": [
+                "chats module",
+                "profile module",
+                "ports",
+                "equivalent pages",
+                "legacy inventory",
+                "Practicum smoke",
+                "safe deletion"
+            ],
+            "qualityFloor": "Every deleted legacy path has a feature replacement; MessagesController remains and adapter/composition paths are untouched."
+        }
+    ],
+    "acceptance": {
+        "criteria": [
+            {
+                "id": "AC-FE-MIGRATE-1",
+                "title": "Feature migration boundary",
+                "requirementIds": [
+                    "REQ-FE-MIGRATION"
+                ],
+                "evidenceIds": [
+                    "EV-FE-MIGRATE-1"
+                ],
+                "independentEvidenceIds": [],
+                "statement": "Chats and profile compile behind feature-owned ports and preserve the Block/Handlebars UI contract.",
+                "description": "Feature migration is self-contained.",
+                "source": "acceptance-criteria.md",
+                "priority": "P0"
+            },
+            {
+                "id": "AC-FE-MIGRATE-2",
+                "title": "Legacy removal after proof",
+                "requirementIds": [
+                    "REQ-FE-MIGRATION"
+                ],
+                "evidenceIds": [
+                    "EV-FE-MIGRATE-2"
+                ],
+                "independentEvidenceIds": [],
+                "statement": "Listed legacy paths are removed only after replacement and bounded Practicum smoke; MessagesController remains.",
+                "description": "Deletion is evidence-gated.",
+                "source": "acceptance-criteria.md",
+                "priority": "P0"
+            }
+        ],
+        "evidence": [
+            {
+                "id": "EV-FE-MIGRATE-1",
+                "description": "Feature compile, focused boundary tests and verify receipt.",
+                "source": "WS-FE-MIGRATE",
+                "validation": "npm run verify",
+                "artifactPath": "work/2026-09-28-migrate-chats-profile/evidence/WS-FE-MIGRATE/EV-FE-MIGRATE-1.json",
+                "required": true
+            },
+            {
+                "id": "EV-FE-MIGRATE-2",
+                "description": "Old-to-new inventory, deletion diff and bounded Practicum smoke receipt.",
+                "source": "WS-FE-MIGRATE",
+                "validation": "bounded migration review and Practicum smoke",
+                "artifactPath": "work/2026-09-28-migrate-chats-profile/evidence/WS-FE-MIGRATE/EV-FE-MIGRATE-2.json",
+                "required": true
+            }
+        ],
+        "releaseGate": "Replacement, deletion inventory and external smoke evidence are accepted.",
+        "qualityFloor": "No criterion is accepted from prose alone."
+    },
+    "validation": {
+        "commands": [
+            "npm run verify",
+            "npm run build"
+        ],
+        "extraEvidence": [
+            {
+                "id": "EV-FE-MIGRATE-2",
+                "kind": "migration-deletion-and-practicum-smoke",
+                "timeoutSeconds": 900
+            }
+        ]
+    },
+    "orchestration": {
+        "startMode": "reviewed-plan",
+        "remediationMode": "ask",
+        "maxPlanReviewRounds": 3,
+        "maxTaskAttempts": 2,
+        "maxParallelTasks": 1,
+        "maxValidationRunsPerTask": 2,
+        "maxToolCallsPerIteration": 30,
+        "maxUsageIterationsPerAttempt": 8,
+        "maxToolCallsPerTask": 150,
+        "maxToolCallsPerRun": 340,
+        "maxReportedTokensPerTask": 18000,
+        "maxReportedTokensPerRun": 22000,
+        "maxEvidenceArtifactBytes": 1048576,
+        "maxEvidenceBytesPerTask": 4194304,
+        "maxEvidenceBytesPerRun": 4194304,
+        "maxTaskWallSeconds": 3600,
+        "maxRunWallSeconds": 11000,
+        "maxContextBytes": 150000,
+        "maxRenderedPacketBytes": 45000,
+        "stateFile": "work/2026-09-28-migrate-chats-profile/run.state.json",
+        "eventLog": "work/2026-09-28-migrate-chats-profile/events.jsonl",
+        "stepReviewRequired": true,
+        "finalAuditRequired": true
+    },
+    "implementationAudit": {
+        "required": true,
+        "finalRequired": true
+    },
+    "developerOverview": "tasks/2026-09-28-migrate-chats-profile/developer-overview.md",
+    "releaseTarget": {
+        "kind": "local-only",
+        "environment": "Vite frontend with Practicum compatibility",
+        "productionPromotionClaimed": false
+    },
+    "releaseImpact": "Replaces legacy chat/profile UI paths with feature-owned paths after smoke evidence.",
+    "nonGoals": [
+        "own-backend cutover",
+        "AI UI",
+        "WS reconnect hardening",
+        "production deployment"
+    ],
+    "finalAuditGates": [
+        "[AC-FE-MIGRATE-1|EV-FE-MIGRATE-1] feature migration passes",
+        "[AC-FE-MIGRATE-2|EV-FE-MIGRATE-2] deletion is evidence-gated"
+    ],
+    "securityGates": [
+        {
+            "id": "SEC-BOUNDARY",
+            "statement": "Feature runtime imports remain within allowed layer and feature boundaries.",
+            "evidenceIds": [
+                "EV-FE-MIGRATE-1"
+            ]
+        },
+        {
+            "id": "SEC-COMPAT",
+            "statement": "MessagesController compatibility path remains available until cutover.",
+            "evidenceIds": [
+                "EV-FE-MIGRATE-2"
+            ]
+        }
+    ],
+    "sandbox": {
+        "network": "off-by-default-for-deterministic-checks",
+        "externalServices": [
+            "Practicum backend"
+        ],
+        "secrets": "no-secrets-in-plan-or-evidence",
+        "productionPromotion": false
+    },
+    "runtimePolicy": {
+        "implementationAuthorized": false,
+        "productionPromotionClaimed": false,
+        "unavailableDependencyPolicy": "record UNAVAILABLE; never convert to PASS",
+        "preservationInvariants": [
+            "course CI, netlify.toml, sprint_* and deploy remain unchanged",
+            "MessagesController and stage 7 adapter paths remain"
+        ],
+        "manualEvidenceRequired": [
+            "bounded Practicum smoke"
+        ]
+    },
+    "budgetPolicy": {
+        "units": "tokens-and-resources",
+        "reroute": "pause-and-review",
+        "maxTotalTokens": 22000,
+        "maxParallelWorkstreams": 1,
+        "maxRunWallSeconds": 11000,
+        "criticalPathWallSeconds": 3600,
+        "aggregateWorkstreamWallSeconds": 3600,
+        "retryReserveWallSeconds": 1500
+    },
+    "budgets": {
+        "defaultWorkstreamTokens": 18000,
+        "maxEvidenceBytesPerRun": 4194304
+    },
+    "contextLimits": {
+        "profile": "small-context-profile.v1",
+        "maxPlanContextBytes": 150000,
+        "maxRenderedPacketBytes": 45000,
+        "smallContextPacketBytes": 30000,
+        "maxReferenceFilesPerPacket": 14,
+        "includeOnlyOwnedWrites": true,
+        "excludeRuntimeWorkArtifacts": true
+    },
+    "dependsOn": [
+        "2026-09-28-module-kernel-guard-v2"
+    ],
+    "reviewMesh": {
+        "enabledByDefault": false,
+        "blockingRequiresPlanOptIn": true,
+        "requiresExplicitActivation": true,
+        "budgetUnits": "tokens-and-resources",
+        "budgetCap": {
+            "maxInvocations": 0,
+            "maxInputTokens": 0,
+            "maxOutputTokens": 0
+        },
+        "independencePolicy": {
+            "mode": "single-independent-audit-required"
+        },
+        "reviewerModelClasses": [],
+        "liveCallsAllowed": false
+    },
+    "contextCheckpointPolicy": {
+        "enabled": true,
+        "maxCheckpointBytes": 131072,
+        "store": "work/2026-09-28-migrate-chats-profile/checkpoints"
+    },
+    "controllerGates": {
+        "beforeExecution": [
+            "plan completeness PASS",
+            "independent plan audit PASS",
+            "explicit freeze"
+        ],
+        "afterEachWave": [
+            "ownership audit",
+            "validation receipts",
+            "no unresolved High finding"
+        ],
+        "beforeCompletion": [
+            "final implementation audit PASS",
+            "all final audit gates PASS"
+        ]
+    },
+    "planReview": {
+        "required": true,
+        "requestPath": "tasks/2026-09-28-migrate-chats-profile/plan-review-request.md",
+        "reviewerClass": "independent-plan-reviewer",
+        "maxRounds": 3,
+        "implementationAuthorized": false,
+        "report": "tasks/2026-09-28-migrate-chats-profile/plan-review.json",
+        "reviewedRevision": 4,
+        "verdict": "READY_TO_FREEZE"
+    },
+    "repositoryReferences": [
+        {
+            "id": "REF-ROADMAP",
+            "repoId": "chatty",
+            "owner": "codex",
+            "access": "read-only",
+            "paths": [
+                "tasks/2026-09-28-ai-messenger-master-plan.md"
+            ]
+        },
+        {
+            "id": "REF-ALK",
+            "repoId": "chatty",
+            "owner": "codex",
+            "access": "read-only",
+            "paths": [
+                "tasks/README.md"
+            ]
+        },
+        {
+            "id": "REF-MSG",
+            "repoId": "chatty",
+            "owner": "codex",
+            "access": "read-only",
+            "paths": [
+                "src/controllers/MessagesController.ts"
+            ]
+        }
+    ],
+    "tierResolution": {
+        "status": "RESOLVED",
+        "tier": "S2",
+        "requestedTier": "S2",
+        "reason": "architecture-risk, browser-risk, externalEnvironment-risk, security-risk and external-specification-required",
+        "independentReviewRequired": true,
+        "requestPath": "tasks/2026-09-28-migrate-chats-profile/tier-request.json",
+        "resolutionPath": "tasks/2026-09-28-migrate-chats-profile/tier-resolution.json",
+        "requestDigest": "0889644ed1322cfc65a211c2b2e53e1f6cd579dbdf48d6a60ea96b2a7ebd63e6"
+    },
+    "taskTemplates": {
+        "frontend": "small-context packet with feature-owned files and npm validation"
+    },
+    "compatibility": {
+        "baseFrontend": "dev@c3c6fca89caee23a37d4fb94cdbb2c46e7e93f40",
+        "practicumMode": "development",
+        "ownMode": "own",
+        "dataMigration": "none",
+        "legacyMessagesController": "retained"
+    }
 }

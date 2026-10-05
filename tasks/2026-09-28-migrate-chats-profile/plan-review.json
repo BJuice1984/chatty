@@ -1,0 +1,55 @@
+{
+    "schemaVersion": "agent-plan-review.v1",
+    "packageId": "2026-09-28-migrate-chats-profile",
+    "planRevision": 4,
+    "reviewId": "review-2026-10-05-migrate-chats-profile-freeze-r4",
+    "fullReview": true,
+    "verdict": "READY_TO_FREEZE",
+    "reviewedPlanHash": "2ab7f03a0a584e9e849adde4ad179c0457e98635e3b17285c1fbbb9251d31ba8",
+    "reviewer": {
+        "id": "claude-code-opus-independent-subagent",
+        "independent": true,
+        "runId": "audit-run-20261005-migrate-chats-profile-plan-r2-r4",
+        "surface": "audit-agent-plan"
+    },
+    "findings": [
+        {
+            "id": "LOW-MIGRATE-STAGE7-REFREEZE",
+            "category": "roadmap",
+            "severity": "LOW",
+            "status": "open",
+            "message": "The stage 7 draft needs a refreeze before launch: drop src/main.ts and src/features/index.ts from its writes (ownership moved to stage 4), lift src/api from its forbiddenWrites and adopt the deletion of the four legacy api classes with its adapter files, keeping auth-feature and adapter protection until its own freeze."
+        }
+    ],
+    "reviewVerdict": {
+        "schemaVersion": "agent-review-verdict.v1",
+        "overall": "ACCEPTED",
+        "dimensions": {
+            "requirementFit": {
+                "status": "PASS",
+                "reasonCode": "traceability-complete",
+                "summary": "REQ maps to both acceptance criteria, evidence receipts, workstream ownership and final audit gates; the deletion set and its replacements are explicit."
+            },
+            "implementationQuality": {
+                "status": "PASS",
+                "reasonCode": "import-closure-complete",
+                "summary": "Three audit rounds reached a complete import closure of the deletion set (pages, pages.ts, three controllers): every consumer is deleted or rewritten inside the 40-path write set, including the inputFile/avatar chain found in round 2; the api layer stays read-only for stage 7; composition-root rewiring is executable on the accepted stage 3 kernel."
+            },
+            "evidenceQuality": {
+                "status": "PASS",
+                "reasonCode": "deterministic-and-observable",
+                "summary": "Compile-before-delete stays enforceable, the removable debt-map set is spelled out exactly (seven ui-type-api-import records plus the ChatUser half of Store.ts) and matches the live TRANSITIONAL_DEBT map."
+            },
+            "residualRisk": {
+                "status": "PASS",
+                "reasonCode": "no-blocking-findings",
+                "summary": "Round 1 and 2 blockers closed and re-verified (api preservation, shared components, inputFile/avatar, embed-spec sync, error pages kept by design); one LOW carry-forward about the stage 7 refreeze."
+            }
+        },
+        "routing": {
+            "target": "plan-freeze",
+            "nextAction": "accept"
+        }
+    },
+    "summary": "Independent three-round read-only audit of revision 4. Round 1 (r2) returned CHANGES_REQUIRED: the deletion set broke the forbidden auth feature (runtime AuthApi import) and three shared components. Round 2 (r3) returned CHANGES_REQUIRED: the inputFile/avatar chain still imported the deleted controllers and the embedded specification block was stale. Round 3 (r4) verified all closures complete — cryptographically reconstructing the r3 digest from r4 to prove the delta is exactly as declared — confirmed the 404/500 keep-in-place decision, disjointness from accepted stages, the exact removable debt set and the no-production boundary. Verdict: READY_TO_FREEZE."
+}
