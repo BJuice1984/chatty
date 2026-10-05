@@ -4,6 +4,34 @@
 > Новые записи — сверху. Одна запись = одна завершённая порция работы:
 > что и почему сделали, где смотреть, чем проверили.
 
+## 2026-10-05 — VM smoke и handoff после вливания backend PR
+
+**Что:** пользователь подтвердил вливание PR с пакетами backend chats/WebSocket/files
+в `dev`. Для внутренней проверки поднят отдельный `chatty-vm` на KVM/libvirt:
+Ubuntu Server 24.04.5, виртуальный диск 25 GB, сеть libvirt `default` в режиме
+NAT. В VM клонирована ветка `feature/2026-09-28-backend-chats-ws-files`,
+установлены Docker Engine/Compose и Node.js 22; операторский `.env` с секретами
+хранится только в VM и в Git не попадает. Локальная модель в VM и в ревью не
+использовалась.
+
+**Проверено:** аппаратная виртуализация и libvirt; `docker run --rm
+hello-world`; `docker compose config --quiet`; запуск Compose со здоровыми API,
+PostgreSQL и RustFS; API `8000` доступен с хоста; RustFS `9000/9001` доступен
+только внутри VM, что соответствует закрытой topology; `npm ci`, `npm run verify`,
+own-mode Vite build и frontend-сервер на `3000`, доступный с хоста. Это bounded
+внутренний smoke, а не production/public release.
+
+**Открыто:** полный frontend-to-owned-backend cutover ещё не выполнен. Текущий
+legacy `src/api/AuthApi.ts` использует `/auth/signin`, `/auth/signup`,
+`/auth/user`, тогда как собственный backend предоставляет `/auth/login`,
+`/auth/register`, `/auth/me`; собственные chats/files/WS adapters также остаются
+следующей frontend-задачей. Публичное размещение, TLS/reverse-proxy,
+production-cookie policy, firewall/backups и local-model gate не закрыты.
+Перед следующим ALK-run нужно обновить локальный `dev` после merge: текущие
+локальные refs в этом workspace ещё показывают cached `origin/dev@f56318c`, а
+попытка `git fetch origin dev` не завершилась из-за сетевого доступа. Подробный
+handoff: `docs/progress/2026-10-05-handoff.md`.
+
 ## 2026-10-01 — ALK: backend chats ownership refreeze
 
 **Что:** пакет `tasks/2026-09-28-backend-chats-ws-files/` переведён на
