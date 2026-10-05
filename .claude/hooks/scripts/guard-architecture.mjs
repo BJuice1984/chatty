@@ -15,6 +15,11 @@
 //   warning  cross-feature-type    — type-only импорт из чужой фичи
 //   warning  ui-type-api-import    — named-импорт типов из api/ в UI
 //
+// Классификация api-импортов в UI (конвенция проекта): value-объекты из api/ импортируются
+// default-синглтонами (`import API from`) или namespace (`import * as api`) — оба blocker;
+// DTO-типы — named-клаузой (`import { SigninData }`, `import { type X }`, `import type X`) — warning.
+// Регекс-сканер не умеет разрешать типы: конвенция фиксирует синтаксис для каждого случая.
+//
 // TRANSITIONAL_DEBT (v2, реконсилирован по handoff stage 2 / EV-KERNEL-2):
 //   формат file → { rule: owner }. Задокументированный долг:
 //   - не проваливает --strict (exit 0), пока blocker понижен до warning;
@@ -173,6 +178,8 @@ function checkCrossFeature(file, line, clause, sourceFeature, targetFeature, fin
 }
 
 // UI (components/pages и UI-подслой фич) не должен тянуть runtime из api — только через контроллеры.
+// Классификация по конвенции проекта (см. шапку): default/namespace — value (blocker),
+// named-клаузы и явный `type` — DTO-типы (warning).
 function checkUiApiImport(file, line, clause, sourceLayer, sourceSubLayer, targetLayer, findings, dynamic) {
     if (targetLayer !== 'api') return;
 
@@ -180,19 +187,21 @@ function checkUiApiImport(file, line, clause, sourceLayer, sourceSubLayer, targe
         || (sourceLayer === 'features' && (sourceSubLayer === 'pages' || sourceSubLayer === 'components'));
     if (!isUi) return;
 
-    const typeOnly = /^type\b/.test(clause.trim());
+    const trimmed = clause.trim();
+    const typeOnly = /^type\b/.test(trimmed) || /^\{\s*type\b/.test(trimmed);
     // default-импорт: клауза начинается с идентификатора, а не с "{" (напр. `API` или `API, { T }`).
-    const hasDefaultImport = !typeOnly && /^[A-Za-z_$]/.test(clause.trim());
+    const hasDefaultImport = !typeOnly && /^[A-Za-z_$]/.test(trimmed);
+    // namespace-импорт: `* as api` — тоже value.
+    const hasNamespaceImport = !typeOnly && /^\*\s+as\b/.test(trimmed);
 
-    if (hasDefaultImport || dynamic) {
+    if (hasDefaultImport || hasNamespaceImport || dynamic) {
         const rule = dynamic ? RULE_DYNAMIC_IMPORT : RULE_UI_RUNTIME_API;
         const level = isDebt(file, rule) ? 'warning' : 'blocker';
         const via = dynamic ? ' (dynamic import)' : '';
         addFinding(findings, level, file, line, rule,
             `runtime-импорт из API-слоя в UI${via}. Компоненты работают с бэкендом только через контроллеры (фичи — через свои порты).`);
     } else {
-        const level = isDebt(file, RULE_UI_TYPE_API) ? 'warning' : 'warning';
-        addFinding(findings, level, file, line, RULE_UI_TYPE_API,
+        addFinding(findings, 'warning', file, line, RULE_UI_TYPE_API,
             'типы из API-слоя в UI — техдолг; выносите DTO-типы в отдельный модуль (например src/api/types.ts), чтобы UI не зависел от API-файлов.');
     }
 }
@@ -201,6 +210,8 @@ function checkUiApiImport(file, line, clause, sourceLayer, sourceSubLayer, targe
 
 // Возвращает [{ clause, specifier, line, dynamic }] для статических import ... from '...'
 // и динамических import('...') (clause = 'dynamic').
+// Ограничение скоупа: ловятся только строковые литералы; вычисляемые и template-literal
+// спецификаторы (import(someVar), import(`./x`)) вне возможностей регекс-сканера.
 function scanImports(text) {
     const imports = [];
     const re = /\bimport\s+([^'"]+?)\s+from\s*['"]([^'"]+)['"]/g;
