@@ -4,6 +4,51 @@
 > Новые записи — сверху. Одна запись = одна завершённая порция работы:
 > что и почему сделали, где смотреть, чем проверили.
 
+## 2026-10-05 — ALK: stage 2 kernel-router-store выполнен (r6, COMPLETE)
+
+**Что:** по решению пользователя вернулись к дорожной карте («от простого к
+сложному», маленькие пакеты с полным ALK-циклом). Пакет
+`tasks/2026-09-28-kernel-router-store/` отрефризен с r1 (устаревший
+`main@d79de677`) до **r6** на baseline `dev@12d37cd` (merge backend PR #16).
+Refreeze-цепочка: r2 (baseline + launchGate + leadOwned для план-пакета и
+журнала) → r3 (закрытие findings аудита: base-фраза в developer-overview,
+квотирование `--grep "Router|Store|Block"`, guard-скрипт в WS
+forbiddenWrites) → r4 (compile-блокер: `artifactPaths` массив → dict
+result/review) → r5 (leadOwned += VM-smoke handoff-файл для ownership-дельты)
+→ r6 (per-attempt шаблоны `task-result-{attempt}.json` — конструктивное
+требование ALK 2.15 для rework-цикла: архив попытки обязан жить по пути,
+следующий путь обязан быть свободен). Пять раундов независимого plan-аудита
+(CHANGES_REQUIRED → PASS×4), lock и worker packet перегенерированы на каждой
+ревизии. ALK CLI 2.15.0 установлен в гитигнорный `.alk/venv`.
+
+**Реализация (WS-KERNEL):** Router — параметризованные маршруты (`/chat/:id`,
+`getParams()`, повторный заход обновляет `props.routeParams`), lazy-загрузка с
+error-fallback, явный 404-роут, guard-seams `beforeEach` (блокировка/редирект/
+отписка, кап глубины редиректов 10), `leave()`/`detach()` destroys блок и
+гасит опоздавшие lazy-резолвы. Store — типизированные слайсы `update<K>`,
+shallow-equality с пре-мутационным снапшотом (helpers.set мутирует),
+`withStore` с per-instance previousState и отпиской в `destroy()`. Block —
+детерминированный идемпотентный `destroy()` (off EventBus, каскад к children,
+снятие DOM-событий, удаление элемента). main.ts и контракты stage 1 не тронуты.
+
+**Проверено:** независимый frontend-ревьюер дал attempt 1 REWORK (2
+воспроизведённых MEDIUM: stale params при `/chat/1`→`/chat/2`; race lazy при
+уходе с маршрута — поздний mount затирал DOM; + LOW redirect-цикл, вакуумный
+тест); фиксы в `635c93b`, attempt 2 — **ACCEPTED** (scratch-прогон поведения:
+парамы, race, retry, циклы, `/5`→404). `npm run verify` — 47 тестов (было 23),
+guard `--all` — 0 блокеров (9 warnings = прежний состав), build PASS,
+ownership audit — 13 путей дельты классифицированы (0 unowned/forbidden).
+implementation/final-implementation/package(--strict) аудиты — PASS;
+workflow-state `COMPLETE` (state rev 15), final-proof
+`work/…/evidence/WS-KERNEL/final-proof.json`. Локальная модель не
+использовалась; авторизация исполнения выдана пользователем явно в сессии.
+
+**Открыто:** два остаточных INFO ревью переданы stage 3 через TRANSITIONAL_DEBT
+handoff (EV-KERNEL-2): `renderNotFound` не destroy'ит error-блок; self-redirect
+не сбрасывает redirectDepth. Манифесты stages 3–4 всё ещё pinned на
+`main@d79de677` — перед их запуском понадобятся собственные refreeze на
+`dev`-baseline (LOW из plan-review).
+
 ## 2026-10-05 — VM smoke и handoff после вливания backend PR
 
 **Что:** пользователь подтвердил вливание PR с пакетами backend chats/WebSocket/files
