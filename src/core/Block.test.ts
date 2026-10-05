@@ -77,19 +77,20 @@ describe('Block', () => {
             },
         })
         const container = document.createElement('div')
-        container.appendChild(pageComponent.element!)
+        const element = pageComponent.element!
 
-        expect(container.contains(pageComponent.element!)).to.be.true
+        container.appendChild(element)
+
+        element.dispatchEvent(new MouseEvent('click'))
+        expect(handlerStub.calledOnce).to.be.true
 
         pageComponent.destroy()
 
         expect(container.childElementCount).to.eq(0)
         expect(pageComponent.element).to.be.null
 
-        const detachedEvent = new MouseEvent('click')
-        handlerStub.resetHistory()
-        document.dispatchEvent(detachedEvent)
-        expect(handlerStub.called).to.be.false
+        element.dispatchEvent(new MouseEvent('click'))
+        expect(handlerStub.calledOnce).to.be.true
     })
 
     it('should unsubscribe lifecycle events on destroy', () => {

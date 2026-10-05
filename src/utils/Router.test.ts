@@ -179,4 +179,70 @@ describe('Router kernel features', () => {
 
         destroySpy.restore()
     })
+
+    it('should update route params when the same route is revisited with a new value', () => {
+        Router.use('/profile/:id', markerBlock('marker-profile') as typeof Block)
+
+        Router.go('/profile/1')
+        expect(document.querySelector('#marker-profile')?.textContent).to.eq('{"id":"1"}')
+
+        Router.go('/profile/2')
+        expect(document.querySelector('#marker-profile')?.textContent).to.eq('{"id":"2"}')
+        expect(Router.getParams()).to.deep.eq({ id: '2' })
+    })
+
+    it('should not mount a pending lazy route after navigating away', async () => {
+        let release: () => void = () => undefined
+        const gate = new Promise<void>(resolve => {
+            release = resolve
+        })
+
+        Router.use('/lazy-slow', async () => {
+            await gate
+
+            return markerBlock('marker-lazy-slow') as typeof Block
+        })
+        Router.use('/lazy-safe', markerBlock('marker-lazy-safe') as typeof Block)
+
+        Router.go('/lazy-slow')
+        Router.go('/lazy-safe')
+        release()
+        await flush()
+
+        expect(document.querySelector('#marker-lazy-safe')).to.not.be.null
+        expect(document.querySelector('#marker-lazy-slow')).to.be.null
+    })
+
+    it('should stop mutual guard redirects instead of recursing', () => {
+        Router.use('/cycle-a', markerBlock('marker-cycle-a') as typeof Block)
+        Router.use('/cycle-b', markerBlock('marker-cycle-b') as typeof Block)
+        const stopCycle = Router.beforeEach(to => (to === '/cycle-a' ? '/cycle-b' : to === '/cycle-b' ? '/cycle-a' : true))
+
+        expect(() => Router.go('/cycle-a')).to.not.throw()
+
+        stopCycle()
+    })
+
+    it('should retry a lazy route after a failed load', async () => {
+        let calls = 0
+
+        Router.use('/lazy-retry', async () => {
+            calls += 1
+
+            if (calls === 1) {
+                throw new Error('first load fails')
+            }
+
+            return markerBlock('marker-lazy-retry') as typeof Block
+        })
+        Router.error(markerBlock('marker-error-retry') as typeof Block)
+
+        Router.go('/lazy-retry')
+        await flush()
+        expect(document.querySelector('#marker-error-retry')).to.not.be.null
+
+        Router.go('/lazy-retry')
+        await flush()
+        expect(document.querySelector('#marker-lazy-retry')).to.not.be.null
+    })
 })

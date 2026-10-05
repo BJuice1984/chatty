@@ -52,6 +52,7 @@ class Route {
     private blockClass: BlockClass | null = null
     private loader: BlockLoader | null = null
     private loading = false
+    private detached = false
     private params: Record<string, string> = {}
     private readonly pattern: RegExp
     private readonly paramKeys: string[]
@@ -90,6 +91,16 @@ class Route {
         this.block = null
     }
 
+    // уход с маршрута: блокирует монтирование опоздавших lazy-загрузок
+    detach() {
+        this.detached = true
+        this.leave()
+    }
+
+    attach() {
+        this.detached = false
+    }
+
     match(pathname: string) {
         return this.pattern.test(pathname)
     }
@@ -109,11 +120,14 @@ class Route {
     }
 
     async render(pathname: string): Promise<void> {
+        this.params = this.getParams(pathname)
+
         if (this.block) {
+            // повторный заход на тот же маршрут с новым значением параметра
+            this.block.setProps({ routeParams: this.params })
+
             return
         }
-
-        this.params = this.getParams(pathname)
 
         if (this.blockClass) {
             this.mount()
@@ -125,11 +139,20 @@ class Route {
             this.loading = true
 
             try {
-                this.blockClass = normalizeLoaded(await this.loader())
+                const loaded = await this.loader()
+
+                // маршрут покинули, пока loader был pending
+                if (this.detached) {
+                    return
+                }
+
+                this.blockClass = normalizeLoaded(loaded)
                 this.mount()
             } catch (error) {
-                this.options.onLazyError?.(error)
-                this.onRouteError?.(error)
+                if (!this.detached) {
+                    this.options.onLazyError?.(error)
+                    this.onRouteError?.(error)
+                }
             } finally {
                 this.loading = false
             }
@@ -148,11 +171,14 @@ class Route {
 
 class Router {
     private static __instance: Router
+    private static MAX_REDIRECTS = 10
     private routes: Route[] = []
     private currentRoute: Route | null = null
     private history = window.history
     private guards: RouteGuard[] = []
     private errorBlockClass: BlockClass | null = null
+    private errorBlock: Block | null = null
+    private redirectDepth = 0
     private notFoundPath = '/404'
     private currentParams: Record<string, string> = {}
 
@@ -210,13 +236,25 @@ class Router {
         const verdict = this.runGuards(pathname)
 
         if (verdict === false) {
+            this.redirectDepth = 0
+
             return
         }
 
         if (typeof verdict === 'string') {
-            if (verdict !== pathname) {
-                this.go(verdict)
+            if (verdict === pathname) {
+                return
             }
+
+            this.redirectDepth += 1
+
+            if (this.redirectDepth > Router.MAX_REDIRECTS) {
+                this.redirectDepth = 0
+
+                return
+            }
+
+            this.go(verdict)
 
             return
         }
@@ -230,11 +268,15 @@ class Router {
         }
 
         if (this.currentRoute && this.currentRoute !== route) {
-            this.currentRoute.leave()
+            this.currentRoute.detach()
         }
 
         this.currentRoute = route
         this.currentParams = route.getParams(pathname)
+        this.redirectDepth = 0
+        this.errorBlock?.destroy()
+        this.errorBlock = null
+        route.attach()
 
         void route.render(pathname)
     }
@@ -260,19 +302,21 @@ class Router {
             return
         }
 
-        if (this.currentRoute) {
-            this.currentRoute.leave()
-        }
+        this.currentRoute?.detach()
 
         this.currentRoute = notFoundRoute
         this.currentParams = {}
+        this.redirectDepth = 0
+        notFoundRoute.attach()
 
         void notFoundRoute.render(this.notFoundPath)
     }
 
     private renderError(error: unknown) {
         if (this.errorBlockClass) {
-            render(this.rootQuery, new this.errorBlockClass({ error }))
+            this.errorBlock?.destroy()
+            this.errorBlock = new this.errorBlockClass({ error })
+            render(this.rootQuery, this.errorBlock)
         }
     }
 
