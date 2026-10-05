@@ -49,6 +49,42 @@ handoff (EV-KERNEL-2): `renderNotFound` не destroy'ит error-блок; self-r
 `main@d79de677` — перед их запуском понадобятся собственные refreeze на
 `dev`-baseline (LOW из plan-review).
 
+## 2026-10-05 — ALK: stage 3 module-kernel-guard-v2 выполнен (r2, COMPLETE)
+
+**Что:** вслед за stage 2 (PR #17) выполнен stage 3 дорожной карты. Пакет
+`tasks/2026-09-28-module-kernel-guard-v2/` отрефризен r1→r2 на baseline
+`dev@8dffe6d` (per-attempt artifactPaths, leadOwned-фиксации план-пакета и
+журнала, dev-base в launchGate/overview); независимый plan-аудит — PASS с
+первого раунда; заморожен (lock, worker packet WS-MODULE-AUTH); исполнение
+авторизовано пользователем явно в сессии. Реализовано: типизированное модульное
+ядро (`src/core/module/{types,registry}.ts` — коллизии/циклы/неизвестные
+зависимости с явными ошибками, топологический bootstrap; `src/core/app.ts` —
+createApp-шов, подключение main.ts — stage 4); фича auth за границей
+(`src/features/auth/`: ports без единого импорта, store-слайс, контроллер за
+инжектированным портом с Practicum-адаптером над legacy AuthApi,
+Router.beforeEach-гард, feature-страницы login/register — legacy не удалён);
+guard v2 (features-ранг, cross-feature runtime = blocker / type-only =
+warning, dynamic import() в сканере, TRANSITIONAL_DEBT → owner-карта строго по
+handoff stage 2).
+
+**Проверено:** независимый ревьюер дал attempt-1 раунд с MEDIUM (named
+value-импорты из api классифицировались как type-only) — закрыт фиксом
+`d0b071b` (классификационная конвенция в контракте шапки, `* as` ужесточён до
+blocker, inline-`type` клаузы, задокументирован литеральный скоуп сканера;
+5 форм клауз проверены пробами); attempt 2 — **ACCEPTED**.
+`npm run verify` — 55 тестов (8 новых registry/app), guard `--all --strict` —
+**exit 0** (9 warnings, все acknowledged → stage 4), build PASS. Аудиты
+implementation / final-implementation / package(--strict) — PASS;
+workflow-state **COMPLETE** (rev 10), final-proof в
+`work/…/WS-MODULE-AUTH/final-proof.json`. Локальная модель не использовалась.
+
+**Открыто:** carry-forward в stage 4: задокументировать отсутствие rollback в
+`createApp` при подключении main.ts; пересмотреть ранг features/pages при
+сносе legacy; заполнить sourceRevision в следующей ревизии EV-MODULE-1; refreeze
+манифеста stage 4 на dev-baseline — и закрыть вопрос владения `src/main.ts`
+(сейчас он вне write-set ни одного этапа, при этом stage 4 сносит импортируемые
+им src/pages и src/controllers — LOW из plan-аудита).
+
 ## 2026-10-05 — VM smoke и handoff после вливания backend PR
 
 **Что:** пользователь подтвердил вливание PR с пакетами backend chats/WebSocket/files
