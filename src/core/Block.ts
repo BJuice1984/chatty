@@ -26,6 +26,9 @@ class Block<T extends Props = Props> {
     public children: Record<string, Block>
     private eventBus: () => EventBus
     private _element: HTMLElement | null = null
+    private _destroyed = false
+    // eslint-disable-next-line no-unused-vars
+    private _lifecycleHandlers: Array<[string, (...args: unknown[]) => void]> = []
     // private _meta: { props: Props }
 
     constructor(propsWithChildren: T = {} as T) {
@@ -94,14 +97,20 @@ class Block<T extends Props = Props> {
     }
 
     _registerEvents(eventBus: EventBus) {
-        eventBus.on(Block.EVENTS.INIT, this._init.bind(this))
-        eventBus.on(Block.EVENTS.FLOW_CDM, this._componentDidMount.bind(this))
-        eventBus.on(Block.EVENTS.FLOW_CDU, (...args: unknown[]) => {
-            const [oldProps, newProps] = args as [Props, Props]
+        this._lifecycleHandlers = [
+            [Block.EVENTS.INIT, this._init.bind(this)],
+            [Block.EVENTS.FLOW_CDM, this._componentDidMount.bind(this)],
+            [Block.EVENTS.FLOW_CDU, (...args: unknown[]) => {
+                const [oldProps, newProps] = args as [Props, Props]
 
-            this._componentDidUpdate(oldProps, newProps)
+                this._componentDidUpdate(oldProps, newProps)
+            }],
+            [Block.EVENTS.FLOW_RENDER, this._render.bind(this)],
+        ]
+
+        this._lifecycleHandlers.forEach(([event, handler]) => {
+            eventBus.on(event, handler)
         })
-        eventBus.on(Block.EVENTS.FLOW_RENDER, this._render.bind(this))
     }
 
     private _init() {
@@ -145,6 +154,25 @@ class Block<T extends Props = Props> {
 
         // this.props = { ...this.props, ...(nextProps as object) }
         Object.assign(this.props, nextProps)
+    }
+
+    destroy() {
+        if (this._destroyed) {
+            return
+        }
+
+        this._destroyed = true
+
+        Object.values(this.children).forEach(child => child.destroy())
+
+        this._removeEvents()
+
+        this._lifecycleHandlers.forEach(([event, handler]) => {
+            this.eventBus().off(event, handler)
+        })
+
+        this._element?.remove()
+        this._element = null
     }
 
     get element() {

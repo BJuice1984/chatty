@@ -4,6 +4,79 @@
 > Новые записи — сверху. Одна запись = одна завершённая порция работы:
 > что и почему сделали, где смотреть, чем проверили.
 
+## 2026-10-05 — ALK: stage 2 kernel-router-store выполнен (r6, COMPLETE)
+
+**Что:** по решению пользователя вернулись к дорожной карте («от простого к
+сложному», маленькие пакеты с полным ALK-циклом). Пакет
+`tasks/2026-09-28-kernel-router-store/` отрефризен с r1 (устаревший
+`main@d79de677`) до **r6** на baseline `dev@12d37cd` (merge backend PR #16).
+Refreeze-цепочка: r2 (baseline + launchGate + leadOwned для план-пакета и
+журнала) → r3 (закрытие findings аудита: base-фраза в developer-overview,
+квотирование `--grep "Router|Store|Block"`, guard-скрипт в WS
+forbiddenWrites) → r4 (compile-блокер: `artifactPaths` массив → dict
+result/review) → r5 (leadOwned += VM-smoke handoff-файл для ownership-дельты)
+→ r6 (per-attempt шаблоны `task-result-{attempt}.json` — конструктивное
+требование ALK 2.15 для rework-цикла: архив попытки обязан жить по пути,
+следующий путь обязан быть свободен). Пять раундов независимого plan-аудита
+(CHANGES_REQUIRED → PASS×4), lock и worker packet перегенерированы на каждой
+ревизии. ALK CLI 2.15.0 установлен в гитигнорный `.alk/venv`.
+
+**Реализация (WS-KERNEL):** Router — параметризованные маршруты (`/chat/:id`,
+`getParams()`, повторный заход обновляет `props.routeParams`), lazy-загрузка с
+error-fallback, явный 404-роут, guard-seams `beforeEach` (блокировка/редирект/
+отписка, кап глубины редиректов 10), `leave()`/`detach()` destroys блок и
+гасит опоздавшие lazy-резолвы. Store — типизированные слайсы `update<K>`,
+shallow-equality с пре-мутационным снапшотом (helpers.set мутирует),
+`withStore` с per-instance previousState и отпиской в `destroy()`. Block —
+детерминированный идемпотентный `destroy()` (off EventBus, каскад к children,
+снятие DOM-событий, удаление элемента). main.ts и контракты stage 1 не тронуты.
+
+**Проверено:** независимый frontend-ревьюер дал attempt 1 REWORK (2
+воспроизведённых MEDIUM: stale params при `/chat/1`→`/chat/2`; race lazy при
+уходе с маршрута — поздний mount затирал DOM; + LOW redirect-цикл, вакуумный
+тест); фиксы в `635c93b`, attempt 2 — **ACCEPTED** (scratch-прогон поведения:
+парамы, race, retry, циклы, `/5`→404). `npm run verify` — 47 тестов (было 23),
+guard `--all` — 0 блокеров (9 warnings = прежний состав), build PASS,
+ownership audit — 13 путей дельты классифицированы (0 unowned/forbidden).
+implementation/final-implementation/package(--strict) аудиты — PASS;
+workflow-state `COMPLETE` (state rev 15), final-proof
+`work/…/evidence/WS-KERNEL/final-proof.json`. Локальная модель не
+использовалась; авторизация исполнения выдана пользователем явно в сессии.
+
+**Открыто:** два остаточных INFO ревью переданы stage 3 через TRANSITIONAL_DEBT
+handoff (EV-KERNEL-2): `renderNotFound` не destroy'ит error-блок; self-redirect
+не сбрасывает redirectDepth. Манифесты stages 3–4 всё ещё pinned на
+`main@d79de677` — перед их запуском понадобятся собственные refreeze на
+`dev`-baseline (LOW из plan-review).
+
+## 2026-10-05 — VM smoke и handoff после вливания backend PR
+
+**Что:** пользователь подтвердил вливание PR с пакетами backend chats/WebSocket/files
+в `dev`. Для внутренней проверки поднят отдельный `chatty-vm` на KVM/libvirt:
+Ubuntu Server 24.04.5, виртуальный диск 25 GB, сеть libvirt `default` в режиме
+NAT. В VM клонирована ветка `feature/2026-09-28-backend-chats-ws-files`,
+установлены Docker Engine/Compose и Node.js 22; операторский `.env` с секретами
+хранится только в VM и в Git не попадает. Локальная модель в VM и в ревью не
+использовалась.
+
+**Проверено:** аппаратная виртуализация и libvirt; `docker run --rm
+hello-world`; `docker compose config --quiet`; запуск Compose со здоровыми API,
+PostgreSQL и RustFS; API `8000` доступен с хоста; RustFS `9000/9001` доступен
+только внутри VM, что соответствует закрытой topology; `npm ci`, `npm run verify`,
+own-mode Vite build и frontend-сервер на `3000`, доступный с хоста. Это bounded
+внутренний smoke, а не production/public release.
+
+**Открыто:** полный frontend-to-owned-backend cutover ещё не выполнен. Текущий
+legacy `src/api/AuthApi.ts` использует `/auth/signin`, `/auth/signup`,
+`/auth/user`, тогда как собственный backend предоставляет `/auth/login`,
+`/auth/register`, `/auth/me`; собственные chats/files/WS adapters также остаются
+следующей frontend-задачей. Публичное размещение, TLS/reverse-proxy,
+production-cookie policy, firewall/backups и local-model gate не закрыты.
+Перед следующим ALK-run нужно обновить локальный `dev` после merge: текущие
+локальные refs в этом workspace ещё показывают cached `origin/dev@f56318c`, а
+попытка `git fetch origin dev` не завершилась из-за сетевого доступа. Подробный
+handoff: `docs/progress/2026-10-05-handoff.md`.
+
 ## 2026-10-01 — ALK: backend chats ownership refreeze
 
 **Что:** пакет `tasks/2026-09-28-backend-chats-ws-files/` переведён на
