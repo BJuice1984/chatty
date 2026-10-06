@@ -1,7 +1,8 @@
 # Implementation plan
 
-1. Consume and record the stage 6 file contract: ownership, file_id, content type, size, storage and authorization.
-2. Add document/chunk models, schemas, repository/service and migration with ready/processing/failed states.
-3. Implement deterministic parsers for `.docx`, text-PDF and `.xlsx`; isolate `.doc` conversion behind a bounded subprocess timeout and explicit failure.
-4. Add chunking/embedding provider seams, admin ingestion endpoint and membership-scoped top-k retrieval with file_id traceability.
-5. Add fixed fixtures, parser/unit/integration tests and complete `rag-checklist.md` for Ollama/pgvector/manual retrieval evidence.
+1. Consume and record the stage 6 file contract: ownership, file_id, content type, size, storage and authorization. Ingestion accepts only `status='ready'` files and reads bytes through the existing `ObjectStorage` seam.
+2. Add document/chunk models, schemas, repository/service and migration `003_documents_chunks` with ready/processing/failed states. Chunk embeddings persist as portable JSON float vectors; top-k cosine similarity runs in the service after a chat-scoped candidate query (pgvector-native indexing is an explicit hardening carry-forward).
+3. Implement deterministic parsers for `.docx`, text-PDF and `.xlsx`; isolate `.doc` conversion behind a bounded subprocess (LibreOffice) with an injectable command seam and explicit failure states.
+4. Add chunking/embedding provider seams (local Ollama endpoint only, no cloud fallback), an admin ingestion endpoint (`require_roles('admin')`) and membership-scoped top-k retrieval with file_id traceability. Mount the domain through `register_domain_router` called from `backend/app/api/v1/endpoints/__init__.py`; `main.py` and `router.py` stay untouched. `register_domain()` re-raises a cold `import app.api.v1.router` with an explicit message to import `app.main` instead.
+5. Add parser dependencies (`python-docx`, `pypdf`, `openpyxl`; `httpx` to runtime) to `backend/pyproject.toml`, env-driven RAG settings in `backend/app/ingestion/config.py` (`core/config.py` untouched) and the five operator variables in `backend/.env.example`.
+6. Add fixed binary fixtures, parser/unit/integration tests (admin gate, member scope, file_id traceability, failed-document exclusion, mounted routes) and complete `rag-checklist.md`; a missing Ollama endpoint is recorded `UNAVAILABLE`, never PASS.
