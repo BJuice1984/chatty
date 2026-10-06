@@ -1,9 +1,10 @@
-import { SearchUserData } from '../../api/UserApi.ts'
-import ChatsController from '../../controllers/ChatsController.ts'
-import UserController from '../../controllers/UserController.ts'
+// Форма добавления пользователя в чат (stage 4): поиск и добавление —
+// колбэк из пропсов (фича chats через Messenger), без импорта контроллеров.
+
 import Block from '../../core/Block.ts'
 import { emptyValidationMessage } from '../../utils/constants.ts'
 import { emptyValidator } from '../../utils/validators.ts'
+import type { SearchUserData } from '../../utils/types.ts'
 import { FormButton, FormInputs } from '../form/form.ts'
 import template from './form-container.hbs'
 
@@ -13,6 +14,8 @@ interface FormContainerProps {
     isShown: boolean
     inputs: FormInputs[]
     buttons: FormButton[]
+    // eslint-disable-next-line no-unused-vars
+    onAddUser?: (login: SearchUserData, chatId: number) => Promise<void>
 }
 
 export class FormContainer extends Block {
@@ -33,12 +36,7 @@ export class FormContainer extends Block {
                     classType: 'primary',
                     type: 'submit',
                     handleSubmitClick: async (value: SearchUserData) => {
-                        const users = await UserController.searchUserByLogin(value)
-
-                        if (users) {
-                            await ChatsController.addUsersToChat(users, props.selectedChat)
-                            void ChatsController.getChatUsers(props.selectedChat)
-                        }
+                        await props.onAddUser?.(value, props.selectedChat)
                     },
                 },
             ],

@@ -1,4 +1,6 @@
-import Block from '../../core/Block.ts'
+// Feature-страница профиля (stage 4): замена src/pages/profile.
+
+import Block from '../../../../core/Block.ts'
 import template from './profile.hbs'
 import {
     emptyValidationMessage,
@@ -6,19 +8,17 @@ import {
     mailValidationMessage,
     nameValidationMessage,
     phoneValidationMessage,
-} from '../../utils/constants.ts'
+} from '../../../../utils/constants.ts'
 import {
     emptyValidator,
     loginValidator,
     mailValidator,
     nameValidator,
     phoneValidator,
-} from '../../utils/validators.ts'
-import AuthController from '../../controllers/AuthController.ts'
-import { withStore } from '../../utils/Store.ts'
-import UserController from '../../controllers/UserController.ts'
-import { ChangeUserData } from '../../api/UserApi.ts'
-import { Button, Input } from '../../utils/types.ts'
+} from '../../../../utils/validators.ts'
+import { withStore } from '../../../../utils/Store.ts'
+import { Button, ChangeUserData, Input } from '../../../../utils/types.ts'
+import { getProfileController } from '../../controller.ts'
 
 interface ProfilePageUser {
     first_name: string
@@ -40,6 +40,9 @@ interface ProfilePageProps {
 class ProfilePageBase extends Block<ProfilePageProps> {
     constructor(propsFromStore: { user: ProfilePageUser }) {
         super({
+            onUserAvatar: (data: FormData) => {
+                void getProfileController().changeUserAvatar(data)
+            },
             user: {
                 first_name: propsFromStore.user.first_name,
                 second_name: propsFromStore.user.second_name,
@@ -93,7 +96,7 @@ class ProfilePageBase extends Block<ProfilePageProps> {
                     classType: 'disabled',
                     type: 'submit',
                     handleSubmitClick: (value: ChangeUserData) => {
-                        void UserController.changeUserInfo(value)
+                        void getProfileController().changeUserInfo(value)
                     },
                 },
                 {
@@ -101,7 +104,7 @@ class ProfilePageBase extends Block<ProfilePageProps> {
                     classType: 'secondary',
                     type: 'button',
                     onClick: () => {
-                        void AuthController.logout()
+                        void getProfileController().logout()
                     },
                 },
             ],

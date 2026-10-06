@@ -1,5 +1,7 @@
-import ChatsController from '../../../controllers/ChatsController.ts'
-import UserController from '../../../controllers/UserController.ts'
+// Загрузка файлов (stage 4): поведение через пропсы — компонент не знает,
+// кто обрабатывает загрузку (фича profile для аватара пользователя,
+// фича chats для аватара чата).
+
 import Block from '../../../core/Block.ts'
 import template from './inputFile.hbs'
 
@@ -7,11 +9,16 @@ interface InputFileProps {
     name: string
     type: string
     extraClass: string
+    // eslint-disable-next-line no-unused-vars
+    onUserFile?: (data: FormData) => void
+    // eslint-disable-next-line no-unused-vars
+    onChatFile?: (data: FormData) => void
     [key: string]: unknown
 }
 
 export class InputFile extends Block<InputFileProps> {
     private formData: FormData
+
     constructor(props: InputFileProps) {
         super({
             ...props,
@@ -23,12 +30,12 @@ export class InputFile extends Block<InputFileProps> {
 
                     if (selectedFile && fileInput.id === 'user') {
                         this.formData.append(props.name, selectedFile)
-                        void UserController.changeUserAvatar(this.formData)
+                        props.onUserFile?.(this.formData)
                         this.formData.delete(props.name)
                     } else if (selectedFile && containsNumber) {
                         this.formData.append(props.name, selectedFile)
                         this.formData.append('chatId', fileInput.id)
-                        void ChatsController.changeChatAvatar(this.formData)
+                        props.onChatFile?.(this.formData)
                         this.formData.delete(props.name)
                     }
                 },

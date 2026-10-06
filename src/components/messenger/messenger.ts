@@ -1,8 +1,10 @@
-import { ChatUser } from '../../api/ChatsApi.ts'
-import ChatsController from '../../controllers/ChatsController.ts'
+// Мессенджер выбранного чата (stage 4): удаление чата и добавление пользователя —
+// колбэки из пропсов (фича chats); отправка сообщений идёт через сохранённый
+// MessagesController (stage 1 compatibility-адаптер, controllers ниже components).
+
 import MessagesController, { Message } from '../../controllers/MessagesController.ts'
 import Block from '../../core/Block.ts'
-import { Button, Input } from '../../utils/types.ts'
+import { Button, Input, SearchUserData } from '../../utils/types.ts'
 import { AppState, withStore } from '../../utils/Store.ts'
 import { emptyValidationMessage } from '../../utils/constants.ts'
 import { emptyValidator } from '../../utils/validators.ts'
@@ -10,10 +12,21 @@ import template from './messenger.hbs'
 
 interface MessengerProps {
     selectedChat: number
-    selectedChatUsers: ChatUser[]
+    selectedChatUsers: ChatListUserEntry[]
     messages: Message[]
     inputs: Input[]
     buttons: Button<{ message: string }>[]
+    // eslint-disable-next-line no-unused-vars
+    onDeleteChat?: (id: number) => void
+    // eslint-disable-next-line no-unused-vars
+    onAddUser?: (login: SearchUserData, chatId: number) => Promise<void>
+    [key: string]: unknown
+}
+
+interface ChatListUserEntry {
+    id: number
+    avatar: string
+    onClick?: () => void
     [key: string]: unknown
 }
 
@@ -24,11 +37,13 @@ class MessengerBase extends Block {
             selectedChatUsers: propsFromStore.selectedChatUsers,
             messages: propsFromStore.messages,
             chatInfo: propsFromStore.chatInfo,
+            onDeleteChat: propsFromStore.onDeleteChat,
+            onAddUser: propsFromStore.onAddUser,
             formContainerExtraClass: 'messenger__header-form-container',
             headerButtons: [
                 {
                     extraClass: 'close',
-                    handleClick: () => ChatsController.delete(propsFromStore.selectedChat),
+                    handleClick: () => propsFromStore.onDeleteChat?.(propsFromStore.selectedChat),
                 },
                 {
                     extraClass: 'cross',

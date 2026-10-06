@@ -10,7 +10,7 @@
               {{/each}}
             </div>
             <div class="messenger__header-buttons-container">
-              {{{ FormContainer ref="addUser" formContainerExtraClass=this.formContainerExtraClass selectedChat=this.selectedChat }}}
+              {{{ FormContainer ref="addUser" formContainerExtraClass=this.formContainerExtraClass selectedChat=this.selectedChat onAddUser=this.onAddUser }}}
               {{#each headerButtons}}
                 {{{ headerButton extraClass=this.extraClass handleClick=this.handleClick }}}
               {{/each}}

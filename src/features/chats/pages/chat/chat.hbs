@@ -14,15 +14,15 @@
           {{{ ChatListCreate ref="create" inputs=this.inputs buttons=this.buttons }}}
           {{#each chats}}
             {{#if this.avatar }}
-              {{{ User id=this.id last_message=this.last_message title=this.title unread_count=this.unread_count src=this.avatar }}}
+              {{{ User id=this.id last_message=this.last_message title=this.title unread_count=this.unread_count src=this.avatar onSelect=../this.onSelectChat onChatFile=../this.onChatAvatar }}}
             {{else}}
-              {{{ User id=this.id last_message=this.last_message title=this.title unread_count=this.unread_count src=null }}}
+              {{{ User id=this.id last_message=this.last_message title=this.title unread_count=this.unread_count src=null onSelect=../this.onSelectChat onChatFile=../this.onChatAvatar }}}
             {{/if}}
           {{/each}}
         </ul>
           {{{ BottomBar }}}
     </div>
     <div class="chat__container-chats">
-        {{{ Messenger }}}
+        {{{ Messenger onDeleteChat=this.onDeleteChat onAddUser=this.onAddUser }}}
     </div>
 </section>

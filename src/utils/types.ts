@@ -17,3 +17,73 @@ export interface Button<T = unknown> {
     // eslint-disable-next-line no-unused-vars
     handleSubmitClick?: (value: T) => void
 }
+
+// DTO-типы домена (stage 4): определяются здесь, НЕ реэкспортируются из api/ —
+// utils не может импортировать вверх (layer-direction). Фичи и компоненты
+// берут контракты здесь; legacy api-классы до сноса в stage 7 используют свои.
+
+export interface ChatInfo {
+    id: number
+    title: string
+    avatar: string
+    unread_count: number
+    last_message?: {
+        time: string
+        content: string
+    }
+    [key: string]: unknown
+}
+
+export interface ChatUser {
+    id: number
+    first_name: string
+    second_name: string
+    display_name: string
+    login: string
+    email: string
+    phone: string
+    avatar: string
+    [key: string]: unknown
+}
+
+export interface CreateChatData {
+    title: string
+    [key: string]: unknown
+}
+
+export interface DeleteChatData {
+    chatId: number
+    [key: string]: unknown
+}
+
+export interface TokenResponse {
+    token: string
+    [key: string]: unknown
+}
+
+export interface AddChatUsersData {
+    users: number[]
+    chatId: number
+    [key: string]: unknown
+}
+
+export interface RemoveChatUsersData {
+    users: number[]
+    chatId: number
+    [key: string]: unknown
+}
+
+export interface SearchUserData {
+    login: string
+    [key: string]: unknown
+}
+
+export interface ChangeUserData {
+    first_name: string
+    second_name: string
+    display_name: string
+    login: string
+    email: string
+    phone: string
+    [key: string]: unknown
+}
