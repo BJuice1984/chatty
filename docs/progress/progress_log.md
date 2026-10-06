@@ -4,6 +4,61 @@
 > Новые записи — сверху. Одна запись = одна завершённая порция работы:
 > что и почему сделали, где смотреть, чем проверили.
 
+## 2026-10-06 — ALK: stage 9 backend-bot выполнен (r3, COMPLETE)
+
+**Что:** открыт bot-контур дорожной карты — durable AI bot поверх контрактов
+stage 6/8. Пакет `tasks/2026-09-28-backend-bot/` отрефризен r1→r3 за ДВА
+независимых аудит-раунда (CHANGES_REQUIRED → фокусный PASS): r2 — база
+`dev@e33c699` (PR #21, stage 8), сверка write-set с реальным деревом
+(три дыры r1: точка монтирования `endpoints/__init__.py`, репозиторий
+`repositories/bot_runs.py`, `.env.example` под `CHATTY_BOT_*`;
+`pyproject.toml` — forbidden: ноль новых зависимостей), per-attempt
+artifactPaths, воспроизводимая validation-команда; r3 — закрытие находок
+раунда 1: **кросс-чат дыра** (чужой `message_id` мог протащить контент чата B
+в ответ чата A — теперь 4 проверки source-message: 404/400/400/409),
+**противоречие duplicate-delivery vs crash-resume** ( claim =
+условный CAS `queued→running`, гонка первого создания — через unique-key
+IntegrityError, зависший ряд ре-клеймится только после окна
+`CHATTY_BOT_STALE_AFTER_SECONDS` на инжектируемых часах, бюджет попыток —
+явный 409), bootstrap бот-пользователя (обычный аккаунт через публичный
+auth API), FK-пины `bot_runs`. Freeze: lock `4d1e7393…`, worker packet
+WS-BE-BOT; исполнение авторизовано пользователем явно.
+
+**Реализация (WS-BE-BOT):** модель `BotRun` (`unique(message_id)`,
+queued/running/succeeded/failed, attempt, error_kind, трассируемость
+response/attachment) + миграция 004 зеркально с пинами FK; пакет `app/bot`
+(env-настройки, локальный Ollama-only `/api/chat`-провайдер с injectable
+transport и явными transport/HTTP/timeout/malformed-ошибками, промпт-граница
+только system+chat-scoped-контекст+source); репозиторий с тремя CAS-клеймами
+(fresh/stale/failed); сервис — валидация source-message, is_ai-гейт,
+бот-пользователь по email с входом через `ChatService.add_member`, RAG за
+инжектируемым швом (`DocumentService.search`, прокинут embedding-seam),
+ответ публикуется через `MessageService.create` (авторизация вложения —
+точка принуждения контракта, не обходится), top-hit `file_id`; endpoint
+`POST /chats/{chat_id}/bot/runs` через seam `register_domain_router` —
+main.py/router.py/ws не тронуты. WS-хук триггера/ broadcast — честный
+carry-forward в AI-UI.
+
+**Проверено:** независимый ревьюер дал attempt 1 **ACCEPTED** с первого раза
+(исполнял код в контейнере: оба гейта воспроизведены — 99 и 48 passed;
+11 payload-проб провайдера — stage-8 RV1-класс закрыт; 6 thread-race проб
+файлового sqlite — ровно один ответ при гонках; пробы авторизации — ноль
+чужого контента в промптах doc-less соседнего чата; миграция сверена с
+моделью по PRAGMA). 0 HIGH/MEDIUM; LOW RV1 (дубль-ответ в миллисекундном
+окне крэша между коммитами) и RV2 (нет кросс-валидации timeout/stale-окна
+при операторской переконфигурации) — записаны carry-forward в hardening.
+Изолированный docker-гейт `backend/verify.sh` — **99 тестов** (51 базовых +
+48 stage-9: 31 unit, 17 integration), alembic head `004_bot_runs`; фокусная
+команда манифеста — 48 passed; **BOT-OLLAMA — честно UNAVAILABLE** (ollama
+не установлен, 127.0.0.1:11434 refused). Аудиты implementation (PASS) /
+ownership (17/17 workstream-owned, 0 forbidden) / final-implementation /
+package **--strict** — PASS; workflow-state **COMPLETE** (rev 9).
+
+**Открыто:** live-смоук с поднятым Ollama (`qwen3:14b`); RV1-фикс через
+`client_message_id='bot-run-{run.id}'` и RV2-гард конфигурации — кандидаты в
+hardening; WS-хук авто-триггера и broadcast ответов — в AI-UI. Далее по
+дорожной карте: AI-UI, hardening/docs.
+
 ## 2026-10-06 — ALK: stage 8 backend-docs-rag выполнен (r3, COMPLETE)
 
 **Что:** открыт RAG-контур дорожной карты — document ingestion и chat-scoped
