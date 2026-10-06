@@ -4,6 +4,56 @@
 > Новые записи — сверху. Одна запись = одна завершённая порция работы:
 > что и почему сделали, где смотреть, чем проверили.
 
+## 2026-10-06 — ALK: stage 8 backend-docs-rag выполнен (r3, COMPLETE)
+
+**Что:** открыт RAG-контур дорожной карты — document ingestion и chat-scoped
+retrieval на бэкенде. Пакет `tasks/2026-09-28-backend-docs-rag/` отрефризен
+r1→r3 за ДВА независимых аудит-раунда (CHANGES_REQUIRED → фокусный PASS):
+r2 — база `dev@ac50c6f` (PR #20, stage 7), сверка write-set с реальным деревом
+(две дыры r1: `backend/pyproject.toml` под парсерные зависимости и
+`backend/app/api/v1/endpoints/__init__.py` под монтирование домена),
+per-attempt artifactPaths, honest-заявления среды (compose — обычный
+postgres:16-alpine; pgvector — записанный carry-forward, эмбеддинги —
+портативные JSON-векторы + cosine top-k в сервисе); r3 — закрытие находок
+раунда 1 (сортировка planFiles, воспроизводимая validation-команда,
+`.env.example` в write-set, cold-import guard). Freeze: lock
+`0e53a6a2…`, worker packet WS-BE-RAG; исполнение авторизовано пользователем
+явно.
+
+**Реализация (WS-BE-RAG):** модели Document/DocChunk (ready/processing/failed
+с явными error_kind, миграция 003 зеркально); ingestion-пакет —
+детерминированные парсеры docx/text-PDF/xlsx, bounded `.doc`-конвертер
+(soffice-сабпроцесс с жёстким таймаутом и инжектируемой командой),
+word-aware чанкер, embeddings-шов Ollama-only без cloud fallback; сервис
+ingest (только `require_roles('admin')`) + membership-scoped top-k retrieval
+с file_id-трейсируемостью и детерминированным порядком; монтирование через
+шов `register_domain_router` из `endpoints/__init__.py` — main.py/router.py
+не тронуты, холодный `import app.api.v1.router` гасится явным guard-сообщением;
+5 операторских CHATTY_RAG_* в `backend/.env.example`. Фикстуры-бинарники
+сгенерированы контейнером + хостовым soffice (sample.doc — настоящий OLE2).
+
+**Проверено:** независимый ревьюер дал attempt 1 **REWORK** (MEDIUM RV1,
+воспроизведён в контейнере: malformed embedding-payload пробивал мимо
+EmbeddingError → HTTP 500 и документ навсегда в processing; +2 INFO) —
+закрыто в attempt 2: float-конвертация под try/except, отказ пустых
+векторов, length-guard'ы в обоих путях сервиса (раньше `zip` молча мог дать
+ready без чанков), сквозной регрессионный тест с провайдером-нарушителем;
+attempt 2 **ACCEPTED** (ревьюер независимо воспроизвёл RV1 как закрытый).
+Изолированный docker-гейт `backend/verify.sh` — **51 тест** (было 10 на
+базе), alembic head `003_documents_chunks`; живая `.doc`-конвертация
+хостовым LibreOffice 7.3.7.2 — 3.06 с при границе 30 с; **RAG-OLLAMA —
+честно UNAVAILABLE** (ollama не установлен, 127.0.0.1:11434 refused).
+Аудиты implementation (attempt 2 PASS) / ownership (28/28 workstream-owned,
+0 forbidden) / final-implementation / package **--strict** — PASS
+(архивный FAIL-аудит попытки 1 выносился из каталога на время скана —
+прецедент stages 4/7); workflow-state **COMPLETE** (rev 12).
+
+**Открыто:** live-смоук с поднятым Ollama (нужна нативная установка —
+сейчас UNAVAILABLE); pgvector-носители/индексация — carry-forward в
+hardening; processing-окно при жёстком крэше процесса задокументировано
+(RV3, поиск исключает, ре-ingest восстанавливает). Далее по дорожной карте:
+bot, AI-UI, hardening/docs.
+
 ## 2026-10-06 — ALK: stage 7 api-cutover выполнен (r4, COMPLETE)
 
 **Что:** завершён cutover-этап frontend-контура дорожной карты — фронтенд
