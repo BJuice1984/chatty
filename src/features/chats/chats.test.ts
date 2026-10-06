@@ -1,7 +1,6 @@
 import { expect } from 'chai'
 import sinon from 'sinon'
 import { JSDOM } from 'jsdom'
-import UsersAPI from '../../api/UserApi.ts'
 import { ChatsFeatureController } from './controller.ts'
 import { chatsSlice } from './store.ts'
 import type { ChatsPort } from './ports.ts'
@@ -20,6 +19,7 @@ function makePort(overrides: Partial<ChatsPort> = {}): ChatsPort {
         removeUsers: async () => undefined,
         getChatUsers: async () => [],
         changeChatAvatar: async () => ({ avatar: '' }),
+        searchUsers: async () => [],
         ...overrides,
     }
 }
@@ -70,13 +70,14 @@ describe('chats feature boundary', () => {
     })
 
     it('should add users by login through the port and refresh both lists', async () => {
-        const searchStub = sinon.stub(UsersAPI, 'searchUsers').resolves([
+        const searchUsers = sinon.stub().resolves([
             { id: 101, login: 'ada' },
-        ] as never)
+        ])
         const addUsers = sinon.stub().resolves()
         const getChatUsers = sinon.stub().resolves([])
         const fetchChats = sinon.stub().resolves([])
         const port = makePort({
+            searchUsers,
             addUsers,
             getChatUsers,
             fetchChats,
@@ -88,16 +89,12 @@ describe('chats feature boundary', () => {
             connect: async () => undefined,
         })
 
-        try {
-            await controller.addUsersByLogin({ login: 'ada' }, 7)
+        await controller.addUsersByLogin({ login: 'ada' }, 7)
 
-            expect(searchStub.calledWith({ login: 'ada' })).to.be.true
-            expect(addUsers.calledOnce).to.be.true
-            expect(addUsers.firstCall.args[0]).to.deep.eq({ users: [101], chatId: 7 })
-            expect(getChatUsers.calledWith(7)).to.be.true
-            expect(fetchChats.calledOnce).to.be.true
-        } finally {
-            searchStub.restore()
-        }
+        expect(searchUsers.calledWith({ login: 'ada' })).to.be.true
+        expect(addUsers.calledOnce).to.be.true
+        expect(addUsers.firstCall.args[0]).to.deep.eq({ users: [101], chatId: 7 })
+        expect(getChatUsers.calledWith(7)).to.be.true
+        expect(fetchChats.calledOnce).to.be.true
     })
 })

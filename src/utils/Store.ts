@@ -1,8 +1,7 @@
 import { set } from '../helpers/helpers.ts'
 import EventBus from '../core/EventBus.ts'
 import Block from '../core/Block.ts'
-import { Message } from '../controllers/MessagesController.ts'
-import type { ChatUser } from './types.ts'
+import type { ChatUser, Message } from './types.ts'
 
 
 export enum StoreEvents {

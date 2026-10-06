@@ -1,9 +1,9 @@
 {
-    "revision": 1,
+    "revision": 2,
     "id": "SPEC-API-CUTOVER",
     "title": "Practicum and owned-backend frontend cutover",
     "intent": "Compose feature modules through explicit Practicum/own adapters and a chat WebSocket gateway while proving both modes.",
     "requirements": [{"id": "REQ-API-CUTOVER", "title": "Two-mode frontend composition", "description": "Wire the feature modules to Practicum and owned API/WS adapters, register the composition root and shared message renderer, and prove mode-specific auth/chat/file flows before cutover.", "priority": "P0", "source": "tasks/2026-09-28-ai-messenger-master-plan.md:98-111", "acceptanceIds": ["AC-CUTOVER-1", "AC-CUTOVER-2"], "evidenceIds": ["EV-CUTOVER-1", "EV-CUTOVER-2"], "owner": "WS-API-CUTOVER"}],
-    "constraints": ["Use feature ports; no backend business logic in UI.", "Do not edit stage 3 guard or stage 4 legacy deletion paths.", "Both modes remain explicitly selectable.", "No production promotion."],
+    "constraints": ["Use feature ports; no backend business logic in UI.", "Stage 3 guard rules and stage 3/4 feature domain contracts (auth guard/module/store/ports, chats/profile module/store) stay untouched; the only port edit is the chats user-search method that stage 4 borrowed from legacy UserApi.", "Legacy src/api and MessagesController deletion is owned by this stage and happens only after replacement adapters compile.", "Both modes remain explicitly selectable.", "No production promotion."],
     "nonGoals": ["backend implementation", "RAG", "AI bot", "reconnect hardening", "production deployment"]
 }

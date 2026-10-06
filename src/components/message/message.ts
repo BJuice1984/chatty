@@ -2,8 +2,12 @@ import Block from '../../core/Block.ts'
 import template from './message.hbs'
 
 interface MessageProps {
-    validateMessage: string
-    show: boolean
+    content: string
+    user_id: number
+    isMine?: boolean
+    // вычисляемый безопасный URL вложения (env.filesUrl/file_url через joinUrl)
+    fileUrl?: string
+    [key: string]: unknown
 }
 
 export class Message extends Block {

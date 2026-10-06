@@ -4,6 +4,58 @@
 > Новые записи — сверху. Одна запись = одна завершённая порция работы:
 > что и почему сделали, где смотреть, чем проверили.
 
+## 2026-10-06 — ALK: stage 7 api-cutover выполнен (r4, COMPLETE)
+
+**Что:** завершён cutover-этап frontend-контура дорожной карты — фронтенд
+переведён с legacy `src/api`/`MessagesController` на режимные адаптеры за
+неизменными фича-портами. Пакет `tasks/2026-09-28-api-cutover/` отрефризен
+r1→r4 за ТРИ независимых аудит-раунда (CHANGES_REQUIRED → PASS → фокусный
+PASS): r2 — база `dev@66b2d44` (PR #19, stage 4), reconciliation write-set с
+post-stage-4 деревом (main.ts остался readOnly+forbidden, композиция — только
+`features/index.ts`), снос 5 файлов `src/api` + `MessagesController` со своими
+адаптерами, `ChatsPort.searchUsers` (перевод прямого legacy-вызова в контракт),
+`Message`-DTO в `utils/types.ts`; r3 — маппинг креденциалов own-режима
+(login→email, UserResponse→AuthUser с дефолтами) и console-level own-смоук
+(валидаторы форм остаются калиброванными под Практикум — записанное
+ограничение), `messenger.hbs` в write-set (URL вложения идёт через хэш
+хелпера), `csrf.test.ts`; r4 — однопредложенческие уточнения (матрица
+поддержки own-chats, PR-boundary, `npm run dev -- --mode own`).
+
+**Реализация (WS-API-CUTOVER):** адаптеры `features/{auth,chats,profile}/api/
+{practicum,own,index}.ts` (выбор по `env.mode`; practicum — endpoint'ы 1:1 с
+legacy; own — реальный контракт: register/login/refresh/logout/me с CSRF
+double-submit `chatty_csrf`/`X-CSRF-Token` и refresh-retry-once на 401,
+chats create/list/members с токен-сентинелом для cookie-auth WS, остальные
+операции — явные unsupported-ошибки); WS-шлюз `features/chats/ws/
+{gateway,practicum,own}.ts` вместо MessagesController (события message/history
+с маппингом created_at→time и file_id→filesUrl, единственный reverse за
+`appendMessages`, наблюдаемое `closeAllChatSockets`); `sendMessage` — пропсами
+через страницу чата (компоненты больше не импортируют ни controllers, ни
+фичи); URL вложения — через хэш Message-хелпера в рендерер; последняя запись
+`TRANSITIONAL_DEBT` (Store.ts) снята — карта долга пуста.
+
+**Проверено:** независимый ревьюер дал attempt 1 **REWORK** (2 HIGH:
+двойной reverse own-истории — воспроизведено исполнением кода; `fileUrl` не
+прокинут в хэш хелпера — фича была мёртвым кодом; + 2 MEDIUM: вакуумный
+signup-тест, AC-гейт при UNAVAILABLE-смоуке; LOW/INFO) — всё закрыто в
+attempt 2, **ACCEPTED** (ревьюер исполнял реальный код: desc-история →
+возрастание, эхо в конец; трассировка CSRF-точек и refresh-логики).
+`npm run verify` — **88 тестов** (было 64; +24: csrf/api/ws), guard `--all
+--strict` — exit 0, **карта долга пуста**, build PASS, ownership 40/40,
+аудиты implementation/final-implementation/package(--strict) — PASS;
+workflow-state **COMPLETE**. Practicum-эндпоинты живы (401/400 пробы), полный
+логин-смоук и own-бэкенд в этой среде недоступны — честно UNAVAILABLE.
+Локальная модель не использовалась; исполнение авторизовано пользователем явно.
+
+**Открыто:** runtime-смоук обоих режимов (нужны курс-креды/поднятый own-бэкенд)
+и LOW-хвост stage 4 (слабый тест поиска, мёртвая isProtectedRoute-ветка) —
+кандидаты в hardening-этап. Новый INFO-долг (найден ревьюером stage 7,
+унаследован из stage 4 байт-в-байт): замыкание кнопки отправки в messenger
+читает `selectedChat` из конструкторных пропсов, а withStore обновляет
+внутренние — отправка сразу после холодного выбора чата уходит с `undefined`
+(фикс — чтение `this.props` в обработчике). Далее по дорожной карте: RAG,
+bot, AI-UI, hardening/docs.
+
 ## 2026-10-05 — ALK: stage 2 kernel-router-store выполнен (r6, COMPLETE)
 
 **Что:** по решению пользователя вернулись к дорожной карте («от простого к
@@ -113,7 +165,7 @@ blocker, inline-`type` клаузы, задокументирован литер
 `npm run verify` — 55 тестов (8 новых registry/app), guard `--all --strict` —
 **exit 0** (9 warnings, все acknowledged → stage 4), build PASS. Аудиты
 implementation / final-implementation / package(--strict) — PASS;
-workflow-state **COMPLETE** (rev 10), final-proof в
+workflow-state **COMPLETE** (state rev 10), final-proof в
 `work/…/WS-MODULE-AUTH/final-proof.json`. Локальная модель не использовалась.
 
 **Открыто:** carry-forward в stage 4: задокументировать отсутствие rollback в
@@ -179,7 +231,7 @@ read-only audit; локальная модель в review не использо
 **Проверено:** external audit `PASS`, `plan check --require-completeness`,
 `plan verify` с lock, acceptance/refs checks и task compile — PASS. Manifest
 digest: `50c2f0d20420172199a8f2451dae8bc88ce3ada72bb3e59d0ff636ee99191129`;
-packet set hash: `1394f3747547df8c8b324c7040a79116db279909b0fc7babc4b072db11b21130`.
+packet set hash: `1394f3747547df8c8b324c704a79116db279909b0fc7babc4b072db11b21130`.
 
 **Открыто:** execution authorization получена, `WS-BE-CHAT` запущен на ветке
 `feature/2026-09-28-backend-chats-ws-files`; далее — реализация domain-кода,
@@ -205,16 +257,16 @@ XMLHttpRequest, не fetch).
 **Что:** после compile-blocker revision 2 создан отдельный пакет
 `tasks/2026-09-28-backend-skeleton-r3/`; revision 2 и её lock сохранены без
 изменений. Исправлен только формат `workstreams[0].artifactPaths`: ALK 2.15
-получает шаблоны `result`/`review` под прежним evidence-root. Обновлены
+получает шаблоны `result`/`review` под прежний evidence-root. Обновлены
 package-local ссылки, выполнены независимый повторный audit
 `READY_TO_FREEZE` и `plan.lock.json` revision 3.
 
 **Проверено:** manifest digest
-`2ffcc9757346065348353c7524ba39c39472dca1d0731eb2b9ba60099e0d1710`,
+`2ffcc9757346065348353c7524ba39c39472dca1d0731eb2b9ba60099d0d171e`,
 `lock-create` (`filesystemVerified: true`), `plan check`, acceptance, refs и
 `plan verify` — PASS. Standard worker packet compiled with digest
 `1576ebab8f990ea5d4aec385c35ec96e29bcbd1deb131f80d457b95f0af80cf3`, compact
-packet (`4k-strict`) — `e5bc9774052812288c4a8b80cbe78b468f574400cd7cad4a9173f5b47d936456`.
+packet (`4k-strict`) — `e5bc9774052812288d4a8b80cbe78b468f574400dc7dad9a9170f5b47d936456`.
 `plan delta` r2→r3 подтвердил отсутствие изменений требований, acceptance,
 evidence, budgets, gates и write-set. `audit package --strict` остаётся
 `REVIEW_REQUIRED` до появления implementation/final-audit receipts — это ожидаемо.
@@ -251,14 +303,14 @@ runtime-код не запускались.
 последовательный первый контур backend → frontend. Локальная модель исключена из
 первого запуска: её
 развёртывание считается внешним фактом, а проверка Ollama/model перенесена в
-отдельный будущий gate. Пакет `2026-09-28-backend-skeleton` обновлён до revision 2
+отдельный будущий gate. Пакет `2026-09-28-backend-skeleton` обновлен до revision 2
 как первая минимальная внутренняя backend-поставка: health/readiness, auth, миграции,
 Compose, root/backend verify и внутренний runbook. Пакет
 `2026-09-28-env-api-abstraction` зафиксирован как следующий frontend-пакет после
 приёмки backend в `dev`.
 
 **Проверено:** JSON-манифест backend синхронизирован со specification, acceptance,
-health ownership и runbook; runtime-код ещё не создавался. Структурные ALK-гейты и
+health ownership и runbook; runtime-код еще не создавался. Структурные ALK-гейты и
 второй независимый read-only audit дали `READY_TO_FREEZE`; `plan.lock.json` пока не
 создавался до явного freeze.
 

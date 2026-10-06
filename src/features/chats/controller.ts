@@ -1,46 +1,21 @@
-// Фича-контроллер chats (stage 4): бизнес-логика за портом.
-// Дефолтная реализация порта — адаптер над legacy ChatsApi (api ниже features,
-// снос legacy api — stage 7 вместе с own-адаптером). MessagesController —
-// сохранённый stage 1 compatibility-адаптер WebSocket.
+// Фича-контроллер chats (stage 4; stage 7 — режимные адаптеры): бизнес-логика
+// за портом. Порты по умолчанию — адаптеры, выбранные по env.mode:
+// ./api/index.ts (HTTP) и ./ws/gateway.ts (WebSocket, замена MessagesController).
 
-import API from '../../api/ChatsApi.ts'
-import UsersAPI from '../../api/UserApi.ts'
-import MessagesController from '../../controllers/MessagesController.ts'
 import store from '../../utils/Store.ts'
-import type { ChatInfo, ChatUser } from '../../utils/types.ts'
+import type { ChatInfo } from '../../utils/types.ts'
+import { chatsPort } from './api/index.ts'
 import type { ChatMessagesPort, ChatsPort } from './ports.ts'
 import { chatsSlice } from './store.ts'
-
-const messagesGateway: ChatMessagesPort = {
-    sendMessage: (chatId, message) => {
-        MessagesController.sendMessage(chatId, message)
-
-        return Promise.resolve()
-    },
-    connect: async (chatId, token) => {
-        await MessagesController.connect(chatId, token)
-    },
-}
-
-// legacy DTO структурно уже своих контрактов (index-сигнатуры/отсутствие полей) — мост через unknown
-const practicumChatsPort: ChatsPort = {
-    fetchChats: () => API.read() as unknown as Promise<ChatInfo[]>,
-    createChat: (data) => API.create(data),
-    deleteChat: (data) => API.delete(data) as unknown as Promise<void>,
-    getToken: (chatId) => API.getToken(chatId) as unknown as Promise<{ token: string }>,
-    addUsers: (data) => API.addUsers(data) as unknown as Promise<void>,
-    removeUsers: (data) => API.deleteUsers(data) as unknown as Promise<void>,
-    getChatUsers: (chatId) => API.getUsers(chatId) as unknown as Promise<ChatUser[]>,
-    changeChatAvatar: (data) => API.changeChatAvatar(data),
-}
+import { chatMessagesPort } from './ws/gateway.ts'
 
 export class ChatsFeatureController {
     private readonly port: ChatsPort
     private readonly messages: ChatMessagesPort
 
     constructor(
-        port: ChatsPort = practicumChatsPort,
-        messages: ChatMessagesPort = messagesGateway
+        port: ChatsPort = chatsPort,
+        messages: ChatMessagesPort = chatMessagesPort
     ) {
         this.port = port
         this.messages = messages
@@ -89,11 +64,11 @@ export class ChatsFeatureController {
         }
     }
 
-    // Поиск пользователей для добавления в чат: общий метод legacy api
-    // (read-only до stage 7), не чужая фича.
+    // Поиск пользователей для добавления в чат: метод порта (stage 7 перевёл
+    // его из прямого вызова legacy UserApi в контракт ChatsPort).
     async addUsersByLogin(login: { login: string }, chatId: number): Promise<void> {
         try {
-            const found = await UsersAPI.searchUsers(login)
+            const found = await this.port.searchUsers(login)
 
             if (found.length > 0) {
                 await this.addUsersToChat(found.map(user => user.id), chatId)

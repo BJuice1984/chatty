@@ -1,19 +1,12 @@
-// Фича-контроллер profile (stage 4): бизнес-логика за портом.
-// Дефолтная реализация порта — адаптер над legacy UserApi (read-only до stage 7).
-// Logout — чужая фича (auth): связь проводится в композиции (src/features/index.ts),
-// фича получает её инъекцией; прямой cross-feature импорт запрещён guard v2.
+// Фича-контроллер profile (stage 4; stage 7 — режимные адаптеры в ./api):
+// бизнес-логика за портом. Logout — чужая фича (auth): связь проводится
+// в композиции (src/features/index.ts), фича получает её инъекцией; прямой
+// cross-feature импорт запрещён guard v2. Порт выбирается композицией
+// из ./api/index.ts (practicum / own по env.mode).
 
-import API from '../../api/UserApi.ts'
 import type { ChangeUserData, SearchUserData } from '../../utils/types.ts'
-import type { LogoutAction, ProfilePort, ProfileUser } from './ports.ts'
+import type { LogoutAction, ProfilePort } from './ports.ts'
 import { profileSlice } from './store.ts'
-
-// legacy User не объявляет display_name, ChangeUserData требует id/avatar — мост через unknown
-export const practicumProfilePort: ProfilePort = {
-    searchUsersByLogin: (data) => API.searchUsers(data) as unknown as Promise<ProfileUser[]>,
-    changeProfile: (data) => API.changeUser(data as unknown as Parameters<typeof API.changeUser>[0]) as unknown as Promise<ProfileUser>,
-    changeAvatar: (data) => API.changeAvatar(data) as unknown as Promise<ProfileUser>,
-}
 
 export class ProfileFeatureController {
     private readonly port: ProfilePort
