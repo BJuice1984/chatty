@@ -81,6 +81,8 @@ export class ChatsFeatureController {
     async addUsersToChat(users: number[], chatId: number): Promise<void> {
         try {
             await this.port.addUsers({ users, chatId })
+            // паритет с legacy: обновляем и список чатов, и пользователей чата
+            void this.fetchChats()
             void this.getChatUsers(chatId)
         } catch (e: unknown) {
             console.error('Ошибка при добавлении пользователей в чат:', e)

@@ -43,8 +43,6 @@ document.addEventListener('DOMContentLoaded', async () => {
         .use(Routes.PageNotFound, NotFoundPage as typeof Block)
         .use(Routes.ServerErrorPage, ServerErrorPage as typeof Block)
 
-    Router.start()
-
     let isProtectedRoute = true
 
     switch (document.location.pathname) {
@@ -56,8 +54,10 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
 
     try {
+        // Пользователь загружается ДО старта роутера: auth-гард из authModule
+        // уже стоит на роутах (createApp выше) и не должен видеть пустой store
+        // при холодной загрузке защищённого маршрута с валидной сессией.
         await authController.fetchUser()
-        await chatsController.fetchChats()
     } catch (e) {
         console.error(e)
         console.log('🚀 ~ document.addEventListener ~ error:')
@@ -65,5 +65,13 @@ document.addEventListener('DOMContentLoaded', async () => {
         if (!isProtectedRoute) {
             Router.go(Routes.Login)
         }
+    }
+
+    Router.start()
+
+    try {
+        await chatsController.fetchChats()
+    } catch (e) {
+        console.error('Ошибка при загрузке чатов:', e)
     }
 })
