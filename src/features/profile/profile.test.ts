@@ -1,7 +1,8 @@
 import { expect } from 'chai'
 import sinon from 'sinon'
 import { JSDOM } from 'jsdom'
-import { ProfileFeatureController, practicumProfilePort } from './controller.ts'
+import { ProfileFeatureController } from './controller.ts'
+import { practicumProfilePort } from './api/practicum.ts'
 import { profileSlice } from './store.ts'
 import type { ProfilePort } from './ports.ts'
 

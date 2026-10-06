@@ -1,13 +1,14 @@
-// Мессенджер выбранного чата (stage 4): удаление чата и добавление пользователя —
-// колбэки из пропсов (фича chats); отправка сообщений идёт через сохранённый
-// MessagesController (stage 1 compatibility-адаптер, controllers ниже components).
+// Мессенджер выбранного чата (stage 4; stage 7 — все действия через пропсы):
+// удаление чата, добавление пользователя и отправка сообщения — колбэки из
+// пропсов (фича chats); компоненты не импортируют ни controllers, ни фичи.
+// URL вложения вычисляется из env (fileUrl) — безопасные схемы гарантирует joinUrl.
 
-import MessagesController, { Message } from '../../controllers/MessagesController.ts'
 import Block from '../../core/Block.ts'
-import { Button, Input, SearchUserData } from '../../utils/types.ts'
+import { Button, Input, Message, SearchUserData } from '../../utils/types.ts'
 import { AppState, withStore } from '../../utils/Store.ts'
 import { emptyValidationMessage } from '../../utils/constants.ts'
 import { emptyValidator } from '../../utils/validators.ts'
+import { fileUrl } from '../../utils/env.ts'
 import template from './messenger.hbs'
 
 interface MessengerProps {
@@ -20,6 +21,8 @@ interface MessengerProps {
     onDeleteChat?: (id: number) => void
     // eslint-disable-next-line no-unused-vars
     onAddUser?: (login: SearchUserData, chatId: number) => Promise<void>
+    // eslint-disable-next-line no-unused-vars
+    onSendMessage?: (chatId: number, message: string) => void
     [key: string]: unknown
 }
 
@@ -64,10 +67,7 @@ class MessengerBase extends Block {
                     classType: 'primary',
                     type: 'submit',
                     handleSubmitClick: (value: { message: string }) => {
-                        void MessagesController.sendMessage(
-                            propsFromStore.selectedChat,
-                            value.message
-                        )
+                        propsFromStore.onSendMessage?.(propsFromStore.selectedChat, value.message)
                     },
                 },
             ],
@@ -98,6 +98,7 @@ const withMessenger = withStore((state: AppState) => {
     const typedMessages = messages.map((message: Message) => ({
         ...message,
         isMine: message.user_id === state.user?.id,
+        fileUrl: message.file_url ?? (message.file ? fileUrl(message.file.path) : undefined),
     }))
 
     const chatInfo = state.chats?.find(chat => chat.id === selectedChatId)

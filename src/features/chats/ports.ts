@@ -1,6 +1,7 @@
-// Порты фичи chats (stage 4): контракт за границей фичи.
-// Реализация по умолчанию — адаптер над legacy ChatsApi (read-only до stage 7);
-// own-адаптер придёт с api-cutover.
+// Порты фичи chats (stage 4; stage 7 добавил поиск пользователей): контракт за границей фичи.
+// Реализации — адаптеры режимов в ./api/{practicum,own,index}.ts; порт остаётся
+// самодостаточным (без импортов). Раньше поиск жил в прямом вызове legacy UserApi
+// из контроллера — с cutover он часть контракта.
 
 import type {
     AddChatUsersData,
@@ -9,8 +10,15 @@ import type {
     CreateChatData,
     DeleteChatData,
     RemoveChatUsersData,
+    SearchUserData,
     TokenResponse,
 } from '../../utils/types.ts'
+
+// Минимальная форма результата поиска: контроллеру нужны только id найденных
+export interface ChatsUserSearchResult {
+    id: number
+    login: string
+}
 
 export interface ChatsPort {
     fetchChats(): Promise<ChatInfo[]>
@@ -28,10 +36,12 @@ export interface ChatsPort {
     getChatUsers(chatId: number): Promise<ChatUser[]>
     // eslint-disable-next-line no-unused-vars
     changeChatAvatar(data: FormData): Promise<{ avatar: string }>
+    // eslint-disable-next-line no-unused-vars
+    searchUsers(data: SearchUserData): Promise<ChatsUserSearchResult[]>
 }
 
-// Шлюз отправки сообщений: реализация — сохранённый MessagesController
-// (stage 1 compatibility-адаптер), снос вместе с WS-cutover (stage 7).
+// Шлюз сообщений (stage 7): реализация — ws/gateway.ts по env.mode
+// (practicum: токен в URL; own: cookie-auth), замена MessagesController.
 export interface ChatMessagesPort {
     // eslint-disable-next-line no-unused-vars
     sendMessage(chatId: number, message: string): Promise<void>

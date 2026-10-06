@@ -40,6 +40,9 @@ class ChatPageBase extends Block {
             onAddUser: async (login: SearchUserData, chatId: number) => {
                 await ChatsController.addUsersByLogin(login, chatId)
             },
+            onSendMessage: (chatId: number, message: string) => {
+                void ChatsController.sendMessage(chatId, message)
+            },
             inputs: [
                 {
                     label: 'type chat name',

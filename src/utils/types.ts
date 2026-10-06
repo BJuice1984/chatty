@@ -87,3 +87,28 @@ export interface ChangeUserData {
     phone: string
     [key: string]: unknown
 }
+
+// DTO сообщения (stage 7): переехал из MessagesController при WS-cutover —
+// utils/types остаётся единственным домом DTO, Store и компоненты берут тип здесь.
+export interface MessageFile {
+    id: number
+    user_id: number
+    path: string
+    filename: string
+    content_type: string
+    content_size: number
+    upload_date: string
+}
+
+export interface Message {
+    chat_id: number
+    time: string
+    type: string
+    user_id: number
+    content: string
+    file?: MessageFile
+    // вычисляемый безопасный URL вложения (practicum: fileUrl(file.path);
+    // own: filesUrl + /{file_id}/download) — рендерится компонентом message
+    file_url?: string
+    [key: string]: unknown
+}

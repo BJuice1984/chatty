@@ -20,10 +20,10 @@
 // DTO-типы — named-клаузой (`import { SigninData }`, `import { type X }`, `import type X`) — warning.
 // Регекс-сканер не умеет разрешать типы: конвенция фиксирует синтаксис для каждого случая.
 //
-// TRANSITIONAL_DEBT (v2, реконсилирован по handoff stage 2 / EV-KERNEL-2):
-//   формат file → { rule: owner }. Задокументированный долг:
-//   - не проваливает --strict (exit 0), пока blocker понижен до warning;
-//   - владелец обязан снять запись при закрытии долга (stage 4 — migrate-chats-profile).
+// TRANSITIONAL_DEBT (v2): формат file → { rule: owner }; долг закрыт —
+// карта пуста с stage 7 (api-cutover снёс MessagesController и перевёл
+// Message-DTO в src/utils/types.ts, Store.ts больше не импортирует controllers).
+// Новые записи: blocker, пониженный до warning, требует владельца и ревизии.
 //
 // CLI:
 //   node .claude/hooks/scripts/guard-architecture.mjs --files src/utils/Store.ts
@@ -46,16 +46,11 @@ const LAYER_RANK = {
     features: 6,
 };
 
-// Реконсилированная карта долга: file → { rule: owner } (правка — только stage 3, снятие — владелец).
-// store/utils: handoff stage 2 (EV-KERNEL-2), закрытие — stage 4 (migrate-chats-profile).
-// Stage 4 (migrate-chats-profile) снял семь ui-type-api-import записей
-// (четыре снесённые страницы + три переписанных компонента берут DTO из
-// src/utils/types.ts) и ChatUser-половину layer-direction в Store.ts.
-// Остаётся: Store.ts — Message из сохраняемого MessagesController (снос
-// вместе с WS-cutover — stage 7).
-const TRANSITIONAL_DEBT = {
-    'src/utils/Store.ts': { 'layer-direction': 'stage 7 (api-cutover, MessagesController teardown)' },
-};
+// Карта долга пуста: stage 2 вёл её по handoff EV-KERNEL-2, stage 3 перевёл в
+// owner-формат, stage 4 снял семь ui-type-api-import записей и ChatUser-половину
+// layer-direction в Store.ts, stage 7 (api-cutover) закрыл последнюю запись —
+// Message-DTO переехал в src/utils/types.ts при сносе MessagesController.
+const TRANSITIONAL_DEBT = {};
 
 const RULE_LAYER_DIRECTION = 'layer-direction';
 const RULE_CROSS_FEATURE = 'cross-feature';

@@ -18,7 +18,7 @@
         </div>
         <ul class="messenger__container">
           {{#each messages}}
-            {{{ Message content=this.content user_id=this.user_id isMine=this.isMine }}}
+            {{{ Message content=this.content user_id=this.user_id isMine=this.isMine fileUrl=this.fileUrl }}}
           {{/each}}
         </ul>
         {{{ Form inputs=this.inputs buttons=this.buttons }}}
