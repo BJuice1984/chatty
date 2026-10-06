@@ -1,10 +1,19 @@
-import { ChatInfo } from '../../api/ChatsApi.ts'
-import ChatsController from '../../controllers/ChatsController.ts'
+// Элемент списка чатов (stage 4): выбор чата и загрузка аватара чата —
+// колбэки из пропсов (фича chats), компонент контроллеров не импортирует.
+
 import Block from '../../core/Block.ts'
+import type { ChatInfo } from '../../utils/types.ts'
 import template from './chatListUser.hbs'
 
+export interface UserProps extends ChatInfo {
+    // eslint-disable-next-line no-unused-vars
+    onSelect?: (id: number) => void
+    // eslint-disable-next-line no-unused-vars
+    onChatFile?: (data: FormData) => void
+}
+
 export class User extends Block {
-    constructor(props: ChatInfo) {
+    constructor(props: UserProps) {
         super({
             ...props,
             onClick: () => {
@@ -18,8 +27,7 @@ export class User extends Block {
             },
             events: {
                 click: () => {
-                    ChatsController.selectChat(props.id)
-                    void ChatsController.getChatUsers(props.id)
+                    props.onSelect?.(props.id)
                 },
             },
         })

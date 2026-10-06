@@ -48,15 +48,13 @@ const LAYER_RANK = {
 
 // Реконсилированная карта долга: file → { rule: owner } (правка — только stage 3, снятие — владелец).
 // store/utils: handoff stage 2 (EV-KERNEL-2), закрытие — stage 4 (migrate-chats-profile).
+// Stage 4 (migrate-chats-profile) снял семь ui-type-api-import записей
+// (четыре снесённые страницы + три переписанных компонента берут DTO из
+// src/utils/types.ts) и ChatUser-половину layer-direction в Store.ts.
+// Остаётся: Store.ts — Message из сохраняемого MessagesController (снос
+// вместе с WS-cutover — stage 7).
 const TRANSITIONAL_DEBT = {
-    'src/utils/Store.ts': { 'layer-direction': 'stage 4 (migrate-chats-profile)' },
-    'src/components/chatListUser/chatListUser.ts': { 'ui-type-api-import': 'stage 4 (migrate-chats-profile)' },
-    'src/components/form-container/form-container.ts': { 'ui-type-api-import': 'stage 4 (migrate-chats-profile)' },
-    'src/components/messenger/messenger.ts': { 'ui-type-api-import': 'stage 4 (migrate-chats-profile)' },
-    'src/pages/chat/chat.ts': { 'ui-type-api-import': 'stage 4 (migrate-chats-profile)' },
-    'src/pages/login/login.ts': { 'ui-type-api-import': 'stage 4 (migrate-chats-profile)' },
-    'src/pages/profile/profile.ts': { 'ui-type-api-import': 'stage 4 (migrate-chats-profile)' },
-    'src/pages/register/register.ts': { 'ui-type-api-import': 'stage 4 (migrate-chats-profile)' },
+    'src/utils/Store.ts': { 'layer-direction': 'stage 7 (api-cutover, MessagesController teardown)' },
 };
 
 const RULE_LAYER_DIRECTION = 'layer-direction';

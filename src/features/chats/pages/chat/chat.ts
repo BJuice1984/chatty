@@ -1,9 +1,13 @@
-import { ChatInfo, CreateChatData } from '../../api/ChatsApi.ts'
-import ChatsController from '../../controllers/ChatsController.ts'
-import Block from '../../core/Block.ts'
-import { AppState, withStore } from '../../utils/Store.ts'
-import { emptyValidationMessage } from '../../utils/constants.ts'
-import { emptyValidator } from '../../utils/validators.ts'
+// Feature-страница чатов (stage 4): замена src/pages/chat.
+// Компоненты (User/Messenger) получают поведение через пропсы — компоненты
+// не могут импортировать фичи вверх по слоям.
+
+import Block from '../../../../core/Block.ts'
+import { AppState, withStore } from '../../../../utils/Store.ts'
+import type { ChatInfo, SearchUserData } from '../../../../utils/types.ts'
+import { emptyValidationMessage } from '../../../../utils/constants.ts'
+import { emptyValidator } from '../../../../utils/validators.ts'
+import ChatsController from '../../controller.ts'
 import template from './chat.hbs'
 
 interface ChatPageProps {
@@ -23,6 +27,19 @@ class ChatPageBase extends Block {
             onClick: () => {
                 this.refs.create.setProps({ isShown: true })
             },
+            onSelectChat: (id: number) => {
+                ChatsController.selectChat(id)
+                void ChatsController.getChatUsers(id)
+            },
+            onChatAvatar: (data: FormData) => {
+                void ChatsController.changeChatAvatar(data)
+            },
+            onDeleteChat: (id: number) => {
+                void ChatsController.delete(id)
+            },
+            onAddUser: async (login: SearchUserData, chatId: number) => {
+                await ChatsController.addUsersByLogin(login, chatId)
+            },
             inputs: [
                 {
                     label: 'type chat name',
@@ -36,7 +53,7 @@ class ChatPageBase extends Block {
                     label: 'Create',
                     classType: 'hidden',
                     type: 'submit',
-                    handleSubmitClick: (value: CreateChatData) => {
+                    handleSubmitClick: (value: { title: string }) => {
                         void ChatsController.create(value)
                     },
                 },
