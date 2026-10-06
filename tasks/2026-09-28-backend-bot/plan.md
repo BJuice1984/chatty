@@ -1,7 +1,7 @@
 # Implementation plan
 
-1. Define provider and search-tool protocols that consume the accepted RAG result and chat/file contracts.
-2. Add bot run model/schema/service/endpoint and migration with queued/running/succeeded/failed states, retry budget and idempotency key.
-3. Implement local Ollama provider defaults, prompt/data-scope boundary, optional authorized attachment and bounded timeout behavior.
-4. Add unit/integration tests for duplicate delivery, unauthorized attachment, provider timeout and failed-run recovery.
-5. Run deterministic bot tests and complete `bot-checklist.md`; record Ollama absence as `UNAVAILABLE`.
+1. Define the `BotProvider` protocol and the local Ollama chat provider (httpx, injectable transport, explicit transport/HTTP/malformed-payload errors) plus prompt building that only ever sees the system template, chat-scoped RAG context and the source message; settings live in `backend/app/bot/config.py` (`CHATTY_BOT_*`).
+2. Add the `BotRun` model/repository/schema/service/endpoint and migration `004_bot_runs` with `queued/running/succeeded/failed` states, a `unique(message_id)` idempotency key, a conditional queued→running claim (CAS) with an `attempt` counter bounded by `CHATTY_BOT_MAX_ATTEMPTS`, a stale-run re-claim window `CHATTY_BOT_STALE_AFTER_SECONDS` on an injectable clock, machine-readable `error_kind`, pinned FK on-delete rules and response/attachment traceability; mount the router through `register_domain_router` from `endpoints/__init__.py`.
+3. Implement the run flow: authorize the requesting member, gate on `Chat.is_ai`, validate the source message (exists, belongs to the route chat, has text content, not bot-authored), resolve the bot user by configured email, join it through `ChatService.add_member`, search via the stage 8 `DocumentService.search` seam, call the provider under a timeout, and post the answer through `MessageService.create` with the top hit's `file_id` as the optional authorized attachment.
+4. Add unit tests (`tests/unit/bot`: provider failures, prompt scope, settings, state machine incl. claim CAS and stale window) and integration tests (`tests/integration/bot`: duplicate delivery, cross-chat source message, retry budget, provider timeout/failure recovery, stale-running re-claim, non-AI chat, membership scope, unauthorized attachment, RAG unavailability) with deterministic fake providers and an injected clock.
+5. Run the deterministic bot gate in the isolated container, complete `bot-checklist.md` results in `EV-BOT-2`, and record the absent native Ollama as `UNAVAILABLE`.

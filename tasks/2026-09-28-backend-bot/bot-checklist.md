@@ -8,4 +8,5 @@ Record source revision, plan digest, model/provider configuration, timeout and r
 | BOT-RETRY | Provider timeout reaches bounded failed/retry state. | PASS / FAIL / UNAVAILABLE |
 | BOT-RAG-SCOPE | Search uses only source-chat authorized ready documents. | PASS / FAIL / UNAVAILABLE |
 | BOT-ATTACHMENT | Optional file_id is authorized and traceable. | PASS / FAIL / UNAVAILABLE |
+| BOT-IDENTITY | The configured bot account exists (registered through the public auth API) or runs fail explicitly with `bot_user_not_configured`. | PASS / FAIL / UNAVAILABLE |
 | BOT-OLLAMA | Configured local model answers without cloud fallback. | PASS / FAIL / UNAVAILABLE |
