@@ -1,19 +1,585 @@
 {
     "schemaVersion": "agent-plan-manifest.v1",
-    "status": "DRAFT",
-    "planRevision": 1,
-    "package": {"id": "2026-09-28-api-cutover", "title": "Stage 7: frontend API and WebSocket cutover", "workspaceRoot": ".", "artifactRoot": "work/2026-09-28-api-cutover", "planArtifactRoot": "tasks/2026-09-28-api-cutover"},
-    "planFiles": ["tasks/2026-09-28-api-cutover/plan.manifest.json", "tasks/2026-09-28-api-cutover/developer-overview.md", "tasks/2026-09-28-api-cutover/specification.json", "tasks/2026-09-28-api-cutover/plan.md", "tasks/2026-09-28-api-cutover/acceptance-criteria.md", "tasks/2026-09-28-api-cutover/plan-review-request.md", "tasks/2026-09-28-api-cutover/tier-request.json", "tasks/2026-09-28-api-cutover/tier-resolution.json"],
-    "packageIntegrity": {"required": true, "lockSchemaVersion": "agent-plan-lock.v2", "inventorySource": "planFiles", "undeclaredTopLevelFiles": "reject", "allowedUnlistedFiles": ["plan.lock.json"]},
-    "author": {"id": "codex", "surface": "agent-first-planning", "runId": "2026-09-28-api-cutover-draft"},
-    "baseRevision": {"ref": "main", "sha": "d79de677facf8b06290523f9589808069f6cf621"},
-    "specification": {"tier": "S2", "intent": "Compose feature modules through explicit Practicum/own adapters and a chat WebSocket gateway while proving both modes.", "status": "DRAFT", "source": "tasks/2026-09-28-api-cutover/specification.json", "requirements": [{"id": "REQ-API-CUTOVER", "title": "Two-mode frontend composition", "description": "Wire the feature modules to Practicum and owned API/WS adapters, register the composition root and shared message renderer, and prove mode-specific auth/chat/file flows before cutover.", "priority": "P0", "source": "tasks/2026-09-28-ai-messenger-master-plan.md:98-111", "acceptanceIds": ["AC-CUTOVER-1", "AC-CUTOVER-2"], "evidenceIds": ["EV-CUTOVER-1", "EV-CUTOVER-2"], "owner": "WS-API-CUTOVER"}], "tierResolutionRequest": {"requestedTier": "S2", "taskCount": 1, "executableOwners": ["worker-frontend-cutover"], "capabilityHints": ["typescript", "xhr", "websocket", "vite", "handlebars", "browser"], "riskFlags": {"architecture": true, "security": true, "performance": true, "browser": true, "data": true, "release": true, "externalEnvironment": true}, "requirementsBytes": 4500, "externalSpecification": true}, "revision": 1, "artifact": "tasks/2026-09-28-api-cutover/specification.json", "goal": "A reviewed, deterministic implementation plan for stage 7.", "constraints": ["Use feature ports; no backend business logic in UI.", "Do not edit stage 3 guard or stage 4 legacy deletion paths.", "Both modes remain explicitly selectable.", "No production promotion."], "nonGoals": ["backend implementation", "RAG", "AI bot", "reconnect hardening", "production deployment"], "scope": {"in": ["composition root", "Practicum adapters", "own adapters", "WS gateway", "shared message renderer"], "out": ["legacy deletion", "backend", "RAG", "bot", "production"]}},
-    "readOnly": ["tasks/2026-09-28-ai-messenger-master-plan.md", "tasks/README.md", "src/core/registerComponent.ts", "src/features/auth/guard.ts", "src/features/chats/controller.ts", "src/features/profile/controller.ts", "backend/app/api/v1/router.py"],
-    "forbiddenWrites": [".alk", "work", ".github/workflows/tests.yml", ".github/workflows/verify.yml", "netlify.toml", "src/features/auth/guard.ts", "src/features/auth/module.ts", "src/features/chats/module.ts", "src/features/chats/controller.ts", "src/features/chats/store.ts", "src/features/chats/ports.ts", "src/features/profile/module.ts", "src/features/profile/controller.ts", "src/features/profile/store.ts", "src/features/profile/ports.ts", "src/pages", "src/controllers", "src/api", "backend"],
-    "leadOwned": [],
-    "workstreams": [{"id": "WS-API-CUTOVER", "title": "Two-mode frontend composition and adapters", "owner": "worker-frontend-cutover", "reviewer": "independent-frontend-reviewer", "dependsOn": [], "writes": ["src/main.ts", "src/features/index.ts", "src/features/auth/api/practicum.ts", "src/features/auth/api/own.ts", "src/features/auth/api/index.ts", "src/features/chats/api/practicum.ts", "src/features/chats/api/own.ts", "src/features/chats/api/index.ts", "src/features/profile/api/practicum.ts", "src/features/profile/api/own.ts", "src/features/profile/api/index.ts", "src/features/chats/ws/practicum.ts", "src/features/chats/ws/own.ts", "src/features/chats/ws/gateway.ts", "src/components/message/message.ts", "src/components/message/message.hbs"], "readOnly": ["src/core/registerComponent.ts", "src/features/auth/guard.ts", "src/features/chats/controller.ts", "src/features/profile/controller.ts"], "forbiddenWrites": ["src/pages", "src/controllers", "src/api", "backend"], "leadOwned": [], "launchGate": "Stages 4, 5 and 6 accepted; create feature/2026-09-28-api-cutover from main@d79de677facf8b06290523f9589808069f6cf621 and consume their feature/backend contracts.", "capabilityHints": ["typescript", "xhr", "websocket", "vite", "handlebars", "browser"], "requiredTools": ["node", "npm", "docker"], "contextRefs": ["developer-overview.md", "plan.md", "src/utils/env.ts", "src/features/auth/ports.ts", "src/features/chats/ports.ts"], "acceptanceIds": ["AC-CUTOVER-1", "AC-CUTOVER-2"], "evidenceIds": ["EV-CUTOVER-1", "EV-CUTOVER-2"], "executionPolicy": {"maxAttempts": 2, "maxWallSeconds": 3600}, "artifactPaths": ["work/2026-09-28-api-cutover/evidence/WS-API-CUTOVER"], "required": true, "plannedItems": ["module registration", "Practicum adapters", "own adapters", "WS gateway", "mode selection", "shared message renderer", "three smoke flows"], "qualityFloor": "Both adapters compile through ports; both modes and clean WS close have bounded evidence before cutover is accepted."}],
-    "acceptance": {"criteria": [{"id": "AC-CUTOVER-1", "title": "Two-mode composition", "requirementIds": ["REQ-API-CUTOVER"], "evidenceIds": ["EV-CUTOVER-1"], "independentEvidenceIds": [], "statement": "Practicum and owned mode adapters compile and the composition root uses feature ports without forbidden runtime imports.", "description": "UI composition contains no backend business logic.", "source": "acceptance-criteria.md", "priority": "P0"}, {"id": "AC-CUTOVER-2", "title": "Mode smoke and WS close", "requirementIds": ["REQ-API-CUTOVER"], "evidenceIds": ["EV-CUTOVER-2"], "independentEvidenceIds": [], "statement": "Both mode smoke flows and clean WebSocket close pass before cutover is accepted; unavailable services are explicit.", "description": "Legacy removal is not silently inferred from adapter compilation.", "source": "acceptance-criteria.md", "priority": "P0"}], "evidence": [{"id": "EV-CUTOVER-1", "description": "Adapter contract, import-boundary, verify and build receipt.", "source": "WS-API-CUTOVER", "validation": "npm run verify and npm run build", "artifactPath": "work/2026-09-28-api-cutover/evidence/WS-API-CUTOVER/EV-CUTOVER-1.json", "required": true}, {"id": "EV-CUTOVER-2", "description": "Practicum, own auth/chat/file and clean WS close smoke receipt.", "source": "WS-API-CUTOVER", "validation": "bounded two-mode smoke checklist", "artifactPath": "work/2026-09-28-api-cutover/evidence/WS-API-CUTOVER/EV-CUTOVER-2.json", "required": true}], "releaseGate": "Both runtime modes are evidenced and no legacy deletion is claimed by this package.", "qualityFloor": "No criterion is accepted from prose alone."},
-    "validation": {"commands": ["npm run verify", "npm run build", "node .claude/hooks/scripts/guard-architecture.mjs --all --strict"], "extraEvidence": [{"id": "EV-CUTOVER-2", "kind": "manual-two-mode-and-ws-close-smoke", "timeoutSeconds": 1500}]},
-    "orchestration": {"startMode": "reviewed-plan", "remediationMode": "ask", "maxPlanReviewRounds": 3, "maxTaskAttempts": 2, "maxParallelTasks": 1, "maxValidationRunsPerTask": 2, "maxToolCallsPerIteration": 30, "maxUsageIterationsPerAttempt": 10, "maxToolCallsPerTask": 180, "maxToolCallsPerRun": 420, "maxReportedTokensPerTask": 22000, "maxReportedTokensPerRun": 28000, "maxEvidenceArtifactBytes": 1048576, "maxEvidenceBytesPerTask": 4194304, "maxEvidenceBytesPerRun": 4194304, "maxTaskWallSeconds": 4800, "maxRunWallSeconds": 15000, "maxContextBytes": 170000, "maxRenderedPacketBytes": 50000, "stateFile": "work/2026-09-28-api-cutover/run.state.json", "eventLog": "work/2026-09-28-api-cutover/events.jsonl", "stepReviewRequired": true, "finalAuditRequired": true},
-    "implementationAudit": {"required": true, "finalRequired": true}, "developerOverview": "tasks/2026-09-28-api-cutover/developer-overview.md", "releaseTarget": {"kind": "local-only", "environment": "Vite frontend with Practicum or owned backend", "productionPromotionClaimed": false}, "releaseImpact": "Switches frontend feature ports between Practicum and owned API/WS adapters while preserving explicit compatibility mode.", "nonGoals": ["backend implementation", "RAG", "AI bot", "reconnect hardening", "production deployment"], "finalAuditGates": ["[AC-CUTOVER-1|EV-CUTOVER-1] two-mode composition passes", "[AC-CUTOVER-2|EV-CUTOVER-2] mode smoke and WS close pass"], "securityGates": [{"id": "SEC-MODE", "statement": "Mode-specific endpoints and state-changing request protection are explicit.", "evidenceIds": ["EV-CUTOVER-1", "EV-CUTOVER-2"]}, {"id": "SEC-WS", "statement": "WS origin input and clean close are tested.", "evidenceIds": ["EV-CUTOVER-2"]}], "sandbox": {"network": "off-by-default-for-deterministic-checks", "externalServices": ["Practicum backend", "Docker backend", "MinIO"], "secrets": "no-secrets-in-plan-or-evidence", "productionPromotion": false}, "runtimePolicy": {"implementationAuthorized": false, "productionPromotionClaimed": false, "unavailableDependencyPolicy": "record UNAVAILABLE; never convert to PASS", "preservationInvariants": ["course CI, netlify.toml, sprint_* and deploy remain unchanged", "legacy deletion belongs to stage 4", "guard and feature domain files remain with their owners"], "manualEvidenceRequired": ["CUTOVER-DEV-LOGIN", "CUTOVER-OWN-AUTH-CHAT-FILE", "CUTOVER-WS-CLOSE"]}, "budgetPolicy": {"units": "tokens-and-resources", "reroute": "pause-and-review", "maxTotalTokens": 28000, "maxParallelWorkstreams": 1, "maxRunWallSeconds": 15000, "criticalPathWallSeconds": 4800, "aggregateWorkstreamWallSeconds": 4800, "retryReserveWallSeconds": 2200}, "budgets": {"defaultWorkstreamTokens": 22000, "maxEvidenceBytesPerRun": 4194304}, "contextLimits": {"profile": "small-context-profile.v1", "maxPlanContextBytes": 170000, "maxRenderedPacketBytes": 50000, "smallContextPacketBytes": 34000, "maxReferenceFilesPerPacket": 16, "includeOnlyOwnedWrites": true, "excludeRuntimeWorkArtifacts": true}, "dependsOn": ["2026-09-28-migrate-chats-profile", "2026-09-28-backend-skeleton", "2026-09-28-backend-chats-ws-files"], "reviewMesh": {"enabledByDefault": false, "blockingRequiresPlanOptIn": true, "requiresExplicitActivation": true, "budgetUnits": "tokens-and-resources", "budgetCap": {"maxInvocations": 0, "maxInputTokens": 0, "maxOutputTokens": 0}, "independencePolicy": {"mode": "single-independent-audit-required"}, "reviewerModelClasses": [], "liveCallsAllowed": false}, "contextCheckpointPolicy": {"enabled": true, "maxCheckpointBytes": 131072, "store": "work/2026-09-28-api-cutover/checkpoints"}, "controllerGates": {"beforeExecution": ["plan completeness PASS", "independent plan audit PASS", "explicit freeze"], "afterEachWave": ["ownership audit", "validation receipts", "no unresolved High finding"], "beforeCompletion": ["final implementation audit PASS", "all final audit gates PASS"]}, "planReview": {"required": true, "requestPath": "tasks/2026-09-28-api-cutover/plan-review-request.md", "reviewerClass": "independent-plan-reviewer", "maxRounds": 3, "implementationAuthorized": false}, "repositoryReferences": [{"id": "REF-ROADMAP", "repoId": "chatty", "owner": "codex", "access": "read-only", "paths": ["tasks/2026-09-28-ai-messenger-master-plan.md"]}, {"id": "REF-ALK", "repoId": "chatty", "owner": "codex", "access": "read-only", "paths": ["tasks/README.md"]}, {"id": "REF-ENV", "repoId": "chatty", "owner": "codex", "access": "read-only", "paths": ["src/utils/env.ts"]}], "tierResolution": {"status": "RESOLVED", "tier": "S2", "requestedTier": "S2", "reason": "architecture-risk, browser-risk, externalEnvironment-risk, performance-risk, security-risk and external-specification-required", "independentReviewRequired": true, "requestPath": "tasks/2026-09-28-api-cutover/tier-request.json", "resolutionPath": "tasks/2026-09-28-api-cutover/tier-resolution.json", "requestDigest": "aefc004d6e1881da91d2d4d2013e095b2912916b8b85b0a64dab06766366e821"}, "taskTemplates": {"frontend": "small-context packet with adapter files and npm/browser validation"}, "compatibility": {"baseFrontend": "main@d79de677facf8b06290523f9589808069f6cf621", "practicumMode": "development", "ownMode": "own", "dataMigration": "none", "legacyMessagesController": "retained until hardening"}
+    "status": "FROZEN",
+    "planRevision": 4,
+    "package": {
+        "id": "2026-09-28-api-cutover",
+        "title": "Stage 7: frontend API and WebSocket cutover",
+        "workspaceRoot": ".",
+        "artifactRoot": "work/2026-09-28-api-cutover",
+        "planArtifactRoot": "tasks/2026-09-28-api-cutover"
+    },
+    "planFiles": [
+        "tasks/2026-09-28-api-cutover/acceptance-criteria.md",
+        "tasks/2026-09-28-api-cutover/developer-overview.md",
+        "tasks/2026-09-28-api-cutover/plan-review-request.md",
+        "tasks/2026-09-28-api-cutover/plan-review.json",
+        "tasks/2026-09-28-api-cutover/plan.manifest.json",
+        "tasks/2026-09-28-api-cutover/plan.md",
+        "tasks/2026-09-28-api-cutover/specification.json",
+        "tasks/2026-09-28-api-cutover/tier-request.json",
+        "tasks/2026-09-28-api-cutover/tier-resolution.json"
+    ],
+    "packageIntegrity": {
+        "required": true,
+        "lockSchemaVersion": "agent-plan-lock.v2",
+        "inventorySource": "planFiles",
+        "undeclaredTopLevelFiles": "reject",
+        "allowedUnlistedFiles": [
+            "plan.lock.json"
+        ]
+    },
+    "author": {
+        "id": "codex",
+        "surface": "agent-first-planning",
+        "runId": "2026-09-28-api-cutover-draft"
+    },
+    "baseRevision": {
+        "ref": "dev",
+        "sha": "66b2d4496120f3af15fd20defb8b6f5d6165b93c"
+    },
+    "specification": {
+        "tier": "S2",
+        "intent": "Compose feature modules through explicit Practicum/own adapters and a chat WebSocket gateway while proving both modes.",
+        "status": "DRAFT",
+        "source": "tasks/2026-09-28-api-cutover/specification.json",
+        "requirements": [
+            {
+                "id": "REQ-API-CUTOVER",
+                "title": "Two-mode frontend composition",
+                "description": "Wire the feature modules to Practicum and owned API/WS adapters, register the composition root and shared message renderer, and prove mode-specific auth/chat/file flows before cutover.",
+                "priority": "P0",
+                "source": "tasks/2026-09-28-ai-messenger-master-plan.md:98-111",
+                "acceptanceIds": [
+                    "AC-CUTOVER-1",
+                    "AC-CUTOVER-2"
+                ],
+                "evidenceIds": [
+                    "EV-CUTOVER-1",
+                    "EV-CUTOVER-2"
+                ],
+                "owner": "WS-API-CUTOVER"
+            }
+        ],
+        "tierResolutionRequest": {
+            "requestedTier": "S2",
+            "taskCount": 1,
+            "executableOwners": [
+                "worker-frontend-cutover"
+            ],
+            "capabilityHints": [
+                "typescript",
+                "xhr",
+                "websocket",
+                "vite",
+                "handlebars",
+                "browser"
+            ],
+            "riskFlags": {
+                "architecture": true,
+                "security": true,
+                "performance": true,
+                "browser": true,
+                "data": true,
+                "release": true,
+                "externalEnvironment": true
+            },
+            "requirementsBytes": 4500,
+            "externalSpecification": true
+        },
+        "revision": 2,
+        "artifact": "tasks/2026-09-28-api-cutover/specification.json",
+        "goal": "A reviewed, deterministic implementation plan for stage 7.",
+        "constraints": [
+            "Use feature ports; no backend business logic in UI.",
+            "Stage 3 guard rules and stage 3/4 feature domain contracts (auth guard/module/store/ports, chats/profile module/store) stay untouched; the only port edit is the chats user-search method that stage 4 borrowed from legacy UserApi.",
+            "Legacy src/api and MessagesController deletion is owned by this stage and happens only after replacement adapters compile.",
+            "Both modes remain explicitly selectable.",
+            "No production promotion."
+        ],
+        "nonGoals": [
+            "backend implementation",
+            "RAG",
+            "AI bot",
+            "reconnect hardening",
+            "production deployment"
+        ],
+        "scope": {
+            "in": [
+                "composition root port wiring",
+                "Practicum adapters",
+                "own adapters",
+                "WS gateway",
+                "shared message renderer",
+                "legacy src/api and MessagesController teardown"
+            ],
+            "out": [
+                "backend",
+                "RAG",
+                "bot",
+                "production"
+            ]
+        }
+    },
+    "readOnly": [
+        "tasks/2026-09-28-ai-messenger-master-plan.md",
+        "tasks/README.md",
+        "src/main.ts",
+        "src/utils/env.ts",
+        "src/utils/HTTPTransport.ts",
+        "src/utils/WSTransport.ts",
+        "src/features/auth/guard.ts",
+        "backend/app/api/v1/endpoints/auth.py",
+        "backend/app/api/v1/endpoints/chats.py",
+        "backend/app/api/v1/endpoints/files.py",
+        "backend/app/ws/router.py"
+    ],
+    "forbiddenWrites": [
+        ".alk",
+        "work",
+        ".github/workflows/tests.yml",
+        ".github/workflows/verify.yml",
+        "netlify.toml",
+        "src/main.ts",
+        "src/pages",
+        "src/features/auth/guard.ts",
+        "src/features/auth/module.ts",
+        "src/features/auth/store.ts",
+        "src/features/auth/ports.ts",
+        "src/features/chats/module.ts",
+        "src/features/chats/store.ts",
+        "src/features/profile/module.ts",
+        "src/features/profile/store.ts",
+        "src/features/profile/ports.ts",
+        "backend"
+    ],
+    "leadOwned": [
+        {
+            "path": "tasks/2026-09-28-api-cutover",
+            "owner": "controller",
+            "reason": "The controller owns frozen plan-package artifacts retained in the implementation delta."
+        },
+        {
+            "path": "docs/progress/progress_log.md",
+            "owner": "controller",
+            "reason": "The controller maintains the repository progress log for this implementation package."
+        }
+    ],
+    "workstreams": [
+        {
+            "id": "WS-API-CUTOVER",
+            "title": "Two-mode frontend composition and adapters",
+            "owner": "worker-frontend-cutover",
+            "reviewer": "independent-frontend-reviewer",
+            "dependsOn": [],
+            "writes": [
+                "src/features/auth/api/practicum.ts",
+                "src/features/auth/api/own.ts",
+                "src/features/auth/api/index.ts",
+                "src/features/auth/api/api.test.ts",
+                "src/features/auth/controller.ts",
+                "src/features/chats/api/practicum.ts",
+                "src/features/chats/api/own.ts",
+                "src/features/chats/api/index.ts",
+                "src/features/chats/api/api.test.ts",
+                "src/features/chats/controller.ts",
+                "src/features/chats/ws/practicum.ts",
+                "src/features/chats/ws/own.ts",
+                "src/features/chats/ws/gateway.ts",
+                "src/features/chats/ws/ws.test.ts",
+                "src/features/chats/ports.ts",
+                "src/features/chats/chats.test.ts",
+                "src/features/chats/pages/chat/chat.ts",
+                "src/features/chats/pages/chat/chat.hbs",
+                "src/features/profile/api/practicum.ts",
+                "src/features/profile/api/own.ts",
+                "src/features/profile/api/index.ts",
+                "src/features/profile/api/api.test.ts",
+                "src/features/profile/controller.ts",
+                "src/features/profile/profile.test.ts",
+                "src/features/index.ts",
+                "src/components/messenger/messenger.ts",
+                "src/components/messenger/messenger.hbs",
+                "src/components/message/message.ts",
+                "src/components/message/message.hbs",
+                "src/utils/csrf.ts",
+                "src/utils/csrf.test.ts",
+                "src/utils/Store.ts",
+                "src/utils/types.ts",
+                ".claude/hooks/scripts/guard-architecture.mjs",
+                "src/api/AuthApi.ts",
+                "src/api/BaseApi.ts",
+                "src/api/ChatsApi.ts",
+                "src/api/UserApi.ts",
+                "src/api/errors.ts",
+                "src/controllers/MessagesController.ts"
+            ],
+            "readOnly": [
+                "src/main.ts",
+                "src/utils/env.ts",
+                "src/utils/HTTPTransport.ts",
+                "src/utils/WSTransport.ts",
+                "src/features/auth/guard.ts",
+                "src/features/auth/module.ts",
+                "src/features/auth/store.ts",
+                "src/features/auth/ports.ts",
+                "src/features/chats/module.ts",
+                "src/features/chats/store.ts",
+                "src/features/profile/module.ts",
+                "src/features/profile/store.ts",
+                "src/features/profile/ports.ts"
+            ],
+            "forbiddenWrites": [
+                "src/main.ts",
+                "src/pages",
+                "src/features/auth/guard.ts",
+                "src/features/auth/module.ts",
+                "src/features/auth/store.ts",
+                "src/features/auth/ports.ts",
+                "src/features/chats/module.ts",
+                "src/features/chats/store.ts",
+                "src/features/profile/module.ts",
+                "src/features/profile/store.ts",
+                "src/features/profile/ports.ts",
+                "backend",
+                ".alk",
+                "work",
+                ".github/workflows/tests.yml",
+                ".github/workflows/verify.yml",
+                "netlify.toml"
+            ],
+            "leadOwned": [],
+            "launchGate": "Stage 4 is accepted in origin/dev at the exact declared base SHA (dev@66b2d4496120f3af15fd20defb8b6f5d6165b93c, merge of feature/2026-09-28-migrate-chats-profile, PR #19); backend stages 5-6 (skeleton, chats-ws-files) are already contained in that baseline. Before execution the controller must verify that origin/dev still contains that SHA and create feature/2026-09-28-api-cutover from it and open its PR into dev. This revision reconciles the draft with the post-stage-4 tree: the composition root (src/main.ts, src/features/index.ts) was created by stage 4, so this stage only edits src/features/index.ts to select mode-specific ports and leaves src/main.ts untouched (readOnly + forbidden). Feature domain contracts stay with their stage 3/4 owners (auth guard/module/store/ports, chats/profile module/store; the single exception is src/features/chats/ports.ts, which gains the user-search method that stage 4 had to borrow from legacy UserApi directly). This stage owns the legacy teardown deferred by stage 4: deletion of src/api (AuthApi, BaseApi, ChatsApi, UserApi plus the consumer-less errors.ts) and of src/controllers/MessagesController.ts, together with the replacement adapters (features/<name>/api/{practicum,own,index}.ts), the chat WebSocket gateway (features/chats/ws/{practicum,own,gateway}.ts replacing MessagesController: practicum token-URL flow vs own cookie-auth flow with message/history event mapping), the Message DTO re-home into src/utils/types.ts (removes the last TRANSITIONAL_DEBT Store.ts entry and refreshes the stale stage-4 comment block in the guard map), an own-mode CSRF cookie reader (src/utils/csrf.ts with csrf.test.ts: chatty_csrf double-submit against env.csrfHeaderName), refresh retry-once for own /auth/me, and props-threading of sendMessage through the chat page plus the safe-attachment-URL prop through messenger.hbs into the shared message renderer, so components no longer import the controllers layer. Own-mode adapters cover the backend contract that exists (auth register/login/refresh/logout/me, chats create/list/members with getChatUsers/searchUsers/deleteChat/removeUsers/changeChatAvatar rejected, files upload/download, WS message/history) and reject the rest with explicit unsupported-mode errors; practicum adapters preserve current endpoints byte-for-byte behind the same ports. Own-mode credential mapping is explicit: the own signin adapter maps SignInRequest.login to the backend email field and register uses SignUpRequest.email; the login/register form validators stay practicum-calibrated (login charset without @, password 8-40 vs the owned backend minimum 12), so the own-mode smoke drives the feature ports/controllers directly at console level instead of through the forms, and that UI limitation is recorded rather than hidden; adapting form credential policy is out of scope. The own UserResponse carries only id/email/role/is_active/created_at, so the own auth adapter maps it onto AuthUser with login=display_name=email and empty names/phone/avatar defaults. Deletions land only after the replacement paths compile.",
+            "capabilityHints": [
+                "typescript",
+                "xhr",
+                "websocket",
+                "vite",
+                "handlebars",
+                "browser"
+            ],
+            "requiredTools": [
+                "node",
+                "npm",
+                "docker"
+            ],
+            "contextRefs": [
+                "developer-overview.md",
+                "plan.md",
+                "src/utils/env.ts",
+                "src/features/auth/ports.ts",
+                "src/features/chats/ports.ts",
+                "src/features/profile/ports.ts"
+            ],
+            "acceptanceIds": [
+                "AC-CUTOVER-1",
+                "AC-CUTOVER-2"
+            ],
+            "evidenceIds": [
+                "EV-CUTOVER-1",
+                "EV-CUTOVER-2"
+            ],
+            "executionPolicy": {
+                "maxAttempts": 2,
+                "maxWallSeconds": 3600
+            },
+            "artifactPaths": {
+                "result": "work/2026-09-28-api-cutover/evidence/WS-API-CUTOVER/task-result-{attempt}.json",
+                "review": "work/2026-09-28-api-cutover/evidence/WS-API-CUTOVER/task-review-{attempt}.json"
+            },
+            "required": true,
+            "plannedItems": [
+                "mode-selected adapter wiring in the composition root",
+                "Practicum adapters over HTTPTransport",
+                "own adapters (auth with CSRF + refresh retry-once, chats, files URLs)",
+                "chat WebSocket gateway with clean close",
+                "user-search and Message DTO re-home",
+                "shared message renderer with safe attachment URLs",
+                "legacy src/api and MessagesController teardown",
+                "three bounded smoke flows"
+            ],
+            "qualityFloor": "Both adapters compile through the unchanged feature ports; both modes and a clean WS close have bounded evidence before cutover is accepted; legacy deletions happen only after the replacement adapters compile and no import of a deleted path remains."
+        }
+    ],
+    "acceptance": {
+        "criteria": [
+            {
+                "id": "AC-CUTOVER-1",
+                "title": "Two-mode composition",
+                "requirementIds": [
+                    "REQ-API-CUTOVER"
+                ],
+                "evidenceIds": [
+                    "EV-CUTOVER-1"
+                ],
+                "independentEvidenceIds": [],
+                "statement": "Practicum and owned mode adapters compile through the unchanged feature ports and the composition root selects them without upward or cross-feature runtime imports; the legacy src/api classes and MessagesController are deleted with no remaining import.",
+                "description": "UI composition contains no backend business logic.",
+                "source": "acceptance-criteria.md",
+                "priority": "P0"
+            },
+            {
+                "id": "AC-CUTOVER-2",
+                "title": "Mode smoke and WS close",
+                "requirementIds": [
+                    "REQ-API-CUTOVER"
+                ],
+                "evidenceIds": [
+                    "EV-CUTOVER-2"
+                ],
+                "independentEvidenceIds": [],
+                "statement": "Both mode smoke flows and clean WebSocket close pass before cutover is accepted; unavailable services are explicit.",
+                "description": "Legacy removal is not silently inferred from adapter compilation.",
+                "source": "acceptance-criteria.md",
+                "priority": "P0"
+            }
+        ],
+        "evidence": [
+            {
+                "id": "EV-CUTOVER-1",
+                "description": "Adapter contract, import-boundary, verify and build receipt.",
+                "source": "WS-API-CUTOVER",
+                "validation": "npm run verify and npm run build",
+                "artifactPath": "work/2026-09-28-api-cutover/evidence/WS-API-CUTOVER/EV-CUTOVER-1.json",
+                "required": true
+            },
+            {
+                "id": "EV-CUTOVER-2",
+                "description": "Practicum, own auth/chat/file and clean WS close smoke receipt.",
+                "source": "WS-API-CUTOVER",
+                "validation": "bounded two-mode smoke checklist",
+                "artifactPath": "work/2026-09-28-api-cutover/evidence/WS-API-CUTOVER/EV-CUTOVER-2.json",
+                "required": true
+            }
+        ],
+        "releaseGate": "Both runtime modes are evidenced; legacy deletion is limited to src/api and src/controllers/MessagesController.ts and lands only after replacement adapters compile.",
+        "qualityFloor": "No criterion is accepted from prose alone."
+    },
+    "validation": {
+        "commands": [
+            "npm run verify",
+            "npm run build",
+            "node .claude/hooks/scripts/guard-architecture.mjs --all --strict"
+        ],
+        "extraEvidence": [
+            {
+                "id": "EV-CUTOVER-2",
+                "kind": "manual-two-mode-and-ws-close-smoke",
+                "timeoutSeconds": 1500
+            }
+        ]
+    },
+    "orchestration": {
+        "startMode": "reviewed-plan",
+        "remediationMode": "ask",
+        "maxPlanReviewRounds": 3,
+        "maxTaskAttempts": 2,
+        "maxParallelTasks": 1,
+        "maxValidationRunsPerTask": 2,
+        "maxToolCallsPerIteration": 30,
+        "maxUsageIterationsPerAttempt": 10,
+        "maxToolCallsPerTask": 180,
+        "maxToolCallsPerRun": 420,
+        "maxReportedTokensPerTask": 22000,
+        "maxReportedTokensPerRun": 28000,
+        "maxEvidenceArtifactBytes": 1048576,
+        "maxEvidenceBytesPerTask": 4194304,
+        "maxEvidenceBytesPerRun": 4194304,
+        "maxTaskWallSeconds": 4800,
+        "maxRunWallSeconds": 15000,
+        "maxContextBytes": 170000,
+        "maxRenderedPacketBytes": 50000,
+        "stateFile": "work/2026-09-28-api-cutover/run.state.json",
+        "eventLog": "work/2026-09-28-api-cutover/events.jsonl",
+        "stepReviewRequired": true,
+        "finalAuditRequired": true
+    },
+    "implementationAudit": {
+        "required": true,
+        "finalRequired": true
+    },
+    "developerOverview": "tasks/2026-09-28-api-cutover/developer-overview.md",
+    "releaseTarget": {
+        "kind": "local-only",
+        "environment": "Vite frontend with Practicum or owned backend",
+        "productionPromotionClaimed": false
+    },
+    "releaseImpact": "Switches frontend feature ports between Practicum and owned API/WS adapters while preserving explicit compatibility mode.",
+    "nonGoals": [
+        "backend implementation",
+        "RAG",
+        "AI bot",
+        "reconnect hardening",
+        "production deployment"
+    ],
+    "finalAuditGates": [
+        "[AC-CUTOVER-1|EV-CUTOVER-1] two-mode composition passes",
+        "[AC-CUTOVER-2|EV-CUTOVER-2] mode smoke and WS close pass"
+    ],
+    "securityGates": [
+        {
+            "id": "SEC-MODE",
+            "statement": "Mode-specific endpoints and state-changing request protection are explicit.",
+            "evidenceIds": [
+                "EV-CUTOVER-1",
+                "EV-CUTOVER-2"
+            ]
+        },
+        {
+            "id": "SEC-WS",
+            "statement": "WS origin input and clean close are tested.",
+            "evidenceIds": [
+                "EV-CUTOVER-2"
+            ]
+        }
+    ],
+    "sandbox": {
+        "network": "off-by-default-for-deterministic-checks",
+        "externalServices": [
+            "Practicum backend",
+            "Docker backend",
+            "MinIO"
+        ],
+        "secrets": "no-secrets-in-plan-or-evidence",
+        "productionPromotion": false
+    },
+    "runtimePolicy": {
+        "implementationAuthorized": false,
+        "productionPromotionClaimed": false,
+        "unavailableDependencyPolicy": "record UNAVAILABLE; never convert to PASS",
+        "preservationInvariants": [
+            "course CI, netlify.toml, sprint_* and deploy remain unchanged",
+            "legacy src/api and MessagesController deletion belongs to this stage; stage 4 feature domain files remain as merged",
+            "guard rules and feature domain contracts remain with their stage 3/4 owners"
+        ],
+        "manualEvidenceRequired": [
+            "CUTOVER-DEV-LOGIN",
+            "CUTOVER-OWN-AUTH-CHAT-FILE",
+            "CUTOVER-WS-CLOSE"
+        ]
+    },
+    "budgetPolicy": {
+        "units": "tokens-and-resources",
+        "reroute": "pause-and-review",
+        "maxTotalTokens": 28000,
+        "maxParallelWorkstreams": 1,
+        "maxRunWallSeconds": 15000,
+        "criticalPathWallSeconds": 4800,
+        "aggregateWorkstreamWallSeconds": 4800,
+        "retryReserveWallSeconds": 2200
+    },
+    "budgets": {
+        "defaultWorkstreamTokens": 22000,
+        "maxEvidenceBytesPerRun": 4194304
+    },
+    "contextLimits": {
+        "profile": "small-context-profile.v1",
+        "maxPlanContextBytes": 170000,
+        "maxRenderedPacketBytes": 50000,
+        "smallContextPacketBytes": 34000,
+        "maxReferenceFilesPerPacket": 16,
+        "includeOnlyOwnedWrites": true,
+        "excludeRuntimeWorkArtifacts": true
+    },
+    "dependsOn": [
+        "2026-09-28-migrate-chats-profile",
+        "2026-09-28-backend-skeleton",
+        "2026-09-28-backend-chats-ws-files"
+    ],
+    "reviewMesh": {
+        "enabledByDefault": false,
+        "blockingRequiresPlanOptIn": true,
+        "requiresExplicitActivation": true,
+        "budgetUnits": "tokens-and-resources",
+        "budgetCap": {
+            "maxInvocations": 0,
+            "maxInputTokens": 0,
+            "maxOutputTokens": 0
+        },
+        "independencePolicy": {
+            "mode": "single-independent-audit-required"
+        },
+        "reviewerModelClasses": [],
+        "liveCallsAllowed": false
+    },
+    "contextCheckpointPolicy": {
+        "enabled": true,
+        "maxCheckpointBytes": 131072,
+        "store": "work/2026-09-28-api-cutover/checkpoints"
+    },
+    "controllerGates": {
+        "beforeExecution": [
+            "plan completeness PASS",
+            "independent plan audit PASS",
+            "explicit freeze"
+        ],
+        "afterEachWave": [
+            "ownership audit",
+            "validation receipts",
+            "no unresolved High finding"
+        ],
+        "beforeCompletion": [
+            "final implementation audit PASS",
+            "all final audit gates PASS"
+        ]
+    },
+    "planReview": {
+        "required": true,
+        "requestPath": "tasks/2026-09-28-api-cutover/plan-review-request.md",
+        "reviewerClass": "independent-plan-reviewer",
+        "maxRounds": 3,
+        "implementationAuthorized": false,
+        "report": "tasks/2026-09-28-api-cutover/plan-review.json",
+        "reviewedRevision": 4,
+        "verdict": "READY_TO_FREEZE"
+    },
+    "repositoryReferences": [
+        {
+            "id": "REF-ROADMAP",
+            "repoId": "chatty",
+            "owner": "codex",
+            "access": "read-only",
+            "paths": [
+                "tasks/2026-09-28-ai-messenger-master-plan.md"
+            ]
+        },
+        {
+            "id": "REF-ALK",
+            "repoId": "chatty",
+            "owner": "codex",
+            "access": "read-only",
+            "paths": [
+                "tasks/README.md"
+            ]
+        },
+        {
+            "id": "REF-ENV",
+            "repoId": "chatty",
+            "owner": "codex",
+            "access": "read-only",
+            "paths": [
+                "src/utils/env.ts"
+            ]
+        }
+    ],
+    "tierResolution": {
+        "status": "RESOLVED",
+        "tier": "S2",
+        "requestedTier": "S2",
+        "reason": "architecture-risk, browser-risk, externalEnvironment-risk, performance-risk, security-risk and external-specification-required",
+        "independentReviewRequired": true,
+        "requestPath": "tasks/2026-09-28-api-cutover/tier-request.json",
+        "resolutionPath": "tasks/2026-09-28-api-cutover/tier-resolution.json",
+        "requestDigest": "aefc004d6e1881da91d2d4d2013e095b2912916b8b85b0a64dab06766366e821"
+    },
+    "taskTemplates": {
+        "frontend": "small-context packet with adapter files and npm/browser validation"
+    },
+    "compatibility": {
+        "baseFrontend": "dev@66b2d4496120f3af15fd20defb8b6f5d6165b93c",
+        "practicumMode": "development",
+        "ownMode": "own",
+        "dataMigration": "none",
+        "legacyMessagesController": "removed-by-this-stage"
+    }
 }
