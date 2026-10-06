@@ -1,7 +1,7 @@
 {
     "schemaVersion": "agent-plan-manifest.v1",
     "status": "FROZEN",
-    "planRevision": 4,
+    "planRevision": 5,
     "package": {
         "id": "2026-09-28-migrate-chats-profile",
         "title": "Stage 4: chats and profile feature migration",
@@ -32,7 +32,7 @@
     "author": {
         "id": "codex",
         "surface": "agent-first-planning",
-        "runId": "2026-10-05-migrate-chats-profile-revision-4"
+        "runId": "2026-10-06-migrate-chats-profile-revision-5"
     },
     "baseRevision": {
         "ref": "dev",
@@ -196,7 +196,9 @@
                 "src/components/input/inputFile/inputFile.ts",
                 "src/components/input/inputFile/inputFile.hbs",
                 "src/components/avatar/avatar.ts",
-                "src/components/avatar/avatar.hbs"
+                "src/components/avatar/avatar.hbs",
+                "src/features/chats/chats.test.ts",
+                "src/features/profile/profile.test.ts"
             ],
             "readOnly": [
                 "src/controllers/MessagesController.ts",
@@ -204,7 +206,7 @@
             ],
             "forbiddenWrites": [],
             "leadOwned": [],
-            "launchGate": "Stage 3 is accepted in origin/dev at the exact declared base SHA; before execution the controller must verify that origin/dev still contains that SHA. Create feature/2026-09-28-migrate-chats-profile from the accepted dev baseline and open its PR into dev. Composition-root ownership moves from stage 7 to this stage (main.ts rewires to createApp over features/index.ts); stage 7 keeps the api/ws adapters AND the deletion of the legacy src/api classes (AuthApi, BaseApi, ChatsApi, UserApi are preserved read-only for the cutover adapters). This stage deletes the legacy feature pages (login, register, chat, profile), pages.ts and the Auth/Chats/User controllers only after replacement feature paths compile; the error pages src/pages/404 and src/pages/500 stay in place (no feature owns them; main.ts imports them directly). Shared components (messenger, chatListUser, form-container, input/inputFile, avatar, components barrel) are rewired to DTO types from src/utils/types.ts and receive behavior through props instead of controller imports. Removable debt-map entries are exactly: the seven ui-type-api-import records (four in deleted pages, three in rewritten components) and the ChatUser-from-api half of the Store.ts layer-direction entry; the Store.ts entry itself stays (the Message import from the preserved MessagesController remains).",
+            "launchGate": "Stage 3 is accepted in origin/dev at the exact declared base SHA; before execution the controller must verify that origin/dev still contains that SHA. Create feature/2026-09-28-migrate-chats-profile from the accepted dev baseline and open its PR into dev. Composition-root ownership moves from stage 7 to this stage (main.ts rewires to createApp over features/index.ts); stage 7 keeps the api/ws adapters AND the deletion of the legacy src/api classes (AuthApi, BaseApi, ChatsApi, UserApi are preserved read-only for the cutover adapters). Revision 5 adds the two feature-boundary test paths required by plan step 3 (chats.test.ts, profile.test.ts: ports with fakes, slices) which revision 4 omitted from the write set. This stage deletes the legacy feature pages (login, register, chat, profile), pages.ts and the Auth/Chats/User controllers only after replacement feature paths compile; the error pages src/pages/404 and src/pages/500 stay in place (no feature owns them; main.ts imports them directly). Shared components (messenger, chatListUser, form-container, input/inputFile, avatar, components barrel) are rewired to DTO types from src/utils/types.ts and receive behavior through props instead of controller imports. Removable debt-map entries are exactly: the seven ui-type-api-import records (four in deleted pages, three in rewritten components) and the ChatUser-from-api half of the Store.ts layer-direction entry; the Store.ts entry itself stays (the Message import from the preserved MessagesController remains).",
             "capabilityHints": [
                 "typescript",
                 "handlebars",
@@ -469,7 +471,7 @@
         "maxRounds": 3,
         "implementationAuthorized": false,
         "report": "tasks/2026-09-28-migrate-chats-profile/plan-review.json",
-        "reviewedRevision": 4,
+        "reviewedRevision": 5,
         "verdict": "READY_TO_FREEZE"
     },
     "repositoryReferences": [

@@ -1,11 +1,11 @@
 {
     "schemaVersion": "agent-plan-review.v1",
     "packageId": "2026-09-28-migrate-chats-profile",
-    "planRevision": 4,
-    "reviewId": "review-2026-10-05-migrate-chats-profile-freeze-r4",
+    "planRevision": 5,
+    "reviewId": "review-2026-10-05-migrate-chats-profile-freeze-r5",
     "fullReview": true,
     "verdict": "READY_TO_FREEZE",
-    "reviewedPlanHash": "2ab7f03a0a584e9e849adde4ad179c0457e98635e3b17285c1fbbb9251d31ba8",
+    "reviewedPlanHash": "52b4f051d5107eb67df9e3e1b23a59acb4600fb55064b0c1ce7517c29c7dd4ca",
     "reviewer": {
         "id": "claude-code-opus-independent-subagent",
         "independent": true,
@@ -51,5 +51,5 @@
             "nextAction": "accept"
         }
     },
-    "summary": "Independent three-round read-only audit of revision 4. Round 1 (r2) returned CHANGES_REQUIRED: the deletion set broke the forbidden auth feature (runtime AuthApi import) and three shared components. Round 2 (r3) returned CHANGES_REQUIRED: the inputFile/avatar chain still imported the deleted controllers and the embedded specification block was stale. Round 3 (r4) verified all closures complete — cryptographically reconstructing the r3 digest from r4 to prove the delta is exactly as declared — confirmed the 404/500 keep-in-place decision, disjointness from accepted stages, the exact removable debt set and the no-production boundary. Verdict: READY_TO_FREEZE."
+    "summary": "Independent three-round read-only audit of revision 4. Round 1 (r2) returned CHANGES_REQUIRED: the deletion set broke the forbidden auth feature (runtime AuthApi import) and three shared components. Round 2 (r3) returned CHANGES_REQUIRED: the inputFile/avatar chain still imported the deleted controllers and the embedded specification block was stale. Round 3 (r4) verified all closures complete — cryptographically reconstructing the r3 digest from r4 to prove the delta is exactly as declared — confirmed the 404/500 keep-in-place decision, disjointness from accepted stages, the exact removable debt set and the no-production boundary. Revision 5 adds the two feature-boundary test paths (chats.test.ts, profile.test.ts) required by plan step 3 that revision 4 omitted from the write set; no other change. Verdict: READY_TO_FREEZE."
 }
