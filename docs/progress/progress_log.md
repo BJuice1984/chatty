@@ -49,6 +49,44 @@ handoff (EV-KERNEL-2): `renderNotFound` не destroy'ит error-блок; self-r
 `main@d79de677` — перед их запуском понадобятся собственные refreeze на
 `dev`-baseline (LOW из plan-review).
 
+## 2026-10-06 — ALK: stage 4 migrate-chats-profile выполнен (r5, COMPLETE)
+
+**Что:** chats и profile переехали за границы фич — завершён четырёхэтапный
+frontend-контур дорожной карты (kernel → module/guard → миграция → …cutover).
+Пакет `tasks/2026-09-28-migrate-chats-profile/` отрефризен r1→r5 за ЧЕТЫРЕ
+аудит-раунда (2× CHANGES_REQUIRED → PASS → PASS): r2 — dev-база + перенос
+composition-root из stage 7 (снос pages.ts без переподключения main.ts
+невозможен — дыра, найденная аудитом stage 3); r3 — legacy src/api сохранён
+read-only до stage 7 (auth-фича и компоненты runtime-зависят), shared-компоненты
+и utils/types.ts (DTO-определения) в writes; r4 — inputFile/avatar-цепочка в
+writes, 404/500 остаются by-design, embed-спек синхронизирован; r5 — тест-пути
+(план-шаг 3 был невыполним без них). Реализация: фичи chats/profile (порты,
+слайсы, контроллеры за инжектируемыми портами; дефолтные адаптеры над
+сохранённым legacy api; MessagesController — stage 1 ws-адаптер),
+`features/index.ts` — композиция (logout профиля инъектируется из auth; guard v2
+реально заблокировал прямой cross-feature импорт в работе), `main.ts` на
+`createApp([auth, chats, profile])`, 5 компонентов на props-over-controllers,
+снос 12 legacy-путей (4 страницы, pages.ts, 3 контроллера), debt-карта −7
+записей (остаток Store.ts → stage 7).
+
+**Проверено:** независимый ревьюер дал attempt 1 REWORK (2 MEDIUM: гонка
+auth-гарда с fetchUser на холодной загрузке защищённого маршрута — Router.start
+до резолва пользователя; план-шаг 3 без тестов) — закрыты в `795c962`
+(fetchUser до Router.start + 9 feature-boundary тестов через r5), attempt 2 —
+**ACCEPTED**. `npm run verify` — **64 теста** (было 55), guard `--all --strict`
+— exit 0 (1 acknowledged → stage 7), build PASS, снос = инвентарь, импортное
+замыкание без остатков. Аудиты implementation/final-implementation/
+package(--strict) — PASS; workflow-state **COMPLETE** (rev 14). Practicum
+smoke — честно UNAVAILABLE (внешняя сеть). Локальная модель не использовалась;
+исполнение авторизовано пользователем явно.
+
+**Открыто:** stage 7 (api-cutover) потребует refreeze: убрать main.ts и
+features/index.ts из своих writes (владение перенесено сюда), снять src/api со
+своих forbiddenWrites и взять снос 4 legacy api-файлов с адаптерами; снос
+MessagesController вместе с WS-cutover (запись Store.ts). LOW-хвосты: слабый
+тест поиска (стаб метода), мёртвая isProtectedRoute-ветка в main.ts
+(унаследована 1:1). Заготовка auth-cutover-дизайна из этой сессии — для stage 7.
+
 ## 2026-10-05 — ALK: stage 3 module-kernel-guard-v2 выполнен (r2, COMPLETE)
 
 **Что:** вслед за stage 2 (PR #17) выполнен stage 3 дорожной карты. Пакет
