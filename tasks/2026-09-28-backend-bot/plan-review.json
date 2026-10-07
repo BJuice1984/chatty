@@ -1,0 +1,47 @@
+{
+    "schemaVersion": "agent-plan-review.v1",
+    "packageId": "2026-09-28-backend-bot",
+    "planRevision": 3,
+    "reviewId": "review-2026-10-06-backend-bot-freeze-r3",
+    "fullReview": true,
+    "verdict": "READY_TO_FREEZE",
+    "reviewedPlanHash": "4d1e7393ac8d03b170162d69f9b8321bd3269619b1ce32b46fae9453701f862b",
+    "reviewer": {
+        "id": "claude-code-independent-subagent",
+        "independent": true,
+        "runId": "audit-run-20261006-backend-bot-plan-r2-r3",
+        "surface": "audit-agent-plan"
+    },
+    "findings": [],
+    "reviewVerdict": {
+        "schemaVersion": "agent-review-verdict.v1",
+        "overall": "ACCEPTED",
+        "dimensions": {
+            "requirementFit": {
+                "status": "PASS",
+                "reasonCode": "traceability-complete",
+                "summary": "REQ-BE-BOT maps to AC-BOT-1/2, EV-BOT-1/2, the single WS-BE-BOT workstream, security gates SEC-BOT-SCOPE/SEC-PROVIDER and the final audit gates; durable idempotent runs, bounded retries/timeouts, authorized chat-scoped search and the local-provider boundary are explicit."
+            },
+            "implementationQuality": {
+                "status": "PASS",
+                "reasonCode": "write-set-reconciled-against-real-tree",
+                "summary": "The 11-path write set plus leadOwned artifacts cover every file the implementation must touch (bot package, model/schema/repository/service/endpoint, endpoints/__init__.py mounting, migration 004, unit/integration tests, .env.example); main.py/router.py/ws/predecessor models and services/pyproject.toml/Compose/CI stay forbidden, and zero-new-dependency claim was verified against backend/pyproject.toml (httpx already runtime)."
+            },
+            "evidenceQuality": {
+                "status": "PASS",
+                "reasonCode": "deterministic-without-ollama",
+                "summary": "EV-BOT-1/EV-BOT-2 are provable by the deterministic sqlite gate (backend/verify.sh in the isolated container plus the focused pytest command, the stage 5-8 receipt pattern) with injectable fake providers, transport and clock; the absent native Ollama is recorded UNAVAILABLE and never converted to PASS."
+            },
+            "residualRisk": {
+                "status": "PASS",
+                "reasonCode": "round1-findings-closed",
+                "summary": "Round-1 findings (source-message validation incl. the cross-chat hole; duplicate-delivery vs crash-resume disambiguation via CAS + stale window + injectable clock; bot-user bootstrap; FK on-delete pins; forbiddenWrites for consumed files) were all closed in r3 and re-verified by the focused round 2; the one remaining LOW (missing BOT-IDENTITY checklist row) was closed at freeze."
+            }
+        },
+        "routing": {
+            "target": "plan-freeze",
+            "nextAction": "accept"
+        }
+    },
+    "summary": "Independent two-round read-only audit of the refrozen stage 9 package. Round 1 (r2) returned CHANGES_REQUIRED with two MEDIUM findings (unvalidated source message allowing a cross-chat disclosure through a foreign message_id; a contradiction between never-re-executing duplicates and resuming crashed runs, with no disambiguation mechanism) and LOW findings (bot-user bootstrap unspecified; bot_runs FK on-delete unpinned; consumed files not write-forbidden). Round 1 also verified the architecture as a whole against the real tree: base facts (Chat.is_ai, no User.is_bot, MessageService/ChatService/DocumentService contracts, composition seam, httpx runtime dep), write-set completeness including the models/__init__ and alembic env.py non-issues, the local-only provider boundary and honest UNAVAILABLE policy, and the ALK mechanics (per-attempt artifactPaths, reproducible validation commands, sorted planFiles, launchGate SHA). Round 2 (r3, focused) verified every closure landed exactly as declared - the four source-message validations with a cross-chat integration test, the CAS claim with IntegrityError first-delivery handling, the CHATTY_BOT_STALE_AFTER_SECONDS re-claim window on an injectable clock with attempt++ and an explicit 409 retry_budget_exhausted, the public-auth-API bot bootstrap with bot_user_not_configured steady state, the pinned FK rules and the four added forbidden paths - and confirmed no regression in JSON validity, planFiles inventory or write-set disjointness. Verdict: READY_TO_FREEZE."
+}
