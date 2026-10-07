@@ -1,0 +1,157 @@
+//Стили фичи AI-ассистента (stage 10): импорт из main.ts; src/scss не трогается.
+
+.ai-assistant {
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+    max-width: 640px;
+    margin: 0 auto;
+    padding: 24px 16px;
+
+    &__header {
+        margin: 0;
+        font-size: 24px;
+    }
+
+    &__label {
+        font-size: 14px;
+        color: #6b7280;
+    }
+
+    &__select,
+    &__input {
+        width: 100%;
+        padding: 8px 12px;
+        border: 1px solid #d1d5db;
+        border-radius: 8px;
+        font-size: 14px;
+    }
+
+    &__form {
+        display: flex;
+        gap: 8px;
+    }
+
+    &__button {
+        padding: 8px 16px;
+        border: none;
+        border-radius: 8px;
+        background-color: #3b82f6;
+        color: #fff;
+        font-size: 14px;
+        cursor: pointer;
+
+        &:hover {
+            background-color: #2563eb;
+        }
+    }
+
+    &__hint,
+    &__empty {
+        margin: 0;
+        color: #6b7280;
+        font-size: 14px;
+    }
+
+    &__error {
+        margin: 0;
+        padding: 12px;
+        border: 1px solid #ef4444;
+        border-radius: 8px;
+        background-color: #fef2f2;
+        color: #b91c1c;
+        font-size: 14px;
+    }
+
+    &__typing {
+        display: flex;
+        align-items: center;
+        gap: 4px;
+
+        &-dot {
+            width: 6px;
+            height: 6px;
+            border-radius: 50%;
+            background-color: #9ca3af;
+            animation: ai-assistant-typing 1.2s infinite ease-in-out;
+
+            &:nth-child(2) {
+                animation-delay: 0.2s;
+            }
+
+            &:nth-child(3) {
+                animation-delay: 0.4s;
+            }
+        }
+
+        &-label {
+            margin-left: 8px;
+            color: #6b7280;
+            font-size: 14px;
+        }
+    }
+
+    &__answer {
+        padding: 16px;
+        border: 1px solid #d1d5db;
+        border-radius: 8px;
+
+        &-header {
+            margin: 0 0 8px;
+            font-size: 16px;
+        }
+
+        &-text {
+            margin: 0;
+            font-size: 14px;
+            white-space: pre-wrap;
+        }
+    }
+
+    &__documents-header {
+        margin: 0;
+        font-size: 16px;
+    }
+
+    &__documents {
+        display: flex;
+        flex-direction: column;
+        gap: 12px;
+    }
+
+    &__document {
+        padding: 12px;
+        border: 1px solid #d1d5db;
+        border-radius: 8px;
+
+        &-title {
+            margin: 0 0 4px;
+            font-size: 14px;
+            font-weight: 600;
+        }
+
+        &-snippet {
+            margin: 0 0 8px;
+            color: #4b5563;
+            font-size: 13px;
+        }
+
+        &-link {
+            color: #3b82f6;
+            font-size: 13px;
+        }
+    }
+}
+
+@keyframes ai-assistant-typing {
+
+    0%,
+    60%,
+    100% {
+        opacity: 0.25;
+    }
+
+    30% {
+        opacity: 1;
+    }
+}

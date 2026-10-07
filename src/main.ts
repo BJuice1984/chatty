@@ -12,6 +12,8 @@ import { LoginPage } from './features/auth/pages/login/login.ts'
 import { RegisterPage } from './features/auth/pages/register/register.ts'
 import { ChatPage } from './features/chats/pages/chat/chat.ts'
 import { ProfilePage } from './features/profile/pages/profile/profile.ts'
+import { AssistantPage } from './features/ai-assistant/pages/assistant.ts'
+import './features/ai-assistant/styles/ai-assistant.scss'
 import { NotFoundPage } from './pages/404/404.ts'
 import { ServerErrorPage } from './pages/500/500.ts'
 import Router from './utils/Router.ts'
@@ -24,6 +26,7 @@ export const Routes = {
     Login: SIGNIN,
     Register: SIGNUP,
     Profile: PROFILE,
+    Assistant: '/assistant',
     PageNotFound: '/404',
     ServerErrorPage: '/500',
 }
@@ -40,6 +43,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         .use(Routes.Login, LoginPage as typeof Block)
         .use(Routes.Register, RegisterPage as typeof Block)
         .use(Routes.Profile, ProfilePage as typeof Block)
+        .use(Routes.Assistant, AssistantPage as typeof Block)
         .use(Routes.PageNotFound, NotFoundPage as typeof Block)
         .use(Routes.ServerErrorPage, ServerErrorPage as typeof Block)
 

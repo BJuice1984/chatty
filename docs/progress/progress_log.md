@@ -4,6 +4,63 @@
 > Новые записи — сверху. Одна запись = одна завершённая порция работы:
 > что и почему сделали, где смотреть, чем проверили.
 
+## 2026-10-07 — ALK: stage 10 fe-ai-module выполнен (r3, COMPLETE)
+
+**Что:** открыт AI-frontend-контур дорожной карты — первый «модуль нового
+образца» `src/features/ai-assistant/`. Пакет `tasks/2026-09-28-fe-ai-module/`
+отрефризен r1→r3 за ДВА независимых аудит-раунда (CHANGES_REQUIRED →
+фокусный PASS): r2 — база `dev@9b19dea` (PR #22, stage 9), закрытие трёх
+дыр r1 (композиция: `features/index.ts`+`main.ts` были forbidden при том,
+что только через них фича монтируется — перенесены в write-set со строго
+аддитивными правками по прецеденту stage 4; тест-пути: директорная запись
+вместо файла без тестов; адаптер `api/{index,own,practicum}.ts` по идиоме
+stage 7 — без него reachable-бэкенд требовал бы cross-feature импорт);
+r3 — закрытие находок раунда 1: **HIGH** — абсолютный запрет triple-stache
+противоречил единственному механизму вложения компонентов
+(registerComponent-хелперы возвращают raw HTML) — инвариант перецифицирован
+на wire data (triple только для хелперов, все данные double-stache) +
+детерминированный template-ассерт; MEDIUM — путь загрузки scss; 4 LOW.
+Freeze: lock `bcd89228…`, worker packet WS-FE-AI; исполнение авторизовано
+пользователем явно.
+
+**Реализация (WS-FE-AI):** фича 25 файлами — module/ports/api (own —
+реальный HTTP по контрактам stages 8/9: чаты, documents/search, messages,
+bot/runs + ответ из истории по response_message_id; practicum — явный
+unsupported), типизированный слайс с каст-идиомом (Store.ts не тронут),
+контроллер-стейт-машина `idle/searching/typing/success/empty/error`,
+`safety.ts` — единственное место рождения URL (положительный целый
+file_id + настроенный базис через joinUrl → `files/{id}/download`;
+небезопасный id деградирует в карточку без ссылки), компоненты
+typing-индикатор и document-card, страница `/assistant` на withStore,
+стили; строго аддитивные правки `features/index.ts` и `main.ts`. Два
+инженерных решения в рамках write-set: scss-импорт в main.ts (mocha/tsx
+не грузит .scss из графа тестов — план-отклонение зафиксировано) и
+колокированный `hbs-test-loader.ts` — тестовый погрузчик .hbs через тот
+же Handlebars, где живут компоненты-хелперы (первый в репо; в прод-сборку
+не попадает — проверено ревьюером по dist).
+
+**Проверено:** независимый ревьюер дал attempt 1 **REWORK** (HIGH RV1 —
+stylelint-ошибка в новой scss роняла `npm run verify` exit 2; 3 LOW —
+затирание input при ре-рендере, устаревший контент в error-состояниях,
+selectChat без сброса; всё воспроизведено независимыми mocha-прогонами;
++2 INFO carry-forward) — закрыто в attempt 2 (+5 регрессионных тестов),
+**ACCEPTED** (ревьюер воспроизвёл все четыре закрытия исполнением, гейты
+с настоящими exit-кодами). `npm run verify` — **129 тестов** (88 базовых +
+41 stage-10), `npm run build` PASS, guard `--all --strict` — 0 нарушений;
+браузерный чеклист — честно **UNAVAILABLE** без живого own-бэкенда
+(AI-HTML/AI-URL вердикты несут детерминированные сюиты по формулировке
+r3). Аудиты implementation (attempt 2 PASS) / ownership (25/25
+workstream-owned, 0 forbidden) / final-implementation / package
+**--strict** — PASS (архивный FAIL-аудит попытки 1 выносился из каталога
+на время скана — прецедент stages 4/7/8); workflow-state **COMPLETE**.
+
+**Открыто:** браузерный смоук `/assistant` против живого own-бэкенда с
+Ollama; NEW-1 (LOW — selectChat не сбрасывает status-флаги, пустой
+error-бокс) и NEW-2/3 + RV5/6 (INFO: гонка selectChat с in-flight
+запросом, uncontrolled ask-инпут, XHR timeout 0) — кандидаты в hardening.
+Далее по дорожной карте: hardening/docs — финальный этап (pgvector,
+live-Ollama-смоуки, runtime both-mode, UX-хвосты stages 4/7/10).
+
 ## 2026-10-06 — ALK: stage 9 backend-bot выполнен (r3, COMPLETE)
 
 **Что:** открыт bot-контур дорожной карты — durable AI bot поверх контрактов
