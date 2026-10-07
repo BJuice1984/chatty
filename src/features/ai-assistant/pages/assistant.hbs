@@ -1,0 +1,62 @@
+<section class="ai-assistant">
+    <h1 class="ai-assistant__header">AI ассистент</h1>
+
+    {{#unless hasChats}}
+        <p class="ai-assistant__hint" data-testid="ai-no-chats">Нет доступных AI-чатов. Создайте чат с включённым is_ai в own-режиме.</p>
+    {{/unless}}
+
+    {{#if hasChats}}
+        <label class="ai-assistant__label" for="ai-chat-select">AI-чат</label>
+        <select class="ai-assistant__select" id="ai-chat-select">
+            {{#each aiChats}}
+                <option value="{{id}}">{{title}}</option>
+            {{/each}}
+        </select>
+
+        <form class="ai-assistant__form" data-form="search">
+            <input class="ai-assistant__input" type="text" name="query" placeholder="Поиск по документам чата" value="{{query}}">
+            <button class="ai-assistant__button" type="submit">Найти документы</button>
+        </form>
+
+        <form class="ai-assistant__form" data-form="ask">
+            <input class="ai-assistant__input" type="text" name="question" placeholder="Спросить ассистента">
+            <button class="ai-assistant__button" type="submit">Спросить</button>
+        </form>
+    {{/if}}
+
+    {{#if isSearching}}
+        {{{ AiTypingIndicator label="Поиск по документам…" }}}
+    {{/if}}
+
+    {{#if isTyping}}
+        {{{ AiTypingIndicator label="Ассистент печатает…" }}}
+    {{/if}}
+
+    {{#if isError}}
+        <p class="ai-assistant__error" role="alert" data-testid="ai-error">{{error}}</p>
+    {{/if}}
+
+    {{#if isEmpty}}
+        <p class="ai-assistant__empty" data-testid="ai-empty">По запросу ничего не найдено</p>
+    {{/if}}
+
+    {{#if hasAnswer}}
+        <div class="ai-assistant__answer" data-testid="ai-answer">
+            <h2 class="ai-assistant__answer-header">Ответ ассистента</h2>
+            <p class="ai-assistant__answer-text">{{answer}}</p>
+        </div>
+    {{/if}}
+
+    {{#if hasAttachment}}
+        {{{ AiDocumentCard fileId=this.attachedFileId title="Документ из ответа" snippet="" }}}
+    {{/if}}
+
+    {{#if documentCards.length}}
+        <h2 class="ai-assistant__documents-header">Найденные документы</h2>
+        <div class="ai-assistant__documents">
+            {{#each documentCards}}
+                {{{ AiDocumentCard fileId=this.file_id title=this.title snippet=this.snippet }}}
+            {{/each}}
+        </div>
+    {{/if}}
+</section>

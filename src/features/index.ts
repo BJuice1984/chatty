@@ -9,6 +9,7 @@ import { chatsModule } from './chats/module.ts'
 import { ProfileFeatureController, setProfileController } from './profile/controller.ts'
 import { profilePort } from './profile/api/index.ts'
 import { profileModule } from './profile/module.ts'
+import { aiAssistantModule } from './ai-assistant/module.ts'
 import type { AppModule } from '../core/module/types.ts'
 
 // logout принадлежит auth-фиче — профиль получает его инъекцией через порт.
@@ -17,4 +18,4 @@ setProfileController(new ProfileFeatureController(
     () => authController.logout()
 ))
 
-export const featureModules: AppModule[] = [authModule, chatsModule, profileModule]
+export const featureModules: AppModule[] = [authModule, chatsModule, profileModule, aiAssistantModule]
