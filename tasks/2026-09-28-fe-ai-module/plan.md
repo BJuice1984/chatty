@@ -1,7 +1,7 @@
 # Implementation plan
 
-1. Define AI feature state and port contracts for searching, typing, result, empty and error states.
-2. Implement controller/store/module and assistant page using the existing Block/Handlebars architecture.
-3. Implement typing indicator and document card with text-only bot content, safe `https`/configured file URL handling and rejected schemes.
-4. Add deterministic rendering tests for XSS-like HTML, `javascript:`/`data:` links, empty/error states and valid attachment URLs.
-5. Run `npm run verify` and complete the bounded browser checklist against the accepted bot/adapter contract.
+1. Define the feature contracts: `ports.ts` (own-mode DTOs and the `AiAssistantPort`: list own chats, search documents, ask the bot) and the typed `aiAssistant` store slice with `idle/searching/typing/success/empty/error` states.
+2. Implement the mode-aware adapter (`api/index.ts` by `env.mode`; `api/own.ts` real HTTP through `HTTPTransport` for `GET /chats`, `POST /chats/{id}/documents/search`, `POST /chats/{id}/messages` → `POST /chats/{id}/bot/runs` → answer via `GET /chats/{id}/messages`; `api/practicum.ts` throws an explicit unsupported error) and the controller driving the state machine.
+3. Implement `safety.ts` (integer `file_id` + configured apiUrl through `joinUrl` → `files/{id}/download`; everything else rejected), the typing indicator and document card components (wire data double-stache only; triple-stache reserved for component-helper calls) and the `withStore`-connected assistant page with chat selector over own `is_ai` chats, importing the feature stylesheet from the page module.
+4. Mount additively: `features/index.ts` appends `aiAssistantModule` to `featureModules`; `main.ts` appends the `/assistant` route. Add colocated deterministic tests: state machine with a fake port, URL sanitizer rejection matrix (`javascript:`, `data:`, foreign origins, non-integer ids), text-escaping renders, a template assertion that no wire data is interpolated through triple-stache, and page state transitions.
+5. Run `npm run verify` and `npm run build`; complete `ai-ui-render-safety.md` results in `EV-AI-UI-2`, recording the absent owned backend/Ollama as `UNAVAILABLE`.
