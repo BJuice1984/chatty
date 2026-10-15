@@ -4,6 +4,55 @@
 > Новые записи — сверху. Одна запись = одна завершённая порция работы:
 > что и почему сделали, где смотреть, чем проверили.
 
+## 2026-10-15 — ALK: stage 11 hardening-docs выполнен (r2, COMPLETE)
+
+**Что:** закрыт финальный этап дорожной карты AI-messenger — runtime-hardening
+и release-boundary документация. DRAFT-пакет `tasks/2026-09-28-hardening-docs/`
+ревизован r1→r2 до freeze: база переставлена на `dev@99c5502` (PR #23, этап 10),
+`leadOwned` выровнен по прецеденту (каталог пакета + progress-log за
+контроллером), write-set расширен явным решением пользователя — точки
+композиции history (`chats/ports.ts`, `ws/*`, `messenger.hbs`; строго
+аддитивно) плюс закрытие всех хвостов этапа 10 (NEW-1, NEW-2/NEW-3, RV5/RV6
+в `ai-assistant` + `HTTPTransport`) и протечки `Block.destroy/__children`.
+Независимое plan-ревью: раунд 1 CHANGES_REQUIRED (F-01 HIGH — RV2-идиома NEW-3
+требовала readOnly `store.ts`; F-02/03 MEDIUM — незафиксированный guard-легальный
+маршрут врезки history-UI и незаписываемая строка HARDEN-CLOSE; 3 LOW) → все
+закрыты → раунд 2 READY_TO_FREEZE. Freeze: lock `82a0d672…`, FROZEN r2,
+коммит `ff7c3d9`; попутно исправлен формат `artifactPaths` r1-драфта (список
+вместо dict), блокировавший task compile.
+
+**Реализация (WS-HARDEN-DOCS, attempt 1→2):** `WSTransport` — bounded-реконнект
+(backoff 1→16с, потолок 5 попыток), one-subscription semantics, явный
+`close()` (intentional-close, снятие слушателей, чистка ping, reject
+connect-промиса), 8 новых тестов; аддитивный `loadHistory` в `ChatMessagesPort`
+(own: `before_id`/limit; practicum: `get old`) и модуль
+`src/features/chats/history/` — курсор `next_before_id`, prepend-merge с
+дедупликацией по id, состояния loading/error/empty, саморегистрирующийся
+хелпер `ChatHistory` в `messenger.hbs` (22 теста); хвосты этапа 10 — по одному
+регресс-тесту на находку; `Block.destroy` уничтожает compile-захваченных
+`__children` (снимает протечку withStore-подписки при уходе с маршрута);
+README/AGENTS актуализированы под own-эпоху, канонический runbook
+`docs/deployment/own-backend.md` (preflight/health/rollback, без
+production-заявлений; `internal-backend.md` сохранён как superseded).
+
+**Проверено:** независимый ревьюер дал attempt 1 **REWORK** (HD-R1 MEDIUM —
+practicum-курсор брал первый id DESC-пачки, т.е. новейший, вырождая пагинацию;
+юнит-тест закреплял ошибку) — закрыт в attempt 2 (min-id, порядко-независимо;
+оба порядка покрыты), **ACCEPTED**. `npm run verify` — **172 теста**
+(129 базовых + 43 stage-11), `npm run verify:all` PASS (99 pytest + alembic;
+PYTHON_BIN-venv воспроизведение), `docker compose config --quiet` PASS,
+guard `--all --strict` — 0 нарушений, build PASS (ChatHistory в dist);
+ownership 27/27, 0 forbidden. Финальный implementation-аудит — **PASS**,
+3/3 finalAuditGates, final proof READY_FOR_FINALIZATION. Браузерные строки
+HARDEN-DISCONNECT/RECONNECT/HISTORY/ERROR — честно **UNAVAILABLE** без живого
+стека (HARDEN-CLOSE закрыт детерминированным носителем по формулировке r2).
+
+**Открыто:** HD-R2 (LOW — первичная история не перезапрашивается после
+внутреннего реконнекта), HD-R3 (LOW — нет recovery зависшего isLoading),
+HD-R6/R7 (INFO: 4px-зазор пустого li, нюансы комментария/двойного connect),
+LIVE-1 (INFO — браузерные строки дополнить при первом живом прогоне
+compose+Ollama). Дорожная карта 11/11 этапов закрыта; PR этапа 11 в `dev`.
+
 ## 2026-10-07 — ALK: stage 10 fe-ai-module выполнен (r3, COMPLETE)
 
 **Что:** открыт AI-frontend-контур дорожной карты — первый «модуль нового
