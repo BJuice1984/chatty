@@ -2,7 +2,8 @@ import { expect } from 'chai'
 import { JSDOM } from 'jsdom'
 import { env, joinUrl } from '../../../utils/env.ts'
 import { appendMessages, chatMessagesPort, closeAllChatSockets } from './gateway.ts'
-import { ownChatUrl, toMessage } from './own.ts'
+import { OwnWsAdapter, ownChatUrl, toMessage } from './own.ts'
+import { PracticumWsAdapter } from './practicum.ts'
 import type { Message } from '../../../utils/types.ts'
 
 const dom = new JSDOM()
@@ -33,7 +34,33 @@ describe('chats ws gateway', () => {
     it('should expose the port through the gateway', () => {
         expect(chatMessagesPort).to.have.property('sendMessage')
         expect(chatMessagesPort).to.have.property('connect')
+        expect(chatMessagesPort).to.have.property('loadHistory')
         expect(closeAllChatSockets).to.be.a('function')
+    })
+
+    it('should keep the message identity for history deduplication', () => {
+        // stage 11: merge истории дедуплицирует по id — own-маппинг сохраняет его
+        expect(toMessage(ownResponse).id).to.eq(11)
+    })
+
+    it('should reject own-mode history requests for unconnected chats', async () => {
+        let rejection: string | null = null
+
+        await new OwnWsAdapter().loadHistory(3, 11, 20).catch(error => {
+            rejection = error instanceof Error ? error.message : String(error)
+        })
+
+        expect(rejection).to.contain('not connected')
+    })
+
+    it('should reject practicum-mode history requests for unconnected chats', async () => {
+        let rejection: string | null = null
+
+        await new PracticumWsAdapter().loadHistory(3, 11, 20).catch(error => {
+            rejection = error instanceof Error ? error.message : String(error)
+        })
+
+        expect(rejection).to.contain('not connected')
     })
 
     it('should append a single incoming message to the current list', () => {

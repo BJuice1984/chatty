@@ -11,6 +11,9 @@ export interface AiAssistantState {
     status: AiAssistantStatus
     chatId: number | null
     query: string
+    // NEW-3 (stage 11): введённый вопрос сохраняется в слайсе, чтобы
+    // store-пере-рендер не очищал ask-инпут (идиома RV2 у query).
+    question: string
     documents: AiDocumentChunk[]
     answer: string
     attachedFileId: number | null
@@ -23,6 +26,7 @@ const INITIAL_STATE: AiAssistantState = {
     status: 'idle',
     chatId: null,
     query: '',
+    question: '',
     documents: [],
     answer: '',
     attachedFileId: null,

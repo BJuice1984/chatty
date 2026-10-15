@@ -17,6 +17,7 @@
             </div>
         </div>
         <ul class="messenger__container">
+          {{{ ChatHistory }}}
           {{#each messages}}
             {{{ Message content=this.content user_id=this.user_id isMine=this.isMine fileUrl=this.fileUrl }}}
           {{/each}}

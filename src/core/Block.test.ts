@@ -1,7 +1,10 @@
 import { expect } from 'chai'
 import sinon from 'sinon'
 import { JSDOM } from 'jsdom'
+import Handlebars from 'handlebars'
 import Block, { Props } from './Block'
+import { registerComponent } from './registerComponent.ts'
+import store, { AppState, ComponentProps, withStore } from '../utils/Store.ts'
 
 const dom = new JSDOM()
 global.document = dom.window.document
@@ -124,5 +127,64 @@ describe('Block', () => {
         pageComponent.destroy()
 
         expect(removeSpy.calledOnce).to.be.true
+    })
+
+    it('should destroy handlebars-embedded children and unsubscribe their withStore wrapper', () => {
+        // Идиома «should not update a destroyed block» (Store.test.ts):
+        // ребёнок, встроенный в .hbs хелпером registerComponent (как
+        // Messenger в chat.hbs), раньше не уничтожался — withStore-подписка
+        // текла при уходе с маршрута.
+        const instances: Block[] = []
+
+        class EmbeddedBase extends Block {
+            constructor(props?: Props) {
+                super(props)
+
+                instances.push(this)
+            }
+
+            render() {
+                const fragment = document.createDocumentFragment()
+                const div = document.createElement('div')
+
+                div.className = 'embedded-child'
+                fragment.appendChild(div)
+
+                return fragment
+            }
+        }
+
+        const Embedded = withStore(
+            // eslint-disable-next-line no-unused-vars
+            ((state: AppState) => ({ selectedChat: state.selectedChat })) as unknown as (state: AppState) => ComponentProps
+        )(EmbeddedBase as typeof Block)
+
+        registerComponent('TestHbsEmbeddedChild', Embedded as typeof Block)
+
+        class ParentPage extends Block {
+            render() {
+                return this.compile(Handlebars.compile('<section>{{{ TestHbsEmbeddedChild }}}</section>'), {})
+            }
+        }
+
+        const parent = new ParentPage()
+
+        expect(instances).to.have.length(1)
+        expect(parent.element?.querySelector('.embedded-child')).to.exist
+
+        const child = instances[instances.length - 1]
+        const updateSpy = sinon.spy(
+            child as unknown as { componentDidUpdate: () => boolean },
+            'componentDidUpdate'
+        )
+
+        parent.destroy()
+
+        // После destroy родителя ребёнок отписан: обновления Store его больше
+        // не перерисовывают, элемент снят.
+        store.set('selectedChat', 77)
+
+        expect(updateSpy.called).to.be.false
+        expect(child.element).to.be.null
     })
 })

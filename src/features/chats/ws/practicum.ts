@@ -1,12 +1,20 @@
-// Practicum-реализация WS-шлюза (stage 7): логика MessagesController,
-// перенесённая в фичу chats. URL — chatWebSocketUrl(userId, chatId, token)
-// (env.wsUrl + /ws/chats/{user}/{chat}/{token}); при коннекте запрашивается
-// история ({type:'get old'}), входящие пишутся в слайс messages.
+// Practicum-реализация WS-шлюза (stage 7; stage 11 — история через
+// history-модуль): логика MessagesController, перенесённая в фичу chats.
+// URL — chatWebSocketUrl(userId, chatId, token) (env.wsUrl +
+// /ws/chats/{user}/{chat}/{token}); при коннекте запрашивается история
+// ({type:'get old'}), входящие пишутся в слайс messages. Пачка-ответ на
+// «загрузить ещё» — prepend с дедупликацией по id (practicum-DTO несёт id
+// в raw-JSON), курсором становится самый старый id пачки.
 
 import WSTransport, { WSTransportEvents } from '../../../utils/WSTransport.ts'
 import { chatWebSocketUrl } from '../../../utils/env.ts'
 import store from '../../../utils/Store.ts'
 import type { Message } from '../../../utils/types.ts'
+import { chatHistoryController } from '../history/controller.ts'
+import { oldestMessageId } from '../history/merge.ts'
+import type { HistoryMessage } from '../history/types.ts'
+// Регистрация хелпера ChatHistory для messenger.hbs (см. own.ts).
+import '../history/view.ts'
 import { appendMessages } from './gateway.ts'
 
 export class PracticumWsAdapter {
@@ -30,9 +38,26 @@ export class PracticumWsAdapter {
         await wsTransport.connect()
 
         wsTransport.on(WSTransportEvents.Message, message => {
+            const incoming = message as Message | Message[]
+
+            if (Array.isArray(incoming)) {
+                const batch = incoming as HistoryMessage[]
+
+                // Ответ на 'get old': «загрузить ещё» — prepend старых,
+                // первичная история — append; курсор practicum — самый
+                // старый id пачки (next_before_id протокол не возвращает).
+                if (chatHistoryController.isLoadPending(id)) {
+                    chatHistoryController.applyOlderHistory(id, batch, oldestMessageId(batch))
+                } else {
+                    chatHistoryController.applyInitialHistory(id, batch, oldestMessageId(batch))
+                }
+
+                return
+            }
+
             store.set(`messages.${id}`, appendMessages(
                 store.getState().messages?.[id] ?? [],
-                message as Message | Message[]
+                incoming
             ))
         })
         wsTransport.on(WSTransportEvents.Close, () => this.sockets.delete(id))
@@ -48,6 +73,21 @@ export class PracticumWsAdapter {
         }
 
         socket.send({ type: 'message', content: message })
+
+        return Promise.resolve()
+    }
+
+    // «Загрузить ещё» по контракту Практикума: before_id строкой, 0 — с конца.
+    // limit протоколу не нужен — арность сохранена под вызов шлюза.
+    loadHistory(id: number, beforeId: number | null, limit: number): Promise<void> {
+        void limit
+        const socket = this.sockets.get(id)
+
+        if (!socket) {
+            return Promise.reject(new Error(`Chat ${id} is not connected`))
+        }
+
+        socket.send({ type: 'get old', content: String(beforeId ?? 0) })
 
         return Promise.resolve()
     }

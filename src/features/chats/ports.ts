@@ -40,11 +40,17 @@ export interface ChatsPort {
     searchUsers(data: SearchUserData): Promise<ChatsUserSearchResult[]>
 }
 
-// Шлюз сообщений (stage 7): реализация — ws/gateway.ts по env.mode
-// (practicum: токен в URL; own: cookie-auth), замена MessagesController.
+// Шлюз сообщений (stage 7; stage 11 добавил историю): реализация —
+// ws/gateway.ts по env.mode (practicum: токен в URL; own: cookie-auth),
+// замена MessagesController. loadHistory — курсорная пагинация «загрузить
+// ещё»: own шлёт {type:'history', content:{before_id, limit}}, practicum —
+// {type:'get old'}; сами сообщения возвращаются WS-событием Message.
+// Метод опционален: порты-стабы без истории (тесты фичи) остаются валидны.
 export interface ChatMessagesPort {
     // eslint-disable-next-line no-unused-vars
     sendMessage(chatId: number, message: string): Promise<void>
     // eslint-disable-next-line no-unused-vars
     connect(chatId: number, token: string): Promise<void>
+    // eslint-disable-next-line no-unused-vars
+    loadHistory?(chatId: number, beforeId: number | null, limit: number): Promise<void>
 }

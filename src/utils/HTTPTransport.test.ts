@@ -99,6 +99,82 @@ describe('HTTPTransport', () => {
         expect(request?.headers['X-CSRF-Token']).to.equal('csrf-value')
     })
 
+    it('should apply the default request timeout (RV5)', async () => {
+        let request: FakeXMLHttpRequest | undefined
+        const originalXMLHttpRequest = globalThis.XMLHttpRequest
+
+        class FakeXMLHttpRequest {
+            status = 200
+            response: unknown = null
+            headers: Record<string, string> = {}
+            withCredentials = false
+            responseType: XMLHttpRequestResponseType = ''
+            timeout = 0
+            onload: (() => void) | null = null
+            onabort: (() => void) | null = null
+            onerror: (() => void) | null = null
+            ontimeout: (() => void) | null = null
+
+            open() {}
+
+            setRequestHeader() {}
+
+            send() {
+                request = this
+                this.onload?.()
+            }
+        }
+
+        globalThis.XMLHttpRequest = FakeXMLHttpRequest as unknown as typeof XMLHttpRequest
+
+        try {
+            await new HTTPTransport('/chats', testEnvironment).get('/list')
+        } finally {
+            globalThis.XMLHttpRequest = originalXMLHttpRequest
+        }
+
+        // Дефолт применяется: без явного options.timeout запрос не висит вечно.
+        expect(request?.timeout).to.equal(30000)
+    })
+
+    it('should honor a per-request timeout override (RV5, multipart uploads)', async () => {
+        let request: FakeXMLHttpRequest | undefined
+        const originalXMLHttpRequest = globalThis.XMLHttpRequest
+
+        class FakeXMLHttpRequest {
+            status = 200
+            response: unknown = null
+            headers: Record<string, string> = {}
+            withCredentials = false
+            responseType: XMLHttpRequestResponseType = ''
+            timeout = 0
+            onload: (() => void) | null = null
+            onabort: (() => void) | null = null
+            onerror: (() => void) | null = null
+            ontimeout: (() => void) | null = null
+
+            open() {}
+
+            setRequestHeader() {}
+
+            send() {
+                request = this
+                this.onload?.()
+            }
+        }
+
+        globalThis.XMLHttpRequest = FakeXMLHttpRequest as unknown as typeof XMLHttpRequest
+
+        try {
+            // Тяжёлая multipart-загрузка легитимно едет дольше дефолта.
+            await new HTTPTransport('/chats', testEnvironment).put('/avatar', { timeout: 120000 })
+        } finally {
+            globalThis.XMLHttpRequest = originalXMLHttpRequest
+        }
+
+        expect(request?.timeout).to.equal(120000)
+    })
+
     it('should normalize HTTP errors without depending on ApiError', async () => {
         const originalXMLHttpRequest = globalThis.XMLHttpRequest
 

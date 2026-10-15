@@ -8,8 +8,11 @@ export interface Props {
 }
 
 interface WithChildren {
-    // eslint-disable-next-line no-unused-vars
-    __children?: { embed: (content: DocumentFragment) => void }[]
+    __children?: {
+        component?: Block
+        // eslint-disable-next-line no-unused-vars
+        embed: (content: DocumentFragment) => void
+    }[]
 }
 
 class Block<T extends Props = Props> {
@@ -27,6 +30,10 @@ class Block<T extends Props = Props> {
     private eventBus: () => EventBus
     private _element: HTMLElement | null = null
     private _destroyed = false
+    // Компоненты, встроенные в шаблон хелперами registerComponent (stage 11):
+    // захват при compile() — destroy() обязан уничтожать и их, иначе
+    // withStore-обёртки течут подписками на Store при уходе с маршрута.
+    private _hbsChildren: Block[] = []
     // eslint-disable-next-line no-unused-vars
     private _lifecycleHandlers: Array<[string, (...args: unknown[]) => void]> = []
     // private _meta: { props: Props }
@@ -165,6 +172,12 @@ class Block<T extends Props = Props> {
 
         Object.values(this.children).forEach(child => child.destroy())
 
+        // hbs-встроенные дети (customData.root.__children у registerComponent)
+        // дискретны от this.children — уничтожаем отдельно. Двойное уничтожение
+        // исключено: _destroyed-флаг у каждого ребёнка свой.
+        this._hbsChildren.forEach(child => child.destroy())
+        this._hbsChildren = []
+
         this._removeEvents()
 
         this._lifecycleHandlers.forEach(([event, handler]) => {
@@ -210,6 +223,12 @@ class Block<T extends Props = Props> {
         temp.innerHTML = html
 
         if (contextAndStubs.__children && Array.isArray(contextAndStubs.__children)) {
+            // Захват встроенных детей текущего рендера: их embed-функции
+            // кладут DOM, а component нужен destroy() (см. destroy()).
+            this._hbsChildren = contextAndStubs.__children
+                .map(({ component }) => component)
+                .filter((child): child is Block => child != null)
+
             contextAndStubs.__children.forEach(({ embed }) => {
                 embed(temp.content)
             })

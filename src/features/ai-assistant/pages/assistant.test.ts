@@ -117,6 +117,17 @@ describe('ai assistant page states', () => {
         expect(input?.getAttribute('value')).to.eq('запрос про отпуск')
     })
 
+    it('preserves the typed question through store-driven re-renders (NEW-3)', () => {
+        aiAssistantSlice.setChats([{ id: 3, title: 'AI chat', is_ai: true }])
+        const page = render()
+
+        aiAssistantSlice.setAssistant({ status: 'typing', question: 'вопрос про заявление' })
+
+        const input = page.element?.querySelector<HTMLInputElement>('input[name="question"]')
+
+        expect(input?.getAttribute('value')).to.eq('вопрос про заявление')
+    })
+
     it('clears stale document cards when a later ask fails (RV3)', () => {
         aiAssistantSlice.setChats([{ id: 3, title: 'AI chat', is_ai: true }])
         const page = render()

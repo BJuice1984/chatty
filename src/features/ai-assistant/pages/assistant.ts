@@ -119,6 +119,7 @@ const mapAssistantState = (state: AppState) => {
         aiChats,
         hasChats: aiChats.length > 0,
         query: assistant.query,
+        question: assistant.question,
         isSearching: assistant.status === 'searching',
         isTyping: assistant.status === 'typing',
         isEmpty: assistant.status === 'empty',
