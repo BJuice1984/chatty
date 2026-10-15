@@ -150,7 +150,11 @@ export default class HTTPTransport {
 
             xhr.withCredentials = true
             xhr.responseType = 'json'
-            xhr.timeout = options.timeout ?? 0
+            // RV5: дефолтный таймаут 30с — раньше 0 («вечно») подвешивал
+            // запросы при пропавшей сети. Per-request override сохранён:
+            // тяжёлые multipart-загрузки передают options.timeout больше
+            // (FormData-файлы могут легитимно ехать дольше 30 секунд).
+            xhr.timeout = options.timeout ?? 30000
 
             Object.entries(options.headers ?? {}).forEach(([header, value]) => {
                 xhr.setRequestHeader(header, value)

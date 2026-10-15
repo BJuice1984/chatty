@@ -1,4 +1,5 @@
 import { expect } from 'chai'
+import sinon from 'sinon'
 import { AiAssistantController } from './controller.ts'
 import { AiBotRunError, type AiAssistantPort, type AiBotRun } from './ports.ts'
 import { aiAssistantSlice } from './store.ts'
@@ -157,5 +158,104 @@ describe('ai assistant controller state machine', () => {
         expect(aiAssistantSlice.getAssistant().chatId).to.eq(4)
         expect(aiAssistantSlice.getAssistant().documents).to.deep.eq([])
         expect(aiAssistantSlice.getAssistant().answer).to.eq('')
+    })
+
+    it('resets the status to idle when switching the chat (NEW-1)', async () => {
+        controller = new AiAssistantController(port({ searchDocuments: async () => {
+            throw new Error('сеть недоступна')
+        } }))
+        await controller.search(3, 'запрос')
+        expect(aiAssistantSlice.getAssistant().status).to.eq('error')
+
+        controller.selectChat(4)
+
+        expect(aiAssistantSlice.getAssistant().status).to.eq('idle')
+        expect(aiAssistantSlice.getAssistant().error).to.eq('')
+    })
+
+    it('drops a late search result after the chat switched (NEW-2)', async () => {
+        let resolveSearch: (documents: { document_id: number; file_id: number; ordinal: number; content: string; score: number }[]) => void = () => {}
+
+        const searchDocuments = () => new Promise<{ document_id: number; file_id: number; ordinal: number; content: string; score: number }[]>(resolve => {
+            resolveSearch = resolve
+        })
+
+        controller = new AiAssistantController(port({ searchDocuments } as Partial<AiAssistantPort>))
+
+        const pending = controller.search(3, 'запрос')
+
+        controller.selectChat(4)
+
+        resolveSearch([{ document_id: 1, file_id: 7, ordinal: 0, content: 'chunk', score: 0.9 }])
+        await pending
+
+        const state = aiAssistantSlice.getAssistant()
+
+        expect(state.chatId).to.eq(4)
+        expect(state.status).to.eq('idle')
+        expect(state.documents).to.deep.eq([])
+    })
+
+    it('drops a late ask answer after the chat switched (NEW-2)', async () => {
+        let resolveAsk: () => void = () => {}
+
+        const askBot = () => new Promise<{ run: AiBotRun; answerText: string }>(resolve => {
+            resolveAsk = () => resolve({ run: successfulRun(), answerText: 'поздний ответ' })
+        })
+
+        controller = new AiAssistantController(port({ askBot } as Partial<AiAssistantPort>))
+
+        const pending = controller.ask(3, 'вопрос')
+
+        controller.selectChat(4)
+
+        resolveAsk()
+        await pending
+
+        const state = aiAssistantSlice.getAssistant()
+
+        expect(state.chatId).to.eq(4)
+        expect(state.status).to.eq('idle')
+        expect(state.answer).to.eq('')
+    })
+
+    it('ignores a second ask while the first one is in flight (RV6)', async () => {
+        let resolveAsk: () => void = () => {}
+
+        const askBot = sinon.stub().returns(new Promise<{ run: AiBotRun; answerText: string }>(resolve => {
+            resolveAsk = () => resolve({ run: successfulRun(), answerText: 'первый ответ' })
+        }))
+
+        controller = new AiAssistantController(port({ askBot } as Partial<AiAssistantPort>))
+
+        const first = controller.ask(3, 'первый вопрос')
+        const second = controller.ask(3, 'второй вопрос')
+
+        resolveAsk()
+        await Promise.all([first, second])
+
+        expect(askBot.calledOnce).to.be.true
+        expect(aiAssistantSlice.getAssistant().answer).to.eq('первый ответ')
+        expect(aiAssistantSlice.getAssistant().status).to.eq('success')
+
+        // После завершения первого ask следующий снова работает.
+        await controller.ask(3, 'третий вопрос')
+
+        expect(askBot.calledTwice).to.be.true
+    })
+
+    it('keeps the typed question in the slice so re-renders preserve it (NEW-3)', async () => {
+        await controller.ask(3, 'вопрос про отпуск')
+
+        expect(aiAssistantSlice.getAssistant().question).to.eq('вопрос про отпуск')
+        expect(aiAssistantSlice.getAssistant().status).to.eq('success')
+    })
+
+    it('clears the stored question when switching the chat (NEW-3/RV4)', async () => {
+        await controller.ask(3, 'вопрос про отпуск')
+
+        controller.selectChat(4)
+
+        expect(aiAssistantSlice.getAssistant().question).to.eq('')
     })
 })

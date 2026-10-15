@@ -11,7 +11,8 @@
 ## Команды
 
 ```bash
-npm run dev          # vite dev-сервер на порту 3000
+npm run dev          # vite dev-сервер на порту 3000 (practicum-режим)
+npx vite --mode own  # dev-сервер против своего бэкенда (.env.own)
 npm run build        # проверка типов (tsc) + сборка в dist/
 npm run typecheck    # только проверка типов (tsc --noEmit)
 npm start            # build + express-статика из dist/ на порту 3000
@@ -22,9 +23,13 @@ npm run eslint       # проверка src/ (flat config в eslint.config.js)
 npm run eslint:fix   # автофикс
 npm run stylelint    # проверка **/*{.css,.scss}
 npm run stylelint:fix
-npm run verify       # единый гейт: typecheck + test + eslint + stylelint (fail-fast на первой стадии)
+npm run verify       # единый гейт фронта: typecheck + test + eslint + stylelint (fail-fast)
+npm run verify:backend # гейт бэкенда: backend/verify.sh (pytest + alembic)
+npm run verify:all   # фронт + бэкенд вместе
 npm run cm           # интерактивный conventional-commit через commitizen
 ```
+
+Свой бэкенд поднимается compose-стеком из корня (`docker compose --env-file <операторский-env> up -d --build`; api + PostgreSQL + RustFS, Ollama — внешняя зависимость хоста). Preflight (`docker compose ... config --quiet`), health/ready-проверки и откат — в каноническом runbook `docs/deployment/own-backend.md`.
 
 ## Архитектура
 
@@ -39,7 +44,8 @@ npm run cm           # интерактивный conventional-commit через
 - `src/utils/Store.ts` — глобальное состояние на EventBus, `StoreEvents.Updated`. Типы состояния — `AppState`. Пишут в Store контроллеры (`store.set('chats', ...)`).
 - `src/controllers/` — синглтоны (`export default new ...Controller()`), единственное место бизнес-логики; вызывают API и пишут в Store.
 - `src/api/` — классы над `BaseApi`, работают через `HTTPTransport`. Бэкенд курса: `https://ya-praktikum.tech/api/v2` (`HTTPTransport.API_URL`).
-- `src/utils/HTTPTransport.ts` — обёртка над XMLHttpRequest. `src/utils/WSTransport.ts` — WebSocket для сообщений чата (`MessagesController`).
+- `src/utils/HTTPTransport.ts` — обёртка над XMLHttpRequest (дефолтный timeout 30с, per-request override). `src/utils/WSTransport.ts` — WebSocket с bounded-реконнектом (растущий backoff, потолок попыток): явный `close()` не реконнектит и чистит ping/слушатели, `connect()` реджектится при исчерпании попыток.
+- `src/features/` — самодостаточные фичи-модули за портами (`ports.ts`): реализация выбирается по `env.mode`. `src/features/chats/ws/` — WS-шлюз сообщений за портом `ChatMessagesPort` (адаптеры `own`/`practicum`, замена legacy `MessagesController`). `src/features/chats/history/` — пагинация истории чата: курсор `before_id`/`get old`, prepend-merge с дедупликацией по id, саморегистрирующийся хелпер `ChatHistory` (статус-строка «загрузить ещё» в `messenger.hbs`; модуль попадает в бандл импортом из ws-адаптеров — components фичи не импортируют). `src/features/ai-assistant/` — AI-ассистент (RAG-поиск и вопрос-ответ, own-режим).
 - Шаблоны `.hbs` лежат рядом с компонентами и предкомпилируются кастомным плагином `vite-plugin-handelbars-precompile.ts` (обратите внимание на опечатку «handelbars» в имени файла — она в коде и путях).
 - Стили — SCSS в `src/scss/` (миксины, переменные, normalize в `libs/`).
 - `server/server.js` — express-статика из `dist/` (для проверки прод-сборки локально).
@@ -63,6 +69,7 @@ npm run cm           # интерактивный conventional-commit через
 
 - Стиль кода enforced линтерами: отступы 4 пробела, одинарные кавычки, без точек с запятой, trailing-запятые в многострочных литералах. Не спорьте с `@stylistic`-правилами — запускайте `eslint:fix`.
 - Импорты пишутся с расширением `.ts` (`moduleResolution: bundler`, `allowImportingTsExtensions`).
+- Гейты по зонам: фронт — `npm run verify`, бэкенд — `npm run verify:backend`, итог контура — `npm run verify:all`. Локальный runbook собственного бэкенда (compose-preflight, health/ready, rollback) — `docs/deployment/own-backend.md`; `docs/deployment/internal-backend.md` остаётся как исторический справочник (superseded).
 - Тесты (`src/**/*.test.*`) исключены из eslint; `src/scss/libs/**` и `src/scss/utils/scrollbar.scss` — из stylelint.
 - Pre-commit хук husky запускает `npm run verify` — строгий гейт без автофиксов. Нужны фиксы — запускайте `npm run eslint:fix` / `npm run stylelint:fix` руками до коммита.
 - Commit-msg хук прогоняет commitlint (conventional commits; интерактивно — `npm run cm`). Аварийный обход через `--no-verify` нежелателен.
