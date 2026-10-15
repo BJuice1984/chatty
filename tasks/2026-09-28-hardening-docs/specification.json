@@ -1,9 +1,9 @@
 {
-    "revision": 1,
+    "revision": 2,
     "id": "SPEC-HARDEN-DOCS",
     "title": "WebSocket hardening, history and local release docs",
-    "intent": "Make reconnect/close/history behavior deterministic and document a reproducible local release boundary without production claims.",
-    "requirements": [{"id": "REQ-HARDEN-DOCS", "title": "Runtime hardening and release boundary", "description": "Add reconnect/backoff, cleanup and history pagination, then document local own-backend operation, rollback/preflight and progress while preserving repository governance.", "priority": "P1", "source": "tasks/2026-09-28-ai-messenger-master-plan.md:108,126-132", "acceptanceIds": ["AC-HARDEN-1", "AC-HARDEN-2"], "evidenceIds": ["EV-HARDEN-1", "EV-HARDEN-2"], "owner": "WS-HARDEN-DOCS"}],
-    "constraints": ["Stage 7 owns mode-specific adapters; shared WSTransport is hardened here.", "History uses backend before_id/limit contract.", "Docs do not alter course CI/deploy or principles authority.", "No production promotion."],
+    "intent": "Make reconnect/close/history behavior deterministic, close the accepted stage 10 carry-forward debt and the Block child-cleanup leak, and document a reproducible local release boundary without production claims.",
+    "requirements": [{"id": "REQ-HARDEN-DOCS", "title": "Runtime hardening and release boundary", "description": "Add reconnect/backoff, cleanup and history pagination, close the stage 10 carry-forward UX debt (NEW-1, NEW-2/NEW-3, RV5/RV6) and the Block __children destroy leak, then document local own-backend operation, rollback/preflight and progress while preserving repository governance.", "priority": "P1", "source": "tasks/2026-09-28-ai-messenger-master-plan.md:108,126-132", "acceptanceIds": ["AC-HARDEN-1", "AC-HARDEN-2", "AC-HARDEN-3"], "evidenceIds": ["EV-HARDEN-1", "EV-HARDEN-2", "EV-HARDEN-3"], "owner": "WS-HARDEN-DOCS"}],
+    "constraints": ["Stage 7 owns mode-specific adapters; shared WSTransport is hardened here.", "History uses backend before_id/limit contract.", "Docs do not alter course CI/deploy or principles authority.", "No production promotion.", "Stage 10 carry-forward fixes stay inside src/features/ai-assistant and shared utils with one regression test per finding.", "Block core changes are limited to destroy-time child cleanup plus the minimal compile-time capture of the __children list, with existing Block tests kept green.", "Composition edits inside src/features/chats and src/components/messenger are strictly additive."],
     "nonGoals": ["new backend domains", "cloud deployment", "data migration", "OCR"]
 }

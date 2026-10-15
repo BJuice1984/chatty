@@ -1,0 +1,47 @@
+{
+    "schemaVersion": "agent-plan-review.v1",
+    "packageId": "2026-09-28-hardening-docs",
+    "planRevision": 2,
+    "reviewId": "review-2026-10-15-hardening-docs-freeze-r2",
+    "fullReview": true,
+    "verdict": "READY_TO_FREEZE",
+    "reviewedPlanHash": "82a0d67209b184f2863a723bbf8e306f1785d034ff466043315c38630a248d7a",
+    "reviewer": {
+        "id": "claude-code-independent-subagent",
+        "independent": true,
+        "runId": "audit-run-20261015-hardening-docs-plan-r2",
+        "surface": "audit-agent-plan"
+    },
+    "findings": [],
+    "reviewVerdict": {
+        "schemaVersion": "agent-review-verdict.v1",
+        "overall": "ACCEPTED",
+        "dimensions": {
+            "requirementFit": {
+                "status": "PASS",
+                "reasonCode": "traceability-complete",
+                "summary": "REQ-HARDEN-DOCS maps to AC-HARDEN-1/2/3, EV-HARDEN-1/2/3, the single WS-HARDEN-DOCS workstream, security gates SEC-CLEANUP/SEC-RELEASE and all three final audit gates; the r2 base rebind (dev@99c5502, PR #23) is consistent across baseRevision, launchGate and compatibility.baseFrontend."
+            },
+            "implementationQuality": {
+                "status": "PASS",
+                "reasonCode": "round1-findings-closed",
+                "summary": "All six round-1 findings closed exactly as declared: the 24-path write set now covers the question-field mechanism for NEW-3 (store.ts moved from read-only), and the history-UI wiring contract is pinned to the only guard-legal route (self-registering history helper loaded by the ws adapters, additive messenger.hbs embed, components never import features)."
+            },
+            "evidenceQuality": {
+                "status": "PASS",
+                "reasonCode": "deterministic-carrier-bound-checklist",
+                "summary": "HARDEN-CLOSE is carried by the deterministic close-cleanup regression test in the new WSTransport suite with an optional browser row per the stage-10 r3 precedent; honest UNAVAILABLE policy, all four validation commands and the final audit route remain executable."
+            },
+            "residualRisk": {
+                "status": "PASS",
+                "reasonCode": "bounded-local-no-production-claim",
+                "summary": "releaseTarget stays local-only with no production claim; round-1 attempt-burn risks (grant conflict, illegal import route) are removed; remaining exposure is the precedent-backed single-workstream volume, honest UNAVAILABLE browser rows without a live backend and one cosmetic wording sync applied at review landing."
+            }
+        },
+        "routing": {
+            "target": "plan-freeze",
+            "nextAction": "accept"
+        }
+    },
+    "summary": "Independent two-round read-only audit of the stage 11 hardening package against the real tree at feature/2026-09-28-hardening-docs == dev@99c5502 (CLI plan check PASS on both rounds, frozen digest 82a0d672). Round 1 verified the plan's factual basis in code - reconnect/backoff absent in WSTransport, next_before_id dropped in own.ts, flat messenger history rendering, all five stage-10 carry-forwards reproduced, Block destroy skipping __children - and returned CHANGES_REQUIRED with one HIGH (NEW-3's RV2 idiom required a question field in read-only ai-assistant/store.ts), two MEDIUM (unnamed guard-legal history-UI wiring route; unrecordable HARDEN-CLOSE checklist row without a live backend) and three LOW findings. Round 2 confirmed every closure landed exactly as declared: store.ts moved into the 24-path write set with the question-field mechanism spelled out, the wiring contract pinned to a self-registering history helper loaded by the ws adapters with an explicit components-never-import-features rule, HARDEN-CLOSE bound to a deterministic close-cleanup regression test per the stage-10 r3 precedent, the Block constraint extended with the minimal compile-time __children capture in both manifest and specification, xhr.timeout pinned to 30000 with the override and multipart caveat, and own-backend.md declared canonical over the retained read-only internal-backend.md. No regressions in grants disjointness, planFiles inventory, AC/EV/gate traceability or manifest-specification-plan consistency; the single cosmetic LOW (developer-overview wording) was synced at review landing. Verdict: READY_TO_FREEZE, with plan-review.json declared in planFiles per the frozen stage-10 precedent."
+}
