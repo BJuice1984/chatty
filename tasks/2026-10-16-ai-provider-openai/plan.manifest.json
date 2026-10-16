@@ -1,0 +1,404 @@
+{
+    "schemaVersion": "agent-plan-manifest.v1",
+    "status": "FROZEN",
+    "planRevision": 1,
+    "package": {
+        "id": "2026-10-16-ai-provider-openai",
+        "title": "Stage 13: OpenAI-compatible AI provider mode",
+        "workspaceRoot": ".",
+        "artifactRoot": "work/2026-10-16-ai-provider-openai",
+        "planArtifactRoot": "tasks/2026-10-16-ai-provider-openai"
+    },
+    "planFiles": [
+        "tasks/2026-10-16-ai-provider-openai/acceptance-criteria.md",
+        "tasks/2026-10-16-ai-provider-openai/developer-overview.md",
+        "tasks/2026-10-16-ai-provider-openai/plan-review-request.md",
+        "tasks/2026-10-16-ai-provider-openai/plan-review.json",
+        "tasks/2026-10-16-ai-provider-openai/plan.manifest.json",
+        "tasks/2026-10-16-ai-provider-openai/plan.md",
+        "tasks/2026-10-16-ai-provider-openai/specification.json",
+        "tasks/2026-10-16-ai-provider-openai/tier-request.json",
+        "tasks/2026-10-16-ai-provider-openai/tier-resolution.json"
+    ],
+    "packageIntegrity": {
+        "required": true,
+        "lockSchemaVersion": "agent-plan-lock.v2",
+        "inventorySource": "planFiles",
+        "undeclaredTopLevelFiles": "reject",
+        "allowedUnlistedFiles": [
+            "plan.lock.json"
+        ]
+    },
+    "author": {
+        "id": "claude-code",
+        "surface": "agent-first-planning",
+        "runId": "2026-10-16-ai-provider-openai-draft"
+    },
+    "baseRevision": {
+        "ref": "dev",
+        "sha": "604628dcfd535603d1682ad68539b987753fc3de"
+    },
+    "specification": {
+        "tier": "S2",
+        "intent": "OpenAI-compatible provider mode for the operator's local inference server.",
+        "status": "DRAFT",
+        "source": "tasks/2026-10-16-ai-provider-openai/specification.json",
+        "requirements": [
+            {
+                "id": "REQ-AI-PROVIDER",
+                "title": "Dual-protocol provider seam",
+                "description": "Add openai mode to the bot and embedding seams with pytest coverage; keep ollama default.",
+                "priority": "P1",
+                "source": "operator decision 2026-10-16",
+                "acceptanceIds": [
+                    "AC-AI-1",
+                    "AC-AI-2",
+                    "AC-AI-3"
+                ],
+                "evidenceIds": [
+                    "EV-AI-1",
+                    "EV-AI-2"
+                ],
+                "owner": "WS-AI-PROVIDER"
+            }
+        ],
+        "tierResolutionRequest": {
+            "requestedTier": "S2",
+            "taskCount": 1,
+            "executableOwners": [
+                "worker-backend-ai"
+            ],
+            "capabilityHints": [
+                "python",
+                "fastapi",
+                "httpx",
+                "pytest",
+                "docker-compose",
+                "ALK"
+            ],
+            "riskFlags": {
+                "security": true,
+                "externalEnvironment": true
+            },
+            "requirementsBytes": 1400,
+            "externalSpecification": false
+        },
+        "revision": 1,
+        "artifact": "tasks/2026-10-16-ai-provider-openai/specification.json",
+        "goal": "A reviewed plan for the dual-protocol AI seam.",
+        "constraints": [
+            "Ollama mode stays the default; no behavior change for existing deployments.",
+            "No cloud endpoints.",
+            "RAG rows stay honestly UNAVAILABLE while the server has no embeddings endpoint."
+        ],
+        "nonGoals": [
+            "cloud providers",
+            "model downloads",
+            "frontend changes"
+        ],
+        "scope": {
+            "in": [
+                "provider openai mode",
+                "embedding openai mode",
+                "compose passthrough",
+                "env docs",
+                "live smoke"
+            ],
+            "out": [
+                "cloud",
+                "frontend",
+                "model management"
+            ]
+        }
+    },
+    "readOnly": [
+        "tasks/README.md",
+        "docs/deployment/internal-backend.md"
+    ],
+    "forbiddenWrites": [
+        ".alk",
+        "work",
+        "src",
+        "backend/app/core",
+        "backend/app/api",
+        "backend/app/services",
+        "backend/alembic",
+        "docs/project-principles.json",
+        ".github/workflows/verify.yml",
+        "netlify.toml"
+    ],
+    "leadOwned": [
+        {
+            "path": "tasks/2026-10-16-ai-provider-openai",
+            "owner": "controller",
+            "reason": "Controller owns plan-package artifacts."
+        },
+        {
+            "path": "docs/progress/progress_log.md",
+            "owner": "controller",
+            "reason": "Controller maintains the progress log."
+        }
+    ],
+    "workstreams": [
+        {
+            "id": "WS-AI-PROVIDER",
+            "title": "Dual-protocol bot/embedding seam",
+            "owner": "worker-backend-ai",
+            "reviewer": "independent-release-reviewer",
+            "dependsOn": [],
+            "writes": [
+                "backend/app/bot/config.py",
+                "backend/app/bot/provider.py",
+                "backend/app/ingestion/config.py",
+                "backend/app/ingestion/embeddings.py",
+                "backend/tests/unit/bot/test_config.py",
+                "backend/tests/unit/bot/test_provider.py",
+                "backend/tests/unit/ingestion/test_embeddings.py",
+                "docker-compose.yml",
+                "backend/.env.example",
+                "docs/deployment/own-backend.md"
+            ],
+            "readOnly": [
+                "tasks/README.md",
+                "docs/deployment/internal-backend.md"
+            ],
+            "forbiddenWrites": [
+                "src",
+                "backend/app/core",
+                "backend/app/api",
+                "backend/app/services"
+            ],
+            "leadOwned": [],
+            "launchGate": "feature/2026-10-16-practicum-cutover accepted (task-review ACCEPTED, final audit PASS); backend verify green at the declared base.",
+            "capabilityHints": [
+                "python",
+                "fastapi",
+                "httpx",
+                "pytest",
+                "docker-compose",
+                "ALK"
+            ],
+            "requiredTools": [
+                "python3",
+                "docker"
+            ],
+            "contextRefs": [
+                "developer-overview.md",
+                "plan.md",
+                "docs/deployment/own-backend.md"
+            ],
+            "acceptanceIds": [
+                "AC-AI-1",
+                "AC-AI-2",
+                "AC-AI-3"
+            ],
+            "evidenceIds": [
+                "EV-AI-1",
+                "EV-AI-2"
+            ],
+            "executionPolicy": {
+                "maxAttempts": 2,
+                "maxWallSeconds": 3600
+            },
+            "artifactPaths": {
+                "result": "work/2026-10-16-ai-provider-openai/evidence/WS-AI-PROVIDER/task-result-{attempt}.json",
+                "review": "work/2026-10-16-ai-provider-openai/evidence/WS-AI-PROVIDER/task-review-{attempt}.json"
+            },
+            "required": true,
+            "plannedItems": [
+                "bot api knob",
+                "openai chat provider",
+                "embedding api knob",
+                "openai embedding provider",
+                "pytest both modes",
+                "compose passthrough",
+                "env docs",
+                "runbook AI section",
+                "live smoke"
+            ],
+            "qualityFloor": "Ollama default unchanged; both modes pytest-covered; no cloud endpoints; RAG stays honestly UNAVAILABLE without embeddings."
+        }
+    ],
+    "acceptance": {
+        "criteria": [
+            {
+                "id": "AC-AI-1",
+                "title": "Dual-protocol seam",
+                "requirementIds": [
+                    "REQ-AI-PROVIDER"
+                ],
+                "evidenceIds": [
+                    "EV-AI-1"
+                ],
+                "independentEvidenceIds": [],
+                "statement": "Both seams support openai mode (bot /v1/chat/completions, embeddings /v1/embeddings) behind CHATTY_*_API knobs with ollama default, same error kinds, pytest covering both modes.",
+                "description": "Deterministic tests.",
+                "source": "acceptance-criteria.md",
+                "priority": "P1"
+            },
+            {
+                "id": "AC-AI-2",
+                "title": "Gates and docs",
+                "requirementIds": [
+                    "REQ-AI-PROVIDER"
+                ],
+                "evidenceIds": [
+                    "EV-AI-1"
+                ],
+                "independentEvidenceIds": [],
+                "statement": "verify:backend/verify:all green; compose preflight passes with new api variables; .env.example documents the knobs.",
+                "description": "Local gates.",
+                "source": "acceptance-criteria.md",
+                "priority": "P1"
+            },
+            {
+                "id": "AC-AI-3",
+                "title": "Live AI smoke",
+                "requirementIds": [
+                    "REQ-AI-PROVIDER"
+                ],
+                "evidenceIds": [
+                    "EV-AI-2"
+                ],
+                "independentEvidenceIds": [],
+                "statement": "On the operator stack in openai mode an is_ai chat question returns a bot answer; RAG rows stay UNAVAILABLE while the server has no embeddings endpoint.",
+                "description": "Live rows.",
+                "source": "acceptance-criteria.md",
+                "priority": "P2"
+            }
+        ],
+        "evidence": [
+            {
+                "id": "EV-AI-1",
+                "description": "pytest + verify receipts and compose preflight.",
+                "source": "WS-AI-PROVIDER",
+                "validation": "npm run verify:backend + verify:all + compose config + grep -c 'CHATTY_BOT_PROVIDER_API\\|CHATTY_RAG_EMBEDDING_API' backend/.env.example (must be >= 2)",
+                "artifactPath": "work/2026-10-16-ai-provider-openai/evidence/WS-AI-PROVIDER/EV-AI-1.json",
+                "required": true
+            },
+            {
+                "id": "EV-AI-2",
+                "description": "Live AI smoke rows.",
+                "source": "WS-AI-PROVIDER",
+                "validation": "live stack chat question",
+                "artifactPath": "work/2026-10-16-ai-provider-openai/evidence/WS-AI-PROVIDER/EV-AI-2.json",
+                "required": true
+            }
+        ],
+        "releaseGate": "Dual-protocol seam accepted; live bot answer proven; no cloud endpoints.",
+        "qualityFloor": "No criterion is accepted from prose alone."
+    },
+    "validation": {
+        "commands": [
+            "npm run verify:backend",
+            "npm run verify:all",
+            "docker compose --env-file ~/.config/chatty/own-backend.env config --quiet"
+        ],
+        "extraEvidence": [
+            {
+                "id": "EV-AI-1",
+                "kind": "env-example-knob-grep",
+                "timeoutSeconds": 300
+            }
+        ]
+    },
+    "orchestration": {
+        "startMode": "reviewed-plan",
+        "remediationMode": "ask",
+        "maxPlanReviewRounds": 3,
+        "maxTaskAttempts": 2,
+        "maxParallelTasks": 1,
+        "maxValidationRunsPerTask": 2,
+        "maxToolCallsPerIteration": 30,
+        "maxUsageIterationsPerAttempt": 12,
+        "maxToolCallsPerTask": 180,
+        "maxToolCallsPerRun": 300,
+        "maxReportedTokensPerTask": 18000,
+        "maxReportedTokensPerRun": 24000,
+        "maxEvidenceArtifactBytes": 1048576,
+        "maxEvidenceBytesPerTask": 4194304,
+        "maxEvidenceBytesPerRun": 4194304,
+        "maxTaskWallSeconds": 3600,
+        "maxRunWallSeconds": 9000,
+        "maxContextBytes": 160000,
+        "maxRenderedPacketBytes": 50000,
+        "stateFile": "work/2026-10-16-ai-provider-openai/run.state.json",
+        "eventLog": "work/2026-10-16-ai-provider-openai/events.jsonl",
+        "stepReviewRequired": true,
+        "finalAuditRequired": true
+    },
+    "implementationAudit": {
+        "required": true,
+        "finalRequired": true
+    },
+    "developerOverview": "tasks/2026-10-16-ai-provider-openai/developer-overview.md",
+    "releaseTarget": {
+        "kind": "local-only",
+        "environment": "Docker Compose owned backend + operator OpenAI-compatible inference server",
+        "productionPromotionClaimed": false
+    },
+    "releaseImpact": "Enables the live AI contour on the operator's existing inference server; no cloud, no production claim.",
+    "nonGoals": [
+        "cloud providers",
+        "model downloads",
+        "frontend changes"
+    ],
+    "finalAuditGates": [
+        "[AC-AI-1|EV-AI-1] dual-protocol seam with pytest coverage",
+        "[AC-AI-2|EV-AI-1] gates green, compose passthrough safe, docs updated",
+        "[AC-AI-3|EV-AI-2] live bot answer; RAG honestly UNAVAILABLE without embeddings"
+    ],
+    "securityGates": [
+        {
+            "id": "SEC-NO-CLOUD",
+            "statement": "The openai client only targets the configured local URL; no cloud endpoints.",
+            "evidenceIds": [
+                "EV-AI-1",
+                "EV-AI-2"
+            ]
+        }
+    ],
+    "budgetPolicy": {
+        "units": "tokens-and-resources",
+        "reroute": "pause-and-review",
+        "maxTotalTokens": 24000,
+        "maxParallelWorkstreams": 1,
+        "maxRunWallSeconds": 9000,
+        "criticalPathWallSeconds": 3600,
+        "aggregateWorkstreamWallSeconds": 3600,
+        "retryReserveWallSeconds": 1800
+    },
+    "budgets": {
+        "defaultWorkstreamTokens": 18000,
+        "maxEvidenceBytesPerRun": 4194304
+    },
+    "contextLimits": {
+        "profile": "small-context-profile.v1",
+        "maxPlanContextBytes": 160000,
+        "maxRenderedPacketBytes": 50000,
+        "smallContextPacketBytes": 34000,
+        "maxReferenceFilesPerPacket": 16,
+        "includeOnlyOwnedWrites": true,
+        "excludeRuntimeWorkArtifacts": true
+    },
+    "planReview": {
+        "required": true,
+        "requestPath": "tasks/2026-10-16-ai-provider-openai/plan-review-request.md",
+        "reviewerClass": "independent-plan-reviewer",
+        "maxRounds": 3,
+        "implementationAuthorized": false,
+        "report": "tasks/2026-10-16-ai-provider-openai/plan-review.json",
+        "reviewedRevision": 1,
+        "verdict": "READY_TO_FREEZE"
+    },
+    "tierResolution": {
+        "status": "RESOLVED",
+        "tier": "S2",
+        "requestedTier": "S2",
+        "reason": "security-risk (provider HTTP seam) and externalEnvironment-risk (live inference server)",
+        "independentReviewRequired": true,
+        "requestPath": "tasks/2026-10-16-ai-provider-openai/tier-request.json",
+        "resolutionPath": "tasks/2026-10-16-ai-provider-openai/tier-resolution.json",
+        "requestDigest": "1bfd47cba388c9eafd1972079489f58a1b8faee6a350b66d6e2d1c0974ad1771"
+    }
+}
