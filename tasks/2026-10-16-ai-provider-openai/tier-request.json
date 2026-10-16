@@ -1,0 +1,21 @@
+{
+    "taskCount": 1,
+    "executableOwners": [
+        "worker-backend-ai"
+    ],
+    "capabilityHints": [
+        "python",
+        "fastapi",
+        "httpx",
+        "pytest",
+        "docker-compose",
+        "ALK"
+    ],
+    "riskFlags": {
+        "security": true,
+        "externalEnvironment": true,
+        "release": false
+    },
+    "requirementsBytes": 1400,
+    "externalSpecification": false
+}

@@ -9,6 +9,7 @@ from __future__ import annotations
 import os
 from dataclasses import dataclass
 
+PROVIDER_API = 'CHATTY_BOT_PROVIDER_API'
 PROVIDER_URL = 'CHATTY_BOT_PROVIDER_URL'
 MODEL = 'CHATTY_BOT_MODEL'
 TIMEOUT_SECONDS = 'CHATTY_BOT_TIMEOUT_SECONDS'
@@ -18,6 +19,8 @@ USER_EMAIL = 'CHATTY_BOT_USER_EMAIL'
 RAG_TOP_K = 'CHATTY_BOT_RAG_TOP_K'
 MAX_ANSWER_CHARS = 'CHATTY_BOT_MAX_ANSWER_CHARS'
 
+DEFAULT_PROVIDER_API = 'ollama'
+PROVIDER_APIS = ('ollama', 'openai')
 DEFAULT_PROVIDER_URL = 'http://127.0.0.1:11434'
 DEFAULT_MODEL = 'qwen3:14b'
 DEFAULT_TIMEOUT_SECONDS = 60.0
@@ -30,6 +33,7 @@ DEFAULT_MAX_ANSWER_CHARS = 4000
 
 @dataclass(frozen=True)
 class BotSettings:
+    provider_api: str
     provider_url: str
     model: str
     timeout_seconds: float
@@ -42,6 +46,9 @@ class BotSettings:
 
 def bot_settings_from_env(environ: dict[str, str] | None = None) -> BotSettings:
     env = os.environ if environ is None else environ
+    provider_api = env.get(PROVIDER_API, DEFAULT_PROVIDER_API).strip().lower()
+    if provider_api not in PROVIDER_APIS:
+        provider_api = DEFAULT_PROVIDER_API
     try:
         timeout = float(env.get(TIMEOUT_SECONDS, DEFAULT_TIMEOUT_SECONDS))
     except ValueError:
@@ -63,6 +70,7 @@ def bot_settings_from_env(environ: dict[str, str] | None = None) -> BotSettings:
     except ValueError:
         max_answer_chars = DEFAULT_MAX_ANSWER_CHARS
     return BotSettings(
+        provider_api=provider_api,
         provider_url=env.get(PROVIDER_URL, DEFAULT_PROVIDER_URL).rstrip('/'),
         model=env.get(MODEL, DEFAULT_MODEL),
         timeout_seconds=timeout if timeout > 0 else DEFAULT_TIMEOUT_SECONDS,

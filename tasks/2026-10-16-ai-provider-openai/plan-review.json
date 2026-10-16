@@ -1,0 +1,33 @@
+{
+    "schemaVersion": "agent-plan-review.v1",
+    "packageId": "2026-10-16-ai-provider-openai",
+    "planRevision": 1,
+    "reviewId": "review-2026-10-16-ai-provider-openai-freeze",
+    "fullReview": true,
+    "verdict": "READY_TO_FREEZE",
+    "reviewedPlanHash": "fe3343141975c802b32f0ef127251f000a5c1ad128f8e721b88842d3cc33e8c5",
+    "reviewer": {
+        "id": "claude-code-independent-subagent",
+        "independent": true,
+        "runId": "audit-run-20261016-ai-provider-openai-plan",
+        "surface": "audit-agent-plan"
+    },
+    "findings": [],
+    "reviewVerdict": {
+        "schemaVersion": "agent-review-verdict.v1",
+        "overall": "ACCEPTED",
+        "dimensions": {
+            "requirementFit": {"status": "PASS", "reasonCode": "seam-sufficiency-confirmed", "summary": "The dual-protocol change is fully contained in the two seam files plus configs, tests, compose passthrough and docs; every construction site (services/bot.py, services/documents.py, endpoints) dispatches through the seam factories, so no out-of-scope edits are needed."},
+            "implementationQuality": {"status": "PASS", "reasonCode": "round1-findings-closed", "summary": "Round 1 returned five findings, all textual (F1 symmetric invalid-knob fallback policy, F2 test enumeration for both knobs and factory dispatch, F3 concrete runbook rewrite locations, F4 mode-neutral committed compose defaults, F5 scripted .env.example grep evidence); all closed in the freeze revision exactly per requiredChange, including the empty-content error-kind mapping note."},
+            "evidenceQuality": {"status": "PASS", "reasonCode": "deterministic-plus-honest-live-rows", "summary": "pytest covers both modes for both seams with httpx transport injection; EV-AI-1 gains a scripted env-example knob grep; AC-AI-3 live rows rely on the proven no-chunks short-circuit so the bot answers without embeddings while RAG stays explicit UNAVAILABLE."},
+            "residualRisk": {"status": "PASS", "reasonCode": "local-only-no-cloud", "summary": "Committed compose defaults stay mode-neutral (ollama, 127.0.0.1); the operator's LAN endpoint lives only in the operator env; base rebased onto the merged dev (PR #25, 604628d) per the round-1 resolution."}
+        },
+        "routing": {"target": "plan-freeze", "nextAction": "accept"}
+    },
+    "rounds": [
+        {"round": 1, "verdict": "CHANGES_REQUIRED", "findings": 5, "summary": "Five textual findings (F1 invalid-knob policy asymmetric and unspecified; F2 test enumeration missed RAG-knob parsing and both factory-dispatch tests; F3 runbook edit scope narrower than the actual Ollama-specific text it must replace; F4 'host-side defaults' risked committing the operator LAN topology and shifting the effective default; F5 no scripted evidence for the .env.example knobs) plus a resolved base-conflict note (PR #25 merged, tree-identical). The reviewer stated the architecture is sound and self-contained and that after these textual fixes the plan is READY_TO_FREEZE without a second substantive round."},
+        {"round": 2, "verdict": "READY_TO_FREEZE", "findings": 0, "summary": "Closure round: every finding fixed verbatim in the freeze revision (plan.md items 1/2/3/5/6/7 rewritten; EV-AI-1 validation extended with the env-example grep; base moved to dev@604628d). Per the round-1 reviewer's explicit closure criteria this round lands READY_TO_FREEZE; manifest gained the planReview/tierResolution blocks and plan-review.json in planFiles before locking."}
+    ],
+    "reviewedAt": "2026-10-16",
+    "summary": "Independent one-round-plus-closure review of the stage 13 ai-provider-openai package (single workstream WS-AI-PROVIDER: OpenAI-compatible mode for the bot and embedding seams behind CHATTY_BOT_PROVIDER_API/CHATTY_RAG_EMBEDDING_API with the ollama default preserved). Round 1 confirmed seam sufficiency (all provider construction sites dispatch through the seam factories; frozen dataclasses take the new fields with defaults; build_messages already emits OpenAI-style messages) and returned five textual findings; all were closed exactly per the required changes in the freeze revision, and the reviewer pre-approved freeze without a second substantive round. Frozen digest fe3343141975c802b32f0ef127251f000a5c1ad128f8e721b88842d3cc33e8c5."
+}

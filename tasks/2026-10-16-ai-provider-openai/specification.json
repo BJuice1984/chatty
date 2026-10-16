@@ -1,0 +1,25 @@
+{
+    "revision": 1,
+    "id": "SPEC-AI-PROVIDER-OPENAI",
+    "title": "OpenAI-compatible provider mode for the local AI inference server",
+    "intent": "Teach the bot and RAG embedding seams to speak the OpenAI-compatible protocol (/v1/chat/completions, /v1/embeddings) alongside the default Ollama protocol, so the operator's existing llama.cpp server (192.168.1.121:8080, Qwen3.5-9B) can power the live AI contour without installing Ollama.",
+    "requirements": [
+        {
+            "id": "REQ-AI-PROVIDER",
+            "title": "Dual-protocol provider seam",
+            "description": "Add CHATTY_BOT_PROVIDER_API and CHATTY_RAG_EMBEDDING_API knobs ('ollama' default, 'openai' opt-in); implement OpenAI-compatible clients behind the existing Protocol seams; keep error kinds and transport injection for tests; cover both modes with pytest.",
+            "priority": "P1",
+            "source": "operator decision 2026-10-16: use the existing OpenAI-compatible inference server; docs/deployment/own-backend.md AI smoke section",
+            "acceptanceIds": ["AC-AI-1", "AC-AI-2", "AC-AI-3"],
+            "evidenceIds": ["EV-AI-1", "EV-AI-2"],
+            "owner": "WS-AI-PROVIDER"
+        }
+    ],
+    "constraints": [
+        "Ollama mode stays the default; no behavior change for existing deployments.",
+        "No cloud endpoints; the OpenAI-compatible client only targets the configured local URL.",
+        "backend core (app/core, api, services) is not modified beyond wiring that already exists; the seam files own the change.",
+        "RAG rows stay honestly UNAVAILABLE while the server has no /v1/embeddings endpoint."
+    ],
+    "nonGoals": ["cloud providers", "model downloads", "frontend changes"]
+}

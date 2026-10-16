@@ -1,0 +1,10 @@
+{
+    "status": "RESOLVED",
+    "tier": "S2",
+    "requestedTier": "S2",
+    "reason": "security-risk (provider HTTP seam) and externalEnvironment-risk (live inference server)",
+    "independentReviewRequired": true,
+    "requestPath": "tasks/2026-10-16-ai-provider-openai/tier-request.json",
+    "resolutionPath": "tasks/2026-10-16-ai-provider-openai/tier-resolution.json",
+    "requestDigest": "1bfd47cba388c9eafd1972079489f58a1b8faee6a350b66d6e2d1c0974ad1771"
+}

@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import pytest
+
 from app.bot.config import (
     DEFAULT_MAX_ANSWER_CHARS,
     DEFAULT_MAX_ATTEMPTS,
@@ -13,6 +15,7 @@ from app.bot.config import (
 def test_defaults_from_clean_env():
     bot = bot_settings_from_env({})
 
+    assert bot.provider_api == 'ollama'
     assert bot.provider_url == 'http://127.0.0.1:11434'
     assert bot.model == 'qwen3:14b'
     assert bot.timeout_seconds == 60.0
@@ -25,6 +28,7 @@ def test_defaults_from_clean_env():
 
 def test_env_overrides_are_parsed():
     bot = bot_settings_from_env({
+        'CHATTY_BOT_PROVIDER_API': 'openai',
         'CHATTY_BOT_PROVIDER_URL': 'http://ollama.local:11434/',
         'CHATTY_BOT_MODEL': 'llama3.1:8b',
         'CHATTY_BOT_TIMEOUT_SECONDS': '15',
@@ -35,6 +39,7 @@ def test_env_overrides_are_parsed():
         'CHATTY_BOT_MAX_ANSWER_CHARS': '1000',
     })
 
+    assert bot.provider_api == 'openai'
     assert bot.provider_url == 'http://ollama.local:11434'
     assert bot.model == 'llama3.1:8b'
     assert bot.timeout_seconds == 15.0
@@ -61,3 +66,20 @@ def test_invalid_values_fall_back_to_defaults():
     assert bot.rag_top_k == 3
     assert bot.max_answer_chars == DEFAULT_MAX_ANSWER_CHARS
     assert bot.user_email == DEFAULT_USER_EMAIL
+
+
+@pytest.mark.parametrize('value', ['vertex', 'vllm', 'openai-chat', ''])
+def test_unknown_provider_api_falls_back_to_ollama(value):
+    bot = bot_settings_from_env({'CHATTY_BOT_PROVIDER_API': value})
+
+    assert bot.provider_api == 'ollama'
+
+
+@pytest.mark.parametrize(
+    ('value', 'expected'),
+    [('openai', 'openai'), ('OpenAI', 'openai'), ('  OLLAMA  ', 'ollama')],
+)
+def test_provider_api_is_trimmed_and_lowercased(value, expected):
+    bot = bot_settings_from_env({'CHATTY_BOT_PROVIDER_API': value})
+
+    assert bot.provider_api == expected

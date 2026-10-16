@@ -10,12 +10,15 @@ import os
 import shlex
 from dataclasses import dataclass
 
+EMBEDDING_API = 'CHATTY_RAG_EMBEDDING_API'
 EMBEDDING_URL = 'CHATTY_RAG_EMBEDDING_URL'
 EMBEDDING_MODEL = 'CHATTY_RAG_EMBEDDING_MODEL'
 CONVERTER_COMMAND = 'CHATTY_RAG_CONVERTER_COMMAND'
 CONVERTER_TIMEOUT = 'CHATTY_RAG_CONVERTER_TIMEOUT_SECONDS'
 TOP_K_MAX = 'CHATTY_RAG_TOP_K_MAX'
 
+DEFAULT_EMBEDDING_API = 'ollama'
+EMBEDDING_APIS = ('ollama', 'openai')
 DEFAULT_EMBEDDING_URL = 'http://127.0.0.1:11434'
 DEFAULT_EMBEDDING_MODEL = 'nomic-embed-text'
 DEFAULT_CONVERTER_COMMAND = ('soffice', '--headless', '--convert-to', 'docx')
@@ -25,6 +28,7 @@ DEFAULT_TOP_K_MAX = 20
 
 @dataclass(frozen=True)
 class RagSettings:
+    embedding_api: str
     embedding_url: str
     embedding_model: str
     converter_command: tuple[str, ...]
@@ -34,6 +38,9 @@ class RagSettings:
 
 def rag_settings_from_env(environ: dict[str, str] | None = None) -> RagSettings:
     env = os.environ if environ is None else environ
+    embedding_api = env.get(EMBEDDING_API, DEFAULT_EMBEDDING_API).strip().lower()
+    if embedding_api not in EMBEDDING_APIS:
+        embedding_api = DEFAULT_EMBEDDING_API
     command = env.get(CONVERTER_COMMAND, '').strip()
     parsed_command = tuple(shlex.split(command)) if command else DEFAULT_CONVERTER_COMMAND
     try:
@@ -45,6 +52,7 @@ def rag_settings_from_env(environ: dict[str, str] | None = None) -> RagSettings:
     except ValueError:
         top_k_max = DEFAULT_TOP_K_MAX
     return RagSettings(
+        embedding_api=embedding_api,
         embedding_url=env.get(EMBEDDING_URL, DEFAULT_EMBEDDING_URL).rstrip('/'),
         embedding_model=env.get(EMBEDDING_MODEL, DEFAULT_EMBEDDING_MODEL),
         converter_command=parsed_command or DEFAULT_CONVERTER_COMMAND,
