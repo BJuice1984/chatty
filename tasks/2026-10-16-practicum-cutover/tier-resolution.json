@@ -1,0 +1,10 @@
+{
+    "status": "RESOLVED",
+    "tier": "S2",
+    "requestedTier": "S2",
+    "reason": "architecture-risk, browser-risk, release-risk (CI deletion) and externalEnvironment-risk (live stack); independent plan review required; consolidated into a single workstream after plan-review round 1 (F-07)",
+    "independentReviewRequired": true,
+    "requestPath": "tasks/2026-10-16-practicum-cutover/tier-request.json",
+    "resolutionPath": "tasks/2026-10-16-practicum-cutover/tier-resolution.json",
+    "requestDigest": "ea6a68575d69c3dd50c52ea3a7bb0d15cd460b1bd4ae0a44ef0f0c1c9aaf6ea5"
+}

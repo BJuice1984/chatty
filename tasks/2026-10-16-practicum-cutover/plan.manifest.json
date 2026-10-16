@@ -1,0 +1,581 @@
+{
+    "schemaVersion": "agent-plan-manifest.v1",
+    "status": "FROZEN",
+    "planRevision": 1,
+    "package": {
+        "id": "2026-10-16-practicum-cutover",
+        "title": "Stage 12: live-smoke fixes and practicum cutover",
+        "workspaceRoot": ".",
+        "artifactRoot": "work/2026-10-16-practicum-cutover",
+        "planArtifactRoot": "tasks/2026-10-16-practicum-cutover"
+    },
+    "planFiles": [
+        "tasks/2026-10-16-practicum-cutover/acceptance-criteria.md",
+        "tasks/2026-10-16-practicum-cutover/developer-overview.md",
+        "tasks/2026-10-16-practicum-cutover/plan-review-request.md",
+        "tasks/2026-10-16-practicum-cutover/plan-review.json",
+        "tasks/2026-10-16-practicum-cutover/plan.manifest.json",
+        "tasks/2026-10-16-practicum-cutover/plan.md",
+        "tasks/2026-10-16-practicum-cutover/specification.json",
+        "tasks/2026-10-16-practicum-cutover/tier-request.json",
+        "tasks/2026-10-16-practicum-cutover/tier-resolution.json"
+    ],
+    "packageIntegrity": {
+        "required": true,
+        "lockSchemaVersion": "agent-plan-lock.v2",
+        "inventorySource": "planFiles",
+        "undeclaredTopLevelFiles": "reject",
+        "allowedUnlistedFiles": [
+            "plan.lock.json"
+        ]
+    },
+    "author": {
+        "id": "claude-code",
+        "surface": "agent-first-planning",
+        "runId": "2026-10-16-practicum-cutover-draft"
+    },
+    "baseRevision": {
+        "ref": "dev",
+        "sha": "d72a4ce9bdb9cf90bace90ccfa23e28b6cc4ae2b"
+    },
+    "specification": {
+        "tier": "S2",
+        "intent": "Close live-smoke findings with regression coverage and remove every Yandex Practicum dependency so the project runs exclusively on the owned backend.",
+        "status": "DRAFT",
+        "source": "tasks/2026-10-16-practicum-cutover/specification.json",
+        "requirements": [
+            {
+                "id": "REQ-LIVE-FIXES",
+                "title": "Regression coverage for live fixes and HD-R2 closure",
+                "description": "Adopt the live-applied fixes with one regression test per finding and implement the HD-R2 reconnect history re-request.",
+                "priority": "P1",
+                "source": "docs/progress/progress_log.md 2026-10-16",
+                "acceptanceIds": [
+                    "AC-LIVE-1",
+                    "AC-LIVE-2"
+                ],
+                "evidenceIds": [
+                    "EV-LIVE-1",
+                    "EV-LIVE-2"
+                ],
+                "owner": "WS-LIVE-CUTOVER"
+            },
+            {
+                "id": "REQ-PRACTICUM-CUTOVER",
+                "title": "Remove all Yandex Practicum dependencies",
+                "description": "Delete practicum adapters, collapse the env mode fork, unify forms on the own contract, remove the course bats CI and course references from docs, keep all deterministic gates green.",
+                "priority": "P1",
+                "source": "operator decision 2026-10-16",
+                "acceptanceIds": [
+                    "AC-CUT-1",
+                    "AC-CUT-2",
+                    "AC-CUT-3"
+                ],
+                "evidenceIds": [
+                    "EV-CUT-1",
+                    "EV-CUT-2"
+                ],
+                "owner": "WS-LIVE-CUTOVER"
+            }
+        ],
+        "tierResolutionRequest": {
+            "requestedTier": "S2",
+            "taskCount": 1,
+            "executableOwners": [
+                "worker-live-cutover"
+            ],
+            "capabilityHints": [
+                "typescript",
+                "websocket",
+                "vite",
+                "github-actions",
+                "documentation",
+                "git",
+                "ALK"
+            ],
+            "riskFlags": {
+                "architecture": true,
+                "security": true,
+                "browser": true,
+                "release": true,
+                "externalEnvironment": true
+            },
+            "requirementsBytes": 2600,
+            "externalSpecification": false
+        },
+        "revision": 1,
+        "artifact": "tasks/2026-10-16-practicum-cutover/specification.json",
+        "goal": "A reviewed plan closing the live findings and cutting the project over to own-only operation.",
+        "constraints": [
+            "Live fixes already sit in the working tree; the worker reviews and covers them with tests instead of rewriting semantics.",
+            "The own backend contract is the only supported contract after cutover.",
+            "backend/, netlify.toml, sprint_*/deploy refs, docs/project-principles.json and .github/workflows/verify.yml stay untouched.",
+            "No production promotion claims."
+        ],
+        "nonGoals": [
+            "new backend domains",
+            "cloud deployment",
+            "data migration",
+            "module renaming beyond fork removal"
+        ],
+        "scope": {
+            "in": [
+                "live-fix regression tests",
+                "HD-R2 reconnect history re-request",
+                "practicum adapter deletion",
+                "env mode fork collapse",
+                "own-contract forms",
+                "course CI removal",
+                "docs cleanup",
+                "live re-smoke"
+            ],
+            "out": [
+                "backend changes",
+                "production deployment",
+                "principles digest changes"
+            ]
+        }
+    },
+    "readOnly": [
+        "tasks/README.md",
+        "src/helpers/helpers.ts",
+        "docs/deployment/own-backend.md"
+    ],
+    "forbiddenWrites": [
+        ".alk",
+        "work",
+        "src/main.ts",
+        "src/features/index.ts",
+        "src/features/chats/module.ts",
+        "src/features/chats/store.ts",
+        "src/features/chats/controller.ts",
+        "src/helpers/helpers.ts",
+        "backend",
+        "docs/project-principles.json",
+        ".github/workflows/verify.yml",
+        "netlify.toml"
+    ],
+    "leadOwned": [
+        {
+            "path": "tasks/2026-10-16-practicum-cutover",
+            "owner": "controller",
+            "reason": "The controller owns frozen plan-package artifacts retained in the implementation delta."
+        },
+        {
+            "path": "tasks/2026-09-28-hardening-docs",
+            "owner": "controller",
+            "reason": "Live-run checklist rows and package artifacts are controller-owned history."
+        },
+        {
+            "path": "docs/progress/progress_log.md",
+            "owner": "controller",
+            "reason": "The controller maintains the repository progress log for this implementation package."
+        }
+    ],
+    "workstreams": [
+        {
+            "id": "WS-LIVE-CUTOVER",
+            "title": "Adopt live fixes with regression coverage, close HD-R2, remove every practicum dependency",
+            "owner": "worker-live-cutover",
+            "reviewer": "independent-release-reviewer",
+            "dependsOn": [],
+            "writes": [
+                "src/utils/Store.ts",
+                "src/utils/Store.test.ts",
+                "src/utils/validators.ts",
+                "src/utils/validators.test.ts",
+                "src/utils/WSTransport.ts",
+                "src/utils/WSTransport.test.ts",
+                "src/components/avatar/chatAvatar/chatAvatar.ts",
+                "src/components/messenger/messenger.ts",
+                "src/features/auth/controller.ts",
+                "src/features/auth/pages/login/login.ts",
+                "src/features/chats/history/controller.ts",
+                "src/features/chats/history/history.test.ts",
+                "src/features/chats/pages/chat/chat.hbs",
+                "src/features/chats/pages/chat/chat.ts",
+                "src/features/chats/ws/own.ts",
+                "src/features/chats/ws/ws.test.ts",
+                "src/utils/env.ts",
+                "src/utils/env.test.ts",
+                "src/utils/types.ts",
+                "src/features/auth/api/index.ts",
+                "src/features/auth/api/own.ts",
+                "src/features/auth/api/api.test.ts",
+                "src/features/auth/ports.ts",
+                "src/features/auth/pages/register/register.ts",
+                "src/features/auth/pages/register/register.hbs",
+                "src/features/chats/api/index.ts",
+                "src/features/chats/api/own.ts",
+                "src/features/chats/api/api.test.ts",
+                "src/features/chats/ports.ts",
+                "src/features/chats/ws/gateway.ts",
+                "src/features/profile/api/index.ts",
+                "src/features/profile/api/own.ts",
+                "src/features/profile/api/api.test.ts",
+                "src/features/profile/profile.test.ts",
+                "src/features/profile/controller.ts",
+                "src/features/ai-assistant/api/index.ts",
+                "src/features/ai-assistant/api/own.ts",
+                "src/features/ai-assistant/api/api.test.ts",
+                "src/features/ai-assistant/controller.ts",
+                "src/features/ai-assistant/controller.test.ts",
+                "src/features/ai-assistant/pages/assistant.test.ts",
+                ".github/workflows/tests.yml",
+                ".env.own.example",
+                "README.md",
+                "AGENTS.md",
+                "CLAUDE.md",
+                "docs/arch/README.md",
+                "docs/arch/data-layer.md",
+                "docs/arch/build-and-infra.md",
+                "docs/deployment/internal-backend.md",
+                "src/features/chats/history/merge.ts",
+                "src/features/chats/history/types.ts",
+                "src/features/chats/history/view.ts",
+                "src/features/auth/api/practicum.ts",
+                "src/features/chats/api/practicum.ts",
+                "src/features/chats/ws/practicum.ts",
+                "src/features/profile/api/practicum.ts",
+                "src/features/ai-assistant/api/practicum.ts",
+                "src/components/messenger/messenger.test.ts",
+                "src/features/chats/pages/chat/chat.test.ts",
+                "src/components/avatar/chatAvatar/chatAvatar.test.ts",
+                ".env.development",
+                ".env.example",
+                ".gitignore"
+            ],
+            "readOnly": [
+                "src/helpers/helpers.ts",
+                "docs/deployment/own-backend.md",
+                "tasks/2026-09-28-ai-messenger-master-plan.md"
+            ],
+            "forbiddenWrites": [
+                "backend",
+                "src/main.ts",
+                "src/features/index.ts",
+                "src/features/chats/module.ts",
+                "src/features/chats/store.ts",
+                "src/features/chats/controller.ts",
+                ".github/workflows/verify.yml",
+                "netlify.toml",
+                "docs/project-principles.json"
+            ],
+            "leadOwned": [],
+            "launchGate": "Branch feature/2026-10-16-practicum-cutover at dev@d72a4ce9bdb9cf90bace90ccfa23e28b6cc4ae2b with the live-smoke fixes in the working tree and npm run verify green (172 tests); the operator authorized commit and PR to dev.",
+            "capabilityHints": [
+                "typescript",
+                "websocket",
+                "vite",
+                "github-actions",
+                "testing",
+                "documentation",
+                "git",
+                "ALK"
+            ],
+            "requiredTools": [
+                "node",
+                "npm",
+                "docker"
+            ],
+            "contextRefs": [
+                "developer-overview.md",
+                "plan.md",
+                "docs/progress/progress_log.md",
+                "tasks/2026-09-28-hardening-docs/harden-reconnect-history.md",
+                "AGENTS.md",
+                "docs/deployment/own-backend.md"
+            ],
+            "acceptanceIds": [
+                "AC-LIVE-1",
+                "AC-LIVE-2",
+                "AC-CUT-1",
+                "AC-CUT-2",
+                "AC-CUT-3"
+            ],
+            "evidenceIds": [
+                "EV-LIVE-1",
+                "EV-LIVE-2",
+                "EV-CUT-1",
+                "EV-CUT-2"
+            ],
+            "executionPolicy": {
+                "maxAttempts": 2,
+                "maxWallSeconds": 7200
+            },
+            "artifactPaths": {
+                "result": "work/2026-10-16-practicum-cutover/evidence/WS-LIVE-CUTOVER/task-result-{attempt}.json",
+                "review": "work/2026-10-16-practicum-cutover/evidence/WS-LIVE-CUTOVER/task-review-{attempt}.json"
+            },
+            "required": true,
+            "plannedItems": [
+                "adopt live fixes",
+                "store emit regression test",
+                "validators regression test",
+                "messenger send callback test",
+                "chatpage fetch test",
+                "avatar null guard test",
+                "HD-R2 reconnect history re-request",
+                "HD-R2 test",
+                "delete practicum adapters",
+                "collapse env fork",
+                "own-contract forms",
+                "ports/types cleanup",
+                "gateway simplification",
+                "course CI removal",
+                "docs cleanup",
+                "grep gate",
+                "live re-smoke",
+                "history practicum docstrings cleanup",
+                "oldestMessageId removal",
+                "env example files cleanup",
+                "password minimum 12"
+            ],
+            "qualityFloor": "Every live finding keeps one deterministic regression test; no existing suite regresses; live-fix semantics are not rewritten. Zero practicum matches in the shipped tree outside the grep-gate scope (historical archives and principles governance); every deterministic gate green; preservation invariants (backend, verify.yml, netlify, principles) hold."
+        }
+    ],
+    "acceptance": {
+        "criteria": [
+            {
+                "id": "AC-LIVE-1",
+                "title": "Live findings closed with regression coverage",
+                "requirementIds": [
+                    "REQ-LIVE-FIXES"
+                ],
+                "evidenceIds": [
+                    "EV-LIVE-1"
+                ],
+                "independentEvidenceIds": [],
+                "statement": "Each live finding (LIVE-2…LIVE-7, HD-R3, status hold) is fixed in the reviewed delta and covered by one deterministic regression test; npm run verify is green.",
+                "description": "Deterministic tests only.",
+                "source": "acceptance-criteria.md",
+                "priority": "P1"
+            },
+            {
+                "id": "AC-LIVE-2",
+                "title": "HD-R2 closed",
+                "requirementIds": [
+                    "REQ-LIVE-FIXES"
+                ],
+                "evidenceIds": [
+                    "EV-LIVE-2"
+                ],
+                "independentEvidenceIds": [],
+                "statement": "An internal transport reconnect re-requests the initial history page without duplicating messages, proven by a ws.test.ts regression test.",
+                "description": "Deterministic test.",
+                "source": "acceptance-criteria.md",
+                "priority": "P2"
+            },
+            {
+                "id": "AC-CUT-1",
+                "title": "No practicum references in the shipped tree",
+                "requirementIds": [
+                    "REQ-PRACTICUM-CUTOVER"
+                ],
+                "evidenceIds": [
+                    "EV-CUT-1"
+                ],
+                "independentEvidenceIds": [],
+                "statement": "grep -ri 'practicum\\|ya-praktikum\\|Практикум' returns zero matches across src/, .github/, README.md, AGENTS.md, CLAUDE.md, docs/arch/ and the tracked root .env* example files (archives in docs/progress/ and tasks/ exempt; docs/project-principles.json exempt as governance history); the env mode fork, practicum adapters and mode-conditional validators are gone, validators are calibrated to the own contract (email, password >= 12); npm run verify is green.",
+                "description": "Grep gate plus suite.",
+                "source": "acceptance-criteria.md",
+                "priority": "P1"
+            },
+            {
+                "id": "AC-CUT-2",
+                "title": "Gates, CI and docs reflect own-only reality",
+                "requirementIds": [
+                    "REQ-PRACTICUM-CUTOVER"
+                ],
+                "evidenceIds": [
+                    "EV-CUT-2"
+                ],
+                "independentEvidenceIds": [],
+                "statement": "verify:all, compose preflight and the strict architecture guard pass; the course bats workflow is deleted while verify.yml stays untouched; README/AGENTS/CLAUDE and docs/arch describe own-only operation; ownership audit is clean.",
+                "description": "Full local gates.",
+                "source": "acceptance-criteria.md",
+                "priority": "P1"
+            },
+            {
+                "id": "AC-CUT-3",
+                "title": "Live re-smoke after cutover",
+                "requirementIds": [
+                    "REQ-PRACTICUM-CUTOVER"
+                ],
+                "evidenceIds": [
+                    "EV-CUT-2"
+                ],
+                "independentEvidenceIds": [],
+                "statement": "On the running local stack after cutover: login loads the chat list without a page reload, history load-more paginates without duplicates, a sent message echoes exactly once; the worker records the rows in the EV-CUT-2 artifact and the controller appends them to tasks/2026-09-28-hardening-docs/harden-reconnect-history.md (lead-owned).",
+                "description": "Live browser rows.",
+                "source": "acceptance-criteria.md",
+                "priority": "P2"
+            }
+        ],
+        "evidence": [
+            {
+                "id": "EV-LIVE-1",
+                "description": "Full verify with one regression test per live finding.",
+                "source": "WS-LIVE-CUTOVER",
+                "validation": "npm run verify",
+                "artifactPath": "work/2026-10-16-practicum-cutover/evidence/WS-LIVE-CUTOVER/EV-LIVE-1.json",
+                "required": true
+            },
+            {
+                "id": "EV-LIVE-2",
+                "description": "HD-R2 reconnect re-request test receipt.",
+                "source": "WS-LIVE-CUTOVER",
+                "validation": "npm run verify (ws.test.ts)",
+                "artifactPath": "work/2026-10-16-practicum-cutover/evidence/WS-LIVE-CUTOVER/EV-LIVE-2.json",
+                "required": true
+            },
+            {
+                "id": "EV-CUT-1",
+                "description": "Grep gate (zero practicum matches) plus verify/verify:all, compose and guard receipts.",
+                "source": "WS-LIVE-CUTOVER",
+                "validation": "grep + npm run verify:all + compose config + guard --all --strict",
+                "artifactPath": "work/2026-10-16-practicum-cutover/evidence/WS-LIVE-CUTOVER/EV-CUT-1.json",
+                "required": true
+            },
+            {
+                "id": "EV-CUT-2",
+                "description": "Docs/CI diff review, ownership audit and live re-smoke rows.",
+                "source": "WS-LIVE-CUTOVER",
+                "validation": "ownership audit + manual/headless rows",
+                "artifactPath": "work/2026-10-16-practicum-cutover/evidence/WS-LIVE-CUTOVER/EV-CUT-2.json",
+                "required": true
+            }
+        ],
+        "releaseGate": "Live findings closed with regression coverage and the own-only cutover accepted without production promotion.",
+        "qualityFloor": "No criterion is accepted from prose alone."
+    },
+    "validation": {
+        "commands": [
+            "npm run verify",
+            "npm run verify:all",
+            "docker compose config --quiet",
+            "node .claude/hooks/scripts/guard-architecture.mjs --all --strict"
+        ],
+        "extraEvidence": [
+            {
+                "id": "EV-LIVE-1",
+                "kind": "deterministic-suite",
+                "timeoutSeconds": 1500
+            },
+            {
+                "id": "EV-CUT-2",
+                "kind": "local-release-and-live-resmoke",
+                "timeoutSeconds": 1800
+            }
+        ]
+    },
+    "orchestration": {
+        "startMode": "reviewed-plan",
+        "remediationMode": "ask",
+        "maxPlanReviewRounds": 3,
+        "maxTaskAttempts": 2,
+        "maxParallelTasks": 1,
+        "maxValidationRunsPerTask": 2,
+        "maxToolCallsPerIteration": 30,
+        "maxUsageIterationsPerAttempt": 12,
+        "maxToolCallsPerTask": 300,
+        "maxToolCallsPerRun": 420,
+        "maxReportedTokensPerTask": 26000,
+        "maxReportedTokensPerRun": 30000,
+        "maxEvidenceArtifactBytes": 1048576,
+        "maxEvidenceBytesPerTask": 4194304,
+        "maxEvidenceBytesPerRun": 4194304,
+        "maxTaskWallSeconds": 5400,
+        "maxRunWallSeconds": 16000,
+        "maxContextBytes": 180000,
+        "maxRenderedPacketBytes": 50000,
+        "stateFile": "work/2026-10-16-practicum-cutover/run.state.json",
+        "eventLog": "work/2026-10-16-practicum-cutover/events.jsonl",
+        "stepReviewRequired": true,
+        "finalAuditRequired": true
+    },
+    "implementationAudit": {
+        "required": true,
+        "finalRequired": true
+    },
+    "developerOverview": "tasks/2026-10-16-practicum-cutover/developer-overview.md",
+    "releaseTarget": {
+        "kind": "local-only",
+        "environment": "Vite own mode plus Docker Compose owned backend (Ollama external, absent in this environment)",
+        "productionPromotionClaimed": false
+    },
+    "releaseImpact": "Closes live-run findings with regression coverage and removes the course dependency; no production deployment or promotion is claimed.",
+    "nonGoals": [
+        "new backend domains",
+        "cloud deployment",
+        "data migration",
+        "module renaming beyond fork removal"
+    ],
+    "finalAuditGates": [
+        "[AC-LIVE-1|EV-LIVE-1] live findings closed with regression coverage",
+        "[AC-LIVE-2|EV-LIVE-2] HD-R2 reconnect history re-request works",
+        "[AC-CUT-1|EV-CUT-1] zero practicum references in the shipped tree with gates green",
+        "[AC-CUT-2|EV-CUT-2] CI/docs own-only, preservation invariants hold, ownership audit clean",
+        "[AC-CUT-3|EV-CUT-2] live re-smoke rows recorded by the worker and appended by the controller"
+    ],
+    "securityGates": [
+        {
+            "id": "SEC-STORE",
+            "statement": "Store emits keep UI in sync with state; no silent suppression path remains.",
+            "evidenceIds": [
+                "EV-LIVE-1"
+            ]
+        },
+        {
+            "id": "SEC-GOVERNANCE",
+            "statement": "Only the course bats workflow is removed; verify CI, netlify, principles and backend preservation invariants hold; no secrets enter Git.",
+            "evidenceIds": [
+                "EV-CUT-1",
+                "EV-CUT-2"
+            ]
+        }
+    ],
+    "planReview": {
+        "required": true,
+        "requestPath": "tasks/2026-10-16-practicum-cutover/plan-review-request.md",
+        "reviewerClass": "independent-plan-reviewer",
+        "maxRounds": 3,
+        "implementationAuthorized": false,
+        "report": "tasks/2026-10-16-practicum-cutover/plan-review.json",
+        "reviewedRevision": 1,
+        "verdict": "READY_TO_FREEZE"
+    },
+    "tierResolution": {
+        "status": "RESOLVED",
+        "tier": "S2",
+        "requestedTier": "S2",
+        "reason": "architecture-risk, browser-risk, release-risk (CI deletion) and externalEnvironment-risk (live stack); independent plan review required; consolidated into a single workstream after plan-review round 1 (F-07)",
+        "independentReviewRequired": true,
+        "requestPath": "tasks/2026-10-16-practicum-cutover/tier-request.json",
+        "resolutionPath": "tasks/2026-10-16-practicum-cutover/tier-resolution.json",
+        "requestDigest": "ea6a68575d69c3dd50c52ea3a7bb0d15cd460b1bd4ae0a44ef0f0c1c9aaf6ea5"
+    },
+    "budgetPolicy": {
+        "units": "tokens-and-resources",
+        "reroute": "pause-and-review",
+        "maxTotalTokens": 30000,
+        "maxParallelWorkstreams": 1,
+        "maxRunWallSeconds": 16000,
+        "criticalPathWallSeconds": 7200,
+        "aggregateWorkstreamWallSeconds": 7200,
+        "retryReserveWallSeconds": 2600
+    },
+    "budgets": {
+        "defaultWorkstreamTokens": 26000,
+        "maxEvidenceBytesPerRun": 4194304
+    },
+    "contextLimits": {
+        "profile": "small-context-profile.v1",
+        "maxPlanContextBytes": 180000,
+        "maxRenderedPacketBytes": 50000,
+        "smallContextPacketBytes": 34000,
+        "maxReferenceFilesPerPacket": 16,
+        "includeOnlyOwnedWrites": true,
+        "excludeRuntimeWorkArtifacts": true
+    }
+}
