@@ -43,6 +43,33 @@ describe('Store', () => {
         expect(handler.calledOnce).to.be.true
     })
 
+    it('should emit on every nested-slice patch, not only the first (LIVE-5)', () => {
+        const testStore = new Store()
+        const handler = sinon.stub()
+
+        // Как chatHistorySlice/aiAssistantSlice: ключ-объект со вложенными
+        // чатами. helpers.set глубоко мержит и мутирует предыдущее значение —
+        // ссылочное сравнение после мержа со второго патча ложно видело
+        // «без изменений» и навсегда подавляло перерисовку.
+        testStore.set('chatHistory', { 3: { cursor: null, isLoading: false } })
+        testStore.on(StoreEvents.Updated, handler)
+        testStore.set('chatHistory', { 3: { cursor: 20 } })
+        testStore.set('chatHistory', { 3: { isLoading: true } })
+
+        expect(handler.callCount).to.eq(2)
+    })
+
+    it('should still suppress the emit when a nested patch changes nothing', () => {
+        const testStore = new Store()
+        const handler = sinon.stub()
+
+        testStore.set('chatHistory', { 3: { cursor: 20 } })
+        testStore.on(StoreEvents.Updated, handler)
+        testStore.set('chatHistory', { 3: { cursor: 20 } })
+
+        expect(handler.called).to.be.false
+    })
+
     it('should update typed slices with the same semantics as set', () => {
         const testStore = new Store()
         const handler = sinon.stub()

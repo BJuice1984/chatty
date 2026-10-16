@@ -1,8 +1,4 @@
-export type AppMode = 'practicum' | 'own'
-
 export interface EnvironmentInput {
-    MODE?: string
-    VITE_APP_MODE?: string
     VITE_API_URL?: string
     VITE_WS_URL?: string
     VITE_FILES_URL?: string
@@ -11,23 +7,22 @@ export interface EnvironmentInput {
 }
 
 export interface AppEnvironment {
-    mode: AppMode
     apiUrl: string
     wsUrl: string
     filesUrl: string
     csrfHeaderName: string
 }
 
-interface ReadEnvOptions {
-    usePracticumDefaults?: boolean
-}
-
 const DEFAULT_CSRF_HEADER_NAME = 'X-CSRF-Token'
 
-const PRACTICUM_DEFAULTS: Pick<AppEnvironment, 'apiUrl' | 'wsUrl' | 'filesUrl'> = {
-    apiUrl: 'https://ya-praktikum.tech/api/v2',
-    wsUrl: 'wss://ya-praktikum.tech',
-    filesUrl: 'https://ya-praktikum.tech/api/v2/resources',
+// Локальные дефолты собственного стека (compose-runbook из
+// docs/deployment/own-backend.md): дают рабочие адреса dev-серверу и
+// тестовому прогону, когда VITE_*-переменные не заданы. Внешний деплой
+// обязан задавать их явно — молча ходить на чужой хост приложение не должно.
+const OWN_DEFAULTS: Pick<AppEnvironment, 'apiUrl' | 'wsUrl' | 'filesUrl'> = {
+    apiUrl: 'http://localhost:8000/api/v1',
+    wsUrl: 'ws://localhost:8000/api/v1',
+    filesUrl: 'http://localhost:8000/api/v1/files',
 }
 
 export class EnvironmentError extends Error {
@@ -41,30 +36,6 @@ export class EnvironmentError extends Error {
 
 function getRuntimeEnvironment(): EnvironmentInput {
     return import.meta.env
-}
-
-function resolveConfiguredMode(input: EnvironmentInput): string {
-    return (input.VITE_APP_MODE ?? input.MODE ?? 'development').trim().toLowerCase()
-}
-
-export function resolveMode(input: EnvironmentInput = {}): AppMode {
-    const configuredMode = resolveConfiguredMode(input)
-
-    if (configuredMode === 'own') {
-        return 'own'
-    }
-
-    if (
-        configuredMode === 'practicum' ||
-        configuredMode === 'development' ||
-        configuredMode === 'production'
-    ) {
-        return 'practicum'
-    }
-
-    throw new EnvironmentError(
-        `Unsupported application mode "${configuredMode}". Use "practicum" or "own".`
-    )
 }
 
 function requiredValue(
@@ -135,18 +106,10 @@ export function joinUrl(baseUrl: string, path: string): string {
     return new URL(relativePath, `${base}/`).toString()
 }
 
-export function readEnv(
-    input: EnvironmentInput = {},
-    options: ReadEnvOptions = {}
-): AppEnvironment {
-    const mode = resolveMode(input)
-    const defaults =
-        mode === 'practicum' && options.usePracticumDefaults === true
-            ? PRACTICUM_DEFAULTS
-            : undefined
-    const apiUrl = requiredValue(input, 'VITE_API_URL', defaults?.apiUrl)
-    const wsUrl = requiredValue(input, 'VITE_WS_URL', defaults?.wsUrl)
-    const filesUrl = requiredValue(input, 'VITE_FILES_URL', defaults?.filesUrl)
+export function readEnv(input: EnvironmentInput = {}): AppEnvironment {
+    const apiUrl = requiredValue(input, 'VITE_API_URL', OWN_DEFAULTS.apiUrl)
+    const wsUrl = requiredValue(input, 'VITE_WS_URL', OWN_DEFAULTS.wsUrl)
+    const filesUrl = requiredValue(input, 'VITE_FILES_URL', OWN_DEFAULTS.filesUrl)
     const csrfHeaderName = requiredValue(
         input,
         'VITE_CSRF_HEADER_NAME',
@@ -158,7 +121,6 @@ export function readEnv(
     }
 
     return {
-        mode,
         apiUrl: normalizeBaseUrl(apiUrl, 'VITE_API_URL', ['http:', 'https:']),
         wsUrl: normalizeBaseUrl(wsUrl, 'VITE_WS_URL', ['ws:', 'wss:']),
         filesUrl: normalizeBaseUrl(filesUrl, 'VITE_FILES_URL', ['http:', 'https:']),
@@ -166,7 +128,7 @@ export function readEnv(
     }
 }
 
-export const env = readEnv(getRuntimeEnvironment(), { usePracticumDefaults: true })
+export const env = readEnv(getRuntimeEnvironment())
 
 export function fileUrl(path: string, configuration?: AppEnvironment): string {
     if (path.trim() === '') {
@@ -174,25 +136,4 @@ export function fileUrl(path: string, configuration?: AppEnvironment): string {
     }
 
     return joinUrl((configuration ?? env).filesUrl, path)
-}
-
-export function chatWebSocketUrl(
-    userId: number,
-    chatId: number,
-    token: string,
-    configuration?: AppEnvironment
-): string {
-    if (
-        !Number.isInteger(userId) ||
-        !Number.isInteger(chatId) ||
-        token.trim() === ''
-    ) {
-        throw new EnvironmentError('User, chat and token are required for a chat WebSocket URL')
-    }
-
-    const path = [userId, chatId, token]
-        .map(value => encodeURIComponent(String(value)))
-        .join('/')
-
-    return joinUrl((configuration ?? env).wsUrl, `/ws/chats/${path}`)
 }

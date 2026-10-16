@@ -5,15 +5,14 @@ import type { Message } from '../../../utils/types.ts'
 
 // Сообщение истории с идентичностью: DTO Message (utils/types.ts) не имеет id
 // (техдолг stage 7), а дедупликация подгрузки требует ключа. own-адаптер
-// прикладывает id из OwnMessageResponse; practicum-DTO несёт id в raw-JSON
-// (поле проходит через индексную сигнатуру Message без объявления).
+// прикладывает id из OwnMessageResponse (поле проходит через индексную
+// сигнатуру Message без объявления).
 export interface HistoryMessage extends Message {
     id?: number
 }
 
-// Состояние истории одного чата: курсор before_id (own — next_before_id из
-// ответа бэкенда; practicum — id самого старого загруженного сообщения),
-// флаги загрузки/наличия более старых сообщений и текстовая ошибка.
+// Состояние истории одного чата: курсор before_id (next_before_id из ответа
+// бэкенда), флаги загрузки/наличия более старых сообщений и текстовая ошибка.
 export interface ChatHistoryState {
     cursor: number | null
     isLoading: boolean

@@ -83,15 +83,22 @@ export class Store extends EventBus {
 
     public set(keypath: string, data: unknown) {
         const previous = getSlice(this.state, keypath)
+        const isObject = typeof previous === 'object' && previous !== null
 
-        // helpers.set мутирует вложенные объекты, поэтому сравниваем с копией
-        const previousSnapshot = typeof previous === 'object' && previous !== null
-            ? { ...previous as Record<string, unknown> }
-            : previous
+        // Глубокий снимок до мержа: helpers.set мутирует и предыдущее
+        // значение, и data (вложенные объекты merge подменяет старыми
+        // ссылками), поэтому ссылочное сравнение после мержа ложно видело
+        // «без изменений» и навсегда подавляло эмит вложенных слайсов
+        // (chatHistory, aiAssistant) после первого патча (LIVE-5).
+        const previousSnapshot = isObject ? structuredClone(previous) : previous
 
         set(this.state, keypath, data)
 
-        if (shallowEqual(previousSnapshot, data)) {
+        const changed = isObject
+            ? JSON.stringify(previousSnapshot) !== JSON.stringify(getSlice(this.state, keypath))
+            : !shallowEqual(previousSnapshot, data)
+
+        if (!changed) {
             return
         }
 

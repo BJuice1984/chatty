@@ -1,8 +1,9 @@
-// Own-реализация WS-шлюза (stage 7; stage 11 — история через history-модуль):
-// cookie-аутентификация (токен не нужен — URL /ws/chats/{chatId} от env.wsUrl),
-// события бэкенда:
+// Реализация WS-шлюза собственного бэкенда (stage 7; stage 11 — история через
+// history-модуль): cookie-аутентификация (токен не нужен — URL
+// /ws/chats/{chatId} от env.wsUrl), события бэкенда:
 //   исходящие: {type:'message', content:{content, file_id?, client_message_id?}},
-//              {type:'history', content:{before_id, limit}}
+//              {type:'history', content:{before_id, limit}},
+//              {type:'ping', content:{}}
 //   входящие:  {type:'message', content:MessageResponse} (broadcast, включая эхо),
 //              {type:'history', content:{messages, next_before_id, ...}},
 //              {type:'pong'} / ошибки — игнорируются.
@@ -19,8 +20,8 @@ import type { Message } from '../../../utils/types.ts'
 import { chatHistoryController } from '../history/controller.ts'
 import type { HistoryMessage } from '../history/types.ts'
 // Регистрация хелпера ChatHistory для messenger.hbs: модуль истории попадает
-// в бандл в обоих режимах через импорт ws-адаптеров (components фичи не
-// импортируют — guard-блокер).
+// в бандл через импорт ws-адаптера (components фичи не импортируют —
+// guard-блокер).
 import '../history/view.ts'
 import { appendMessages } from './gateway.ts'
 
@@ -48,11 +49,13 @@ export function ownChatUrl(chatId: number): string {
     return joinUrl(env.wsUrl, `/ws/chats/${chatId}`)
 }
 
-// WSTransportMessage контрактен Практикуму (content?: string); own-протоколу для
-// history нужен объект в content — транспорт сериализует JSON как есть, мост
-// через структурный каст (WSTransport — readOnly, принадлежит stage 1).
-function sendOwnEvent(socket: WSTransport, event: { type: string; content?: unknown }): void {
-    socket.send(event as unknown as { type: string; content?: string })
+// Контент события — скаляр (текст сообщения) или объект (history/ping);
+// транспорт сериализует его в JSON как есть.
+function sendOwnEvent(
+    socket: WSTransport,
+    event: { type: string; content?: string | Record<string, unknown> }
+): void {
+    socket.send(event)
 }
 
 export function toMessage(response: OwnMessageResponse): Message {
@@ -83,7 +86,19 @@ export class OwnWsAdapter {
 
         this.sockets.set(id, wsTransport)
 
-        await wsTransport.connect()
+        // Подписки регистрируются до connect(): Connected стреляет синхронно
+        // на open — подписка после await connect() пропустила бы первое
+        // открытие сокета.
+        wsTransport.on(WSTransportEvents.Connected, () => {
+            // HD-R2: первичная история запрашивается из единственного места —
+            // здесь. Connected срабатывает и на первом open, и на внутреннем
+            // backoff-реконнекте, поэтому после обрыва страница пере-запрашивается.
+            // Висящий «загрузить ещё» ответа уже не получит (сокет умер) —
+            // сбрасываем pending-флаг, иначе свежая первичная страница была бы
+            // ошибочно смержена как ответ на подгрузку (переворот порядка).
+            chatHistoryController.resetPendingLoad(id)
+            sendOwnEvent(wsTransport, { type: 'history', content: { before_id: null, limit: 50 } })
+        })
 
         wsTransport.on(WSTransportEvents.Message, event => {
             const wsEvent = event as OwnWsEvent
@@ -114,7 +129,7 @@ export class OwnWsAdapter {
         })
         wsTransport.on(WSTransportEvents.Close, () => this.sockets.delete(id))
 
-        sendOwnEvent(wsTransport, { type: 'history', content: { before_id: null, limit: 50 } })
+        await wsTransport.connect()
     }
 
     sendMessage(id: number, message: string): Promise<void> {

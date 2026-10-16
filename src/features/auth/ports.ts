@@ -1,6 +1,7 @@
 // Порты фичи auth (stage 3): контракт, за которым скрыто поведение.
 // Порты самодостаточны — не импортируют ничего (и тем более не вверх по слоям).
-// Реализация по умолчанию (Practicum) живёт в controller.ts; own-адаптер — stage 7 (api-cutover).
+// Реализация — own-адаптер (./api/own.ts); AuthUser сохраняет полную форму
+// исторического контракта — own-адаптер заполняет недостающие поля пустышками.
 
 export interface AuthUser {
     id: number
@@ -18,13 +19,12 @@ export interface SignInRequest {
     password: string
 }
 
+// Контракт регистрации = Credentials бэкенда (email + password ≥ 12);
+// confirm_password — поле формы, в запрос не входит (own-адаптер отбрасывает).
 export interface SignUpRequest {
-    login: string
-    password: string
     email: string
-    first_name: string
-    second_name: string
-    phone: string
+    password: string
+    confirm_password: string
 }
 
 export interface AuthPort {

@@ -1,14 +1,13 @@
-// Own-адаптер порта auth (stage 7): контракт собственного бэкенда
+// Адаптер порта auth на собственном бэкенде: контракт
 // (/auth/register, /auth/login, /auth/refresh, /auth/logout, /auth/me).
 // Cookie-аутентификация (withCredentials в HTTPTransport) + CSRF double-submit
 // (cookie chatty_csrf → заголовок env.csrfHeaderName) на refresh/logout.
 // /auth/me при 401 делает refresh и повторяет запрос один раз.
 //
 // Маппинг креденциалов: бэкенд требует email (с '@') и пароль ≥ 12; поле login
-// формы маппится в email. UserResponse несёт только id/email/role/is_active/
-// created_at — недостающие поля AuthUser заполняются пустыми значениями
-// (login=display_name=email). Валидаторы форм остаются калиброванными под
-// Практикум — own-смоук гоняется напрямую через порты (см. план stage 7).
+// формы входа маппится в email. UserResponse несёт только id/email/role/
+// is_active/created_at — недостающие поля AuthUser заполняются пустыми
+// значениями (login=display_name=email).
 
 import HTTPTransport, { TransportError } from '../../../utils/HTTPTransport.ts'
 import { readCsrfToken } from '../../../utils/csrf.ts'
@@ -42,7 +41,8 @@ export function toLoginBody(data: SignInRequest): { email: string; password: str
     return { email: data.login, password: data.password }
 }
 
-// Тело запроса register: контракт бэкенда — только email и password (≥ 12)
+// Тело запроса register: Credentials бэкенда — только email и password (≥ 12);
+// confirm_password — клиентская проверка формы, в запрос не входит
 export function toRegisterBody(data: SignUpRequest): { email: string; password: string } {
     return { email: data.email, password: data.password }
 }
@@ -67,7 +67,7 @@ export const ownAuthPort: AuthPort = {
         await http.post('/login', { data: toLoginBody(data) })
     },
     async signup(data: SignUpRequest) {
-        // Credentials бэкенда: email + password (≥ 12); остальные поля формы Практикума не входят в контракт
+        // Credentials бэкенда: email + password (≥ 12)
         await http.post('/register', { data: toRegisterBody(data) })
     },
     me: meWithRefresh,

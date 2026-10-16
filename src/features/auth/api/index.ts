@@ -1,9 +1,7 @@
-// Выбор адаптера auth по режиму (stage 7): env.mode определён на старте
-// (VITE_APP_MODE/MODE); режим фиксирован на время жизни приложения.
+// Порт auth: единственная реализация — own-адаптер собственного бэкенда
+// (stage 7 выбирал по env.mode; cutover 2026-10-16 оставил одну историю).
 
-import { env } from '../../../utils/env.ts'
 import type { AuthPort } from '../ports.ts'
 import { ownAuthPort } from './own.ts'
-import { practicumAuthPort } from './practicum.ts'
 
-export const authPort: AuthPort = env.mode === 'own' ? ownAuthPort : practicumAuthPort
+export const authPort: AuthPort = ownAuthPort

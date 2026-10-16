@@ -1,6 +1,5 @@
-// Фича-контроллер auth (stage 3; stage 7 — порт по умолчанию из режимных адаптеров):
-// бизнес-логика за портом. Реализация порта по умолчанию — адаптер, выбранный
-// по env.mode в ./api/index.ts (practicum / own).
+// Фича-контроллер auth (stage 3): бизнес-логика за портом. Реализация порта
+// по умолчанию — own-адаптер из ./api/index.ts.
 
 import Router from '../../utils/Router.ts'
 import { MESSENGER, PROFILE, SIGNIN } from '../../utils/constants.ts'
@@ -17,7 +16,8 @@ export class AuthFeatureController {
 
     async signin(data: SignInRequest): Promise<void> {
         try {
-            await this.port.signin(data)
+            // Пробелы по краям логина/email от копипаста не попадают в запрос
+            await this.port.signin({ ...data, login: data.login.trim() })
             await this.fetchUser()
             Router.go(MESSENGER)
         } catch (e: unknown) {

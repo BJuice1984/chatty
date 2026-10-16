@@ -288,7 +288,8 @@ describe('WSTransport', () => {
 
         await clock.tickAsync(10_000)
 
-        expect(created[0].sent.filter(item => item === '{"type":"ping"}')).to.have.length(2)
+        // content обязателен по контракту own-бэкенда (LIVE-6)
+        expect(created[0].sent.filter(item => item === '{"type":"ping","content":{}}')).to.have.length(2)
 
         // Обрыв: во время backoff-паузы ping молча пропускается.
         created[0].triggerRemoteClose()

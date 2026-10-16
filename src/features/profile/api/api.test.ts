@@ -1,9 +1,6 @@
 import { expect } from 'chai'
 import { JSDOM } from 'jsdom'
-import { env } from '../../../utils/env.ts'
-import type { ProfilePort } from '../ports.ts'
 import { ownProfilePort } from './own.ts'
-import { practicumProfilePort } from './practicum.ts'
 import { profilePort } from './index.ts'
 
 const dom = new JSDOM()
@@ -19,18 +16,12 @@ async function captureError(action: () => unknown): Promise<unknown> {
     return undefined
 }
 
-describe('profile api adapters', () => {
-    it('should select the adapter by env mode', () => {
-        const expected: ProfilePort = env.mode === 'own' ? ownProfilePort : practicumProfilePort
+describe('profile api adapter', () => {
+    it('should expose the own adapter as the port', () => {
+        expect(profilePort).to.eq(ownProfilePort)
 
-        expect(profilePort).to.eq(expected)
-    })
-
-    it('should expose all port methods on both adapters', () => {
-        for (const port of [practicumProfilePort, ownProfilePort]) {
-            for (const method of ['searchUsersByLogin', 'changeProfile', 'changeAvatar'] as const) {
-                expect(port, `practicum/own ${method}`).to.have.property(method)
-            }
+        for (const method of ['searchUsersByLogin', 'changeProfile', 'changeAvatar'] as const) {
+            expect(profilePort, `own ${method}`).to.have.property(method)
         }
     })
 

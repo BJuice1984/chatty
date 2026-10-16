@@ -9,7 +9,7 @@ import store from '../../../utils/Store.ts'
 import type { Message } from '../../../utils/types.ts'
 import type { ChatMessagesPort } from '../ports.ts'
 import { ChatHistoryController, chatHistoryController } from './controller.ts'
-import { historyMessageKey, mergeHistoryMessages, oldestMessageId } from './merge.ts'
+import { historyMessageKey, mergeHistoryMessages } from './merge.ts'
 import { chatHistorySlice } from './store.ts'
 import { CHAT_HISTORY_PAGE_LIMIT, type HistoryMessage } from './types.ts'
 import { ChatHistory } from './view.ts'
@@ -72,17 +72,6 @@ describe('chats history merge', () => {
         const merged = mergeHistoryMessages(current, batch, 'append')
 
         expect(merged.map(item => item.content)).to.deep.eq(['привет', 'пока'])
-    })
-
-    it('finds the oldest numeric id for the practicum cursor regardless of batch order', () => {
-        // Сырая пачка приходит убыванием (desc: 30 новее 20) — курсором
-        // становится старейший id, иначе «загрузить ещё» попросит страницу
-        // от новейшего сообщения и пагинация выродится (HD-R1).
-        expect(oldestMessageId([message(30, 'c'), message(20, 'a')])).to.eq(20)
-        expect(oldestMessageId([message(20, 'a'), message(30, 'c')])).to.eq(20)
-        expect(oldestMessageId([plainMessage('x'), message(5, 'e')])).to.eq(5)
-        expect(oldestMessageId([plainMessage('x')])).to.eq(null)
-        expect(oldestMessageId([])).to.eq(null)
     })
 })
 
@@ -190,17 +179,59 @@ describe('chats history controller', () => {
         expect(state.error).to.eq('Chat 3 is not connected')
     })
 
-    it('prepends an older batch and advances the cursor (before_id)', () => {
-        store.set('messages', { 3: [message(30, 'c')] })
-        chatHistorySlice.patchHistory(3, { cursor: 30, isLoading: true })
+    it('returns the status row to a working state after the load timeout (HD-R3)', () => {
+        const clock = sinon.useFakeTimers()
 
-        controller.applyOlderHistory(3, [message(21, 'b'), message(20, 'a')], 20)
+        try {
+            chatHistorySlice.patchHistory(3, { cursor: 42 })
+            controller.loadOlder(3)
 
-        expect((store.getState().messages?.[3] ?? []).map(item => item.content))
-            .to.deep.eq(['a', 'b', 'c'])
-        expect(chatHistorySlice.getHistory(3).isLoading).to.be.false
-        expect(chatHistorySlice.getHistory(3).cursor).to.eq(20)
-        expect(chatHistorySlice.getHistory(3).hasMore).to.be.true
+            expect(chatHistorySlice.getHistory(3).isLoading).to.be.true
+
+            // Ответ приходит WS-событием и может потеряться (обрыв сокета):
+            // через 10 секунд строка обязана вернуться к рабочему состоянию,
+            // а не висеть «Загружаем сообщения…» навсегда.
+            clock.tick(10_000)
+
+            const state = chatHistorySlice.getHistory(3)
+
+            expect(state.isLoading).to.be.false
+            expect(state.error).to.eq('Не удалось загрузить историю — попробуйте ещё раз')
+
+            // Кнопка повтора снова работает: повторный loadOlder уходит в порт
+            const loadHistory = sinon.spy(port, 'loadHistory')
+
+            controller.loadOlder(3)
+
+            expect(loadHistory.calledOnce).to.be.true
+        } finally {
+            clock.restore()
+        }
+    })
+
+    it('prepends an older batch, advances the cursor and holds the loading status for UX', async () => {
+        const clock = sinon.useFakeTimers()
+
+        try {
+            store.set('messages', { 3: [message(30, 'c')] })
+            chatHistorySlice.patchHistory(3, { cursor: 30, isLoading: true })
+
+            controller.applyOlderHistory(3, [message(21, 'b'), message(20, 'a')], 20)
+
+            expect((store.getState().messages?.[3] ?? []).map(item => item.content))
+                .to.deep.eq(['a', 'b', 'c'])
+            // Сообщения и курсор применены сразу, статус держится ещё 2 секунды —
+            // мгновенный сброс выглядел бы морганием надписи
+            expect(chatHistorySlice.getHistory(3).cursor).to.eq(20)
+            expect(chatHistorySlice.getHistory(3).hasMore).to.be.true
+            expect(chatHistorySlice.getHistory(3).isLoading).to.be.true
+
+            clock.tick(2000)
+
+            expect(chatHistorySlice.getHistory(3).isLoading).to.be.false
+        } finally {
+            clock.restore()
+        }
     })
 
     it('closes pagination when the batch is empty or the cursor is null', () => {

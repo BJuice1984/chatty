@@ -4,6 +4,51 @@
 > Новые записи — сверху. Одна запись = одна завершённая порция работы:
 > что и почему сделали, где смотреть, чем проверили.
 
+## 2026-10-16 — ALK: stage 12 practicum-cutover выполнен (r2, ACCEPTED attempt 1)
+
+**Что:** проект полностью отвязан от бэкенда Я.Практикума (решение оператора
+2026-10-16) и закрыты находки первого живого смоука. Пакет
+`tasks/2026-10-16-practicum-cutover/`: ревизия r1 → независимое plan-ревью в
+2 раунда (CHANGES_REQUIRED: 10 находок, 5 HIGH — неполнота write-set против
+grep-гейта, 5 удаляемых адаптеров и 3 тест-хоста вне владения, дыра
+`.env.development` с курсными URL и решение по именованию Vite-режима,
+конфликт forbiddenWrites с удалением курсного CI, гонка HD-R2 → всё закрыто
+→ READY_TO_FREEZE + 3 advisory) → FROZEN r1, digest `357d5846…`, lock,
+`plan verify` PASS → авторизация ALLOW → task compile. Воркер исполнил обе
+фазы в attempt 1; remediation r2 по решению оператора расширил write-set на
+2 пути (`safety.test.ts` — неизбежный typecheck-фикс после схлопывания
+`AppEnvironment.mode`; `constants.ts` — подсказка пароля «от 12 до 40»),
+digest `cdb4eac8…`, lock пересоздан, ownership 60+3/0/0.
+
+**Реализация (WS-LIVE-CUTOVER):** фаза A — живые фиксы LIVE-2…LIVE-7/HD-R3
+приняты в delta без переписывания семантики, по одному осмысленному
+регрессионному тесту на находку (Store-эмит вложенных слайсов, email-точки/
+тримминг, отправка с актуальным `selectedChat` через `this.props`, fetchChats
+при монтировании, null-avatar, ping-контент, таймаут/hold статуса); HD-R2
+закрыт — единственный отправитель первичной истории живёт в подписке
+`Connected` (пост-await send удалён), маршрутизация через сброс pending-load,
+тест реконнекта на реальном backoff без дублей и переупорядочивания;
+`oldestMessageId`/`cursorForBatch` удалены. Фаза B — удалены 5
+practicum-адаптеров, env-развилка схлопнута в единственный own-режим
+(`--mode own` и `.env.own.example` сохранены как имя Vite-конфигурации;
+`.env.development` переписан на own-дефолты), формы на own-контракте
+(login=email, register=email+password+confirm, пароль ≥12), `types.ts`/
+`ports.ts` консервативно (AuthUser и валидаторы profile-страницы целы),
+курсный bats-CI `tests.yml` удалён (verify.yml нетронут), README/AGENTS/CLAUDE
+и docs/arch вычищены. Проверка: `npm run verify` 181 (172+9),
+`verify:all` 181+99 pytest + alembic, compose preflight, guard strict 0,
+grep-гейт 0 упоминаний practicum, live re-smoke PASS ×3 (чеклист этапа 11
+дополнен секцией CUT-SMOKE), Ollama-строки честные UNAVAILABLE.
+
+**Проверено:** независимый task-review attempt 1 **ACCEPTED** (гейты
+перепрогнаны ревьюером, отклонения воркера признаны обоснованными, r2-аддендум
+авторитетен). Контроллером закрыты carry-forward: строки CUT-SMOKE аппенднуты
+в lead-owned чеклист, эта запись — финальная фиксация пакета. Открытый долг:
+Block CDM (componentDidMount не активируется ядром — fetchChats в конструкторе
+ChatPage как рабочий обход), Store-эмит теоретически избыточен на
+перестановках ключей (лишний ре-рендер, INFO), AI live-строки — до появления
+Ollama.
+
 ## 2026-10-16 — Live smoke own-стека: чеклист HARDEN-* закрыт, LIVE-2…LIVE-7 найдены и закрыты
 
 **Что:** первый живой прогон полного контура после PR #24 (stage 11). Поднят

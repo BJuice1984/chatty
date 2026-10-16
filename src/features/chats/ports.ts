@@ -1,5 +1,5 @@
 // Порты фичи chats (stage 4; stage 7 добавил поиск пользователей): контракт за границей фичи.
-// Реализации — адаптеры режимов в ./api/{practicum,own,index}.ts; порт остаётся
+// Реализация — собственный адаптер в ./api/{own,index}.ts; порт остаётся
 // самодостаточным (без импортов). Раньше поиск жил в прямом вызове legacy UserApi
 // из контроллера — с cutover он часть контракта.
 
@@ -41,11 +41,13 @@ export interface ChatsPort {
 }
 
 // Шлюз сообщений (stage 7; stage 11 добавил историю): реализация —
-// ws/gateway.ts по env.mode (practicum: токен в URL; own: cookie-auth),
-// замена MessagesController. loadHistory — курсорная пагинация «загрузить
-// ещё»: own шлёт {type:'history', content:{before_id, limit}}, practicum —
-// {type:'get old'}; сами сообщения возвращаются WS-событием Message.
-// Метод опционален: порты-стабы без истории (тесты фичи) остаются валидны.
+// ws/gateway.ts на own-адаптере (cookie-аутентификация), замена
+// MessagesController. loadHistory — курсорная пагинация «загрузить ещё»:
+// {type:'history', content:{before_id, limit}}; сами сообщения возвращаются
+// WS-событием Message. Метод опционален: порты-стабы без истории (тесты
+// фичи) остаются валидны. Токен connect() — историческая часть сигнатуры
+// (cookie-аутентификация токен не использует), контроллерский цикл
+// fetchChats → getToken('' -сентинел) → connect остаётся нетронутым.
 export interface ChatMessagesPort {
     // eslint-disable-next-line no-unused-vars
     sendMessage(chatId: number, message: string): Promise<void>

@@ -2,7 +2,7 @@
 // ChatHistory для messenger.hbs — кнопка «загрузить ещё»/loading/error/empty
 // и событие load-more (клик уходит в контроллер истории). Компоненты не
 // импортируют фичи (guard-блокер), поэтому модуль сам встраивается в бандл:
-// его грузят ws-адаптеры own/practicum за merge/курсором.
+// его грузит ws-адаптер own за merge/курсором.
 
 import Block from '../../../core/Block.ts'
 import Handlebars from 'handlebars'
@@ -11,8 +11,8 @@ import { AppState, ComponentProps, withStore } from '../../../utils/Store.ts'
 import { chatHistoryController } from './controller.ts'
 import { chatHistorySlice } from './store.ts'
 
-// Inline-шаблон, а не view.hbs: модуль транзитивно грузится из ws-адаптеров
-// (gateway → own/practicum → этот файл), которые входят в граф mocha-тестов
+// Inline-шаблон, а не view.hbs: модуль транзитивно грузится из ws-адаптера
+// (gateway → own → этот файл), который входит в граф mocha-тестов
 // без .hbs-погрузчика. Handlebars.compile — тот же инстанс Handlebars, что у
 // registerComponent, так что хелпер-композиция идентична прод-сборке.
 const template = Handlebars.compile(`<li class="chat-history" data-testid="chat-history">

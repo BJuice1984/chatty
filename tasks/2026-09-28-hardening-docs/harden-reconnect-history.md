@@ -29,3 +29,17 @@ Results:
 - **HARDEN-ERROR — PASS.** Connection-refused errors surfaced as text (console), page never crashed; HD-R3 recovery path verified: lost WS answer turns into a text error with a retry button after the 10 s timeout.
 
 Note. The live run surfaced findings LIVE-2…LIVE-7 (own-mode login validation, SPA chat list refresh, avatar null rendering, Store.set emit suppression for nested slices, messenger send callbacks, ping content contract) — fixes live in the working tree and are carried into the `2026-10-16-practicum-cutover` package with regression coverage. See `docs/progress/progress_log.md` for the run summary.
+
+## Live re-smoke 2026-10-16 — after practicum cutover (stage 12, AC-CUT-3)
+
+Source revision `feature/2026-10-16-practicum-cutover` (remediation r2, plan
+digest `cdb4eac8…`), same stack and account as the run above; rows recorded by
+the worker in `work/2026-10-16-practicum-cutover/evidence/WS-LIVE-CUTOVER/EV-CUT-2.json`
+and appended here by the controller per the review carry-forward.
+
+- **CUT-SMOKE-1 (chat list after login) — PASS:** login loads the chat list
+  without a page reload (marker-window survival check).
+- **CUT-SMOKE-2 (history load-more) — PASS:** 47→60 rows, zero duplicate
+  texts, exactly one load-more WS frame.
+- **CUT-SMOKE-3 (send echo) — PASS:** a sent message echoes exactly once.
+- **Ollama AI rows — UNAVAILABLE:** no host Ollama (unchanged policy).

@@ -1,5 +1,11 @@
 # Internal backend deployment
 
+Historical reference (superseded): the canonical deployment runbook is
+[own-backend.md](own-backend.md). This document is retained as history of the
+internal foundation package; since the 2026-10-16 cutover the application has
+a single backend — the repository's own stack — and no external course
+backend dependency remains.
+
 This package deploys only the Chatty API foundation, PostgreSQL and an
 S3-compatible object store on a private Docker network. The storage service is
 named `object-storage` and uses the Apache-2.0 RustFS image. The frontend

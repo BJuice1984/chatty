@@ -1,9 +1,7 @@
 import { expect } from 'chai'
 import { JSDOM } from 'jsdom'
-import { env } from '../../../utils/env.ts'
-import type { AuthPort, AuthUser, SignInRequest, SignUpRequest } from '../ports.ts'
+import type { AuthUser, SignInRequest, SignUpRequest } from '../ports.ts'
 import { ownAuthPort, toAuthUser, toLoginBody, toRegisterBody } from './own.ts'
-import { practicumAuthPort } from './practicum.ts'
 import { authPort } from './index.ts'
 
 const dom = new JSDOM()
@@ -17,18 +15,12 @@ const ownResponse = {
     created_at: '2026-10-06T00:00:00Z',
 }
 
-describe('auth api adapters', () => {
-    it('should select the adapter by env mode', () => {
-        const expected: AuthPort = env.mode === 'own' ? ownAuthPort : practicumAuthPort
+describe('auth api adapter', () => {
+    it('should expose the own adapter as the port', () => {
+        expect(authPort).to.eq(ownAuthPort)
 
-        expect(authPort).to.eq(expected)
-    })
-
-    it('should expose all port methods on both adapters', () => {
-        for (const port of [practicumAuthPort, ownAuthPort]) {
-            for (const method of ['signin', 'signup', 'me', 'logout'] as const) {
-                expect(port, `practicum/own ${method}`).to.have.property(method)
-            }
+        for (const method of ['signin', 'signup', 'me', 'logout'] as const) {
+            expect(authPort, `own ${method}`).to.have.property(method)
         }
     })
 
@@ -46,28 +38,26 @@ describe('auth api adapters', () => {
     })
 
     it('should map the form login field to the backend email credential', () => {
-        const request: SignInRequest = { login: 'ada@example.com', password: 'long-enough-pass' }
+        const request: SignInRequest = { login: 'ada@example.com', password: 'LongPassword1' }
 
         expect(toLoginBody(request)).to.deep.eq({
             email: 'ada@example.com',
-            password: 'long-enough-pass',
+            password: 'LongPassword1',
         })
     })
 
-    it('should build the own register body from email and password only', () => {
+    it('should build the register body from email and password only', () => {
         const request: SignUpRequest = {
-            login: 'ada',
-            password: 'long-enough-pass',
             email: 'ada@example.com',
-            first_name: 'Ada',
-            second_name: 'Lovelace',
-            phone: '+7 000 000 0000',
+            password: 'LongPassword1',
+            confirm_password: 'LongPassword1',
         }
 
-        // собственный контракт: только email и password; лишние поля формы не отправляются
+        // собственный контракт: только email и password; подтверждение —
+        // клиентская проверка формы и в запрос не входит
         expect(toRegisterBody(request)).to.deep.eq({
             email: 'ada@example.com',
-            password: 'long-enough-pass',
+            password: 'LongPassword1',
         })
     })
 })

@@ -49,14 +49,14 @@ describe('ai assistant controller state machine', () => {
 
     it('renders an explicit error state when chats are unavailable', async () => {
         controller = new AiAssistantController(port({ fetchChats: async () => {
-            throw new Error('Операция fetchChats недоступна в practicum-режиме')
+            throw new Error('сеть недоступна')
         } }))
 
         const chats = await controller.loadChats()
 
         expect(chats).to.deep.eq([])
         expect(aiAssistantSlice.getAssistant().status).to.eq('error')
-        expect(aiAssistantSlice.getAssistant().error).to.contain('practicum')
+        expect(aiAssistantSlice.getAssistant().error).to.contain('сеть недоступна')
     })
 
     it('search goes searching -> success with documents', async () => {
