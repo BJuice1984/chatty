@@ -15,6 +15,25 @@ services:
       CHATTY_OBJECT_STORAGE_SECRET_KEY: ${OBJECT_STORAGE_SECRET_KEY:?OBJECT_STORAGE_SECRET_KEY must be set}
       CHATTY_SEED_ADMIN_EMAIL: ${CHATTY_SEED_ADMIN_EMAIL:-}
       CHATTY_SEED_ADMIN_PASSWORD: ${CHATTY_SEED_ADMIN_PASSWORD:-}
+      # AI provider seams (backend/app/ingestion/config.py, backend/app/bot/config.py).
+      # Defaults are mode-neutral (native Ollama on the host); point the URLs at an
+      # address the container can reach and switch the api knobs to 'openai' for an
+      # OpenAI-compatible server. Values live in the operator env file only.
+      CHATTY_RAG_EMBEDDING_API: ${CHATTY_RAG_EMBEDDING_API:-ollama}
+      CHATTY_RAG_EMBEDDING_URL: ${CHATTY_RAG_EMBEDDING_URL:-http://127.0.0.1:11434}
+      CHATTY_RAG_EMBEDDING_MODEL: ${CHATTY_RAG_EMBEDDING_MODEL:-nomic-embed-text}
+      CHATTY_RAG_CONVERTER_COMMAND: ${CHATTY_RAG_CONVERTER_COMMAND:-soffice --headless --convert-to docx}
+      CHATTY_RAG_CONVERTER_TIMEOUT_SECONDS: ${CHATTY_RAG_CONVERTER_TIMEOUT_SECONDS:-30}
+      CHATTY_RAG_TOP_K_MAX: ${CHATTY_RAG_TOP_K_MAX:-20}
+      CHATTY_BOT_PROVIDER_API: ${CHATTY_BOT_PROVIDER_API:-ollama}
+      CHATTY_BOT_PROVIDER_URL: ${CHATTY_BOT_PROVIDER_URL:-http://127.0.0.1:11434}
+      CHATTY_BOT_MODEL: ${CHATTY_BOT_MODEL:-qwen3:14b}
+      CHATTY_BOT_TIMEOUT_SECONDS: ${CHATTY_BOT_TIMEOUT_SECONDS:-60}
+      CHATTY_BOT_MAX_ATTEMPTS: ${CHATTY_BOT_MAX_ATTEMPTS:-2}
+      CHATTY_BOT_STALE_AFTER_SECONDS: ${CHATTY_BOT_STALE_AFTER_SECONDS:-180}
+      CHATTY_BOT_USER_EMAIL: ${CHATTY_BOT_USER_EMAIL:-bot@chatty.local}
+      CHATTY_BOT_RAG_TOP_K: ${CHATTY_BOT_RAG_TOP_K:-3}
+      CHATTY_BOT_MAX_ANSWER_CHARS: ${CHATTY_BOT_MAX_ANSWER_CHARS:-4000}
     command: >-
       sh -c "alembic upgrade head && python -m app.seed &&
       uvicorn app.main:app --host 0.0.0.0 --port 8000"
