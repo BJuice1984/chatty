@@ -3,7 +3,6 @@ import { documentDownloadUrl, UnsafeDocumentUrlError } from './safety.ts'
 import type { AppEnvironment } from '../../utils/env.ts'
 
 const configuration: AppEnvironment = {
-    mode: 'own',
     apiUrl: 'http://localhost:8000/api/v1',
     wsUrl: 'ws://localhost:8000',
     filesUrl: 'http://localhost:8000/files',

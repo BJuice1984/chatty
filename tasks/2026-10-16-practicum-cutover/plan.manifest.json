@@ -1,7 +1,7 @@
 {
     "schemaVersion": "agent-plan-manifest.v1",
     "status": "FROZEN",
-    "planRevision": 1,
+    "planRevision": 2,
     "package": {
         "id": "2026-10-16-practicum-cutover",
         "title": "Stage 12: live-smoke fixes and practicum cutover",
@@ -243,7 +243,9 @@
                 "src/components/avatar/chatAvatar/chatAvatar.test.ts",
                 ".env.development",
                 ".env.example",
-                ".gitignore"
+                ".gitignore",
+                "src/features/ai-assistant/safety.test.ts",
+                "src/utils/constants.ts"
             ],
             "readOnly": [
                 "src/helpers/helpers.ts",
@@ -542,7 +544,7 @@
         "maxRounds": 3,
         "implementationAuthorized": false,
         "report": "tasks/2026-10-16-practicum-cutover/plan-review.json",
-        "reviewedRevision": 1,
+        "reviewedRevision": 2,
         "verdict": "READY_TO_FREEZE"
     },
     "tierResolution": {
