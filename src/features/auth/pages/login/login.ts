@@ -1,10 +1,11 @@
 // Feature-страница входа (stage 3): за границей фичи auth.
-// Legacy src/pages/login остаётся до stage 4 (no legacy deletion).
+// Own-контракт: поле логина — email (адаптер маппит login → email бэкенда),
+// dots/дефисы/плюсы в локальной части разрешены (LIVE-2).
 
 import Block from '../../../../core/Block.ts'
 import Router from '../../../../utils/Router.ts'
-import { SIGNUP, loginValidationMessage, passwordValidationMessage } from '../../../../utils/constants.ts'
-import { loginValidator, passwordValidator } from '../../../../utils/validators.ts'
+import { SIGNUP, mailValidationMessage, passwordValidationMessage } from '../../../../utils/constants.ts'
+import { mailValidator, passwordValidator } from '../../../../utils/validators.ts'
 import AuthController from '../../controller.ts'
 import type { SignInRequest } from '../../ports.ts'
 import template from './login.hbs'
@@ -14,10 +15,10 @@ export class LoginPage extends Block {
         super({
             inputs: [
                 {
-                    label: 'Login (Required)',
+                    label: 'Email (Required)',
                     name: 'login',
-                    validate: loginValidator,
-                    validateMessage: loginValidationMessage,
+                    validate: mailValidator,
+                    validateMessage: mailValidationMessage,
                 },
                 {
                     label: 'Password (Required)',

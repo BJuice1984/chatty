@@ -1,9 +1,6 @@
 import { expect } from 'chai'
 import { JSDOM } from 'jsdom'
-import { env } from '../../../utils/env.ts'
-import type { ChatsPort } from '../ports.ts'
 import { ownChatsPort, toChatInfo } from './own.ts'
-import { practicumChatsPort } from './practicum.ts'
 import { chatsPort } from './index.ts'
 
 const dom = new JSDOM()
@@ -35,28 +32,22 @@ async function captureError(action: () => unknown): Promise<unknown> {
     return undefined
 }
 
-describe('chats api adapters', () => {
-    it('should select the adapter by env mode', () => {
-        const expected: ChatsPort = env.mode === 'own' ? ownChatsPort : practicumChatsPort
+describe('chats api adapter', () => {
+    it('should expose the own adapter as the port', () => {
+        expect(chatsPort).to.eq(ownChatsPort)
 
-        expect(chatsPort).to.eq(expected)
-    })
-
-    it('should expose all port methods on both adapters', () => {
-        for (const port of [practicumChatsPort, ownChatsPort]) {
-            for (const method of [
-                'fetchChats',
-                'createChat',
-                'deleteChat',
-                'getToken',
-                'addUsers',
-                'removeUsers',
-                'getChatUsers',
-                'changeChatAvatar',
-                'searchUsers',
-            ] as const) {
-                expect(port, `practicum/own ${method}`).to.have.property(method)
-            }
+        for (const method of [
+            'fetchChats',
+            'createChat',
+            'deleteChat',
+            'getToken',
+            'addUsers',
+            'removeUsers',
+            'getChatUsers',
+            'changeChatAvatar',
+            'searchUsers',
+        ] as const) {
+            expect(chatsPort, `own ${method}`).to.have.property(method)
         }
     })
 

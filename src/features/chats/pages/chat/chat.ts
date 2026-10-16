@@ -86,6 +86,12 @@ class ChatPageBase extends Block {
             ],
             chats: propsFromStore.chats,
         })
+
+        // Список чатов нужен при каждом заходе на страницу: SPA-вход после
+        // логина не повторяет bootstrap из main.ts. Здесь, а не в
+        // componentDidMount: CDM-флоу Block не активируется (dispatch-
+        // ComponentDidMount никто не вызывает) — конструктор надёжен всегда.
+        void ChatsController.fetchChats()
     }
 
     render() {

@@ -1,23 +1,12 @@
 // Feature-страница регистрации (stage 3): за границей фичи auth.
-// Legacy src/pages/register остаётся до stage 4 (no legacy deletion).
+// Own-контракт бэкенда — Credentials {email, password}: форма несёт только
+// email, пароль и подтверждение (cutover 2026-10-16; login/имя/телефон
+// курсного контракта убраны вместе с ним).
 
 import Block from '../../../../core/Block.ts'
 import Router from '../../../../utils/Router.ts'
-import {
-    SIGNIN,
-    loginValidationMessage,
-    mailValidationMessage,
-    nameValidationMessage,
-    passwordValidationMessage,
-    phoneValidationMessage,
-} from '../../../../utils/constants.ts'
-import {
-    loginValidator,
-    mailValidator,
-    nameValidator,
-    passwordValidator,
-    phoneValidator,
-} from '../../../../utils/validators.ts'
+import { SIGNIN, mailValidationMessage, passwordValidationMessage } from '../../../../utils/constants.ts'
+import { mailValidator, passwordValidator } from '../../../../utils/validators.ts'
 import AuthController from '../../controller.ts'
 import type { SignUpRequest } from '../../ports.ts'
 import template from './register.hbs'
@@ -31,30 +20,6 @@ export class RegisterPage extends Block {
                     name: 'email',
                     validate: mailValidator,
                     validateMessage: mailValidationMessage,
-                },
-                {
-                    label: 'Login',
-                    name: 'login',
-                    validate: loginValidator,
-                    validateMessage: loginValidationMessage,
-                },
-                {
-                    label: 'First Name',
-                    name: 'first_name',
-                    validate: nameValidator,
-                    validateMessage: nameValidationMessage,
-                },
-                {
-                    label: 'Last Name',
-                    name: 'second_name',
-                    validate: nameValidator,
-                    validateMessage: nameValidationMessage,
-                },
-                {
-                    label: 'Phone Number',
-                    name: 'phone',
-                    validate: phoneValidator,
-                    validateMessage: phoneValidationMessage,
                 },
                 {
                     label: 'Password',

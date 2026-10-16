@@ -1,0 +1,58 @@
+{
+    "schemaVersion": "agent-plan-review.v1",
+    "packageId": "2026-10-16-practicum-cutover",
+    "planRevision": 2,
+    "reviewId": "review-2026-10-16-practicum-cutover-freeze-r2+remediation",
+    "fullReview": true,
+    "verdict": "READY_TO_FREEZE",
+    "reviewedPlanHash": "cdb4eac8d8b40fc5f5610e61e6a8472a89e9e735861d14bcc3e44f8015025fc8",
+    "reviewer": {
+        "id": "claude-code-independent-subagent",
+        "independent": true,
+        "runId": "audit-run-20261016-practicum-cutover-plan-r2",
+        "surface": "audit-agent-plan"
+    },
+    "findings": [],
+    "reviewVerdict": {
+        "schemaVersion": "agent-review-verdict.v1",
+        "overall": "ACCEPTED",
+        "dimensions": {
+            "requirementFit": {
+                "status": "PASS",
+                "reasonCode": "traceability-complete",
+                "summary": "REQ-LIVE-FIXES and REQ-PRACTICUM-CUTOVER map to AC-LIVE-1/2 and AC-CUT-1/2/3, EV-LIVE-1/2 and EV-CUT-1/2, the single WS-LIVE-CUTOVER workstream, security gates SEC-STORE/SEC-GOVERNANCE and all four final audit gates; the base dev@d72a4ce (PR #24) is consistent across baseRevision and launchGate, and the operator decision to remove the course dependency is recorded as the requirement source."
+            },
+            "implementationQuality": {
+                "status": "PASS",
+                "reasonCode": "round1-findings-closed",
+                "summary": "All ten round-1 findings closed exactly as declared: the 64-path write set now covers all 31 practicum paths in src/ (grep parity), the five deletable adapters, three new regression-test hosts, the history docstring files, the tracked env files and .gitignore; the Vite-mode 'own' naming decision is fixed; the course bats workflow deletion is unblocked from forbiddenWrites; HD-R2 is specified as a single Connected-driven primary path with a routing discriminator and a mandatory ws.test.ts regression; AuthUser/validators are protected against over-pruning and the password minimum is aligned to the backend contract (>=12)."
+            },
+            "evidenceQuality": {
+                "status": "PASS",
+                "reasonCode": "deterministic-gates-and-honest-live-rows",
+                "summary": "Every AC binds to a deterministic command (verify suites, scripted grep gate, verify:all, compose preflight, strict guard); AC-CUT-3 live rows are recorded by the worker in EV-CUT-2 while the controller appends the lead-owned stage-11 checklist; absent Ollama keeps AI rows explicitly UNAVAILABLE."
+            },
+            "residualRisk": {
+                "status": "PASS",
+                "reasonCode": "bounded-own-only-no-production-claim",
+                "summary": "releaseTarget stays local-only with no production claim; preservation invariants (backend/, verify.yml, netlify.toml, principles digest, main.ts, features/index.ts, chats core files) hold in forbiddenWrites; remaining exposure is the precedent-backed single-workstream volume with a 300-tool-call budget and honest UNAVAILABLE rows, both bounded by the two-attempt task policy."
+            }
+        },
+        "routing": {
+            "target": "plan-freeze",
+            "nextAction": "accept"
+        }
+    },
+    "summary": "Independent two-round read-only audit of the stage 12 practicum-cutover package (single workstream WS-LIVE-CUTOVER: phase A adopts the live-smoke fixes with one regression test per finding and closes HD-R2; phase B removes every Yandex Practicum dependency). Round 1 returned CHANGES_REQUIRED with ten findings (five HIGH: grep gate unpassable without the history docstring files, five deletable adapters outside the write set, missing EV-LIVE-1 test hosts, tracked .env.development practicum URLs and the env naming decision, forbiddenWrites blocking the course CI deletion; four MEDIUM and one LOW covering the HD-R2 double-request/routing race, the workstream split, the lead-owned checklist write, AuthUser over-pruning and the password minimum). Round 2 verified every closure against the package and the codebase - write-set grep parity over all 31 practicum paths in src/, the naming decision (Vite mode 'own' and .env.own.example stay; only the application-level mode fork goes), the single Connected primary path with before_id-based routing and a mandatory reconnect test, the worker/controller split for live rows, and password >= 12 matching backend min_length - and returned READY_TO_FREEZE with three advisory LOW notes (stale workstream ids, principles.json exemption wording, .env.development either/or), all closed in the frozen revision. Frozen digest 357d58469b1197198121a8773f6a554fa1eafca0d69eab5e94a6f97616a2b82f.",
+    "remediationAddendum": {
+        "revision": 2,
+        "date": "2026-10-16",
+        "trigger": "worker attempt 1 deviation (remediationMode ask)",
+        "operatorDecision": "ALLOW: extend the write-set (operator answer 'Расширить write-set (рекомендую)')",
+        "changes": [
+            "src/features/ai-assistant/safety.test.ts added to writes: the env-fork collapse removed AppEnvironment.mode and this AppEnvironment literal failed typecheck — a hard gate; single mechanical line, test semantics unchanged",
+            "src/utils/constants.ts added to writes: passwordValidationMessage updated from 'от 8 до 40' to 'от 12 до 40' to match the own-contract validator floor"
+        ],
+        "independentVerification": "the task-review of attempt 1 re-verifies both paths as part of the reviewed delta; no other manifest field changed"
+    }
+}

@@ -4,15 +4,15 @@
 
 ## Проект
 
-**Chatty** — мессенджер на чистом TypeScript без фреймворков (учебный проект курса middle.messenger Яндекс Практикума). Сборка — Vite 8, шаблоны — Handlebars, компонентный подход — собственный, на классе `Block`.
+**Chatty** — мессенджер на чистом TypeScript без фреймворков (учебный проект middle.messenger). Сборка — Vite 8, шаблоны — Handlebars, компонентный подход — собственный, на классе `Block`. Бэкенд один — собственный (`backend/`).
 
 Требования: Node `^20.19.0 || >=22.12.0`. TypeScript зафиксирован на **5.9** — TS 7 это нативный компилятор без JS API, который нужен `@typescript-eslint`; не обновляйте его, пока typescript-eslint не заявит поддержку.
 
 ## Команды
 
 ```bash
-npm run dev          # vite dev-сервер на порту 3000 (practicum-режим)
-npx vite --mode own  # dev-сервер против своего бэкенда (.env.own)
+npm run dev          # vite dev-сервер на порту 3000 против локального own-бэкенда (.env.development)
+npx vite --mode own  # то же с явным Vite-режимом own (грузит .env.own)
 npm run build        # проверка типов (tsc) + сборка в dist/
 npm run typecheck    # только проверка типов (tsc --noEmit)
 npm start            # build + express-статика из dist/ на порту 3000
@@ -43,9 +43,9 @@ npm run cm           # интерактивный conventional-commit через
 - `src/utils/Router.ts` — singleton (`export default new Router('#app')`), history API, монтирует страницу в `#app` из `index.html`. Маршруты — в `src/main.ts` (`Routes`).
 - `src/utils/Store.ts` — глобальное состояние на EventBus, `StoreEvents.Updated`. Типы состояния — `AppState`. Пишут в Store контроллеры (`store.set('chats', ...)`).
 - `src/controllers/` — синглтоны (`export default new ...Controller()`), единственное место бизнес-логики; вызывают API и пишут в Store.
-- `src/api/` — классы над `BaseApi`, работают через `HTTPTransport`. Бэкенд курса: `https://ya-praktikum.tech/api/v2` (`HTTPTransport.API_URL`).
+- HTTP-адаптеры фич — `src/features/*/api/` над `HTTPTransport`; единственная реализация — own-адаптер собственного бэкенда.
 - `src/utils/HTTPTransport.ts` — обёртка над XMLHttpRequest (дефолтный timeout 30с, per-request override). `src/utils/WSTransport.ts` — WebSocket с bounded-реконнектом (растущий backoff, потолок попыток): явный `close()` не реконнектит и чистит ping/слушатели, `connect()` реджектится при исчерпании попыток.
-- `src/features/` — самодостаточные фичи-модули за портами (`ports.ts`): реализация выбирается по `env.mode`. `src/features/chats/ws/` — WS-шлюз сообщений за портом `ChatMessagesPort` (адаптеры `own`/`practicum`, замена legacy `MessagesController`). `src/features/chats/history/` — пагинация истории чата: курсор `before_id`/`get old`, prepend-merge с дедупликацией по id, саморегистрирующийся хелпер `ChatHistory` (статус-строка «загрузить ещё» в `messenger.hbs`; модуль попадает в бандл импортом из ws-адаптеров — components фичи не импортируют). `src/features/ai-assistant/` — AI-ассистент (RAG-поиск и вопрос-ответ, own-режим).
+- `src/features/` — самодостаточные фичи-модули за портами (`ports.ts`), реализация — own-адаптеры. `src/features/chats/ws/` — WS-шлюз сообщений за портом `ChatMessagesPort` (own-адаптер с cookie-аутентификацией, замена legacy `MessagesController`). `src/features/chats/history/` — пагинация истории чата: курсор `before_id`, prepend-merge с дедупликацией по id, саморегистрирующийся хелпер `ChatHistory` (статус-строка «загрузить ещё» в `messenger.hbs`; модуль попадает в бандл импортом из ws-адаптера — components фичи не импортируют). `src/features/ai-assistant/` — AI-ассистент (RAG-поиск и вопрос-ответ).
 - Шаблоны `.hbs` лежат рядом с компонентами и предкомпилируются кастомным плагином `vite-plugin-handelbars-precompile.ts` (обратите внимание на опечатку «handelbars» в имени файла — она в коде и путях).
 - Стили — SCSS в `src/scss/` (миксины, переменные, normalize в `libs/`).
 - `server/server.js` — express-статика из `dist/` (для проверки прод-сборки локально).
@@ -74,7 +74,7 @@ npm run cm           # интерактивный conventional-commit через
 - Pre-commit хук husky запускает `npm run verify` — строгий гейт без автофиксов. Нужны фиксы — запускайте `npm run eslint:fix` / `npm run stylelint:fix` руками до коммита.
 - Commit-msg хук прогоняет commitlint (conventional commits; интерактивно — `npm run cm`). Аварийный обход через `--no-verify` нежелателен.
 - Окончания строк — LF везде (`.gitattributes` с `eol=lf`); на Windows не отключайте.
-- CI (`.github/workflows/tests.yml`) — автотесты Практикума (bats). Запускается **только на PR из веток `sprint_N` в main** и требует, чтобы репозиторий был публичным. Дополнительно `.github/workflows/verify.yml` гоняет `npm run verify` на всех PR и прямых пушах в main.
+- CI (`.github/workflows/verify.yml`) гоняет `npm run verify` на всех PR и прямых пушах в main.
 - Деплой — Netlify из `dist/` по `netlify.toml` (SPA-редирект `/* → /index.html`).
 - Значимые изменения (код, агентская среда, документация) сопровождайте записью в `docs/progress/progress_log.md` — новые записи сверху.
 - Репозиторий GitHub: `BJuice1984/chatty` (origin по SSH).

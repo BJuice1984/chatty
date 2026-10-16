@@ -5,10 +5,9 @@
 import type { Message } from '../../../utils/types.ts'
 import type { HistoryMessage } from './types.ts'
 
-// Ключ дедупликации: числовой id, когда сообщение его несёт (own прикладывает
-// из OwnMessageResponse, practicum — raw-JSON), иначе составной ключ строки
-// сообщения — идентичный контент в одну секунду схлопывается (лучшее, что
-// даёт practicum-DTO без id).
+// Ключ дедупликации: числовой id, когда сообщение его несёт (own-адаптер
+// прикладывает его из OwnMessageResponse), иначе составной ключ строки
+// сообщения — идентичный контент в одну секунду схлопывается.
 export function historyMessageKey(message: HistoryMessage): string {
     if (typeof message.id === 'number') {
         return `id:${message.id}`
@@ -42,22 +41,4 @@ export function mergeHistoryMessages(
     })
 
     return place === 'prepend' ? [...fresh, ...current] : [...current, ...fresh]
-}
-
-// Самый старый числовой id пачки — курсор practicum-режима для следующего
-// 'get old'. Бэкенд отдаёт убыванием (desc: новые первыми), поэтому «первый
-// элемент» был бы новейшим id — берём минимум числовых id, не завися от
-// порядка. null — числовых id нет.
-export function oldestMessageId(messages: Message[]): number | null {
-    let oldest: number | null = null
-
-    for (const message of messages) {
-        const id = (message as HistoryMessage).id
-
-        if (typeof id === 'number' && (oldest === null || id < oldest)) {
-            oldest = id
-        }
-    }
-
-    return oldest
 }

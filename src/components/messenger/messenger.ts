@@ -42,11 +42,23 @@ class MessengerBase extends Block {
             chatInfo: propsFromStore.chatInfo,
             onDeleteChat: propsFromStore.onDeleteChat,
             onAddUser: propsFromStore.onAddUser,
+            // Колбэк обязан жить в пропсах: this.props обновляется setProps,
+            // а замыкание конструктора застывало на старом selectedChat (LIVE-7)
+            onSendMessage: propsFromStore.onSendMessage,
             formContainerExtraClass: 'messenger__header-form-container',
             headerButtons: [
                 {
                     extraClass: 'close',
-                    handleClick: () => propsFromStore.onDeleteChat?.(propsFromStore.selectedChat),
+                    // this.props, а не замыкание конструктора: selectedChat
+                    // появляется после выбора чата, замыкание осталось бы
+                    // навсегда undefined (LIVE-7)
+                    handleClick: () => {
+                        const { onDeleteChat, selectedChat } = this.props as MessengerProps
+
+                        if (typeof selectedChat === 'number') {
+                            onDeleteChat?.(selectedChat)
+                        }
+                    },
                 },
                 {
                     extraClass: 'cross',
@@ -67,7 +79,14 @@ class MessengerBase extends Block {
                     classType: 'primary',
                     type: 'submit',
                     handleSubmitClick: (value: { message: string }) => {
-                        propsFromStore.onSendMessage?.(propsFromStore.selectedChat, value.message)
+                        // this.props, а не замыкание конструктора: selectedChat
+                        // появляется после выбора чата, замыкание осталось бы
+                        // навсегда undefined (LIVE-7)
+                        const { onSendMessage, selectedChat } = this.props as MessengerProps
+
+                        if (typeof selectedChat === 'number') {
+                            onSendMessage?.(selectedChat, value.message)
+                        }
                     },
                 },
             ],

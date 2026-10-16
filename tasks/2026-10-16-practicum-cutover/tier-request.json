@@ -1,0 +1,24 @@
+{
+    "taskCount": 1,
+    "executableOwners": [
+        "worker-live-cutover"
+    ],
+    "capabilityHints": [
+        "typescript",
+        "websocket",
+        "vite",
+        "github-actions",
+        "documentation",
+        "git",
+        "ALK"
+    ],
+    "riskFlags": {
+        "architecture": true,
+        "security": true,
+        "browser": true,
+        "release": true,
+        "externalEnvironment": true
+    },
+    "requirementsBytes": 2600,
+    "externalSpecification": false
+}

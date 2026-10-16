@@ -1,9 +1,6 @@
 import { expect } from 'chai'
-import { env } from '../../../utils/env.ts'
-import type { AiAssistantPort } from '../ports.ts'
 import { AiBotRunError } from '../ports.ts'
 import { ownAiAssistantPort, ensureSuccessfulRun, findAnswerText, toAiBotRun, toAiChatSummary, toAiDocumentChunk } from './own.ts'
-import { practicumAiAssistantPort } from './practicum.ts'
 import { aiAssistantPort } from './index.ts'
 
 const ownChat = {
@@ -33,41 +30,12 @@ const ownRun = {
     attachment_file_id: 34,
 } as const
 
-async function captureError(action: () => unknown): Promise<unknown> {
-    try {
-        await action()
-    } catch (e) {
-        return e
-    }
+describe('ai assistant api adapter', () => {
+    it('should expose the own adapter as the port', () => {
+        expect(aiAssistantPort).to.eq(ownAiAssistantPort)
 
-    return undefined
-}
-
-describe('ai assistant api adapters', () => {
-    it('should select the adapter by env mode', () => {
-        const expected: AiAssistantPort = env.mode === 'own' ? ownAiAssistantPort : practicumAiAssistantPort
-
-        expect(aiAssistantPort).to.eq(expected)
-    })
-
-    it('should expose all port methods on both adapters', () => {
-        for (const adapter of [practicumAiAssistantPort, ownAiAssistantPort]) {
-            for (const method of ['fetchChats', 'searchDocuments', 'askBot'] as const) {
-                expect(adapter, `practicum/own ${method}`).to.have.property(method)
-            }
-        }
-    })
-
-    it('should reject every operation in practicum mode', async () => {
-        for (const operation of [
-            () => practicumAiAssistantPort.fetchChats(),
-            () => practicumAiAssistantPort.searchDocuments(1, 'q', 5),
-            () => practicumAiAssistantPort.askBot(1, 'q'),
-        ]) {
-            const error = await captureError(operation)
-
-            expect(error).to.be.instanceOf(Error)
-            expect((error as Error).message).to.contain('недоступна в practicum-режиме')
+        for (const method of ['fetchChats', 'searchDocuments', 'askBot'] as const) {
+            expect(aiAssistantPort, `own ${method}`).to.have.property(method)
         }
     })
 

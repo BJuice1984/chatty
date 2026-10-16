@@ -1,6 +1,8 @@
 import { expect } from 'chai'
+import sinon from 'sinon'
 import '../hbs-test-loader.ts'
 import { AssistantPage } from './assistant.ts'
+import { aiAssistantPort } from '../api/index.ts'
 import { aiAssistantSlice } from '../store.ts'
 
 async function flushAsync(): Promise<void> {
@@ -16,19 +18,29 @@ describe('ai assistant page states', () => {
         aiAssistantSlice.reset()
     })
 
-    it('renders the explicit error state when chats are unavailable (practicum/own backend down)', async () => {
-        const page = render()
+    it('renders the explicit error state when chats are unavailable (own backend down)', async () => {
+        // Порт единственный (own) и ходит в сеть — детерминированно подменяем
+        // fetchChats отказом бэкенда: error-путь контроллера пишет в слайс
+        const fetchChats = sinon.stub(aiAssistantPort, 'fetchChats').rejects(
+            new Error('Список AI-чатов недоступен: бэкенд не отвечает')
+        )
 
-        // componentDidMount вызывает Router при монтировании — в тесте
-        // повторяем его вручную, чтобы запустился loadChats.
-        page.dispatchComponentDidMount()
-        await flushAsync()
+        try {
+            const page = render()
 
-        const error = page.element?.querySelector('[data-testid="ai-error"]')
+            // componentDidMount вызывает Router при монтировании — в тесте
+            // повторяем его вручную, чтобы запустился loadChats.
+            page.dispatchComponentDidMount()
+            await flushAsync()
 
-        expect(error).to.exist
-        expect(error?.textContent).to.contain('недоступна')
-        expect(page.element?.querySelector('[data-testid="ai-no-chats"]')).to.exist
+            const error = page.element?.querySelector('[data-testid="ai-error"]')
+
+            expect(error).to.exist
+            expect(error?.textContent).to.contain('недоступен')
+            expect(page.element?.querySelector('[data-testid="ai-no-chats"]')).to.exist
+        } finally {
+            fetchChats.restore()
+        }
     })
 
     it('renders ai chats and controls once chats are loaded', () => {

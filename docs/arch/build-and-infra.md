@@ -44,15 +44,12 @@ export default Handlebars.template(<результат Handlebars.precompile(cod
 - **husky 9** pre-commit: `npm run test && npm run eslint:fix && npm run stylelint:fix` — автофиксы попадают в коммит.
 - Коммит-сообщения — conventional commits; интерактивно через `npm run cm` (commitizen). Конфиг commitlint есть, но commit-msg хук не подключён.
 
-## CI — `.github/workflows/tests.yml`
+## CI — `.github/workflows/verify.yml`
 
-Автотесты Яндекс Практикума (bats из репозитория `tests-middle-frontend`). Особенности:
-
-- запускаются **только на PR из веток `sprint_N` в `main`** (фильтр по `github.head_ref`);
-- шаг «проверь, что репозиторий публичный» — на приватном workflow падает намеренно (`exit 1`);
-- Node 22.x; набор bats-тестов выбирается по номеру спринта + отдельный прогон `node_build.bats`.
-
-Прямые пуши в `main` CI не проверяют.
+`npm run verify` (typecheck + mocha + eslint + stylelint) на всех PR и прямых
+пушах в `main`; Node 22, `npm ci`, concurrency-группа на ветку. Курсные
+bats-автотесты удалены вместе с зависимостью от внешнего бэкенда (cutover
+2026-10-16).
 
 ## Деплой — Netlify
 
@@ -67,6 +64,6 @@ export default Handlebars.template(<результат Handlebars.precompile(cod
 ├── server/server.js                    # express-статика для локальной проверки prod
 ├── src/                                # код приложения (см. README.md)
 ├── docs/arch/                          # эта документация
-├── .github/workflows/tests.yml         # CI практикума
+├── .github/workflows/verify.yml        # CI: npm run verify
 └── netlify.toml                        # деплой
 ```

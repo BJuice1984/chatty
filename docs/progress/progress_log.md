@@ -4,6 +4,102 @@
 > Новые записи — сверху. Одна запись = одна завершённая порция работы:
 > что и почему сделали, где смотреть, чем проверили.
 
+## 2026-10-16 — ALK: stage 12 practicum-cutover выполнен (r2, ACCEPTED attempt 1)
+
+**Что:** проект полностью отвязан от бэкенда Я.Практикума (решение оператора
+2026-10-16) и закрыты находки первого живого смоука. Пакет
+`tasks/2026-10-16-practicum-cutover/`: ревизия r1 → независимое plan-ревью в
+2 раунда (CHANGES_REQUIRED: 10 находок, 5 HIGH — неполнота write-set против
+grep-гейта, 5 удаляемых адаптеров и 3 тест-хоста вне владения, дыра
+`.env.development` с курсными URL и решение по именованию Vite-режима,
+конфликт forbiddenWrites с удалением курсного CI, гонка HD-R2 → всё закрыто
+→ READY_TO_FREEZE + 3 advisory) → FROZEN r1, digest `357d5846…`, lock,
+`plan verify` PASS → авторизация ALLOW → task compile. Воркер исполнил обе
+фазы в attempt 1; remediation r2 по решению оператора расширил write-set на
+2 пути (`safety.test.ts` — неизбежный typecheck-фикс после схлопывания
+`AppEnvironment.mode`; `constants.ts` — подсказка пароля «от 12 до 40»),
+digest `cdb4eac8…`, lock пересоздан, ownership 60+3/0/0.
+
+**Реализация (WS-LIVE-CUTOVER):** фаза A — живые фиксы LIVE-2…LIVE-7/HD-R3
+приняты в delta без переписывания семантики, по одному осмысленному
+регрессионному тесту на находку (Store-эмит вложенных слайсов, email-точки/
+тримминг, отправка с актуальным `selectedChat` через `this.props`, fetchChats
+при монтировании, null-avatar, ping-контент, таймаут/hold статуса); HD-R2
+закрыт — единственный отправитель первичной истории живёт в подписке
+`Connected` (пост-await send удалён), маршрутизация через сброс pending-load,
+тест реконнекта на реальном backoff без дублей и переупорядочивания;
+`oldestMessageId`/`cursorForBatch` удалены. Фаза B — удалены 5
+practicum-адаптеров, env-развилка схлопнута в единственный own-режим
+(`--mode own` и `.env.own.example` сохранены как имя Vite-конфигурации;
+`.env.development` переписан на own-дефолты), формы на own-контракте
+(login=email, register=email+password+confirm, пароль ≥12), `types.ts`/
+`ports.ts` консервативно (AuthUser и валидаторы profile-страницы целы),
+курсный bats-CI `tests.yml` удалён (verify.yml нетронут), README/AGENTS/CLAUDE
+и docs/arch вычищены. Проверка: `npm run verify` 181 (172+9),
+`verify:all` 181+99 pytest + alembic, compose preflight, guard strict 0,
+grep-гейт 0 упоминаний practicum, live re-smoke PASS ×3 (чеклист этапа 11
+дополнен секцией CUT-SMOKE), Ollama-строки честные UNAVAILABLE.
+
+**Проверено:** независимый task-review attempt 1 **ACCEPTED** (гейты
+перепрогнаны ревьюером, отклонения воркера признаны обоснованными, r2-аддендум
+авторитетен). Контроллером закрыты carry-forward: строки CUT-SMOKE аппенднуты
+в lead-owned чеклист, эта запись — финальная фиксация пакета. Открытый долг:
+Block CDM (componentDidMount не активируется ядром — fetchChats в конструкторе
+ChatPage как рабочий обход), Store-эмит теоретически избыточен на
+перестановках ключей (лишний ре-рендер, INFO), AI live-строки — до появления
+Ollama.
+
+## 2026-10-16 — Live smoke own-стека: чеклист HARDEN-* закрыт, LIVE-2…LIVE-7 найдены и закрыты
+
+**Что:** первый живой прогон полного контура после PR #24 (stage 11). Поднят
+compose-стек (api/db/rustfs; пароль сентябрьского postgres-тома синхронизирован
+через unix-socket ALTER ROLE, данные не удалялись), фронт — `vite --mode own`
+(порт 3001: 3000 занят сторонним проектом; origin добавлен в
+`CHATTY_ALLOWED_ORIGINS` операторского env). Ollama на хосте нет — AI-строки
+остаются UNAVAILABLE, для чеклиста HARDEN-* не требуются. Все пять строк
+закрыты PASS: DISCONNECT/RECONNECT — рестарт api (~14 c простоя, backoff
+1→2→4→8→15с, обе вкладки переподключились, echo ровно один), HISTORY —
+догрузка 01–10 без дублей с исчерпанием курсора (+ WS-контрактный носитель
+`ws-history-smoke.mjs`, 30/30), ERROR — текстовые ошибки без крэша и recovery
+по таймауту, CLOSE — детерминированный носитель. Браузерная проверка —
+playwright-core headless + оператор вручную; запись — в
+`tasks/2026-09-28-hardening-docs/harden-reconnect-history.md`.
+
+**Найдено и закрыто вживую (фиксы в рабочем дереве, регресс-покрытие и
+оформление — пакет `2026-10-16-practicum-cutover`):**
+
+- **LIVE-5 (HIGH):** `Store.set` + мутирующий `helpers.merge` навсегда
+  подавляли эмит `Updated` для вложенных слайсов после первого патча
+  (`chatHistory`, `aiAssistant`) — рендер происходил только от посторонних
+  эмитов, недетерминированно. Гвард ядра переведён на сравнение содержимого
+  (deep-снимок до/после мержа).
+- **LIVE-7:** отправка сообщений не работала в own-режиме никогда: колбэк
+  `onSendMessage` не прокидывался в пропсы `Messenger`, а обработчик читал
+  замыкание конструктора с устаревшим `selectedChat=undefined` (то же у
+  кнопки удаления чата). Оба места читают `this.props`, колбэк прокинут.
+- **HD-R3 (закрыт):** потерянный WS-ответ догрузки вечно держал
+  `isLoading` — теперь таймаут 10 с возвращает строке рабочее состояние
+  (текст + «Попробовать снова»); плюс UX-удержание статуса «Загружаем
+  сообщения…» 2 с после успеха (по замечанию оператора), тесты обновлены.
+- **LIVE-2:** вход через UI в own-режиме был невозможен — валидатор логина
+  Практикума запрещал `@`/точки; email-валидация по `env.mode`, локальная
+  часть допускает точки, логин триммится при отправке.
+- **LIVE-3:** список чатов не запрашивался после SPA-входа (bootstrap из
+  `main.ts` не повторяется) — `fetchChats` в конструкторе `ChatPage`; попутно
+  выяснено: `componentDidMount` в `Block` не активируется никем
+  (`dispatchComponentDidMount` без вызовов) — системный долг ядра.
+- **LIVE-4:** чат без аватара ронял рендер списка — `src=null` в `chat.hbs`
+  доходил до `fileUrl(null)`; null-guard в `ChatAvatar`.
+- **LIVE-6:** ping уходил без `content` → `invalid_event_payload`,
+  keepalive был мёртв; `WSTransportMessage.content` расширен объектным
+  контентом, тест обновлён.
+
+**Проверено:** `npm run verify` — 172 теста PASS (обновлены ping и
+hold-status контракты); живой смоук — headless + вручную; WS-контракт —
+30/30; auth-smoke runbook — register/me/refresh(CSRF-ротация)/logout/me-401.
+HD-R2 (перезапрос истории после реконнекта) остаётся открытым LOW-долгом,
+переносится в пакет `2026-10-16-practicum-cutover`.
+
 ## 2026-10-15 — ALK: stage 11 hardening-docs выполнен (r2, COMPLETE)
 
 **Что:** закрыт финальный этап дорожной карты AI-messenger — runtime-hardening

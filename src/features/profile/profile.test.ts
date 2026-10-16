@@ -2,7 +2,6 @@ import { expect } from 'chai'
 import sinon from 'sinon'
 import { JSDOM } from 'jsdom'
 import { ProfileFeatureController } from './controller.ts'
-import { practicumProfilePort } from './api/practicum.ts'
 import { profileSlice } from './store.ts'
 import type { ProfilePort } from './ports.ts'
 
@@ -31,12 +30,6 @@ function makePort(): ProfilePort {
 describe('profile feature boundary', () => {
     afterEach(() => {
         profileSlice.setUser(null)
-    })
-
-    it('should expose the default Practicum port adapter', () => {
-        expect(practicumProfilePort).to.have.property('searchUsersByLogin')
-        expect(practicumProfilePort).to.have.property('changeProfile')
-        expect(practicumProfilePort).to.have.property('changeAvatar')
     })
 
     it('should write profile changes into the slice through the port', async () => {

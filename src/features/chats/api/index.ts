@@ -1,8 +1,7 @@
-// Выбор адаптера chats по режиму (stage 7).
+// Порт chats: единственная реализация — own-адаптер собственного бэкенда
+// (stage 7 выбирал по env.mode; cutover 2026-10-16 оставил одну историю).
 
-import { env } from '../../../utils/env.ts'
 import type { ChatsPort } from '../ports.ts'
 import { ownChatsPort } from './own.ts'
-import { practicumChatsPort } from './practicum.ts'
 
-export const chatsPort: ChatsPort = env.mode === 'own' ? ownChatsPort : practicumChatsPort
+export const chatsPort: ChatsPort = ownChatsPort

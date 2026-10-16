@@ -14,7 +14,8 @@ export enum WSTransportEvents {
 
 interface WSTransportMessage {
     type: string
-    content?: string
+    // Скаляр (текст сообщения) или объект-контент события (ping/history)
+    content?: string | Record<string, unknown>
 }
 
 // Реконнект (stage 11): база экспоненциального backoff и потолок попыток.
@@ -165,8 +166,10 @@ export default class WSTransport extends EventBus {
 
         this.pingInterval = setInterval(() => {
             // Во время backoff-паузы сокета нет — ping молча пропускаем.
+            // content обязателен по контракту WS-события own-бэкенда: без
+            // него ping прилетает invalid_event_payload и не получает pong (LIVE-6)
             if (this.socket?.readyState === WebSocket.OPEN) {
-                this.send({ type: 'ping' })
+                this.send({ type: 'ping', content: {} })
             }
         }, PING_INTERVAL_MS)
     }

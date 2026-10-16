@@ -1,0 +1,53 @@
+{
+    "revision": 1,
+    "id": "SPEC-PRACTICUM-CUTOVER",
+    "title": "Live-smoke fixes with regression coverage and full practicum cutover",
+    "intent": "Close the live-smoke findings (LIVE-2…LIVE-7, HD-R2, HD-R3) with regression coverage for fixes already applied during the live run, then remove every remaining dependency on the Yandex Practicum course backend so the project runs exclusively against the owned backend.",
+    "requirements": [
+        {
+            "id": "REQ-LIVE-FIXES",
+            "title": "Regression coverage for live-smoke fixes and HD-R2 closure",
+            "description": "Fixes applied live (Store.set emit suppression, messenger send callbacks, HD-R3 load timeout, own-mode email login and trim, SPA chat list fetch, avatar null guard, ping content, status hold UX) enter the reviewed delta with one regression test per finding; HD-R2 (no initial-history re-request after an internal transport reconnect) is implemented and tested.",
+            "priority": "P1",
+            "source": "work/2026-09-28-hardening-docs live smoke 2026-10-15/16; docs/progress/progress_log.md 2026-10-16",
+            "acceptanceIds": [
+                "AC-LIVE-1",
+                "AC-LIVE-2"
+            ],
+            "evidenceIds": [
+                "EV-LIVE-1",
+                "EV-LIVE-2"
+            ],
+            "owner": "WS-LIVE-CUTOVER"
+        },
+        {
+            "id": "REQ-PRACTICUM-CUTOVER",
+            "title": "Remove all Yandex Practicum dependencies",
+            "description": "Delete the practicum adapters and the practicum/own mode fork (env, ports, gateway, validators/labels, course DTO specifics), remove the course CI workflow (bats) and course references from README/AGENTS/CLAUDE and docs/arch, and keep every deterministic gate green on the single own-mode path.",
+            "priority": "P1",
+            "source": "operator decision 2026-10-16: the project no longer depends on the Practicum course",
+            "acceptanceIds": [
+                "AC-CUT-1",
+                "AC-CUT-2",
+                "AC-CUT-3"
+            ],
+            "evidenceIds": [
+                "EV-CUT-1",
+                "EV-CUT-2"
+            ],
+            "owner": "WS-LIVE-CUTOVER"
+        }
+    ],
+    "constraints": [
+        "Live fixes already sit in the working tree of feature/2026-10-16-practicum-cutover; the worker reviews them against the checklist, adds the missing regression tests and never silently rewrites semantics.",
+        "The own backend contract (cookie auth, CSRF, before_id/next_before_id, required WS event content) is the only supported contract after cutover.",
+        "backend/, netlify.toml, sprint_* and deploy branches, docs/project-principles.json governance and .github/workflows/verify.yml stay untouched; .github/workflows/tests.yml (course bats CI) is deleted as an explicit operator decision.",
+        "No production promotion claims; Ollama absence keeps AI live rows honestly UNAVAILABLE."
+    ],
+    "nonGoals": [
+        "new backend domains",
+        "cloud deployment",
+        "data migration",
+        "renaming feature modules beyond the practicum fork removal"
+    ]
+}

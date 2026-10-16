@@ -4,20 +4,15 @@
 
 ## О проекте
 
-Учебный мессенджер курса middle.messenger (Яндекс Практикум): чистый
-TypeScript без фреймворков, сборка — Vite, шаблоны — Handlebars, собственный
-компонентный слой на классе `Block` (жизненный цикл на `EventBus`, Proxy над
-пропсами). Данные идут однонаправленно: компонент → контроллер → API/WS-шлюз →
-бэкенд, ответ пишется в `Store`, событие Store перерисовывает страницу через
-`withStore`.
+Учебный мессенджер: чистый TypeScript без фреймворков, сборка — Vite,
+шаблоны — Handlebars, собственный компонентный слой на классе `Block`
+(жизненный цикл на `EventBus`, Proxy над пропсами). Данные идут
+однонаправленно: компонент → контроллер → API/WS-шлюз → бэкенд, ответ
+пишется в `Store`, событие Store перерисовывает страницу через `withStore`.
 
-Приложение работает в двух режимах (переключение — env, см. `.env.example` /
-`.env.own.example`):
-
-- **practicum** — бэкенд курса `https://ya-praktikum.tech/api/v2`;
-- **own** — собственный бэкенд репозитория (`backend/`: FastAPI + PostgreSQL +
-  RustFS через `docker compose`, внешний Ollama для AI-ассистента; runbook —
-  [docs/deployment/own-backend.md](docs/deployment/own-backend.md)).
+Бэкенд один — собственный (`backend/`: FastAPI + PostgreSQL + RustFS через
+`docker compose`, внешний Ollama для AI-ассистента; runbook —
+[docs/deployment/own-backend.md](docs/deployment/own-backend.md)).
 
 ## Возможности
 
@@ -25,26 +20,27 @@ TypeScript без фреймворков, сборка — Vite, шаблоны 
 - Чаты: создание, удаление, аватар, пользователи (поиск по логину), список
 - Сообщения по WebSocket (`WSTransport`): bounded-реконнект с растущим
   backoff, явный `close()` без реконнекта и с чисткой слушателей/ping
-- История чата: курсорная пагинация «загрузить ещё» (`before_id`/limit в
-  own-режиме, `get old` в practicum) с дедупликацией по id
-- AI-ассистент (own-режим): поиск по документам чата (RAG) и вопрос-ответ с
-  вложениями; текстовый рендер ответов без исполняемого DOM
-- Фичи-модули (`src/features/`) за портами: реализация выбирается по env.mode,
-  UI не знает о бэкенде; архитектурные границы следит guard-хук
+- История чата: курсорная пагинация «загрузить ещё» (`before_id`/limit) с
+  дедупликацией по id
+- AI-ассистент: поиск по документам чата (RAG) и вопрос-ответ с вложениями;
+  текстовый рендер ответов без исполняемого DOM
+- Фичи-модули (`src/features/`) за портами: UI не знает о бэкенде,
+  архитектурные границы следит guard-хук
 
 ## Установка и запуск
 
 1. Клонируйте репозиторий: `git clone https://github.com/BJuice1984/chatty.git`
 2. `npm ci` (Node `^20.19.0 || >=22.12.0`)
-3. Скопируйте `.env.example` → `.env.development` уже настроен под practicum;
-   для своего бэкенда — `.env.own.example` → `.env.own`
-4. Режимы:
-   - `npm run dev` — dev-сервер на порту 3000 (practicum)
-   - `npx vite --mode own` — dev-сервер против своего бэкенда
+3. Адреса бэкенда: `.env.development` уже указывает на локальный compose-стек;
+   для другого стенда скопируйте `.env.example` → `.env` (или
+   `.env.own.example` → `.env.own`) и поправьте URL
+4. Команды:
+   - `npm run dev` — dev-сервер на порту 3000 против локального бэкенда
+   - `npx vite --mode own` — то же с явным Vite-режимом `own` (грузит `.env.own`)
    - `npm run build` — проверка типов + сборка в `dist/`
    - `npm start` — сборка и express-статика из `dist/` на порту 3000
 
-Свой бэкенд (own-режим): Preflight/health/rollback — в
+Собственный бэкенд: Preflight/health/rollback — в
 [docs/deployment/own-backend.md](docs/deployment/own-backend.md); коротко —
 
 ```bash

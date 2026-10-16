@@ -1,34 +1,43 @@
 import { expect } from 'chai'
-import {
-    EnvironmentError,
-    chatWebSocketUrl,
-    fileUrl,
-    joinUrl,
-    readEnv,
-    resolveMode,
-} from './env'
+import { EnvironmentError, fileUrl, joinUrl, readEnv } from './env.ts'
 
 const ownEnvironment = readEnv({
-    MODE: 'own',
     VITE_API_URL: 'http://localhost:8000/api/v1/',
     VITE_WS_URL: 'ws://localhost:8000/api/v1/',
     VITE_FILES_URL: 'http://localhost:8000/api/v1/files/',
 })
 
 describe('environment boundary', () => {
-    it('should resolve the Practicum mode from the Vite development mode', () => {
-        expect(resolveMode({ MODE: 'development' })).to.equal('practicum')
-        expect(resolveMode({ VITE_APP_MODE: 'practicum' })).to.equal('practicum')
+    it('should fall back to local own-stack defaults when VITE_ vars are absent', () => {
+        // Один режим — собственный бэкенд: dev/тесты без переменных получают
+        // локальные дефолты compose-стека, а не ошибку старта
+        expect(readEnv({})).to.deep.eq({
+            apiUrl: 'http://localhost:8000/api/v1',
+            wsUrl: 'ws://localhost:8000/api/v1',
+            filesUrl: 'http://localhost:8000/api/v1/files',
+            csrfHeaderName: 'X-CSRF-Token',
+        })
     })
 
-    it('should resolve the own mode from an explicit Vite mode', () => {
-        expect(resolveMode({ MODE: 'own' })).to.equal('own')
-        expect(resolveMode({ VITE_APP_MODE: 'own' })).to.equal('own')
+    it('should prefer configured VITE_ values over the defaults', () => {
+        const environment = readEnv({
+            VITE_API_URL: 'https://api.example.test/v1',
+            VITE_WS_URL: 'wss://api.example.test/v1',
+            VITE_FILES_URL: 'https://cdn.example.test/files',
+            VITE_CSRF_HEADER_NAME: 'X-Csrf-Token',
+        })
+
+        expect(environment.apiUrl).to.equal('https://api.example.test/v1')
+        expect(environment.wsUrl).to.equal('wss://api.example.test/v1')
+        expect(environment.filesUrl).to.equal('https://cdn.example.test/files')
+        expect(environment.csrfHeaderName).to.equal('X-Csrf-Token')
     })
 
-    it('should reject an unsupported mode and missing own endpoint', () => {
-        expect(() => resolveMode({ MODE: 'staging' })).to.throw(EnvironmentError)
-        expect(() => readEnv({ MODE: 'own' })).to.throw('Missing required environment value')
+    it('should reject invalid URLs, protocols and CSRF header names', () => {
+        expect(() => readEnv({ VITE_API_URL: 'not a url' })).to.throw(EnvironmentError)
+        expect(() => readEnv({ VITE_API_URL: 'ftp://example.test' })).to.throw(EnvironmentError)
+        expect(() => readEnv({ VITE_WS_URL: 'http://example.test' })).to.throw(EnvironmentError)
+        expect(() => readEnv({ VITE_CSRF_HEADER_NAME: '1 bad' })).to.throw(EnvironmentError)
     })
 
     it('should join configured URLs without duplicate separators', () => {
@@ -45,11 +54,5 @@ describe('environment boundary', () => {
             EnvironmentError,
         )
         expect(() => joinUrl('https://example.test/api', '../private')).to.throw(EnvironmentError)
-    })
-
-    it('should build the compatibility WebSocket URL from the configured origin', () => {
-        expect(chatWebSocketUrl(7, 42, 'token/with spaces', ownEnvironment)).to.equal(
-            'ws://localhost:8000/api/v1/ws/chats/7/42/token%2Fwith%20spaces',
-        )
     })
 })

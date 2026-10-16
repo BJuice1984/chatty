@@ -1,8 +1,8 @@
-// Выбор адаптера profile по режиму (stage 7).
+// Порт profile: единственная реализация — own-адаптер. Собственный бэкенд
+// не предоставляет пользовательских профилей, операции явно отвергаются
+// (см. own.ts) — контроллер и UI остаются за контрактом порта.
 
-import { env } from '../../../utils/env.ts'
 import type { ProfilePort } from '../ports.ts'
 import { ownProfilePort } from './own.ts'
-import { practicumProfilePort } from './practicum.ts'
 
-export const profilePort: ProfilePort = env.mode === 'own' ? ownProfilePort : practicumProfilePort
+export const profilePort: ProfilePort = ownProfilePort

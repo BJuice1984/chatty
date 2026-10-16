@@ -1,8 +1,8 @@
-// Фича-контроллер profile (stage 4; stage 7 — режимные адаптеры в ./api):
-// бизнес-логика за портом. Logout — чужая фича (auth): связь проводится
-// в композиции (src/features/index.ts), фича получает её инъекцией; прямой
-// cross-feature импорт запрещён guard v2. Порт выбирается композицией
-// из ./api/index.ts (practicum / own по env.mode).
+// Фича-контроллер profile (stage 4): бизнес-логика за портом. Logout — чужая
+// фича (auth): связь проводится в композиции (src/features/index.ts), фича
+// получает её инъекцией; прямой cross-feature импорт запрещён guard v2.
+// Порт — own-адаптер из ./api/index.ts: собственный бэкенд профилей не
+// предоставляет, операции порта явно отвергаются.
 
 import type { ChangeUserData, SearchUserData } from '../../utils/types.ts'
 import type { LogoutAction, ProfilePort } from './ports.ts'

@@ -16,7 +16,7 @@
             {{#if this.avatar }}
               {{{ User id=this.id last_message=this.last_message title=this.title unread_count=this.unread_count src=this.avatar onSelect=../this.onSelectChat onChatFile=../this.onChatAvatar }}}
             {{else}}
-              {{{ User id=this.id last_message=this.last_message title=this.title unread_count=this.unread_count src=null onSelect=../this.onSelectChat onChatFile=../this.onChatAvatar }}}
+              {{{ User id=this.id last_message=this.last_message title=this.title unread_count=this.unread_count onSelect=../this.onSelectChat onChatFile=../this.onChatAvatar }}}
             {{/if}}
           {{/each}}
         </ul>

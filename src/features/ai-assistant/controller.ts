@@ -34,8 +34,8 @@ export class AiAssistantController {
 
             return aiChats
         } catch (error) {
-            // Список чатов недоступен (в т.ч. practicum-режим) — явное
-            // error-состояние вместо тихого пустого списка.
+            // Список чатов недоступен (бэкенд недоступен/ответил ошибкой) —
+            // явное error-состояние вместо тихого пустого списка.
             aiAssistantSlice.setChats([])
             aiAssistantSlice.setAssistant({ status: 'error', error: errorText(error) })
 

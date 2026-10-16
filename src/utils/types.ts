@@ -107,8 +107,8 @@ export interface Message {
     user_id: number
     content: string
     file?: MessageFile
-    // вычисляемый безопасный URL вложения (practicum: fileUrl(file.path);
-    // own: filesUrl + /{file_id}/download) — рендерится компонентом message
+    // вычисляемый безопасный URL вложения (filesUrl + /{file_id}/download)
+    // — рендерится компонентом message
     file_url?: string
     [key: string]: unknown
 }
