@@ -3,6 +3,7 @@ import sinon from 'sinon'
 import '../hbs-test-loader.ts'
 import { AssistantPage } from './assistant.ts'
 import { aiAssistantPort } from '../api/index.ts'
+import AiAssistantController from '../controller.ts'
 import { aiAssistantSlice } from '../store.ts'
 
 async function flushAsync(): Promise<void> {
@@ -16,6 +17,25 @@ function render() {
 describe('ai assistant page states', () => {
     beforeEach(() => {
         aiAssistantSlice.reset()
+    })
+
+    it('loads chats on componentDidMount, not on construction', () => {
+        const loadChats = sinon.stub(AiAssistantController, 'loadChats').resolves()
+
+        try {
+            const page = render()
+
+            // Конструктор не ходит за чатами: loadChats стартует только CDM,
+            // который диспатчит Router при монтировании (в тесте — вручную).
+            expect(loadChats.called).to.be.false
+
+            page.dispatchComponentDidMount()
+            expect(loadChats.calledOnce).to.be.true
+
+            page.destroy()
+        } finally {
+            loadChats.restore()
+        }
     })
 
     it('renders the explicit error state when chats are unavailable (own backend down)', async () => {

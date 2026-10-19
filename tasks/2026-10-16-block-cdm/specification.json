@@ -1,0 +1,35 @@
+{
+    "revision": 1,
+    "id": "SPEC-BLOCK-CDM",
+    "title": "Activate the componentDidMount lifecycle",
+    "intent": "Wire the dormant Block CDM lifecycle end-to-end: Router emits FLOW_CDM after mounting a page, dispatch recurses into children and hbs-children, and the known consumers (ChatPage, AssistantPage) move onto it — removing the constructor workaround.",
+    "requirements": [
+        {
+            "id": "REQ-BLOCK-CDM",
+            "title": "CDM lifecycle activation",
+            "description": "Router.render dispatches CDM on the mounted page; dispatchComponentDidMount recurses into both this.children and _hbsChildren; remount stays non-duplicating; ChatPage fetchChats returns to componentDidMount; the dormant AssistantPage.loadChats CDM comes alive; regression tests cover all of it.",
+            "priority": "P1",
+            "source": "live-smoke LIVE-3 follow-up; docs/progress/progress_log.md 2026-10-16 (core debt); assistant.ts:105 dormant CDM",
+            "acceptanceIds": [
+                "AC-CDM-1",
+                "AC-CDM-2",
+                "AC-CDM-3"
+            ],
+            "evidenceIds": [
+                "EV-CDM-1",
+                "EV-CDM-2"
+            ],
+            "owner": "WS-BLOCK-CDM"
+        }
+    ],
+    "constraints": [
+        "No behavior change beyond the activated lifecycle: render order, EventBus flow (init → render → CDM) and destroy stay as documented in AGENTS.md.",
+        "main.ts bootstrap stays untouched (forbidden); the cold-load double fetch is safe because OwnWsAdapter.connect dedupes sockets synchronously and Store.set suppresses identical writes — the smoke pins the exact fetch profile.",
+        "Block core edits are limited to dispatch recursion, the per-instance mounted guard and its full short-circuit; no props/CDU changes."
+    ],
+    "nonGoals": [
+        "componentDidUpdate redesign",
+        "router rewrite",
+        "suspense/data-loading patterns"
+    ]
+}

@@ -36,6 +36,12 @@ function render(query: string, block: Block) {
 
     root.append(block.getContent()!)
 
+    // Единственная точка активации CDM-флоу Block: диспатч после
+    // фактического монтирования в DOM. Повторный заход на тот же маршрут
+    // идёт через setProps (без диспатча), leave → return монтирует
+    // свежий инстанс — CDM срабатывает заново.
+    block.dispatchComponentDidMount()
+
     return root
 }
 
