@@ -1,0 +1,28 @@
+{
+    "schemaVersion": "agent-plan-review.v1",
+    "packageId": "2026-10-19-chat-ui-polish",
+    "planRevision": 1,
+    "reviewId": "review-2026-10-19-chat-ui-polish-freeze",
+    "fullReview": true,
+    "verdict": "READY_TO_FREEZE",
+    "reviewedPlanHash": "52188793c4531d8513a862b848dd66151fee3c72f0bfcfdcb3aaf0e9d842315f",
+    "reviewer": {"id": "claude-code-independent-subagent", "independent": true, "runId": "audit-run-20261019-chat-ui-polish-plan", "surface": "audit-agent-plan"},
+    "findings": [],
+    "reviewVerdict": {
+        "schemaVersion": "agent-review-verdict.v1",
+        "overall": "ACCEPTED",
+        "dimensions": {
+            "requirementFit": {"status": "PASS", "reasonCode": "write-set-verified", "summary": "The 15-file write-set covers every plan item without excess; _all.scss needs no edits; the viewport meta exists; mixins.scss correctly excluded."},
+            "implementationQuality": {"status": "PASS", "reasonCode": "round1-findings-closed", "summary": "Round 1 returned three load-bearing textual findings, all closed verbatim: the time/showDate wiring through messenger.hbs (without it the stage would silently not render), NaN-safe formatting (an invalid time must render without time/marker and never throw — RangeError would kill the whole messenger), and the complete mobile-switch mechanics including the Messenger prop whitelist lesson (LIVE-7) and the scope guard protecting the co-located li.chat-history status row from bubble-style shortcuts."},
+            "evidenceQuality": {"status": "PASS", "reasonCode": "assertions-gate-screenshots-review", "summary": "Deterministic component tests gate sides/time/day-markers; playwright receipts gate geometry (scrollWidth, bubble centers, back click); screenshots are honestly scoped as operator-review artifacts; the budget advisory on screenshot bytes noted."},
+            "residualRisk": {"status": "PASS", "reasonCode": "view-only-change", "summary": "Formatting is view-side only; no router/store/data changes; of the 186 existing tests nothing can break (verified against the messenger/chat test contents); desktop geometry pinned by AC-UI-3."}
+        },
+        "routing": {"target": "plan-freeze", "nextAction": "accept"}
+    },
+    "rounds": [
+        {"round": 1, "verdict": "CHANGES_REQUIRED", "findings": 3, "summary": "Three findings: F1 MAJOR (time/showDate never reach the Message helper in messenger.hbs; the HH:MM formatter and day computation are not NaN-safe — Intl throws RangeError on an invalid date and one bad fixture would kill the render); F2 MEDIUM (the message list also hosts the li.chat-history status row — bubble styles must not touch it via bare li selectors or container align-items/gap); F3 MEDIUM (the mobile switch mechanics were under-specified: chatPaneOpen transitions, the onBack wiring through the Messenger constructor whitelist, the back button default-hidden desktop-first, delete-chat behavior). Architecture, write-set, AC/EV and the test plan were verified sound against the code."},
+        {"round": 2, "verdict": "READY_TO_FREEZE", "findings": 0, "summary": "Closure round per the reviewer's explicit pre-approval: all three findings fixed verbatim in plan.md (wiring step, NaN-safety requirement with the invalid-time test case, the full switch-mechanics paragraph, the status-row scope guard); no other plan content changed. Digest unchanged because the manifest itself was untouched; the lock inventory pins the revised plan.md."}
+    ],
+    "reviewedAt": "2026-10-19",
+    "summary": "Independent one-round-plus-closure review of the stage 15 chat-ui-polish package (message bubbles by side, HH:MM timestamps, day markers, tablet/mobile layout with a list-chat switch). Round 1 verified the write-set, test plan and AC/EV binding against the code and returned three load-bearing textual findings, all closed verbatim; the reviewer pre-approved freeze without a second substantive round. Frozen digest 52188793c4531d8513a862b848dd66151fee3c72f0bfcfdcb3aaf0e9d842315f."
+}

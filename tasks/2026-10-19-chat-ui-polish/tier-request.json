@@ -1,0 +1,20 @@
+{
+    "taskCount": 1,
+    "executableOwners": [
+        "worker-frontend-ui"
+    ],
+    "capabilityHints": [
+        "typescript",
+        "scss",
+        "responsive",
+        "handlebars",
+        "testing",
+        "ALK"
+    ],
+    "riskFlags": {
+        "browser": true,
+        "architecture": false
+    },
+    "requirementsBytes": 1100,
+    "externalSpecification": false
+}
