@@ -1,6 +1,14 @@
-<li class="messenger__container-message">
-    <h4 class="messenger__message-content {{#if isMine}}messenger__message-content_mine{{/if}}">{{content}}</h4>
-    {{#if fileUrl}}
-        <a class="messenger__message-attachment" href="{{fileUrl}}" target="_blank" rel="noopener noreferrer">Вложение</a>
+<li class="messenger__container-message {{#if isMine}}messenger__container-message_mine{{else}}messenger__container-message_theirs{{/if}}">
+    {{#if dayMarker}}
+        <h4 class="messenger__message-day">{{dayMarker}}</h4>
     {{/if}}
+    <div class="messenger__message-bubble {{#if isMine}}messenger__message-bubble_mine{{else}}messenger__message-bubble_theirs{{/if}}">
+        <h4 class="messenger__message-content">{{content}}</h4>
+        {{#if fileUrl}}
+            <a class="messenger__message-attachment" href="{{fileUrl}}" target="_blank" rel="noopener noreferrer">Вложение</a>
+        {{/if}}
+        {{#if formattedTime}}
+            <time class="messenger__message-time" datetime="{{time}}">{{formattedTime}}</time>
+        {{/if}}
+    </div>
 </li>

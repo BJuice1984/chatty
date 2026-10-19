@@ -1,6 +1,7 @@
 {{#if selectedChat }}
     <div class="messenger">
         <div class="messenger__header-container">
+            <button type="button" class="messenger__back" data-testid="messenger-back" aria-label="Назад к списку чатов"></button>
             <h2 class="messenger__header-title">{{{ chatInfo.title }}}</h2>
             <div class="messenger__chat-users-container">
               {{#each selectedChatUsers}}
@@ -19,7 +20,7 @@
         <ul class="messenger__container">
           {{{ ChatHistory }}}
           {{#each messages}}
-            {{{ Message content=this.content user_id=this.user_id isMine=this.isMine fileUrl=this.fileUrl }}}
+            {{{ Message content=this.content user_id=this.user_id isMine=this.isMine fileUrl=this.fileUrl time=this.time showDate=this.showDate }}}
           {{/each}}
         </ul>
         {{{ Form inputs=this.inputs buttons=this.buttons }}}
@@ -27,4 +28,3 @@
 {{else}}
     <h2 class="chat__disclaimer">Chatty: Выберите чат чтобы отправить сообщение</h2>
 {{/if}}
-

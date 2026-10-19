@@ -1,0 +1,25 @@
+{
+    "revision": 1,
+    "id": "SPEC-CHAT-UI-POLISH",
+    "title": "Chat message bubbles, timestamps and responsive layout",
+    "intent": "Give chat messages the messenger-standard presentation: own messages on the right, others on the left, per-message time and day separators, and a tablet/mobile layout that keeps the app usable at 375-1280px.",
+    "requirements": [
+        {
+            "id": "REQ-CHAT-UI",
+            "title": "Message sides, timestamps, day separators, responsive layout",
+            "description": "Own messages right / others left with distinct bubble styles; per-message HH:MM from the existing time field; a day marker on the first message of each day; tablet (768-1024) and mobile (<768) layouts for the chat screen with a list<->chat switch on mobile.",
+            "priority": "P1",
+            "source": "operator request 2026-10-19: 'проработай стили — сообщения с разных сторон, дата и время, планшетная и мобильная вёрстка'",
+            "acceptanceIds": ["AC-UI-1", "AC-UI-2", "AC-UI-3"],
+            "evidenceIds": ["EV-UI-1", "EV-UI-2"],
+            "owner": "WS-CHAT-UI"
+        }
+    ],
+    "constraints": [
+        "No data-flow changes: time/isMine already reach the messenger mapping; formatting is view-side only.",
+        "Mobile list<->chat switching uses CSS classes driven by existing store state (selectedChat) plus a UI-only state — no router changes.",
+        "Existing suites stay green; stylelint/eslint clean.",
+        "Desktop layout (>=1024) keeps its current geometry apart from the new bubble internals."
+    ],
+    "nonGoals": ["dark theme", "design-system rework", "message grouping by author", "virtualized lists"]
+}
