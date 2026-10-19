@@ -1,0 +1,28 @@
+{
+    "schemaVersion": "agent-plan-review.v1",
+    "packageId": "2026-10-16-block-cdm",
+    "planRevision": 1,
+    "reviewId": "review-2026-10-16-block-cdm-freeze-r2",
+    "fullReview": true,
+    "verdict": "READY_TO_FREEZE",
+    "reviewedPlanHash": "7863a781fef1646f867f6e4e80670467b7410f57bc8fc0a5c564b418480633ea",
+    "reviewer": {"id": "claude-code-independent-subagent", "independent": true, "runId": "audit-run-20261016-block-cdm-plan-r2", "surface": "audit-agent-plan"},
+    "findings": [],
+    "reviewVerdict": {
+        "schemaVersion": "agent-review-verdict.v1",
+        "overall": "ACCEPTED",
+        "dimensions": {
+            "requirementFit": {"status": "PASS", "reasonCode": "activation-point-unique", "summary": "The module render() helper is the single activation point (all router paths converge there); the write-set covers the core, router, both consumer pages and their tests; no other dormant componentDidMount definitions exist in src."},
+            "implementationQuality": {"status": "PASS", "reasonCode": "round1-findings-closed", "summary": "Round 1's five findings closed with verified facts: remount contract (CDM once per instance, setProps on same-route revisit, leave→destroy→fresh CDM), the real double-fetch safety basis (synchronous socket dedup + Store content dedup) with a pinned measurable fetch profile, per-instance guard with full short-circuit and no destroy reset, LIVE-3 regression intent preserved in the chat page test, and the named dispatch↔destroy symmetry invariant."},
+            "evidenceQuality": {"status": "PASS", "reasonCode": "measurable-live-profile", "summary": "EV-CDM-1 gains a scripted call-site grep; AC-CDM-3 pins exact counts (2 GET /chats cold, ≤2 getToken per chat, 1 WS per chat, 1 GET on SPA navigation) — all three copies of the criterion (acceptance-criteria, manifest, final audit gate) reconciled to the same profile after the round-2 residual."},
+            "residualRisk": {"status": "PASS", "reasonCode": "bounded-core-change", "summary": "Block edits stay limited to dispatch recursion and the guard (SEC-CORE-MINIMAL); exactly one existing test breaks by design (the constructor-fetch LIVE-3 test, migrated with its intent preserved); bootstrap ordering verified safe (CDM fires with a hydrated store)."}
+        },
+        "routing": {"target": "plan-freeze", "nextAction": "accept"}
+    },
+    "rounds": [
+        {"round": 1, "verdict": "CHANGES_REQUIRED", "findings": 5, "summary": "Five findings: remount semantics not pinned (F-1 MEDIUM), double-fetch idempotency claim unfounded and an unmeasurable smoke criterion (F-2 MEDIUM), guard semantics misleading (F-3 LOW), the migrated chat test would weaken the LIVE-3 regression (F-4 LOW), dispatch/destroy symmetry unnamed (F-5 LOW). Architecture approved: activation point unique, recursion complete (refs ⊆ _hbsChildren), bootstrap ordering safe."},
+        {"round": 2, "verdict": "READY_TO_FREEZE", "findings": 0, "advisories": 1, "summary": "All five closures verified against the code line by line (setProps-only revisit, leave→destroy, synchronous socket dedup without TOCTOU, Store content suppression, lifecycle handler off in destroy, wholesale _hbsChildren replacement). One LOW residual (OF-1): AC-CDM-3 copies diverged — the acceptance-criteria mirror stayed qualitative and the manifest lost the ≤2 getToken bound; closed in the freeze revision by reconciling all three copies to the full measurable profile. Reviewer pre-approved freeze after that single edit."}
+    ],
+    "reviewedAt": "2026-10-16",
+    "summary": "Independent two-round review of the stage 14 block-cdm package (activating the dormant Block componentDidMount lifecycle end-to-end). Round 1 approved the architecture (single activation point in the router render helper, complete recursion, safe bootstrap ordering) and demanded five semantic fixes; round 2 verified every closure against the code and left one LOW reconciliation residual (OF-1), closed in the frozen revision. Frozen digest 7863a781fef1646f867f6e4e80670467b7410f57bc8fc0a5c564b418480633ea."
+}

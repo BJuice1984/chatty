@@ -1,0 +1,10 @@
+{
+    "status": "RESOLVED",
+    "tier": "S2",
+    "requestedTier": "S2",
+    "reason": "architecture-risk (core Block lifecycle) and browser-risk",
+    "independentReviewRequired": true,
+    "requestPath": "tasks/2026-10-16-block-cdm/tier-request.json",
+    "resolutionPath": "tasks/2026-10-16-block-cdm/tier-resolution.json",
+    "requestDigest": "310dd4f076b74c9c0385a7f57989ce7d6b577fe013f24fc9765adbfc13078db9"
+}
