@@ -222,7 +222,7 @@
 
     &__container-botom-bar {
       @include reset;
-      
+
       position: absolute;
       bottom: 0;
       width: 90%;
@@ -230,5 +230,57 @@
       display: flex;
       flex-direction: row;
       justify-content: space-between;
+    }
+
+    /* Планшет (768–1023): компактный сайдбар и уплотнённые отступы.
+       Файл desktop-first: базовые стили выше — десктоп (>=1024) */
+    @media (min-width: $tablet) and (max-width: ($desktop - 1px)) {
+
+        &__container-users {
+            width: 280px;
+        }
+
+        &__container-header {
+            padding: 10px 16px 12px;
+        }
+
+        &__container-stories-list {
+            min-height: 88px;
+            gap: 10px;
+        }
+
+        &__search-bar {
+            margin-top: 16px;
+            margin-bottom: 16px;
+        }
+
+        &__container-users-list {
+            row-gap: 10px;
+        }
+    }
+
+    /* Мобильная ветка (<768): одна колонка; список и панель чата
+       переключаются модификатором корня chat_pane-open (из chatPaneOpen) */
+    @media (max-width: ($tablet - 1px)) {
+        grid-template-columns: 1fr;
+        grid-template-rows: 100%;
+
+        &__container-users {
+            width: 100%;
+            height: 100%;
+            border-right: none;
+        }
+
+        &__container-chats {
+            display: none;
+        }
+
+        &_pane-open &__container-users {
+            display: none;
+        }
+
+        &_pane-open &__container-chats {
+            display: block;
+        }
     }
 }

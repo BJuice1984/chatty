@@ -25,3 +25,16 @@ $borderChat: 1px solid #8175FF;
 $borderChatBottom: 1px solid #1a182b;
 $borderTaskAttention: 1px solid rgb(167 0 0 / 20%);
 $borderTaskFail: 1px solid rgb(138 138 138 / 40%);
+
+//Брейкпоинты адаптива (chat-ui-polish): планшет от 768px, десктоп от 1024px
+$tablet: 768px;
+$desktop: 1024px;
+
+//Пузыри сообщений (chat-ui-polish): сторона и палитра
+$bubbleMineBackground: $thirdColor;
+$bubbleMineTextColor: $mainTextColor;
+$bubbleTheirsBackground: $secondColor;
+$bubbleTheirsTextColor: $mainTextColor;
+$bubbleTimeTextColor: rgb(247 247 252 / 60%);
+$bubbleRadius: 12px;
+$bubbleDayMarkerBackground: rgb(0 0 0 / 25%);

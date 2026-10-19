@@ -19,17 +19,28 @@ interface ChatPageProps {
     }[]
     chats?: ChatInfo[]
     selectedChat: number
+    // мобильное переключение (<768): true — показана панель чата, список
+    // скрыт; false — список. Модификатор корня chat_pane-open в chat.hbs
+    chatPaneOpen?: boolean
 }
 
 class ChatPageBase extends Block {
     constructor(propsFromStore: ChatPageProps) {
         super({
+            chatPaneOpen: false,
             onClick: () => {
                 this.refs.create.setProps({ isShown: true })
             },
             onSelectChat: (id: number) => {
+                // Любой выбор чата открывает панель — chatListUser стреляет
+                // onSelect и на повторном клике по выбранном чате
+                this.setProps({ chatPaneOpen: true })
                 ChatsController.selectChat(id)
                 void ChatsController.getChatUsers(id)
+            },
+            onBack: () => {
+                // Кнопка «назад» в шапке messenger (<768): возврат к списку
+                this.setProps({ chatPaneOpen: false })
             },
             onChatAvatar: (data: FormData) => {
                 void ChatsController.changeChatAvatar(data)
