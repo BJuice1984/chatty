@@ -180,15 +180,45 @@ describe('Router kernel features', () => {
         destroySpy.restore()
     })
 
+    it('should dispatch componentDidMount on the mounted page', () => {
+        const MountBlock = markerBlock('marker-cdm-mount')
+        const cdmSpy = sinon.spy(MountBlock.prototype, 'componentDidMount')
+
+        Router.use('/cdm-mount', MountBlock as typeof Block)
+
+        Router.go('/cdm-mount')
+
+        expect(document.querySelector('#marker-cdm-mount')).to.not.be.null
+        expect(cdmSpy.calledOnce).to.be.true
+
+        cdmSpy.restore()
+    })
+
     it('should update route params when the same route is revisited with a new value', () => {
-        Router.use('/profile/:id', markerBlock('marker-profile') as typeof Block)
+        const ProfileBlock = markerBlock('marker-profile')
+        const cdmSpy = sinon.spy(ProfileBlock.prototype, 'componentDidMount')
+
+        Router.use('/profile/:id', ProfileBlock as typeof Block)
+        Router.use('/profile-elsewhere', markerBlock('marker-elsewhere') as typeof Block)
 
         Router.go('/profile/1')
         expect(document.querySelector('#marker-profile')?.textContent).to.eq('{"id":"1"}')
+        expect(cdmSpy.callCount).to.eq(1)
 
+        // Повторный заход на тот же маршрут — только setProps, без повторного CDM.
         Router.go('/profile/2')
         expect(document.querySelector('#marker-profile')?.textContent).to.eq('{"id":"2"}')
         expect(Router.getParams()).to.deep.eq({ id: '2' })
+        expect(cdmSpy.callCount).to.eq(1)
+
+        // Уход и возврат: leave() уничтожает инстанс, возврат монтирует
+        // свежий — CDM срабатывает заново (LIVE-3: фетчи на каждом заходе).
+        Router.go('/profile-elsewhere')
+        Router.go('/profile/3')
+        expect(document.querySelector('#marker-profile')?.textContent).to.eq('{"id":"3"}')
+        expect(cdmSpy.callCount).to.eq(2)
+
+        cdmSpy.restore()
     })
 
     it('should not mount a pending lazy route after navigating away', async () => {

@@ -30,6 +30,11 @@ class Block<T extends Props = Props> {
     private eventBus: () => EventBus
     private _element: HTMLElement | null = null
     private _destroyed = false
+    // CDM-флаг на инстанс (stage block-cdm): повторный dispatch полностью
+    // замолкает — CDM срабатывает ровно один раз за жизнь инстанса.
+    // В destroy() НЕ сбрасывается: уничтожённый инстанс и так молчит —
+    // destroy() снимает lifecycle-обработчики с EventBus.
+    private _cdmDispatched = false
     // Компоненты, встроенные в шаблон хелперами registerComponent (stage 11):
     // захват при compile() — destroy() обязан уничтожать и их, иначе
     // withStore-обёртки течут подписками на Store при уходе с маршрута.
@@ -135,9 +140,21 @@ class Block<T extends Props = Props> {
     componentDidMount() {}
 
     public dispatchComponentDidMount() {
+        // Полный short-circuit: при повторном заходе не спускаемся к детям —
+        // каждый узел дерева защищён собственным флагом.
+        if (this._cdmDispatched) {
+            return
+        }
+
+        this._cdmDispatched = true
+
         this.eventBus().emit(Block.EVENTS.FLOW_CDM)
 
+        // Инвариант симметрии dispatch ↔ destroy: обходим ТО ЖЕ множество
+        // детей, что и destroy() — this.children плюс компоненты, встроенные
+        // в .hbs-шаблон хелперами registerComponent (захват при compile()).
         Object.values(this.children).forEach(child => child.dispatchComponentDidMount())
+        this._hbsChildren.forEach(child => child.dispatchComponentDidMount())
     }
 
     private _componentDidUpdate(oldProps: Props, newProps: Props) {

@@ -72,6 +72,69 @@ describe('Block', () => {
         expect(componentDidMountMock.calledOnce).to.be.true
     })
 
+    it('should stay silent on repeated dispatch for the same instance', () => {
+        const pageComponent = new PageClass()
+        const componentDidMountMock = sinon.stub(pageComponent, 'componentDidMount')
+
+        pageComponent.dispatchComponentDidMount()
+        pageComponent.dispatchComponentDidMount()
+
+        expect(componentDidMountMock.calledOnce).to.be.true
+    })
+
+    it('should dispatch componentDidMount into both children and hbs-embedded children (dispatch ↔ destroy symmetry)', () => {
+        // Инвариант симметрии: dispatch обязан обойти ТО ЖЕ множество детей,
+        // что и destroy() — this.children + _hbsChildren (захват compile()).
+        const instances: Block[] = []
+
+        class EmbeddedBase extends Block {
+            // eslint-disable-next-line no-unused-vars
+            constructor(props?: Props) {
+                super(props)
+
+                instances.push(this)
+            }
+
+            render() {
+                const fragment = document.createDocumentFragment()
+                const div = document.createElement('div')
+                div.className = 'embedded-cdm-child'
+                fragment.appendChild(div)
+                return fragment
+            }
+        }
+
+        registerComponent('TestHbsCdmChild', EmbeddedBase as typeof Block)
+
+        class ParentPage extends Block {
+            render() {
+                return this.compile(Handlebars.compile('<section>{{{ TestHbsCdmChild }}}</section>'), {})
+            }
+        }
+
+        const regularChild = new PageClass({ text: 'child' })
+        const parent = new ParentPage({ child: regularChild })
+
+        const embeddedChild = instances[instances.length - 1]
+
+        const regularChildCdm = sinon.stub(regularChild, 'componentDidMount')
+        const embeddedChildCdm = sinon.stub(embeddedChild, 'componentDidMount')
+
+        parent.dispatchComponentDidMount()
+
+        expect(regularChildCdm.calledOnce).to.be.true
+        expect(embeddedChildCdm.calledOnce).to.be.true
+
+        // Повторный dispatch на дереве молчит целиком: полный short-circuit
+        // у родителя, собственные флаги у детей.
+        parent.dispatchComponentDidMount()
+
+        expect(regularChildCdm.calledOnce).to.be.true
+        expect(embeddedChildCdm.calledOnce).to.be.true
+
+        parent.destroy()
+    })
+
     it('should remove element from DOM and detach events on destroy', () => {
         const handlerStub = sinon.stub()
         const pageComponent = new PageClass({
