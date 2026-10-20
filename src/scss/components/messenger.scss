@@ -502,6 +502,11 @@
 
     .login-form {
       display: flex;
+
+      //глобальный .login-form (форма логина) живёт с flex-direction: column —
+
+      //здесь переопределяем явно, иначе кнопка уезжает под инпут
+      flex-direction: row;
       align-items: center;
       gap: 8px;
       width: 100%;
