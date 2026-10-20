@@ -2,12 +2,14 @@
 @import '../utils/variable';
 
 .chat-list-user {
-    @include size(56px, 100%);
-
+    height: 56px;
+    width: 95%;
     display: flex;
     flex-direction: row;
     justify-content: space-between;
     border-radius: 5px;
+    box-sizing: border-box;
+    overflow: visible;
 
     &:hover {
       box-shadow: $hoverLoginButton;

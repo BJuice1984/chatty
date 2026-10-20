@@ -92,11 +92,14 @@
     &__container-users-list {
       @include reset;
 
+      //правка оператора: полная ширина с внутренними отступами вместо
+
+      //обрезки — hover-эффекты пунктов не должны резаться краем списка
       margin-left: 8px;
         display: grid;
         row-gap: 16px;
         list-style: none;
-        width: 90%;
+        width: 100%;
         box-sizing: border-box;
 
         //список чатов скроллится сам: flex-остаток сайдбара с минимальной
@@ -104,7 +107,8 @@
         //высотой (иначе длинный список обрезается контейнером без скролла)
         flex: 1;
         min-height: 0;
-        overflow-y: auto;
+        overflow: visible auto;
+        padding: 10px 8px;
     }
 
     &__container-chats {
@@ -242,13 +246,16 @@
     &__container-botom-bar {
       @include reset;
 
-      position: absolute;
-      bottom: 0;
+      //панель в потоке сайдбара: абсолют наезжал на последние пункты
+
+      //списка чатов, которые теперь скроллятся сами
       width: 90%;
       list-style: none;
       display: flex;
       flex-direction: row;
       justify-content: space-between;
+      margin-top: 8px;
+      padding-bottom: 10px;
     }
 
     /* Планшет (768–1023): компактный сайдбар и уплотнённые отступы.
