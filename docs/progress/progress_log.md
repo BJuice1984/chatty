@@ -4,6 +4,48 @@
 > Новые записи — сверху. Одна запись = одна завершённая порция работы:
 > что и почему сделали, где смотреть, чем проверили.
 
+## 2026-10-19 — ALK: stage 16 chats-social выполнен (r2, обе фазы ACCEPTED attempt 1) — P2P-чаты целиком
+
+**Что:** закрыта социальная сторона мессенджера по запросу оператора
+(модалки header-buttons полностью, поиск юзеров по @логину, удаление чата,
+P2P-общение, реакции-эмоции, цитирование, выделение ИИ-чатов). Пакет
+`tasks/2026-10-19-chats-social/` — два workstream'а с дизъюнктными зонами
+(backend/** vs src/**): plan-ревью 2 раунда (11 находок раунда 1 —
+неполнота write-set'ов обеих фаз (FormContainer retirement + components.ts;
+services/repositories messages), контракт поиска (display_name = local-part),
+единый механизм реакций (always-in-DOM affordance), порядок удаления
+(broadcast → delete → close), WS-поле реплая, пути тестов, бюджеты → всё
+закрыто → READY_TO_FREEZE) → FROZEN r1 `90e739ae…` → авторизация →
+**фаза A (backend)** attempt 1 ACCEPTED: `GET /users?login=` (префикс,
+LIKE-экранирование, own-exclusion, лимит), `DELETE /chats/{id}`
+(owner-only, broadcast-первым, каскады включая files/documents/chunks),
+миграция 005 (reactions unique(message,user,emoji) + reply_to_id SET NULL,
+применена на живой БД), реакции с WS-broadcast и viewer-scoped summaries,
+реплаи через REST и WS со сниппетами — 162 pytest (+10). → **фаза B (фронт)**
+attempt 1 ACCEPTED: порты/адаптеры/контроллер (searchUsers/deleteChat/
+setReaction/replyToId/closeChat; is_ai/replyTo/reactions в маппингах;
+viewer-side mine без доверия WS — carry-forward фазы A исполнен),
+модальный слой (Modal с aria/Escape/бэкдропом; FormContainer снесён),
+@-поиск с дебаунсом, подтверждение удаления, реакции (hover-аффорданс на
+pointer:fine, постоянно на touch, чипы с подсветкой своего), реплаи
+(превью над вводом, блок цитаты), бейдж ✦ AI, обработка chat_deleted —
+261 тест (+58). Remediation r2 по решению оператора: write-set +
+`history.test.ts` (обязательный tsc-фикс порт-литералов, прецедент
+stage 12), digest `64c4d437…`, lock/verify PASS.
+
+**Живой P2P-пруф (контроллер, EV-FE-2, две сессии):** A находит B по
+@логину в модалке («Пользователь добавлен»), обмен сообщениями в обе
+стороны по живому WS, реакция 👍 (у A подсвечена своя, у B — не своя:
+viewer-side mine доказан вживую), реплай с цитатой у обоих, AI-бейджи ×5;
+модалки 375/768 без overflow, скриншоты в evidence.
+
+**Проверено:** оба task-review ACCEPTED (гейты перепрогнаны ревьюерами;
+финальный аудит — см. квитанцию). Хвосты (LOW/INFO): grace-window
+двойного счёта при гонке REST/WS-эхо, фокус-менеджмент модалок, потеря
+текста поиска при перерисовке в окне дебаунса, smoke-нотки (нижняя панель
+перекрывает последние пункты списка; setProps-revisit не перечитывает
+список — контракты stage 14).
+
 ## 2026-10-19 — ALK: stage 15 chat-ui-polish выполнен (r1, ACCEPTED attempt 1) — пузыри, время, адаптив
 
 **Что:** по запросу оператора сообщения получили мессенджер-подачу: свои —
