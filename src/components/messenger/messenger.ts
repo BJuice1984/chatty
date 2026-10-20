@@ -165,6 +165,137 @@ export function mapTypedMessages(
 class MessengerBase extends Block {
     // таймер дебаунса @-поиска: живёт на инстансе — перерисовки его не рвут
     private userSearchDebounce: ReturnType<typeof setTimeout> | null = null
+    // Автоскролл: перерисовки пересоздают список (сброс scrollTop) и даже
+    // сам инстанс Messenger. Механика: на входе CDU ещё живой узел даёт
+    // актуальную позицию (FLOW_RENDER после CDU); узловой указатель отличает
+    // первый CDU каскада от последующих; модульная память по chatId спасает
+    // позицию при пересоздании инстанса (CDM нового продолжает чтение).
+    private static scrollMemory = new Map<number, { top: number, pinned: boolean }>()
+    // модульный scroll-синк: событие — единственный всегда-верный источник
+    // позиции (DOM-снятие на CDU-входе не ловит перерисовки инстанса)
+    private static currentScrollKey = -1
+    private static scrollSyncInstalled = false
+    // метка времени последнего планового кадра скролла: перерисовка,
+    // сбрасывая scrollTop в ноль, порождает scroll-событие с top=0, которое
+    // без этой метки затирало бы сохранённую позицию чтения
+    private static lastPlanAt = 0
+
+    private static installScrollSync(): void {
+        if (MessengerBase.scrollSyncInstalled || typeof document === 'undefined') {
+            return
+        }
+
+        MessengerBase.scrollSyncInstalled = true
+
+        document.addEventListener('scroll', (event: Event) => {
+            const el = event.target as { className?: unknown, scrollTop?: number, scrollHeight?: number, clientHeight?: number }
+
+            if (typeof el.className !== 'string' || !el.className.includes('messenger__container')) {
+                return
+            }
+
+            if (typeof el.scrollHeight !== 'number') {
+                return
+            }
+
+            const top = el.scrollTop ?? 0
+
+            // сброс-эхо сразу после планового кадра игнорируем
+            if (top === 0 && Date.now() - MessengerBase.lastPlanAt < 300) {
+                return
+            }
+
+            const pinned = el.scrollHeight - top - (el.clientHeight ?? 0) < 120
+
+            MessengerBase.scrollMemory.set(MessengerBase.currentScrollKey, { top, pinned })
+        }, true)
+    }
+
+    private scrollPlan: 'bottom' | 'preserve' | null = null
+    private scrollPlanScheduled = false
+
+    private memoryKey(): number {
+        const chatId = (this.props as MessengerProps).selectedChat
+
+        return typeof chatId === 'number' ? chatId : -1
+    }
+
+    componentDidMount() {
+        MessengerBase.installScrollSync()
+        MessengerBase.currentScrollKey = this.memoryKey()
+
+        // пересоздание инстанса: продолжаем сохранённое чтение, если читали
+        // не у низа; иначе — последние сообщения
+        const memory = MessengerBase.scrollMemory.get(this.memoryKey())
+
+        this.planMessagesScroll(memory !== undefined && !memory.pinned ? 'preserve' : 'bottom')
+    }
+
+    protected componentDidUpdate(oldProps: Record<string, unknown>, newProps: Record<string, unknown>): boolean {
+        MessengerBase.currentScrollKey = this.memoryKey()
+
+        const chatChanged = (oldProps as MessengerProps).selectedChat !== (newProps as MessengerProps).selectedChat
+        const oldLen = ((oldProps as MessengerProps).messages ?? []).length
+        const newLen = ((newProps as MessengerProps).messages ?? []).length
+
+        if (chatChanged) {
+            MessengerBase.scrollMemory.delete(this.memoryKey())
+            this.planMessagesScroll('bottom')
+        } else {
+            // рост (новое сообщение) докручивает, если читали низ; перерисовка
+            // без роста (реакция, черновик) возвращает позицию чтения
+            this.planMessagesScroll(newLen > oldLen ? 'preserve' : 'preserve')
+        }
+
+        return true
+    }
+
+    // Один план на кадр: последовательные CDU не перебивают друг друга
+    // мгновенными (уже сброшенными) значениями.
+    private planMessagesScroll(plan: 'bottom' | 'preserve'): void {
+        this.scrollPlan = plan
+
+        if (this.scrollPlanScheduled) {
+            return
+        }
+
+        this.scrollPlanScheduled = true
+        const run = () => {
+            this.scrollPlanScheduled = false
+            MessengerBase.lastPlanAt = Date.now()
+            const container = this.element?.querySelector('.messenger__container') as
+                { scrollTop?: number, scrollHeight?: number } | null
+            const action = this.scrollPlan
+            const key = this.memoryKey()
+
+            MessengerBase.currentScrollKey = key
+
+            const memory = MessengerBase.scrollMemory.get(key)
+
+            this.scrollPlan = null
+
+            // утиная проверка: jsdom-тесты не дают HTMLElement; элемента
+            // может не быть вовсе (изолированные тесты)
+            if (container == null || typeof container.scrollHeight !== 'number') {
+                return
+            }
+
+            if (action === 'bottom' || memory === undefined || memory.pinned) {
+                container.scrollTop = container.scrollHeight
+                MessengerBase.scrollMemory.set(key, { top: container.scrollTop, pinned: true })
+            } else {
+                container.scrollTop = memory.top
+            }
+
+        }
+
+        // CDU выполняется до FLOW_RENDER — скроллим в следующем кадре
+        if (typeof requestAnimationFrame === 'function') {
+            requestAnimationFrame(run)
+        } else {
+            setTimeout(run, 0)
+        }
+    }
 
     constructor(propsFromStore: MessengerProps) {
         super({
