@@ -1,7 +1,7 @@
 {
     "schemaVersion": "agent-plan-manifest.v1",
     "status": "FROZEN",
-    "planRevision": 1,
+    "planRevision": 2,
     "package": {
         "id": "2026-10-19-chats-social",
         "title": "Stage 16: P2P chats — search, delete, reactions, replies, AI badges",
@@ -279,6 +279,7 @@
                 "src/features/chats/api/own.ts",
                 "src/features/chats/chats.test.ts",
                 "src/features/chats/controller.ts",
+                "src/features/chats/history/history.test.ts",
                 "src/features/chats/pages/chat/chat.hbs",
                 "src/features/chats/pages/chat/chat.test.ts",
                 "src/features/chats/pages/chat/chat.ts",
@@ -573,7 +574,7 @@
         "maxRounds": 3,
         "implementationAuthorized": false,
         "report": "tasks/2026-10-19-chats-social/plan-review.json",
-        "reviewedRevision": 1,
+        "reviewedRevision": 2,
         "verdict": "READY_TO_FREEZE"
     },
     "tierResolution": {

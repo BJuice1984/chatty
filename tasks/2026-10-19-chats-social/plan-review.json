@@ -1,11 +1,11 @@
 {
     "schemaVersion": "agent-plan-review.v1",
     "packageId": "2026-10-19-chats-social",
-    "planRevision": 1,
+    "planRevision": 2,
     "reviewId": "review-2026-10-19-chats-social-freeze-r2",
     "fullReview": true,
     "verdict": "READY_TO_FREEZE",
-    "reviewedPlanHash": "90e739ae0bc138f5d3034b2b2ac0f8e1872fa15509f5046c1b5d5a5a12fd09c2",
+    "reviewedPlanHash": "64c4d4372af92b1fb2f098e9ac38cbd1e30a2490704efb9e88c26b80f7aba57c",
     "reviewer": {
         "id": "claude-code-independent-subagent",
         "independent": true,
@@ -58,5 +58,15 @@
         }
     ],
     "reviewedAt": "2026-10-19",
-    "summary": "Independent two-round review of the stage 16 chats-social package (two disjoint workstreams: WS-BACKEND-SOCIAL — users search, owner-only chat deletion with the broadcast-first ordering, additive migration 005 for reactions and reply_to_id, WS-broadcast reaction toggles, reply snippets through REST and WS; WS-FRONT-SOCIAL — rebuilt header modals with @-login search, delete confirmation, one-mechanism reactions UI, reply quoting, AI chat badges and the chat_deleted flow). Round 1 demanded eleven fixes (write-set completeness front and back, contract pinning, mechanism and ordering decisions); round 2 verified every closure against the tree and returned READY_TO_FREEZE. Frozen digest 90e739ae0bc138f5d3034b2b2ac0f8e1872fa15509f5046c1b5d5a5a12fd09c2."
+    "summary": "Independent two-round review of the stage 16 chats-social package (two disjoint workstreams: WS-BACKEND-SOCIAL — users search, owner-only chat deletion with the broadcast-first ordering, additive migration 005 for reactions and reply_to_id, WS-broadcast reaction toggles, reply snippets through REST and WS; WS-FRONT-SOCIAL — rebuilt header modals with @-login search, delete confirmation, one-mechanism reactions UI, reply quoting, AI chat badges and the chat_deleted flow). Round 1 demanded eleven fixes (write-set completeness front and back, contract pinning, mechanism and ordering decisions); round 2 verified every closure against the tree and returned READY_TO_FREEZE. Frozen digest 90e739ae0bc138f5d3034b2b2ac0f8e1872fa15509f5046c1b5d5a5a12fd09c2.",
+    "remediationAddendum": {
+        "revision": 2,
+        "date": "2026-10-19",
+        "trigger": "worker phase-B deviation DEV-1 (remediationMode ask)",
+        "operatorDecision": "ALLOW: extend the write-set (operator answer)",
+        "changes": [
+            "src/features/chats/history/history.test.ts added to WS-FRONT-SOCIAL writes: closeChat became a mandatory ChatMessagesPort member and two port literals in history.test.ts fail tsc without stubs — mechanical two-line test fix (stage-12 precedent)"
+        ],
+        "independentVerification": "the final audit re-verifies the path as part of the reviewed delta"
+    }
 }
