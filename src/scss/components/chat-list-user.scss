@@ -13,7 +13,15 @@
       box-shadow: $hoverLoginButton;
       transition: $hoverTransition;
     }
-    
+
+    /* ИИ-чат (chats-social): акцентная рамка слева — визуально отличим от
+       пользовательских чатов, bubbles бота остаются на theirs-стороне */
+
+    &_ai {
+      border-left: 3px solid $thirdTextColor;
+      background-image: linear-gradient(90deg, rgb(129 117 255 / 12%), transparent 55%);
+    }
+
     &__container {
       @include size(56px, 56px);
       @include flex-center-center;
@@ -85,5 +93,27 @@
       text-overflow: ellipsis;
       white-space: nowrap;
       text-align: left;
+    }
+
+    /* Бейдж ИИ-чата: ✦ + «AI» рядом с названием */
+
+    &__ai-badge {
+      @include text-format(500, 9px, 12px);
+
+      display: inline-flex;
+      align-items: center;
+      gap: 2px;
+      margin-left: 6px;
+      padding: 0 6px;
+      border: 1px solid $thirdTextColor;
+      border-radius: 999px;
+      color: $thirdTextColor;
+      vertical-align: middle;
+      white-space: nowrap;
+
+      &-star {
+        font-size: 9px;
+        line-height: 1;
+      }
     }
 }

@@ -1,4 +1,4 @@
-<li class="chat-list-user">
+<li class="chat-list-user {{#if is_ai}}chat-list-user_ai{{/if}}">
   <div class="chat-list-user__container {{extraClass}}">
     <div class="chat-list-user__img-container chat-list-user__img-container-ava">
       {{{ InputFile ref="fileInput" id=this.input.id name=this.input.name type=this.input.type extraClass=this.input.extraClass onChatFile=this.onChatFile }}}
@@ -6,7 +6,10 @@
     </div>
   </div>
   <div class="chat-list-user__container-content {{extraClass}}">
-    <h4 class="chat-list-user__title">{{title}}</h4>
+    <h4 class="chat-list-user__title">
+      {{title}}
+      {{#if is_ai}}<span class="chat-list-user__ai-badge" data-testid="ai-badge"><span class="chat-list-user__ai-badge-star" aria-hidden="true">✦</span>AI</span>{{/if}}
+    </h4>
     <h4 class="chat-list-user__title">{{last_message.content}}</h4>
   </div>
   <div class="chat-list-user__container-info {{extraClass}}">

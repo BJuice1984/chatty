@@ -11,7 +11,6 @@
               {{/each}}
             </div>
             <div class="messenger__header-buttons-container">
-              {{{ FormContainer ref="addUser" formContainerExtraClass=this.formContainerExtraClass selectedChat=this.selectedChat onAddUser=this.onAddUser }}}
               {{#each headerButtons}}
                 {{{ headerButton extraClass=this.extraClass handleClick=this.handleClick }}}
               {{/each}}
@@ -20,10 +19,18 @@
         <ul class="messenger__container">
           {{{ ChatHistory }}}
           {{#each messages}}
-            {{{ Message content=this.content user_id=this.user_id isMine=this.isMine fileUrl=this.fileUrl time=this.time showDate=this.showDate }}}
+            {{{ Message content=this.content user_id=this.user_id chat_id=this.chat_id id=this.id isMine=this.isMine fileUrl=this.fileUrl time=this.time showDate=this.showDate replyTo=this.replyTo reactions=this.reactions onSetReaction=../this.onSetReaction onReply=../this.onReplyToMessage }}}
           {{/each}}
         </ul>
+        {{#if replyDraft}}
+          <div class="messenger__reply-preview" data-testid="reply-preview">
+            <span class="messenger__reply-preview-text">В ответ: {{replyDraft.snippet}}</span>
+            <button type="button" class="messenger__reply-preview-cancel" data-testid="reply-cancel" aria-label="Отменить ответ"></button>
+          </div>
+        {{/if}}
         {{{ Form inputs=this.inputs buttons=this.buttons }}}
+        {{{ Modal title='Добавить пользователя' isOpen=this.addUserOpen onClose=this.onCloseAddUser content=this.addUserContent }}}
+        {{{ Modal title='Удалить чат' isOpen=this.deleteModalOpen onClose=this.onCloseDelete content=this.deleteContent }}}
     </div>
 {{else}}
     <h2 class="chat__disclaimer">Chatty: Выберите чат чтобы отправить сообщение</h2>

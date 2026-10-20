@@ -1,0 +1,273 @@
+@import '../utils/mixins';
+@import '../utils/variable';
+
+/* Универсальный модальный слой (chats-social): оверлей поверх приложения,
+   диалог с заголовком/слотом/закрытием. Адаптив на токенах stage-15:
+   мобильный 375 — почти во всю ширину, планшет 768 — карточка, десктоп
+   1280 — компактная колонка по центру. Контент сценария (поиск/подтверждение)
+   стилизуется здесь же: модалка единственный владелец своего слота. */
+
+.modal {
+    @include reset;
+
+    position: fixed;
+    inset: 0;
+    z-index: 50;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 16px;
+    box-sizing: border-box;
+
+    &_closed {
+        display: none;
+    }
+
+    &__backdrop {
+        position: absolute;
+        inset: 0;
+        background-color: rgb(15 12 38 / 65%);
+    }
+
+    &__dialog {
+        position: relative;
+        width: 100%;
+        max-width: 420px;
+        max-height: calc(100vh - 32px);
+        display: flex;
+        flex-direction: column;
+        background-color: $secondColor;
+        border: $borderChat;
+        border-radius: 12px;
+        box-shadow: $boxShadowLogin;
+        box-sizing: border-box;
+        overflow: hidden;
+    }
+
+    &__header {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 12px;
+        padding: 14px 16px;
+        border-bottom: $borderChatBottom;
+    }
+
+    &__title {
+        @include reset;
+        @include text;
+        @include text-format(500, 16px, 22px);
+
+        color: $mainTextColor;
+        text-align: left;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+    }
+
+    /* крестик: уголок, повернутый на 45° */
+
+    &__close {
+        @include reset;
+
+        position: relative;
+        flex-shrink: 0;
+        width: 22px;
+        height: 22px;
+        border: none;
+        border-radius: 6px;
+        background-color: transparent;
+        cursor: pointer;
+
+        &::before,
+        &::after {
+            content: '';
+            position: absolute;
+            width: 2px;
+            height: 100%;
+            background-color: $mainTextColor;
+            top: 0;
+            left: 50%;
+            transform: translateX(-50%);
+        }
+
+        &::before {
+            transform: translateX(-50%) rotate(45deg);
+        }
+
+        &::after {
+            transform: translateX(-50%) rotate(-45deg);
+        }
+    }
+
+    &__content {
+        padding: 16px;
+        overflow-y: auto;
+    }
+
+    &__hint,
+    &__text {
+        @include reset;
+        @include text;
+        @include text-format(400, 12px, 18px);
+
+        color: $secondTextColor;
+        text-align: left;
+        margin-bottom: 10px;
+    }
+
+    &__text {
+        color: $mainTextColor;
+
+        @include text-format(400, 14px, 20px);
+    }
+
+    &__feedback {
+        @include reset;
+        @include text;
+        @include text-format(400, 12px, 18px);
+
+        color: $thirdTextColor;
+        text-align: left;
+        margin-bottom: 10px;
+    }
+
+    &__search-flow {
+        display: flex;
+        flex-direction: column;
+    }
+
+    &__input {
+        @include reset;
+        @include text;
+        @include text-format(400, 14px, 20px);
+
+        color: $mainTextColor;
+        width: 100%;
+        padding: 9px 12px;
+        border: $borderChat;
+        border-radius: 8px;
+        background-color: $mainColor;
+        box-sizing: border-box;
+        margin-bottom: 8px;
+        outline: none;
+
+        &::placeholder {
+            color: $secondTextColor;
+        }
+
+        &:focus {
+            border-color: $thirdTextColor;
+        }
+    }
+
+    &__results {
+        @include reset;
+
+        list-style: none;
+        display: flex;
+        flex-direction: column;
+        gap: 6px;
+        max-height: 40vh;
+        overflow-y: auto;
+    }
+
+    &__result {
+        @include reset;
+        @include text;
+
+        display: flex;
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 2px;
+        width: 100%;
+        padding: 8px 10px;
+        border: $borderChatBottom;
+        border-radius: 8px;
+        background-color: transparent;
+        cursor: pointer;
+        text-align: left;
+
+        &:hover {
+            background-color: $fourthColor;
+        }
+
+        &-name {
+            @include text-format(500, 13px, 18px);
+
+            color: $mainTextColor;
+        }
+
+        &-login {
+            @include text-format(400, 11px, 16px);
+
+            color: $secondTextColor;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+            max-width: 100%;
+        }
+    }
+
+    &__actions {
+        display: flex;
+        flex-direction: column-reverse;
+        gap: 8px;
+    }
+
+    &__button {
+        @include reset;
+        @include text;
+        @include text-format(500, 13px, 18px);
+
+        color: $mainTextColor;
+        padding: 9px 12px;
+        border: $borderChat;
+        border-radius: 8px;
+        background-color: transparent;
+        cursor: pointer;
+
+        &:hover {
+            background-color: $fourthColor;
+        }
+
+        &_danger {
+            border-color: $spanErrorColor;
+            color: $spanErrorColor;
+        }
+    }
+
+    /* Планшет (768–1023): карточка шире, действия в строку */
+    @media (min-width: $tablet) {
+
+        &__dialog {
+            max-width: 440px;
+        }
+
+        &__actions {
+            flex-direction: row;
+            justify-content: flex-end;
+        }
+    }
+
+    /* Мобильная ветка (<768): диалог почти во всю ширину, крупнее касания */
+    @media (max-width: ($tablet - 1px)) {
+        padding: 12px;
+
+        &__dialog {
+            max-width: none;
+            max-height: calc(100vh - 24px);
+        }
+
+        &__close {
+            width: 30px;
+            height: 30px;
+        }
+
+        &__button,
+        &__result {
+            min-height: 44px;
+            justify-content: center;
+        }
+    }
+}

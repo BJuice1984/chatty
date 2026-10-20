@@ -11,7 +11,6 @@ from app.repositories.chats import ChatRepository
 from app.repositories.users import UserRepository
 from app.schemas.message import (
     MessageCreate,
-    MessageResponse,
     WebSocketEvent,
     WebSocketHistoryContent,
     WebSocketMessageContent,
@@ -82,24 +81,27 @@ async def chat_websocket(websocket: WebSocket, chat_id: int) -> None:
                     content = event.content if isinstance(event.content, dict) else {'content': event.content}
                     payload = MessageCreate.model_validate(WebSocketMessageContent.model_validate(content).model_dump())
                     with websocket.app.state.session_factory() as session:
-                        message = MessageService(session).create(chat_id, user.id, payload)
-                    response = MessageResponse.model_validate(message).model_dump(mode='json')
+                        service = MessageService(session)
+                        message = service.create(chat_id, user.id, payload)
+                        response = service.present_one(message, user.id).model_dump(mode='json')
                     await hub.broadcast(chat_id, {'type': 'message', 'content': response})
                 elif event.type == 'history':
                     content = event.content if isinstance(event.content, dict) else {}
                     history = WebSocketHistoryContent.model_validate(content)
                     with websocket.app.state.session_factory() as session:
-                        messages, next_before_id = MessageService(session).history(
+                        service = MessageService(session)
+                        messages, next_before_id = service.history(
                             chat_id,
                             user.id,
                             before_id=history.before_id,
                             limit=history.limit,
                         )
+                        presented = service.present(messages, user.id)
                     await websocket.send_json(
                         {
                             'type': 'history',
                             'content': {
-                                'messages': [MessageResponse.model_validate(item).model_dump(mode='json') for item in messages],
+                                'messages': [item.model_dump(mode='json') for item in presented],
                                 'before_id': history.before_id,
                                 'limit': history.limit,
                                 'next_before_id': next_before_id,

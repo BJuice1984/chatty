@@ -1,18 +1,40 @@
-// Мессенджер выбранного чата (stage 4; stage 7 — все действия через пропсы):
-// удаление чата, добавление пользователя и отправка сообщения — колбэки из
-// пропсов (фича chats); компоненты не импортируют ни controllers, ни фичи.
+// Мессенджер выбранного чата (stage 4; stage 7 — все действия через пропсы;
+// chats-social — модалки, @-поиск, реакции, реплаи): компонент получает
+// поведение колбэками из пропсов (фича chats); компоненты не импортируют ни
+// контроллеры, ни фичи. Модальные сценарии собраны на универсальном Modal:
+// «добавить пользователя» (дебаунс-поиск по @логину, клик добавляет) и
+// «удалить чат» (подтверждение). Состояние модалок/черновика ответа —
+// controller-free UI-состояние, живёт в пропсах компонента.
 // chat-ui-polish: стороны пузырей/время/маркеры дней (mapTypedMessages) и
 // кнопка «назад» мобильного переключения (onBack из chat.ts).
 // URL вложения вычисляется из env (fileUrl) — безопасные схемы гарантирует joinUrl.
 
 import Block from '../../core/Block.ts'
-import { Button, Input, Message, SearchUserData } from '../../utils/types.ts'
+import Handlebars from 'handlebars'
+import { Button, Input, Message } from '../../utils/types.ts'
 import { AppState, withStore } from '../../utils/Store.ts'
 import { emptyValidationMessage } from '../../utils/constants.ts'
 import { emptyValidator } from '../../utils/validators.ts'
 import { fileUrl } from '../../utils/env.ts'
 import { messageDayKey } from '../message/message.ts'
 import template from './messenger.hbs'
+
+// Дебаунс @-поиска: поиск стартует, когда пользователь перестал печатать
+export const USER_SEARCH_DEBOUNCE_MS = 300
+
+// Черновик ответа: id цели (REST требует message_id) и сниппет для превью
+export interface ReplyDraft {
+    id?: number
+    snippet: string
+}
+
+// Результат поиска пользователей для модалки (контракт порта фичи chats,
+// переобъявлен локально: компоненты не импортируют фичи вверх по слоям)
+export interface UserSearchEntry {
+    id: number
+    login: string
+    display_name: string
+}
 
 interface MessengerProps {
     selectedChat: number
@@ -22,12 +44,31 @@ interface MessengerProps {
     buttons: Button<{ message: string }>[]
     // eslint-disable-next-line no-unused-vars
     onDeleteChat?: (id: number) => void
+    // клик по найденному пользователю добавляет его в чат
     // eslint-disable-next-line no-unused-vars
-    onAddUser?: (login: SearchUserData, chatId: number) => Promise<void>
+    onAddUser?: (userId: number, chatId: number) => Promise<void> | void
+    // дебаунс-поиск @логина для модалки добавления
     // eslint-disable-next-line no-unused-vars
-    onSendMessage?: (chatId: number, message: string) => void
+    onSearchUsers?: (login: string) => Promise<UserSearchEntry[]>
+    // toggle-реакция (оптимистичный пересчёт — в контроллере фичи)
+    // eslint-disable-next-line no-unused-vars
+    onSetReaction?: (chatId: number, messageId: number, emoji: string) => void
+    // eslint-disable-next-line no-unused-vars
+    onSendMessage?: (chatId: number, message: string, replyToId?: number) => void
     // возврат к списку чатов в мобильном переключении (<768)
     onBack?: () => void
+    // controller-free UI-состояние (внутреннее, поднимается через setProps):
+    // модалка добавления пользователя и её данные поиска
+    addUserOpen?: boolean
+    addUserQuery?: string
+    addUserResults?: UserSearchEntry[]
+    addUserFeedback?: string
+    // модалка подтверждения удаления чата
+    deleteModalOpen?: boolean
+    // черновик ответа: превью над инпутом, уходит с отправкой (reply_to_id)
+    replyDraft?: ReplyDraft | null
+    // раскрыт ли набор эмодзи у сообщения (переключается самим message)
+    reactionsOpen?: boolean
     [key: string]: unknown
 }
 
@@ -36,6 +77,62 @@ interface ChatListUserEntry {
     avatar: string
     onClick?: () => void
     [key: string]: unknown
+}
+
+// Экранирование значений в слот-HTML модалок: объекты не строковируем
+// (no-base-to-string), примитивы — через строку, остальное — пусто
+const escapeHtml = (value: unknown): string => Handlebars.escapeExpression(
+    typeof value === 'string' || typeof value === 'number' ? String(value) : ''
+)
+
+// Контент модалки добавления пользователя: поле @-поиска, подсказка,
+// фидбек и список находок {display_name, login}. Данные экранируются —
+// modal рендерит слот без экранирования
+export function renderAddUserModalContent(props: {
+    addUserQuery?: string
+    addUserResults?: UserSearchEntry[]
+    addUserFeedback?: string
+}): string {
+    const query = props.addUserQuery ?? ''
+    const results = props.addUserResults ?? []
+    const feedback = props.addUserFeedback ?? ''
+    const items = results.map(user =>
+        '<li class="modal__result-item">'
+        + `<button type="button" class="modal__result" data-testid="user-search-result" data-user-id="${escapeHtml(user.id)}">`
+        + `<span class="modal__result-name">${escapeHtml(user.display_name)}</span>`
+        + `<span class="modal__result-login">${escapeHtml(user.login)}</span>`
+        + '</button></li>'
+    ).join('')
+    const emptyHint = query !== '' && items === '' && feedback === ''
+        ? '<p class="modal__hint" data-testid="user-search-empty">Никого не нашли — уточните префикс</p>'
+        : ''
+    const feedbackHtml = feedback !== ''
+        ? `<p class="modal__feedback" data-testid="add-user-feedback">${escapeHtml(feedback)}</p>`
+        : ''
+
+    return ''
+        + '<div class="modal__search-flow">'
+        + '<input class="modal__input" type="text" name="user-search" data-testid="user-search-input" '
+        + `placeholder="@логин" value="${escapeHtml(query)}" autocomplete="off" aria-label="Логин для поиска" />`
+        + `<p class="modal__hint">Введите @логин (начало email) — поиск сработает сам</p>${
+            feedbackHtml
+        }<ul class="modal__results" data-testid="user-search-results">${items}</ul>${
+            emptyHint
+        }</div>`
+}
+
+// Контент модалки удаления чата: текст с названием и пара кнопок
+// (подтверждение кликом — удаление owner-only на бэкенде)
+export function renderDeleteModalContent(chatTitle: unknown): string {
+    return ''
+        + '<div class="modal__confirm-flow">'
+        + `<p class="modal__text" data-testid="delete-chat-text">Удалить чат «${escapeHtml(chatTitle)}»? `
+        + 'Сообщения и участники будут удалены безвозвратно.</p>'
+        + '<div class="modal__actions">'
+        + '<button type="button" class="modal__button modal__button_danger" data-testid="delete-chat-confirm">Удалить</button>'
+        + '<button type="button" class="modal__button" data-testid="delete-chat-cancel">Отмена</button>'
+        + '</div>'
+        + '</div>'
 }
 
 // Пропсы Message, вычисленные из DTO: сторона пузыря, безопасный URL
@@ -66,18 +163,31 @@ export function mapTypedMessages(
 }
 
 class MessengerBase extends Block {
+    // таймер дебаунса @-поиска: живёт на инстансе — перерисовки его не рвут
+    private userSearchDebounce: ReturnType<typeof setTimeout> | null = null
+
     constructor(propsFromStore: MessengerProps) {
         super({
-            selectedChat: propsFromStore.selectedChat,
-            selectedChatUsers: propsFromStore.selectedChatUsers,
-            messages: propsFromStore.messages,
-            chatInfo: propsFromStore.chatInfo,
-            onDeleteChat: propsFromStore.onDeleteChat,
-            onAddUser: propsFromStore.onAddUser,
+            ...propsFromStore,
+            // controller-free UI-состояние модалок и черновика ответа
+            addUserOpen: false,
+            addUserQuery: '',
+            addUserResults: [],
+            addUserFeedback: '',
+            deleteModalOpen: false,
+            replyDraft: null,
+            // черновик ответа: пузырь поднял событие — превью над инпутом
+            onReplyToMessage: (draft: ReplyDraft | null) => {
+                this.setProps({ replyDraft: draft })
+            },
+            onCloseAddUser: () => {
+                this.setProps({ addUserOpen: false, addUserResults: [], addUserFeedback: '' })
+            },
+            onCloseDelete: () => {
+                this.setProps({ deleteModalOpen: false })
+            },
             // Колбэк обязан жить в пропсах: this.props обновляется setProps,
             // а замыкание конструктора застывало на старом selectedChat (LIVE-7)
-            onSendMessage: propsFromStore.onSendMessage,
-            onBack: propsFromStore.onBack,
             // Кнопка «назад» — сырой <button> в messenger.hbs; клик ловится
             // делегированием с корня (прецедент — chat-history), колбэк
             // читается из this.props на момент клика (LIVE-7)
@@ -87,27 +197,102 @@ class MessengerBase extends Block {
 
                     if (target?.closest('[data-testid="messenger-back"]') != null) {
                         (this.props as MessengerProps).onBack?.()
+
+                        return
                     }
-                },
-            } as unknown as Record<string, () => void>,
-            formContainerExtraClass: 'messenger__header-form-container',
-            headerButtons: [
-                {
-                    extraClass: 'close',
-                    // this.props, а не замыкание конструктора: selectedChat
-                    // появляется после выбора чата, замыкание осталось бы
-                    // навсегда undefined (LIVE-7)
-                    handleClick: () => {
+
+                    if (target?.closest('[data-testid="reply-cancel"]') != null) {
+                        this.setProps({ replyDraft: null })
+
+                        return
+                    }
+
+                    const resultButton = target?.closest('[data-testid="user-search-result"]') as HTMLElement | null
+
+                    if (resultButton != null) {
+                        const userId = Number(resultButton.dataset.userId)
+                        const { onAddUser, selectedChat } = this.props as MessengerProps
+
+                        if (Number.isInteger(userId) && typeof selectedChat === 'number') {
+                            this.setProps({ addUserFeedback: 'Добавляем…' })
+                            void Promise.resolve(onAddUser?.(userId, selectedChat))
+                                .then(() => {
+                                    this.setProps({ addUserFeedback: 'Пользователь добавлен' })
+                                })
+                                .catch(() => {
+                                    this.setProps({ addUserFeedback: 'Не удалось добавить пользователя' })
+                                })
+                        }
+
+                        return
+                    }
+
+                    if (target?.closest('[data-testid="delete-chat-confirm"]') != null) {
                         const { onDeleteChat, selectedChat } = this.props as MessengerProps
+
+                        this.setProps({ deleteModalOpen: false })
 
                         if (typeof selectedChat === 'number') {
                             onDeleteChat?.(selectedChat)
                         }
+
+                        return
+                    }
+
+                    if (target?.closest('[data-testid="delete-chat-cancel"]') != null) {
+                        this.setProps({ deleteModalOpen: false })
+                    }
+                },
+                // @-поиск: ввод с префиксом @ -> дебаунс -> onSearchUsers ->
+                // список находок; перерисовка только по ответу, фокус возвращаем
+                input: (event: Event) => {
+                    const target = event.target as HTMLElement | null
+
+                    if (target?.closest('[data-testid="user-search-input"]') == null) {
+                        return
+                    }
+
+                    const raw = (target as HTMLInputElement).value
+                    const query = raw.startsWith('@') ? raw.slice(1) : raw
+
+                    if (this.userSearchDebounce != null) {
+                        clearTimeout(this.userSearchDebounce)
+                    }
+
+                    if (query.trim() === '') {
+                        this.setProps({ addUserQuery: '', addUserResults: [], addUserFeedback: '' })
+
+                        return
+                    }
+
+                    this.userSearchDebounce = setTimeout(() => {
+                        const { onSearchUsers } = this.props as MessengerProps
+
+                        void onSearchUsers?.(query.trim())
+                            .then(results => {
+                                this.setProps({ addUserQuery: query, addUserResults: results ?? [] })
+                                this.refocusSearchInput()
+                            })
+                            .catch(() => {
+                                this.setProps({ addUserFeedback: 'Поиск не удался — попробуйте ещё раз' })
+                            })
+                    }, USER_SEARCH_DEBOUNCE_MS)
+                },
+            } as unknown as Record<string, () => void>,
+            headerButtons: [
+                {
+                    extraClass: 'close',
+                    // подтверждение удаления — модалка; сам id читается из
+                    // this.props на момент клика по «Удалить» (LIVE-7)
+                    handleClick: () => {
+                        this.setProps({ deleteModalOpen: true })
                     },
                 },
                 {
                     extraClass: 'cross',
-                    handleClick: () => this.refs.addUser.setProps({ isShown: true }),
+                    handleClick: () => {
+                        this.setProps({ addUserOpen: true, addUserResults: [], addUserFeedback: '' })
+                    },
                 },
             ],
             inputs: [
@@ -126,11 +311,16 @@ class MessengerBase extends Block {
                     handleSubmitClick: (value: { message: string }) => {
                         // this.props, а не замыкание конструктора: selectedChat
                         // появляется после выбора чата, замыкание осталось бы
-                        // навсегда undefined (LIVE-7)
-                        const { onSendMessage, selectedChat } = this.props as MessengerProps
+                        // навсегда undefined (LIVE-7). Ответ уносится вместе с
+                        // сообщением (reply_to_id), черновик сбрасывается
+                        const { onSendMessage, selectedChat, replyDraft } = this.props as MessengerProps
 
                         if (typeof selectedChat === 'number') {
-                            onSendMessage?.(selectedChat, value.message)
+                            onSendMessage?.(selectedChat, value.message, replyDraft?.id)
+
+                            if (replyDraft != null) {
+                                this.setProps({ replyDraft: null })
+                            }
                         }
                     },
                 },
@@ -138,8 +328,37 @@ class MessengerBase extends Block {
         })
     }
 
+    // фокус в поле поиска после перерисовки по ответу поиска: DOM заменён,
+    // возвращаем пользователя туда, где он печатал
+    private refocusSearchInput(): void {
+        const input = this.element?.querySelector<HTMLInputElement>('[data-testid="user-search-input"]')
+
+        if (input != null) {
+            input.focus()
+
+            const end = input.value.length
+
+            input.setSelectionRange(end, end)
+        }
+    }
+
+    destroy() {
+        if (this.userSearchDebounce != null) {
+            clearTimeout(this.userSearchDebounce)
+        }
+
+        super.destroy()
+    }
+
     render() {
-        return this.compile(template, this.props)
+        const props = this.props as MessengerProps
+        const chatTitle = (props.chatInfo as { title?: unknown } | undefined)?.title
+
+        return this.compile(template, {
+            ...props,
+            addUserContent: renderAddUserModalContent(props),
+            deleteContent: renderDeleteModalContent(chatTitle),
+        })
     }
 }
 

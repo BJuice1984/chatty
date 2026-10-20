@@ -39,6 +39,12 @@ class ChatRepository:
         self.session.flush()
         return chat
 
+    def delete(self, chat: Chat) -> None:
+        """Удаляет чат; зависимые строки снимаются каскадами БД по FK-правилам."""
+
+        self.session.delete(chat)
+        self.session.flush()
+
     def add_member(self, member: ChatMember) -> ChatMember:
         self.session.add(member)
         self.session.flush()

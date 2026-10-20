@@ -41,6 +41,20 @@ class ChatService:
             raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail='chat_membership_required')
         return chat
 
+    def require_owned(self, chat_id: int, requester_id: int) -> Chat:
+        """Удалять чат может только владелец; посторонним и участникам — 403."""
+
+        chat = self.require_chat(chat_id)
+        if chat.owner_id != requester_id:
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail='chat_owner_required')
+        return chat
+
+    def delete(self, chat: Chat) -> None:
+        """Удаляет строку чата; зависимые строки снимаются каскадами БД по FK-правилам."""
+
+        self.chats.delete(chat)
+        self.session.commit()
+
     def add_member(self, chat_id: int, requester_id: int, user_id: int) -> ChatMember:
         self.require_member(chat_id, requester_id)
         if self.users.get_by_id(user_id) is None:

@@ -1,29 +1,36 @@
 // Реализация WS-шлюза собственного бэкенда (stage 7; stage 11 — история через
-// history-модуль): cookie-аутентификация (токен не нужен — URL
-// /ws/chats/{chatId} от env.wsUrl), события бэкенда:
-//   исходящие: {type:'message', content:{content, file_id?, client_message_id?}},
+// history-модуль; stage chats-social — реакции, реплаи, chat_deleted):
+// cookie-аутентификация (токен не нужен — URL /ws/chats/{chatId} от env.wsUrl),
+// события бэкенда:
+//   исходящие: {type:'message', content:{content, file_id?, client_message_id?, reply_to_id?}},
 //              {type:'history', content:{before_id, limit}},
 //              {type:'ping', content:{}}
 //   входящие:  {type:'message', content:MessageResponse} (broadcast, включая эхо),
 //              {type:'history', content:{messages, next_before_id, ...}},
+//              {type:'reaction', content:{chat_id, message_id, user_id, emoji, active}}
+//              — пересобирается в контроллерский слушатель через gateway,
+//              {type:'chat_deleted', content:{chat_id}} — сокет чата закрывается,
+//              событие уходит контроллеру,
 //              {type:'pong'} / ошибки — игнорируются.
 // MessageResponse {id, chat_id, user_id, content, file_id, client_message_id,
-// created_at} маппится на DTO Message: created_at → time, file_id → file_url
-// (filesUrl + /{file_id}/download); id сохраняется — дедупликация истории
-// (stage 11) идёт по нему. История приходит убыванием (desc) — единственный
-// reverse делает merge истории (RV1: без второго разворота).
+// reply_to_id, reply_to, reactions, created_at} маппится на DTO Message:
+// created_at → time, file_id → file_url (filesUrl + /{file_id}/download),
+// reply_to → replyTo, reactions проходят как есть (mine относительно
+// запросившего историю); id сохраняется — дедупликация истории (stage 11)
+// идёт по нему. История приходит убыванием (desc) — единственный reverse
+// делает merge истории (RV1: без второго разворота).
 
 import WSTransport, { WSTransportEvents } from '../../../utils/WSTransport.ts'
 import { env, joinUrl } from '../../../utils/env.ts'
 import store from '../../../utils/Store.ts'
-import type { Message } from '../../../utils/types.ts'
+import type { Message, MessageReplyTo, ReactionSummary } from '../../../utils/types.ts'
 import { chatHistoryController } from '../history/controller.ts'
 import type { HistoryMessage } from '../history/types.ts'
 // Регистрация хелпера ChatHistory для messenger.hbs: модуль истории попадает
 // в бандл через импорт ws-адаптера (components фичи не импортируют —
 // guard-блокер).
 import '../history/view.ts'
-import { appendMessages } from './gateway.ts'
+import { appendMessages, notifyChatDeleted, notifyReactionEvent } from './gateway.ts'
 
 interface OwnMessageResponse {
     id: number
@@ -32,6 +39,17 @@ interface OwnMessageResponse {
     content: string | null
     file_id: number | null
     client_message_id: string | null
+    reply_to_id?: number | null
+    reply_to?: {
+        id: number
+        user_id: number
+        snippet: string
+    } | null
+    reactions?: {
+        emoji: string
+        count: number
+        mine: boolean
+    }[]
     created_at: string
 }
 
@@ -59,9 +77,22 @@ function sendOwnEvent(
 }
 
 export function toMessage(response: OwnMessageResponse): Message {
+    // цитата-снимок сервера: пользователь не авторство, snippet достаточно
+    const replyTo: MessageReplyTo | null = response.reply_to == null
+        ? null
+        : {
+            id: response.reply_to.id,
+            user_id: response.reply_to.user_id,
+            snippet: response.reply_to.snippet,
+        }
+    const reactions: ReactionSummary[] = (response.reactions ?? []).map(item => ({
+        emoji: item.emoji,
+        count: item.count,
+        mine: item.mine,
+    }))
+
     return {
-        // id нужен дедупликации истории: DTO Message не объявляет его, но
-        // индексная сигнатура пропускает — читает локальный HistoryMessage
+        // id нужен дедупликации истории и ключом реакций/реплаев
         id: response.id,
         chat_id: response.chat_id,
         time: response.created_at,
@@ -71,6 +102,10 @@ export function toMessage(response: OwnMessageResponse): Message {
         file_url: response.file_id == null
             ? undefined
             : joinUrl(env.filesUrl, `/${response.file_id}/download`),
+        // id-цепочка ответа: и прямой id цели, и серверный снимок цитаты
+        replyToId: response.reply_to_id ?? undefined,
+        replyTo,
+        reactions,
     }
 }
 
@@ -125,6 +160,41 @@ export class OwnWsAdapter {
                 } else {
                     chatHistoryController.applyInitialHistory(id, incoming, content.next_before_id)
                 }
+
+                return
+            }
+
+            // Реакция: сводку не верим (mine в broadcast относителен
+            // отправителя действия) — пересылаем событие контроллеру,
+            // тот пересчитывает чипы viewer-side
+            if (wsEvent.type === 'reaction' && wsEvent.content != null) {
+                const content = wsEvent.content as {
+                    chat_id: number
+                    message_id: number
+                    user_id: number
+                    emoji: string
+                    active: boolean
+                }
+
+                notifyReactionEvent({
+                    chat_id: content.chat_id,
+                    message_id: content.message_id,
+                    user_id: content.user_id,
+                    emoji: content.emoji,
+                    active: content.active,
+                })
+
+                return
+            }
+
+            // Чат удалён владельцем: событие уходит контроллеру (сброс выбора,
+            // обновление списка), собственный сокет закрываем явно — без
+            // реконнекта в удалённый чат
+            if (wsEvent.type === 'chat_deleted' && wsEvent.content != null) {
+                const chatId = (wsEvent.content as { chat_id: number }).chat_id
+
+                void this.closeChat(chatId)
+                notifyChatDeleted(chatId)
             }
         })
         wsTransport.on(WSTransportEvents.Close, () => this.sockets.delete(id))
@@ -132,15 +202,20 @@ export class OwnWsAdapter {
         await wsTransport.connect()
     }
 
-    sendMessage(id: number, message: string): Promise<void> {
+    sendMessage(id: number, message: string, replyToId?: number): Promise<void> {
         const socket = this.sockets.get(id)
 
         if (!socket) {
             return Promise.reject(new Error(`Chat ${id} is not connected`))
         }
 
-        // бэкенд принимает и скалярный content (оборачивает в {'content': value})
-        socket.send({ type: 'message', content: message })
+        if (replyToId != null) {
+            // ответ на сообщение: объект-контраткт с reply_to_id
+            sendOwnEvent(socket, { type: 'message', content: { content: message, reply_to_id: replyToId } })
+        } else {
+            // бэкенд принимает и скалярный content (оборачивает в {'content': value})
+            socket.send({ type: 'message', content: message })
+        }
 
         return Promise.resolve()
     }
@@ -155,6 +230,13 @@ export class OwnWsAdapter {
         }
 
         sendOwnEvent(socket, { type: 'history', content: { before_id: beforeId, limit } })
+
+        return Promise.resolve()
+    }
+
+    // Явное закрытие сокета чата (chat_deleted): транспорт не реконнектит
+    closeChat(id: number): Promise<void> {
+        this.sockets.get(id)?.close()
 
         return Promise.resolve()
     }

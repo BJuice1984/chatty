@@ -4,10 +4,14 @@
 // уход с маршрута уничтожает инстанс, возврат монтирует свежий.
 // chat-ui-polish: мобильное переключение chatPaneOpen — выбор чата (включая
 // повторный) открывает панель, onBack возвращает список.
+// chats-social: chat_deleted очищает selectedChat в сторе — панель обязана
+// вернуться к списку; страница пробрасывает колбэки @-поиска/реакций в
+// мессенджер через контроллер фичи.
 
 import { expect } from 'chai'
 import sinon from 'sinon'
 import '../../../ai-assistant/hbs-test-loader.ts'
+import store from '../../../../utils/Store.ts'
 import ChatsController from '../../controller.ts'
 import { ChatPage } from './chat.ts'
 
@@ -15,6 +19,10 @@ interface ChatPageCallbacks {
     onSelectChat: (id: number) => void
     onBack: () => void
     chatPaneOpen: boolean
+    onSearchUsers?: (login: string) => Promise<unknown[]>
+    onAddUser?: (userId: number, chatId: number) => Promise<void>
+    onSetReaction?: (chatId: number, messageId: number, emoji: string) => void
+    onSendMessage?: (chatId: number, message: string, replyToId?: number) => void
 }
 
 function callbacksOf(page: unknown): ChatPageCallbacks {
@@ -126,6 +134,103 @@ describe('chat page bootstrap', () => {
 
             second.destroy()
         } finally {
+            fetchChats.restore()
+        }
+    })
+})
+
+// chats-social: chat_deleted сбрасывает selectedChat в сторе — панель чата
+// возвращается к списку без ручного onBack
+describe('chat page chat_deleted pane reset', () => {
+    afterEach(() => {
+        store.set('selectedChat', undefined)
+    })
+
+    it('closes the open pane when selectedChat is cleared from the store', () => {
+        const fetchChats = sinon.stub(ChatsController, 'fetchChats').resolves()
+
+        try {
+            const page = new ChatPage({} as never)
+            const props = callbacksOf(page)
+
+            props.onSelectChat(3)
+            expect(props.chatPaneOpen).to.be.true
+
+            // WS chat_deleted: контроллер очистил выбор — withStore принёс
+            // undefined, componentDidUpdate вернул панель к списку
+            store.set('selectedChat', undefined)
+
+            expect(callbacksOf(page).chatPaneOpen).to.be.false
+
+            page.destroy()
+        } finally {
+            fetchChats.restore()
+        }
+    })
+
+    it('keeps the pane closed logic idempotent while no chat is selected', () => {
+        const fetchChats = sinon.stub(ChatsController, 'fetchChats').resolves()
+
+        try {
+            const page = new ChatPage({} as never)
+
+            store.set('selectedChat', undefined)
+            store.set('chats', [])
+
+            expect(callbacksOf(page).chatPaneOpen).to.be.false
+
+            page.destroy()
+        } finally {
+            fetchChats.restore()
+            store.set('chats', undefined)
+        }
+    })
+})
+
+// chats-social: страница пробрасывает новые колбэки мессенджера в контроллер
+describe('chat page social callbacks', () => {
+    it('wires the typed user search through the controller', async () => {
+        const searchUsers = sinon.stub(ChatsController, 'searchUsers').resolves([{ id: 9, login: 'b@example.com', display_name: 'b' }])
+        const fetchChats = sinon.stub(ChatsController, 'fetchChats').resolves()
+
+        try {
+            const page = new ChatPage({} as never)
+            const results = await callbacksOf(page).onSearchUsers?.('b')
+
+            expect(searchUsers.calledOnceWith('b')).to.be.true
+            expect(results).to.deep.eq([{ id: 9, login: 'b@example.com', display_name: 'b' }])
+
+            page.destroy()
+        } finally {
+            searchUsers.restore()
+            fetchChats.restore()
+        }
+    })
+
+    it('wires the picked-user add, reactions and reply sends', async () => {
+        const addUsersToChat = sinon.stub(ChatsController, 'addUsersToChat').resolves()
+        const setReaction = sinon.stub(ChatsController, 'setReaction').resolves()
+        const sendMessage = sinon.stub(ChatsController, 'sendMessage').resolves()
+        const fetchChats = sinon.stub(ChatsController, 'fetchChats').resolves()
+
+        try {
+            const page = new ChatPage({} as never)
+            const props = callbacksOf(page)
+
+            await props.onAddUser?.(101, 7)
+            expect(addUsersToChat.calledOnceWith([101], 7)).to.be.true
+
+            props.onSetReaction?.(7, 11, '👍')
+            expect(setReaction.calledOnceWith(7, 11, '👍')).to.be.true
+
+            props.onSendMessage?.(7, 'ответ', 11)
+            expect(sendMessage.calledOnceWith(7, 'ответ', 11)).to.be.true
+
+            page.destroy()
+        } finally {
+            sendMessage.restore()
+            setReaction.restore()
+            addUsersToChat.restore()
             fetchChats.restore()
         }
     })

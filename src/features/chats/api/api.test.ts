@@ -1,9 +1,15 @@
+// Own-адаптер chats (chats-social): searchUsers/deleteChat/setReaction
+// реализованы на контракте бэкенда — проверяем реальные запросы через
+// подмену XMLHttpRequest (адрес/метод/тело/CSRF), а не только наличие
+// методов. Остальные операции по-прежнему явно отвергаются.
+
 import { expect } from 'chai'
 import { JSDOM } from 'jsdom'
 import { ownChatsPort, toChatInfo } from './own.ts'
 import { chatsPort } from './index.ts'
 
-const dom = new JSDOM()
+// URL обязателен: cookie на about:blank jsdom молча отбрасывает
+const dom = new JSDOM('', { url: 'http://localhost/' })
 global.document = dom.window.document
 
 const ownChat = {
@@ -14,12 +20,54 @@ const ownChat = {
     created_at: '2026-10-06T00:00:00Z',
 }
 
+// Минимальный XHR: транспорт создаёт его в момент запроса, поэтому подмена
+// глобального класса перехватывает и экземпляр, созданный при импорте модуля
+interface CapturedCall {
+    method: string
+    url: string
+    body: string | undefined
+    headers: Record<string, string>
+}
+
+class FakeXHR {
+    static calls: CapturedCall[] = []
+    static responses: { status: number; response: unknown }[] = []
+
+    onload: (() => void) | null = null
+    withCredentials = false
+    responseType = ''
+    timeout = 0
+    status = 0
+    response: unknown = null
+
+    private method = ''
+    private url = ''
+    private headers: Record<string, string> = {}
+
+    open(method: string, url: string): void {
+        this.method = method
+        this.url = url
+    }
+
+    setRequestHeader(name: string, value: string): void {
+        this.headers[name] = value
+    }
+
+    send(body?: string): void {
+        FakeXHR.calls.push({ method: this.method, url: this.url, body, headers: { ...this.headers } })
+
+        const queued = FakeXHR.responses.shift() ?? { status: 200, response: null }
+
+        this.status = queued.status
+        this.response = queued.response
+        this.onload?.()
+    }
+}
+
 const unsupportedMethods = [
-    'deleteChat',
     'removeUsers',
     'getChatUsers',
     'changeChatAvatar',
-    'searchUsers',
 ] as const
 
 async function captureError(action: () => unknown): Promise<unknown> {
@@ -46,6 +94,7 @@ describe('chats api adapter', () => {
             'getChatUsers',
             'changeChatAvatar',
             'searchUsers',
+            'setReaction',
         ] as const) {
             expect(chatsPort, `own ${method}`).to.have.property(method)
         }
@@ -58,6 +107,11 @@ describe('chats api adapter', () => {
         expect(chat.title).to.eq('own chat')
         expect(chat.avatar).to.eq('')
         expect(chat.unread_count).to.eq(0)
+    })
+
+    it('should carry is_ai through toChatInfo both ways', () => {
+        expect(toChatInfo(ownChat).is_ai).to.be.false
+        expect(toChatInfo({ ...ownChat, is_ai: true }).is_ai).to.be.true
     })
 
     it('should return an empty token sentinel for the cookie-auth WS flow', async () => {
@@ -75,5 +129,83 @@ describe('chats api adapter', () => {
             expect(error, `own ${method}`).to.be.instanceOf(Error)
             expect((error as Error).message, `own ${method}`).to.match(/недоступна в own-режиме/)
         }
+    })
+})
+
+describe('chats api social operations (fake XHR)', () => {
+    let originalXHR: typeof XMLHttpRequest
+    let originalDocument: Document
+
+    beforeEach(() => {
+        originalXHR = globalThis.XMLHttpRequest
+        originalDocument = global.document
+        // свой документ с URL: глобальный мог достаться от файлов с about:blank,
+        // где cookie (а с ним CSRF) молча отбрасывается
+        global.document = dom.window.document
+        FakeXHR.calls = []
+        FakeXHR.responses = []
+        globalThis.XMLHttpRequest = FakeXHR as unknown as typeof XMLHttpRequest
+        dom.window.document.cookie = 'chatty_csrf=token-1'
+    })
+
+    afterEach(() => {
+        globalThis.XMLHttpRequest = originalXHR
+        global.document = originalDocument
+        dom.window.document.cookie = 'chatty_csrf=; expires=Thu, 01 Jan 1970 00:00:00 GMT'
+    })
+
+    it('searches users by the login prefix over GET /users', async () => {
+        FakeXHR.responses.push({
+            status: 200,
+            response: [{ id: 9, login: 'bob@example.com', display_name: 'bob' }],
+        })
+
+        const results = await ownChatsPort.searchUsers({ login: 'bob' })
+
+        expect(results).to.deep.eq([{ id: 9, login: 'bob@example.com', display_name: 'bob' }])
+
+        const call = FakeXHR.calls[0]
+
+        expect(call.method).to.eq('GET')
+        expect(call.url).to.contain('/users')
+        expect(call.url).to.contain('login=bob')
+    })
+
+    it('deletes a chat over DELETE /chats/{id} with the csrf header', async () => {
+        FakeXHR.responses.push({ status: 204, response: null })
+
+        await ownChatsPort.deleteChat({ chatId: 7 })
+
+        const call = FakeXHR.calls[0]
+
+        expect(call.method).to.eq('DELETE')
+        expect(call.url).to.contain('/chats/7')
+        expect(call.headers['X-CSRF-Token']).to.eq('token-1')
+    })
+
+    it('toggles a reaction over POST reactions with the emoji body', async () => {
+        FakeXHR.responses.push({
+            status: 200,
+            response: {
+                message_id: 11,
+                active: true,
+                reactions: [{ emoji: '👍', count: 1, mine: true }],
+            },
+        })
+
+        const result = await ownChatsPort.setReaction({ chatId: 3, messageId: 11, emoji: '👍' })
+
+        expect(result).to.deep.eq({
+            message_id: 11,
+            active: true,
+            reactions: [{ emoji: '👍', count: 1, mine: true }],
+        })
+
+        const call = FakeXHR.calls[0]
+
+        expect(call.method).to.eq('POST')
+        expect(call.url).to.contain('/chats/3/messages/11/reactions')
+        expect(call.body).to.eq(JSON.stringify({ emoji: '👍' }))
+        expect(call.headers['X-CSRF-Token']).to.eq('token-1')
     })
 })

@@ -113,6 +113,7 @@ describe('chats history controller', () => {
             sendMessage: async () => {},
             connect: async () => {},
             loadHistory: async () => {},
+            closeChat: async () => {},
         }
         controller.attachPort(port)
     })
@@ -168,6 +169,7 @@ describe('chats history controller', () => {
             sendMessage: async () => {},
             connect: async () => {},
             loadHistory: () => Promise.reject(new Error('Chat 3 is not connected')),
+            closeChat: async () => {},
         })
 
         controller.loadOlder(3)

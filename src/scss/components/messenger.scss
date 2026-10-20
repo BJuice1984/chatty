@@ -43,18 +43,6 @@
     padding-left: 77px;
   }
 
-  &__header-form-container {
-    display: none;
-    background-color: $fourthColor;
-    position: absolute;
-    right: 50%;
-    top: 50px;
-
-    &_visible {
-      display: block;
-    }
-  }
-
   &__header-buttons-container {
     position: relative;
     display: flex;
@@ -137,6 +125,202 @@
     white-space: nowrap;
   }
 
+  /* Цитата над пузырём (реплай): сниппет сервера + подпись «В ответ» */
+
+  &__message-quote {
+    @include reset;
+    @include text;
+    @include text-format(400, 11px, 16px);
+
+    display: flex;
+    flex-direction: column;
+    gap: 1px;
+    max-width: 100%;
+    margin-bottom: 3px;
+    padding: 4px 10px;
+    border-radius: 8px;
+    border-left: 3px solid $thirdTextColor;
+    background-color: $bubbleDayMarkerBackground;
+    color: $bubbleTimeTextColor;
+    overflow: hidden;
+
+    &-label {
+      @include text-format(500, 10px, 12px);
+
+      color: $thirdTextColor;
+    }
+
+    &-text {
+      display: -webkit-box;
+      -webkit-box-orient: vertical;
+      -webkit-line-clamp: 2;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      overflow-wrap: anywhere;
+    }
+  }
+
+  /* Строка «пузырь + аффордансы»: действия прижаты к пузырю со стороны
+     противоположной стороне пузыря */
+
+  &__message-row {
+    display: flex;
+    align-items: flex-end;
+    gap: 4px;
+    max-width: 100%;
+  }
+
+  /* ONE entry mechanism (chats-social): аффорданс всегда в DOM; на touch
+     виден постоянно, на pointer:fine раскрывается по :hover пузыря.
+     Никаких JS long-press таймеров */
+
+  &__message-actions {
+    position: relative;
+    display: flex;
+    align-items: center;
+    gap: 2px;
+    padding-bottom: 2px;
+    opacity: 1;
+  }
+
+  &__message-action {
+    @include reset;
+
+    width: 22px;
+    height: 22px;
+    border: none;
+    border-radius: 6px;
+    background-color: transparent;
+    cursor: pointer;
+    position: relative;
+
+    /* стрелка «ответить»: уголок влево с хвостом */
+
+    &::before {
+      content: '';
+      position: absolute;
+      width: 8px;
+      height: 8px;
+      border-left: 2px solid $secondTextColor;
+      border-bottom: 2px solid $secondTextColor;
+      transform: rotate(45deg);
+      top: 6px;
+      left: 5px;
+    }
+
+    &::after {
+      content: '';
+      position: absolute;
+      width: 2px;
+      height: 8px;
+      background-color: $secondTextColor;
+      top: 4px;
+      left: 5px;
+      transform: rotate(45deg);
+    }
+
+    /* «реакции»: улыбка из круга и точек */
+
+    &_react {
+
+      &::before {
+        width: 12px;
+        height: 12px;
+        border: 2px solid $secondTextColor;
+        border-bottom-style: solid;
+        border-radius: 50%;
+        transform: rotate(-15deg);
+        top: 3px;
+        left: 3px;
+      }
+
+      &::after {
+        width: 2px;
+        height: 2px;
+        background-color: $secondTextColor;
+        border-radius: 50%;
+        top: 14px;
+        left: 9px;
+        transform: none;
+      }
+    }
+  }
+
+  /* Фикс-набор эмодзи: поповер у аффорданса */
+
+  &__emoji-picker {
+    @include reset;
+
+    position: absolute;
+    bottom: 26px;
+    left: 0;
+    z-index: 5;
+    display: flex;
+    gap: 2px;
+    padding: 4px;
+    border-radius: 10px;
+    border: $borderChat;
+    background-color: $secondColor;
+    box-shadow: $boxShadowLogin;
+  }
+
+  &__emoji-option {
+    @include reset;
+
+    min-width: 28px;
+    height: 28px;
+    border: none;
+    border-radius: 8px;
+    background-color: transparent;
+    font-size: 16px;
+    line-height: 1;
+    cursor: pointer;
+
+    &:hover {
+      background-color: $fourthColor;
+    }
+  }
+
+  /* Чипы реакций: под пузырём, свой — подсвечен (scope guard: селекторы
+     вложены в .messenger__container-message — статус-строка li.chat-history
+     их не получает) */
+
+  &__message-reactions {
+    @include reset;
+
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px;
+    margin-top: 3px;
+  }
+
+  &__reaction-chip {
+    @include reset;
+    @include text;
+    @include text-format(400, 12px, 16px);
+
+    display: inline-flex;
+    align-items: center;
+    gap: 3px;
+    padding: 1px 8px;
+    border: $borderChatBottom;
+    border-radius: 999px;
+    background-color: $bubbleDayMarkerBackground;
+    color: $mainTextColor;
+    cursor: pointer;
+
+    &_mine {
+      border-color: $thirdTextColor;
+      background-color: rgb(129 117 255 / 30%);
+    }
+  }
+
+  &__reaction-count {
+    @include text-format(500, 10px, 12px);
+
+    color: $secondTextColor;
+  }
+
   &__message-bubble {
     display: flex;
     flex-direction: column;
@@ -193,11 +377,82 @@
     }
   }
 
+  /* свой пузырь справа — действия слева от него, поповер раскрывается влево */
+
+  &__container-message_mine &__message-row {
+    flex-direction: row-reverse;
+  }
+
+  &__container-message_mine &__emoji-picker {
+    left: auto;
+    right: 0;
+  }
+
   &__chat-users-container {
     display: flex;
     flex-direction: row;
     padding-left: 15px;
     padding-right: 15px;
+  }
+
+  /* Превью черновика ответа над инпутом: сниппет + отмена */
+
+  &__reply-preview {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    margin: 4px 5px 0;
+    padding: 5px 10px;
+    border-radius: 8px;
+    border-left: 3px solid $thirdTextColor;
+    background-color: $bubbleDayMarkerBackground;
+    box-sizing: border-box;
+
+    &-text {
+      @include text;
+      @include text-format(400, 12px, 16px);
+
+      color: $bubbleTimeTextColor;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    /* крестик отмены */
+
+    &-cancel {
+      @include reset;
+
+      position: relative;
+      flex-shrink: 0;
+      width: 16px;
+      height: 16px;
+      border: none;
+      border-radius: 4px;
+      background-color: transparent;
+      cursor: pointer;
+
+      &::before,
+      &::after {
+        content: '';
+        position: absolute;
+        width: 2px;
+        height: 100%;
+        background-color: $secondTextColor;
+        top: 0;
+        left: 50%;
+        transform: translateX(-50%);
+      }
+
+      &::before {
+        transform: translateX(-50%) rotate(45deg);
+      }
+
+      &::after {
+        transform: translateX(-50%) rotate(-45deg);
+      }
+    }
   }
 
   /* Кнопка «назад» мобильного переключения: файл desktop-first — по умолчанию
@@ -208,8 +463,27 @@
   }
 }
 
-/* Мобильная ветка messenger (<768, desktop-first): кнопка «назад» в шапке
-   и компактная шапка без десктопного отступа под аватары */
+/* pointer:fine — прячем аффордансы до :hover пузыря (мышь способна на
+   точное наведение); touch/coarse и hybrid-устройства без наведения видят
+   их постоянно */
+@media (pointer: fine) {
+
+  .messenger {
+
+    &__message-actions {
+      opacity: 0;
+      transition: opacity 0.15s ease-in-out;
+    }
+
+    &__container-message:hover &__message-actions,
+    &__message-actions:focus-within {
+      opacity: 1;
+    }
+  }
+}
+
+/* Мобильная ветка messenger (<768, desktop-first): кнопка «назад» в шапке,
+   компактная шапка без десктопного отступа под аватары, пузырь пошире */
 @media (max-width: ($tablet - 1px)) {
 
   .messenger {
@@ -241,6 +515,15 @@
 
     &__header-container {
       padding-left: 10px;
+    }
+
+    &__container-message {
+      max-width: 92%;
+    }
+
+    &__message-action {
+      width: 26px;
+      height: 26px;
     }
   }
 }

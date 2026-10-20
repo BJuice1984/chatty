@@ -1,0 +1,10 @@
+<div class="modal {{#if isOpen}}modal_open{{else}}modal_closed{{/if}}" data-testid="modal" aria-hidden="{{#if isOpen}}false{{else}}true{{/if}}">
+    <div class="modal__backdrop" data-testid="modal-backdrop"></div>
+    <div class="modal__dialog" role="dialog" aria-modal="true" aria-label="{{title}}">
+        <div class="modal__header">
+            <h3 class="modal__title" data-testid="modal-title">{{title}}</h3>
+            <button type="button" class="modal__close" data-testid="modal-close" aria-label="Закрыть"></button>
+        </div>
+        <div class="modal__content" data-testid="modal-content">{{{content}}}</div>
+    </div>
+</div>

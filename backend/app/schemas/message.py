@@ -7,17 +7,28 @@ from typing import Any
 
 from pydantic import BaseModel, ConfigDict, Field, PositiveInt, model_validator
 
+from app.schemas.reaction import ReactionSummary
+
 
 class MessageCreate(BaseModel):
     content: str | None = Field(default=None, max_length=20_000)
     file_id: PositiveInt | None = None
     client_message_id: str | None = Field(default=None, min_length=1, max_length=128)
+    reply_to_id: PositiveInt | None = None
 
     @model_validator(mode='after')
     def require_content_or_file(self) -> 'MessageCreate':
         if not (self.content and self.content.strip()) and self.file_id is None:
             raise ValueError('content_or_file_required')
         return self
+
+
+class MessageReplyTo(BaseModel):
+    """Цитируемое сообщение: кто сказал и укороченный текст (снимок сервера)."""
+
+    id: int
+    user_id: int
+    snippet: str
 
 
 class MessageResponse(BaseModel):
@@ -29,6 +40,9 @@ class MessageResponse(BaseModel):
     content: str | None
     file_id: int | None
     client_message_id: str | None
+    reply_to_id: int | None = None
+    reply_to: MessageReplyTo | None = None
+    reactions: list[ReactionSummary] = Field(default_factory=list)
     created_at: datetime
 
 
@@ -48,6 +62,7 @@ class WebSocketMessageContent(BaseModel):
     content: str | None = Field(default=None, max_length=20_000)
     file_id: PositiveInt | None = None
     client_message_id: str | None = Field(default=None, min_length=1, max_length=128)
+    reply_to_id: PositiveInt | None = None
 
     @model_validator(mode='after')
     def require_content_or_file(self) -> 'WebSocketMessageContent':

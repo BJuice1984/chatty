@@ -32,5 +32,19 @@ class ChatHub:
         for websocket in stale:
             await self.disconnect(chat_id, websocket)
 
+    async def close_chat(self, chat_id: int, code: int = 1000) -> None:
+        """Закрывает все сокеты чата (после удаления): клиенты сами не переподключаются.
+
+        Записи убираются из хаба сразу, до закрытия, чтобы параллельный
+        ``connect`` не зарегистрировал сокет в уже удалённом чате.
+        """
+
+        for websocket in self._connections.pop(chat_id, set()):
+            try:
+                await websocket.close(code=code)
+            except Exception:
+                # сокет уже мёртв — молча пропускаем
+                pass
+
 
 hub = ChatHub()

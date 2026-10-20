@@ -15,6 +15,14 @@ class MessageRepository:
     def get_by_id(self, message_id: int) -> Message | None:
         return self.session.get(Message, message_id)
 
+    def get_many(self, message_ids: set[int]) -> dict[int, Message]:
+        """Пакетная выборка цитируемых сообщений для сборки reply-блоков."""
+
+        if not message_ids:
+            return {}
+        statement = select(Message).where(Message.id.in_(message_ids))
+        return {message.id: message for message in self.session.scalars(statement)}
+
     def get_by_client_message_id(self, chat_id: int, user_id: int, client_message_id: str) -> Message | None:
         statement = select(Message).where(
             Message.chat_id == chat_id,
