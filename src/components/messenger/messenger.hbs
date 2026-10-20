@@ -28,7 +28,9 @@
             <button type="button" class="messenger__reply-preview-cancel" data-testid="reply-cancel" aria-label="Отменить ответ"></button>
           </div>
         {{/if}}
-        {{{ Form inputs=this.inputs buttons=this.buttons }}}
+        <div class="messenger__composer">
+            {{{ Form inputs=this.inputs buttons=this.buttons }}}
+        </div>
         {{{ Modal title='Добавить пользователя' isOpen=this.addUserOpen onClose=this.onCloseAddUser content=this.addUserContent }}}
         {{{ Modal title='Удалить чат' isOpen=this.deleteModalOpen onClose=this.onCloseDelete content=this.deleteContent }}}
     </div>

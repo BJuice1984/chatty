@@ -19,6 +19,13 @@
     /* ИИ-чат (chats-social): акцентная рамка слева — визуально отличим от
        пользовательских чатов, bubbles бота остаются на theirs-стороне */
 
+    /* Выбранный чат: устойчивое выделение между перерисовками списка */
+
+    &_active {
+      background-color: rgb(129 117 255 / 16%);
+      box-shadow: inset 0 0 0 1px rgb(129 117 255 / 35%);
+    }
+
     &_ai {
       border-left: 3px solid $thirdTextColor;
       background-image: linear-gradient(90deg, rgb(129 117 255 / 12%), transparent 55%);

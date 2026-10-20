@@ -14,9 +14,9 @@
           {{{ ChatListCreate ref="create" inputs=this.inputs buttons=this.buttons }}}
           {{#each chats}}
             {{#if this.avatar }}
-              {{{ User id=this.id last_message=this.last_message title=this.title unread_count=this.unread_count is_ai=this.is_ai src=this.avatar onSelect=../this.onSelectChat onChatFile=../this.onChatAvatar }}}
+              {{{ User id=this.id last_message=this.last_message title=this.title unread_count=this.unread_count is_ai=this.is_ai isActive=(eq this.id ../selectedChat) src=this.avatar onSelect=../this.onSelectChat onChatFile=../this.onChatAvatar }}}
             {{else}}
-              {{{ User id=this.id last_message=this.last_message title=this.title unread_count=this.unread_count is_ai=this.is_ai onSelect=../this.onSelectChat onChatFile=../this.onChatAvatar }}}
+              {{{ User id=this.id last_message=this.last_message title=this.title unread_count=this.unread_count is_ai=this.is_ai isActive=(eq this.id ../selectedChat) onSelect=../this.onSelectChat onChatFile=../this.onChatAvatar }}}
             {{/if}}
           {{/each}}
         </ul>

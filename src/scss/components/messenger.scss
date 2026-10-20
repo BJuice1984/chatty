@@ -492,68 +492,86 @@
     display: none;
   }
 
-  /* Telegram-подача composer-строки: пилюля-поле и круглая кнопка-кнопка
-     отправки с иконкой-самолётиком (действует только внутри мессенджера) */
+  /* Composer (Telegram-подача): пилюля на всю ширину, инпут и круглая
+     кнопка отправки в одну линию; при пустом сообщении кнопка блокируется
+     чистым CSS (:placeholder-shown), текст ошибки валидации не показываем —
+     достаточно блокировки */
 
-  .login-form {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    padding: 6px 6px 6px 16px;
-    border-radius: 22px;
-    background-color: rgb(255 255 255 / 8%);
+  &__composer {
+    width: 100%;
 
-    input[name='message'] {
-      flex: 1;
-      min-width: 0;
-      border: none;
-      background: transparent;
-      color: $mainTextColor;
-      font-size: 14px;
-      line-height: 20px;
-      padding: 8px 0;
-      outline: none;
+    .login-form {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      width: 100%;
+      padding: 6px 6px 6px 16px;
+      border-radius: 22px;
+      background-color: rgb(255 255 255 / 8%);
+      box-sizing: border-box;
 
-      &::placeholder {
-        color: rgb(247 247 252 / 45%);
-      }
-    }
+      input[name='message'] {
+        flex: 1;
+        min-width: 0;
+        border: none;
+        background: transparent;
+        color: $mainTextColor;
+        font-size: 14px;
+        line-height: 20px;
+        padding: 8px 0;
+        outline: none;
 
-    button[type='submit'] {
-      position: relative;
-      width: 36px;
-      height: 36px;
-      flex-shrink: 0;
-      padding: 0;
-      border: none;
-      border-radius: 50%;
-      background-color: $thirdTextColor;
-      color: transparent;
-      font-size: 0;
-      cursor: pointer;
-      transition: transform 0.15s ease-in-out, background-color 0.15s ease-in-out;
-
-      /* иконка-самолётик: треугольник на псевдоэлементе */
-
-      &::after {
-        content: '';
-        position: absolute;
-        width: 0;
-        height: 0;
-        margin: -1px 0 0 2px;
-        border-top: 6px solid transparent;
-        border-bottom: 6px solid transparent;
-        border-left: 9px solid $mainColor;
-        transform: rotate(-45deg);
+        &::placeholder {
+          color: rgb(247 247 252 / 45%);
+        }
       }
 
-      &:hover {
-        background-color: rgb(129 117 255 / 85%);
-        transform: scale(1.05);
+      /* пустое сообщение: ошибки нет, кнопка заблокирована (любой
+         error-блок валидации внутри composer не показываем) */
+
+      [class*='error'] {
+        display: none;
       }
 
-      &:active {
-        transform: scale(0.95);
+      &:has(input[name='message']:placeholder-shown) button[type='submit'] {
+        pointer-events: none;
+        opacity: 0.45;
+      }
+
+      button[type='submit'] {
+        position: relative;
+        width: 36px;
+        height: 36px;
+        flex-shrink: 0;
+        padding: 0;
+        border: none;
+        border-radius: 50%;
+        background-color: $thirdTextColor;
+        color: transparent;
+        font-size: 0;
+        cursor: pointer;
+        transition: transform 0.15s ease-in-out, background-color 0.15s ease-in-out, opacity 0.15s ease-in-out;
+
+        &::after {
+          content: '';
+          position: absolute;
+          width: 0;
+          height: 0;
+          margin: -1px 0 0 2px;
+          border-top: 6px solid transparent;
+          border-bottom: 6px solid transparent;
+          border-left: 9px solid $mainColor;
+          transform: rotate(-45deg);
+        }
+
+        &:hover {
+          background-color: rgb(129 117 255 / 85%);
+          transform: scale(1.05);
+        }
+
+        &:active {
+          transform: scale(0.95);
+        }
       }
     }
   }

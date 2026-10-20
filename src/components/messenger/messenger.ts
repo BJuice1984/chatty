@@ -383,8 +383,17 @@ class MessengerBase extends Block {
                         return
                     }
 
-                    const raw = (target as HTMLInputElement).value
-                    const query = raw.startsWith('@') ? raw.slice(1) : raw
+                    const input = target as HTMLInputElement
+                    let raw = input.value
+
+                    // символ «@» — маркер поиска, в сам логин он входить не
+                    // может: не даём его ввести (вырезаем из значения)
+                    if (raw.includes('@')) {
+                        raw = raw.split('@').join('')
+                        input.value = raw
+                    }
+
+                    const query = raw
 
                     if (this.userSearchDebounce != null) {
                         clearTimeout(this.userSearchDebounce)
