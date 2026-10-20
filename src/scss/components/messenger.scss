@@ -18,6 +18,11 @@
     gap: 4px;
     padding-right: 5px;
     overflow-y: auto;
+
+    //без min-height: 0 grid-строка 1fr растягивается содержимым и появляется
+
+    //второй (внешний) скролл панели — единственный скролл остаётся здесь
+    min-height: 0;
   }
 
   &__header-title {

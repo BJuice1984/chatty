@@ -6,6 +6,14 @@
 
     display: grid;
     grid-template-columns: min-content 1fr;
+
+    //строка обязана держать высоту вьюпорта: авто-строка растягивается
+
+    //контентом (длинный список чатов/сообщений) и появляется страничный
+
+    //скролл вдобавок к внутренним
+    grid-template-rows: 100%;
+    overflow: hidden;
     background-color: $mainColor;
 
     &__container-users {
@@ -90,11 +98,22 @@
         list-style: none;
         width: 90%;
         box-sizing: border-box;
+
+        //список чатов скроллится сам: flex-остаток сайдбара с минимальной
+
+        //высотой (иначе длинный список обрезается контейнером без скролла)
+        flex: 1;
+        min-height: 0;
+        overflow-y: auto;
     }
 
     &__container-chats {
         width: auto;
-        overflow-y: auto;
+
+        //скролл живёт внутри списка сообщений; внешний отсюда убран —
+
+        //иначе при длинной истории появляются два скроллбара
+        overflow: hidden;
     }
 
     &__disclaimer {
