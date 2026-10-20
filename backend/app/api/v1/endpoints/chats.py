@@ -33,8 +33,20 @@ async def list_chats(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ) -> list[ChatResponse]:
-    chats = ChatService(db).list_for_user(current_user.id)
-    return [ChatResponse.model_validate(chat) for chat in chats]
+    service = ChatService(db)
+    chats = service.list_for_user(current_user.id)
+    unread = service.unread_counts(current_user.id)
+    return [
+        ChatResponse(
+            id=chat.id,
+            title=chat.title,
+            owner_id=chat.owner_id,
+            is_ai=chat.is_ai,
+            created_at=chat.created_at,
+            unread_count=unread.get(chat.id, 0),
+        )
+        for chat in chats
+    ]
 
 
 @router.get('/{chat_id}', response_model=ChatResponse)

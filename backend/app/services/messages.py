@@ -12,6 +12,7 @@ from app.models.reaction import Reaction
 from app.repositories.chats import ChatRepository
 from app.repositories.files import FileRepository
 from app.repositories.messages import MessageRepository
+from app.services.chats import ChatService
 from app.repositories.reactions import ReactionRepository
 from app.schemas.message import MessageCreate, MessageReplyTo, MessageResponse
 from app.schemas.reaction import REACTION_EMOJIS, ReactionSummary
@@ -80,6 +81,13 @@ class MessageService:
             if before is None or before.chat_id != chat_id:
                 raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail='invalid_history_cursor')
         rows = self.messages.list_before(chat_id, before=before, limit=bounded_limit)
+
+        # выдача истории читает чат: маркер двигаем к старшей странице выдачи
+        # (страница desc: первый элемент — новейший из выданных)
+        if rows:
+            newest_read = max(row.id for row in rows[:bounded_limit])
+            ChatService(self.session).mark_read(chat_id, user_id, newest_read)
+
         has_more = len(rows) > bounded_limit
         page = rows[:bounded_limit]
         return page, page[-1].id if has_more and page else None

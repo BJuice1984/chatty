@@ -29,6 +29,15 @@ class ChatService:
     def list_for_user(self, user_id: int) -> list[Chat]:
         return self.chats.list_for_user(user_id)
 
+    def unread_counts(self, user_id: int) -> dict[int, int]:
+        """Непрочитанные по каждому чату: чужие сообщения новее последнего
+        прочитанного маркера (chat_last_reads); своих сообщений не считаем."""
+        return self.chats.unread_counts(user_id)
+
+    def mark_read(self, chat_id: int, user_id: int, message_id: int) -> None:
+        """Открытие истории читает чат до message_id включительно."""
+        self.chats.mark_read(chat_id, user_id, message_id)
+
     def require_chat(self, chat_id: int) -> Chat:
         chat = self.chats.get_by_id(chat_id)
         if chat is None:

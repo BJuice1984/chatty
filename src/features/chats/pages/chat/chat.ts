@@ -142,18 +142,40 @@ class ChatPageBase extends Block {
         })
     }
 
-    // Перерисовка страницы (выделение выбранного чата и пр.) пересоздаёт
-    // DOM списка чатов и сбрасывает его скролл — снимаем позицию на входе
-    // CDU (старый DOM ещё жив) и восстанавливаем после рендера.
-    private usersListScroll = 0
+    // Скролл списка чатов: перерисовки страницы (выделение выбранного и
+    // пр.) пересоздают DOM списка и сбрасывают позицию. Узор как у списка
+    // сообщений: модульная память + document-capture scroll-синк (событие —
+    // единственный всегда-верный источник) + восстановление в кадре.
+    private static usersScroll = 0
+    private static usersSyncInstalled = false
 
-    private restoreUsersListScroll(): void {
+    private static installUsersSync(): void {
+        if (ChatPageBase.usersSyncInstalled || typeof document === 'undefined') {
+            return
+        }
+
+        ChatPageBase.usersSyncInstalled = true
+
+        document.addEventListener('scroll', (event: Event) => {
+            const el = event.target as { className?: unknown, scrollTop?: number }
+
+            if (typeof el.className !== 'string' || !el.className.includes('chat__container-users-list')) {
+                return
+            }
+
+            if (typeof el.scrollTop === 'number') {
+                ChatPageBase.usersScroll = el.scrollTop
+            }
+        }, true)
+    }
+
+    private restoreUsersScroll(): void {
         const run = () => {
             const list = this.element?.querySelector('.chat__container-users-list') as
                 { scrollTop?: number } | null
 
             if (list != null && typeof list.scrollTop === 'number') {
-                list.scrollTop = this.usersListScroll
+                list.scrollTop = ChatPageBase.usersScroll
             }
         }
 
@@ -169,14 +191,7 @@ class ChatPageBase extends Block {
     // Гвардия по переходу «был выбор → пропал»: панель не захлопывается,
     // пока чат ещё не выбирали (мобильный вход на страницу)
     protected componentDidUpdate(oldProps: unknown, newProps: { selectedChat?: number, messages?: unknown[] }) {
-        const usersList = this.element?.querySelector('.chat__container-users-list') as
-            { scrollTop?: number } | null
-
-        if (usersList != null && typeof usersList.scrollTop === 'number') {
-            this.usersListScroll = usersList.scrollTop
-        }
-
-        this.restoreUsersListScroll()
+        this.restoreUsersScroll()
 
         if (
             (oldProps as { selectedChat?: number }).selectedChat !== undefined &&
@@ -207,6 +222,8 @@ class ChatPageBase extends Block {
     }
 
     componentDidMount() {
+        ChatPageBase.installUsersSync()
+
         // Список чатов нужен при каждом заходе на страницу (LIVE-3): SPA-вход
         // после логина не повторяет bootstrap из main.ts. CDM диспатчится
         // Router-ом при монтировании; уход с маршрута уничтожает инстанс,

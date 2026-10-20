@@ -85,10 +85,15 @@ function patchMessageReactions(
 export class ChatsFeatureController {
     private readonly port: ChatsPort
     private readonly messages: ChatMessagesPort
-    // Счётчик in-flight собственных toggle-реакций по ключу chat:message:emoji:
+    // Счётчик in-flight собственных toggle-реакций по ключу chat:message:emoji,
+    // а также grace-время: REST-ответ прилетает раньше собственного WS-эха, и
+    // если сбросить гвард сразу, эхо ложится поверх серверной сводки —
+    // счётчик задваивается до перезагрузки (нашёл оператор). Окно 1500мс
+    // закрывает гонку, не мешая второй вкладке (её тоггл — новое окно).
     // WS-эхо собственного действия в полёте пропускаем (его реконсиляцирует
     // REST-ответ), иначе дельта применилась бы дважды
     private readonly inFlightReactions = new Map<string, number>()
+    private readonly reactionEchoGrace = new Map<string, number>()
 
     constructor(
         port: ChatsPort = chatsPort,
@@ -217,6 +222,7 @@ export class ChatsFeatureController {
 
             if (pending <= 0) {
                 this.inFlightReactions.delete(key)
+                this.reactionEchoGrace.set(key, Date.now() + 1500)
             } else {
                 this.inFlightReactions.set(key, pending)
             }
@@ -230,8 +236,22 @@ export class ChatsFeatureController {
         const viewerId = store.getState().user?.id
         const key = `${event.chat_id}:${event.message_id}:${event.emoji}`
 
-        if (viewerId !== undefined && event.user_id === viewerId && this.inFlightReactions.has(key)) {
-            return
+        if (viewerId !== undefined && event.user_id === viewerId) {
+            // в полёте — точно своё отражение; в grace-окне после REST —
+            // позднее эхо уже учтённого тоггла
+            const graceUntil = this.reactionEchoGrace.get(key)
+
+            if (this.inFlightReactions.has(key)) {
+                return
+            }
+
+            if (graceUntil !== undefined) {
+                if (Date.now() < graceUntil) {
+                    return
+                }
+
+                this.reactionEchoGrace.delete(key)
+            }
         }
 
         patchMessageReactions(event.chat_id, event.message_id, reactions =>
@@ -276,6 +296,16 @@ export class ChatsFeatureController {
 
     selectChat(id: number): void {
         chatsSlice.selectChat(id)
+
+        // открытие чата прочитывает его: серверная пометка уходит с выдачей
+        // истории (MessageService.history -> mark_read), а пилюлю гасим в
+        // списке сразу, локально — без перечитывания всего списка
+        const chats = (store.getState().chats ?? []).map(chat =>
+            (chat as { id?: number }).id === id
+                ? { ...chat, unread_count: 0 }
+                : chat)
+
+        store.set('chats', chats)
     }
 
     private async deleteChatUsers(data: { users: number[]; chatId: number }): Promise<void> {

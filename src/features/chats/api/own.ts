@@ -23,6 +23,7 @@ export interface OwnChatResponse {
     owner_id: number
     is_ai: boolean
     created_at: string
+    unread_count?: number
 }
 
 // Ответ GET /users?login= : id, полный (нижнерегистровый) email и выводимое
@@ -48,7 +49,7 @@ export function toChatInfo(response: OwnChatResponse): ChatInfo {
         id: response.id,
         title: response.title,
         avatar: '',
-        unread_count: 0,
+        unread_count: response.unread_count ?? 0,
         // ИИ-чат: бейдж и акцент в списке чатов
         is_ai: response.is_ai,
     }

@@ -24,6 +24,9 @@ class ChatResponse(BaseModel):
     owner_id: int
     is_ai: bool
     created_at: datetime
+    # непрочитанные для запрашивающего: чужие сообщения новее последнего
+    # прочитанного (0, если всё прочитано)
+    unread_count: int = 0
 
 
 class ChatMemberResponse(BaseModel):
