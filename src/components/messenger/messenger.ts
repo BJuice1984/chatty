@@ -13,8 +13,6 @@ import Block from '../../core/Block.ts'
 import Handlebars from 'handlebars'
 import { Button, Input, Message } from '../../utils/types.ts'
 import { AppState, withStore } from '../../utils/Store.ts'
-import { emptyValidationMessage } from '../../utils/constants.ts'
-import { emptyValidator } from '../../utils/validators.ts'
 import { fileUrl } from '../../utils/env.ts'
 import { messageDayKey } from '../message/message.ts'
 import template from './messenger.hbs'
@@ -92,17 +90,24 @@ export function renderAddUserModalContent(props: {
     addUserQuery?: string
     addUserResults?: UserSearchEntry[]
     addUserFeedback?: string
+    memberIds?: number[]
 }): string {
     const query = props.addUserQuery ?? ''
     const results = props.addUserResults ?? []
     const feedback = props.addUserFeedback ?? ''
-    const items = results.map(user =>
-        '<li class="modal__result-item">'
-        + `<button type="button" class="modal__result" data-testid="user-search-result" data-user-id="${escapeHtml(user.id)}">`
-        + `<span class="modal__result-name">${escapeHtml(user.display_name)}</span>`
-        + `<span class="modal__result-login">${escapeHtml(user.login)}</span>`
-        + '</button></li>'
-    ).join('')
+    const memberIds = new Set(props.memberIds ?? [])
+    const items = results.map(user => {
+        const already = memberIds.has(user.id)
+        const disabled = already ? ' disabled' : ''
+        const badge = already ? '<span class="modal__result-badge">уже в чате</span>' : ''
+
+        return '<li class="modal__result-item">'
+            + `<button type="button" class="modal__result" data-testid="user-search-result" data-user-id="${escapeHtml(user.id)}"${disabled}>`
+            + `<span class="modal__result-name">${escapeHtml(user.display_name)}</span>`
+            + `<span class="modal__result-login">${escapeHtml(user.login)}</span>${
+                badge
+            }</button></li>`
+    }).join('')
     const emptyHint = query !== '' && items === '' && feedback === ''
         ? '<p class="modal__hint" data-testid="user-search-empty">Никого не нашли — уточните префикс</p>'
         : ''
@@ -113,8 +118,8 @@ export function renderAddUserModalContent(props: {
     return ''
         + '<div class="modal__search-flow">'
         + '<input class="modal__input" type="text" name="user-search" data-testid="user-search-input" '
-        + `placeholder="@логин" value="${escapeHtml(query)}" autocomplete="off" aria-label="Логин для поиска" />`
-        + `<p class="modal__hint">Введите @логин (начало email) — поиск сработает сам</p>${
+        + `placeholder="Имя пользователя (email)" value="${escapeHtml(query)}" autocomplete="off" aria-label="Логин для поиска" />`
+        + `<p class="modal__hint">Начните вводить начало email — поиск сработает сам; «@» не нужен</p>${
             feedbackHtml
         }<ul class="modal__results" data-testid="user-search-results">${items}</ul>${
             emptyHint
@@ -297,6 +302,31 @@ class MessengerBase extends Block {
         }
     }
 
+    // Отправка из composer-формы: текст читается на момент сабмита,
+    // selectedChat — из this.props (LIVE-7), ответ уходит с reply_to_id
+    private handleComposerSubmit(form: HTMLFormElement): void {
+        const input = form.querySelector<HTMLInputElement>('input[name="message"]')
+        const text = (input?.value ?? '').trim()
+
+        if (text === '') {
+            return
+        }
+
+        const { onSendMessage, selectedChat, replyDraft } = this.props as MessengerProps
+
+        if (typeof selectedChat === 'number') {
+            onSendMessage?.(selectedChat, text, replyDraft?.id)
+
+            if (replyDraft != null) {
+                this.setProps({ replyDraft: null })
+            }
+        }
+
+        if (input != null) {
+            input.value = ''
+        }
+    }
+
     constructor(propsFromStore: MessengerProps) {
         super({
             ...propsFromStore,
@@ -323,6 +353,15 @@ class MessengerBase extends Block {
             // делегированием с корня (прецедент — chat-history), колбэк
             // читается из this.props на момент клика (LIVE-7)
             events: {
+                submit: (event: Event) => {
+                    const form = event.target as HTMLFormElement
+
+                    event.preventDefault()
+
+                    if (form?.dataset?.testid === 'composer-form') {
+                        this.handleComposerSubmit(form)
+                    }
+                },
                 click: (event: Event) => {
                     const target = event.target as HTMLElement | null
 
@@ -340,7 +379,7 @@ class MessengerBase extends Block {
 
                     const resultButton = target?.closest('[data-testid="user-search-result"]') as HTMLElement | null
 
-                    if (resultButton != null) {
+                    if (resultButton != null && !(resultButton as HTMLButtonElement).disabled) {
                         const userId = Number(resultButton.dataset.userId)
                         const { onAddUser, selectedChat } = this.props as MessengerProps
 
@@ -435,36 +474,6 @@ class MessengerBase extends Block {
                     },
                 },
             ],
-            inputs: [
-                {
-                    label: 'type something...',
-                    name: 'message',
-                    validate: emptyValidator,
-                    validateMessage: emptyValidationMessage,
-                },
-            ],
-            buttons: [
-                {
-                    label: 'send',
-                    classType: 'primary',
-                    type: 'submit',
-                    handleSubmitClick: (value: { message: string }) => {
-                        // this.props, а не замыкание конструктора: selectedChat
-                        // появляется после выбора чата, замыкание осталось бы
-                        // навсегда undefined (LIVE-7). Ответ уносится вместе с
-                        // сообщением (reply_to_id), черновик сбрасывается
-                        const { onSendMessage, selectedChat, replyDraft } = this.props as MessengerProps
-
-                        if (typeof selectedChat === 'number') {
-                            onSendMessage?.(selectedChat, value.message, replyDraft?.id)
-
-                            if (replyDraft != null) {
-                                this.setProps({ replyDraft: null })
-                            }
-                        }
-                    },
-                },
-            ],
         })
     }
 
@@ -496,7 +505,12 @@ class MessengerBase extends Block {
 
         return this.compile(template, {
             ...props,
-            addUserContent: renderAddUserModalContent(props),
+            addUserContent: renderAddUserModalContent({
+                ...props,
+                memberIds: ((props).selectedChatUsers ?? [])
+                    .map(member => (member as { id?: number }).id)
+                    .filter((id): id is number => typeof id === 'number'),
+            }),
             deleteContent: renderDeleteModalContent(chatTitle),
         })
     }

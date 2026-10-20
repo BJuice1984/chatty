@@ -47,6 +47,9 @@ export interface ChatsPort {
     removeUsers(data: RemoveChatUsersData): Promise<void>
     // eslint-disable-next-line no-unused-vars
     getChatUsers(chatId: number): Promise<ChatUser[]>
+    // Запуск ассистента по сообщению в is_ai-чате (для отображения ошибки)
+    // eslint-disable-next-line no-unused-vars
+    runBot?(chatId: number, messageId: number): Promise<{ id: number; status: string; error_kind: string | null }>
     // eslint-disable-next-line no-unused-vars
     changeChatAvatar(data: FormData): Promise<{ avatar: string }>
     // eslint-disable-next-line no-unused-vars

@@ -149,3 +149,18 @@ async def set_reaction(
         },
     )
     return ReactionSummaryResponse(message_id=message_id, active=active, reactions=reactions)
+
+@router.get('/{chat_id}/members')
+async def list_chat_members(
+    chat_id: int,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> list[dict[str, object]]:
+    """Участники чата: [{id, login}] — login это email-хэнл контракта."""
+    service = ChatService(db)
+    service.require_member(chat_id, current_user.id)
+    members = service.chats.list_members(chat_id)
+    return [
+        {'id': user_id, 'login': email, 'display_name': email.split('@')[0]}
+        for user_id, email in members
+    ]

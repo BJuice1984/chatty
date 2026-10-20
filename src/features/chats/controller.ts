@@ -291,7 +291,54 @@ export class ChatsFeatureController {
     }
 
     sendMessage(chatId: number, message: string, replyToId?: number): Promise<void> {
-        return this.messages.sendMessage(chatId, message, replyToId)
+        const result = this.messages.sendMessage(chatId, message, replyToId)
+
+        // is_ai-чат: после отправки запускаем ассистента. Свой broadcast с id
+        // уже в сторе (WS быстрее REST-прогона); провал модели показываем
+        // системным сообщением в чате — иначе для пользователя это молчание
+        const chat = (store.getState().chats ?? []).find(
+            item => (item as { id?: number }).id === chatId
+        ) as { is_ai?: boolean } | undefined
+
+        if (chat?.is_ai === true) {
+            void this.runBotForLastOwnMessage(chatId)
+        }
+
+        return result
+    }
+
+    private async runBotForLastOwnMessage(chatId: number): Promise<void> {
+        const userId = store.getState().user?.id
+        const messages = store.getState().messages?.[chatId] ?? []
+        const own = [...messages]
+            .reverse()
+            .find(item => item.user_id === userId && typeof (item as { id?: number }).id === 'number') as { id?: number } | undefined
+
+        if (own?.id === undefined) {
+            return
+        }
+
+        try {
+            const run = await this.port.runBot?.(chatId, own.id)
+
+            if (run?.status === 'failed') {
+                const reason = run.error_kind ?? 'unknown'
+                const list = store.getState().messages?.[chatId] ?? []
+
+                store.set(`messages.${chatId}`, [
+                    ...list,
+                    {
+                        chat_id: chatId,
+                        time: new Date().toISOString(),
+                        type: 'message',
+                        user_id: -1,
+                        content: `⚠ Ассистент недоступен (${reason}). Попробуйте позже.`,
+                    },
+                ])
+            }
+        } catch (e: unknown) {
+            console.error('Ошибка при запуске ассистента:', e)
+        }
     }
 
     selectChat(id: number): void {

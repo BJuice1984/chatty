@@ -66,7 +66,6 @@ class FakeXHR {
 
 const unsupportedMethods = [
     'removeUsers',
-    'getChatUsers',
     'changeChatAvatar',
 ] as const
 
@@ -105,7 +104,8 @@ describe('chats api adapter', () => {
 
         expect(chat.id).to.eq(3)
         expect(chat.title).to.eq('own chat')
-        expect(chat.avatar).to.eq('')
+        // аватар — детерминированный из локального пула (id 3 -> 4.svg)
+        expect(chat.avatar).to.eq('/images/avatars/4.svg')
         expect(chat.unread_count).to.eq(0)
     })
 

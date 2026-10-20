@@ -48,7 +48,8 @@ export function toChatInfo(response: OwnChatResponse): ChatInfo {
     return {
         id: response.id,
         title: response.title,
-        avatar: '',
+        // контракт не даёт картинок: раздаём локальные аватарки по id чата
+        avatar: `/images/avatars/${(response.id % 8) + 1}.svg`,
         unread_count: response.unread_count ?? 0,
         // ИИ-чат: бейдж и акцент в списке чатов
         is_ai: response.is_ai,
@@ -82,8 +83,21 @@ export const ownChatsPort: ChatsPort = {
     removeUsers() {
         unsupported('removeUsers')
     },
-    getChatUsers() {
-        unsupported('getChatUsers')
+    async getChatUsers(chatId: number) {
+        const members = await (http.get(`/${chatId}/members`) as unknown as Promise<
+            { id: number; login: string; display_name: string }[]
+        >)
+
+        return members.map(member => ({
+            id: member.id,
+            login: member.login,
+            display_name: member.display_name,
+            email: member.login,
+            first_name: member.display_name,
+            second_name: '',
+            phone: '',
+            avatar: `/images/avatars/${(member.id % 8) + 1}.svg`,
+        }))
     },
     changeChatAvatar() {
         unsupported('changeChatAvatar')
@@ -111,5 +125,9 @@ export const ownChatsPort: ChatsPort = {
             active: response.active,
             reactions,
         } satisfies ReactionToggleResult
+    },
+
+    async runBot(chatId: number, messageId: number) {
+        return http.post(`/${chatId}/bot/runs`, { data: { message_id: messageId }, csrfToken: readCsrfToken() })
     },
 }

@@ -8,6 +8,7 @@ from sqlalchemy.orm import Session
 from app.models.chat import Chat, ChatMember
 from app.models.chat_last_read import ChatLastRead
 from app.models.message import Message
+from app.models.user import User
 
 
 class ChatRepository:
@@ -117,3 +118,15 @@ class ChatRepository:
             existing.last_read_message_id = message_id
 
         self.session.commit()
+
+    def list_members(self, chat_id: int) -> list[tuple[int, str]]:
+        """Участники чата как (user_id, email-хэнл) — для UI-списка и меток
+        «уже добавлен» в поиске пользователей."""
+        rows = (
+            self.session.query(ChatMember.user_id, User.email)
+            .join(User, User.id == ChatMember.user_id)
+            .filter(ChatMember.chat_id == chat_id)
+            .order_by(ChatMember.user_id)
+            .all()
+        )
+        return [(row.user_id, row.email) for row in rows]

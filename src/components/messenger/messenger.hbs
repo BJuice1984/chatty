@@ -29,7 +29,17 @@
           </div>
         {{/if}}
         <div class="messenger__composer">
-            {{{ Form inputs=this.inputs buttons=this.buttons }}}
+            <form class="login-form" data-testid="composer-form">
+                <input
+                    class="messenger__composer-input"
+                    type="text"
+                    name="message"
+                    placeholder="Сообщение…"
+                    autocomplete="off"
+                    aria-label="Текст сообщения"
+                />
+                <button type="submit" class="messenger__composer-send" aria-label="Отправить"></button>
+            </form>
         </div>
         {{{ Modal title='Добавить пользователя' isOpen=this.addUserOpen onClose=this.onCloseAddUser content=this.addUserContent }}}
         {{{ Modal title='Удалить чат' isOpen=this.deleteModalOpen onClose=this.onCloseDelete content=this.deleteContent }}}

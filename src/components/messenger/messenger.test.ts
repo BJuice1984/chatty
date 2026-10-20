@@ -118,6 +118,23 @@ describe('mapTypedMessages day markers', () => {
     })
 })
 
+
+// Composer-сабмит по DOM-форме (кнопка ушла из пропсов — своя разметка)
+function submitComposer(messenger: { element?: Element | null }, text: string): void {
+    const form = messenger.element?.querySelector<HTMLFormElement>('[data-testid="composer-form"]')
+    const input = form?.querySelector<HTMLInputElement>('input[name="message"]')
+
+    if (input != null) {
+        input.value = text
+    }
+
+    const view = document.defaultView ?? (globalThis as { Event?: typeof Event })
+    const SubmitEvent = (view?.Event ?? Event) as typeof Event
+    const submit = new SubmitEvent('submit', { bubbles: true, cancelable: true })
+
+    form?.dispatchEvent(submit)
+}
+
 describe('messenger action dispatch', () => {
     afterEach(() => {
         store.set('messages', undefined)
@@ -133,9 +150,19 @@ describe('messenger action dispatch', () => {
             store.set('messages', { 5: [] })
             store.set('selectedChat', 5)
 
-            const send = propsOf(messenger).buttons.find(button => button.type === 'submit')
+            // composer-форма: сабмит идёт через handleComposerSubmit по DOM-форме
+            const form = messenger.element?.querySelector<HTMLFormElement>('[data-testid="composer-form"]')
+            const input = form?.querySelector<HTMLInputElement>('input[name="message"]')
 
-            send?.handleSubmitClick?.({ message: 'привет' })
+            if (input != null) {
+                input.value = 'привет'
+            }
+
+            const view = document.defaultView ?? (globalThis as { Event?: typeof Event })
+    const SubmitEvent = (view?.Event ?? Event) as typeof Event
+    const submit = new SubmitEvent('submit', { bubbles: true, cancelable: true })
+
+    form?.dispatchEvent(submit)
 
             expect(onSendMessage.calledOnceWith(5, 'привет')).to.be.true
         } finally {
@@ -148,9 +175,7 @@ describe('messenger action dispatch', () => {
         const messenger = new Messenger({ onSendMessage } as never)
 
         try {
-            const send = propsOf(messenger).buttons.find(button => button.type === 'submit')
-
-            send?.handleSubmitClick?.({ message: 'привет' })
+            submitComposer(messenger, 'привет')
 
             expect(onSendMessage.called).to.be.false
         } finally {
@@ -396,9 +421,7 @@ describe('messenger reply draft', () => {
         try {
             (propsOf(messenger) as { onReplyToMessage: (draft: { id?: number; snippet: string }) => void }).onReplyToMessage({ id: 11, snippet: 'цитируемое' })
 
-            const send = propsOf(messenger).buttons.find(button => button.type === 'submit')
-
-            send?.handleSubmitClick?.({ message: 'ответ' })
+            submitComposer(messenger, 'ответ')
 
             expect(onSendMessage.calledOnceWith(5, 'ответ', 11)).to.be.true
             expect(messenger.element?.querySelector('[data-testid="reply-preview"]')).to.not.exist
@@ -412,9 +435,7 @@ describe('messenger reply draft', () => {
         const messenger = new Messenger({ onSendMessage } as never)
 
         try {
-            const send = propsOf(messenger).buttons.find(button => button.type === 'submit')
-
-            send?.handleSubmitClick?.({ message: 'просто' })
+            submitComposer(messenger, 'просто')
 
             expect(onSendMessage.calledOnceWith(5, 'просто', undefined)).to.be.true
         } finally {

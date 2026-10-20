@@ -271,3 +271,24 @@
         }
     }
 }
+
+/* Метка «уже в чате» в результатах поиска; сама кнопка гасится */
+
+[class*='result'] {
+
+  &[disabled] {
+    opacity: 0.55;
+    cursor: default;
+  }
+}
+
+[class*='result-badge'] {
+  margin-left: auto;
+  padding: 2px 8px;
+  border-radius: 999px;
+  background-color: rgb(129 117 255 / 25%);
+  color: $thirdTextColor;
+  font-size: 10px;
+  line-height: 14px;
+  white-space: nowrap;
+}
