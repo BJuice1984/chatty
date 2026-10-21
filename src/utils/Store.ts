@@ -13,6 +13,9 @@ export interface AppState {
     chatUsers?: ChatUser[] | undefined
     selectedChat?: number
     messages?: Record<number, Message[]>
+    // человекочитаемая ошибка последнего запроса авторизации (сеть/бэкенд):
+    // контроллер auth пишет, страницы входа/регистрации показывают под формой
+    authError?: string | null
     user?: {
         display_name: string
         first_name: string
@@ -32,6 +35,7 @@ export interface ComponentProps {
     selectedChat?: number
     selectedChatUsers?: ChatUser[]
     messages?: Message[]
+    authError?: string | null
     user?: {
         first_name?: string
         second_name?: string
