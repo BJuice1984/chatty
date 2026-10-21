@@ -1,0 +1,15 @@
+<div class="chat-story-viewer {{#if story}}chat-story-viewer_open{{else}}chat-story-viewer_closed{{/if}}" data-testid="story-viewer" tabindex="-1" aria-hidden="{{#if story}}false{{else}}true{{/if}}">
+    <div class="chat-story-viewer__backdrop" data-testid="story-viewer-backdrop"></div>
+    {{#if story}}
+    <div class="chat-story-viewer__stage" role="dialog" aria-modal="true" aria-label="История {{story.owner}}">
+        <div class="chat-story-viewer__progress">
+            <div class="chat-story-viewer__progress-bar" data-testid="story-viewer-progress"></div>
+        </div>
+        <div class="chat-story-viewer__head">
+            <p class="chat-story-viewer__owner">{{story.owner}}</p>
+            <button type="button" class="chat-story-viewer__close" data-testid="story-viewer-close" aria-label="Закрыть историю"></button>
+        </div>
+        <img class="chat-story-viewer__img" src="{{story.src}}" alt="{{story.alt}}">
+    </div>
+    {{/if}}
+</div>

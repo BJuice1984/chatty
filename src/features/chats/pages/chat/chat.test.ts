@@ -23,6 +23,18 @@ interface ChatPageCallbacks {
     onAddUser?: (userId: number, chatId: number) => Promise<void>
     onSetReaction?: (chatId: number, messageId: number, emoji: string) => void
     onSendMessage?: (chatId: number, message: string, replyToId?: number) => void
+    // stories (мок-стадия)
+    onSelectStory?: (id?: string) => void
+    onCloseViewer?: () => void
+    viewerStory?: { owner: string, src: string, alt: string } | null
+    stories?: {
+        id: string
+        owner: string
+        src: string
+        alt: string
+        isUnread?: boolean
+        type?: string
+    }[]
 }
 
 function callbacksOf(page: unknown): ChatPageCallbacks {
@@ -231,6 +243,179 @@ describe('chat page social callbacks', () => {
             sendMessage.restore()
             setReaction.restore()
             addUsersToChat.restore()
+            fetchChats.restore()
+        }
+    })
+})
+
+// stories (мок-стадия): таймер автозакрытия принадлежит странице —
+// авто-закрытие, ручные close-пути и устойчивость к посторонним
+// перерисовкам проверяются здесь, у владельца таймера
+describe('chat page stories', () => {
+    let clock: sinon.SinonFakeTimers
+
+    // Node-глобал URL не даёт createObjectURL (это браузерный/jsdom API) —
+    // минимальный тестовый полифилл, прод-код зовёт настоящий API
+    if (typeof URL.createObjectURL !== 'function') {
+        ;(URL as unknown as { createObjectURL: (file: File) => string }).createObjectURL =
+            (file: File) => `blob:mock-${file.name}`
+    }
+
+    beforeEach(() => {
+        clock = sinon.useFakeTimers()
+    })
+
+    afterEach(() => {
+        clock.restore()
+        store.set('chats', undefined)
+    })
+
+    it('opens the viewer on a story click and auto-closes at 5000 ms marking it viewed', () => {
+        const fetchChats = sinon.stub(ChatsController, 'fetchChats').resolves()
+
+        try {
+            const page = new ChatPage({} as never)
+
+            callbacksOf(page).onSelectStory?.('story-mock-1')
+
+            expect(callbacksOf(page).viewerStory?.src).to.eq('/images/ava-1.jpg')
+
+            clock.tick(4999)
+            expect(callbacksOf(page).viewerStory).to.not.be.null
+
+            clock.tick(1)
+            expect(callbacksOf(page).viewerStory).to.be.null
+
+            const viewed = callbacksOf(page).stories?.find(story => story.id === 'story-mock-1')
+            const other = callbacksOf(page).stories?.find(story => story.id === 'story-mock-2')
+
+            expect(viewed?.isUnread).to.be.false
+            expect(other?.isUnread).to.be.true
+
+            page.destroy()
+        } finally {
+            fetchChats.restore()
+        }
+    })
+
+    it('manual close clears the timer: no late fire after the viewer is closed', () => {
+        const fetchChats = sinon.stub(ChatsController, 'fetchChats').resolves()
+
+        try {
+            const page = new ChatPage({} as never)
+
+            callbacksOf(page).onSelectStory?.('story-mock-1')
+            callbacksOf(page).onCloseViewer?.()
+
+            expect(callbacksOf(page).viewerStory).to.be.null
+
+            const storiesAfterClose = callbacksOf(page).stories
+
+            clock.tick(5000)
+
+            // повторного close не было: массив историй тот же объект
+            expect(callbacksOf(page).stories).to.equal(storiesAfterClose)
+            expect(callbacksOf(page).viewerStory).to.be.null
+
+            page.destroy()
+        } finally {
+            fetchChats.restore()
+        }
+    })
+
+    it('keeps the viewer open through an unrelated re-render (store update)', () => {
+        const fetchChats = sinon.stub(ChatsController, 'fetchChats').resolves()
+
+        try {
+            const page = new ChatPage({} as never)
+
+            callbacksOf(page).onSelectStory?.('story-mock-2')
+
+            // посторонняя перерисовка: withStore принёс новые chats
+            store.set('chats', [])
+
+            expect(callbacksOf(page).viewerStory?.src).to.eq('/images/ava-2.jpg')
+
+            // исходный таймер продолжает жить и закрывает один раз
+            clock.tick(5000)
+
+            expect(callbacksOf(page).viewerStory).to.be.null
+            expect(callbacksOf(page).stories?.find(story => story.id === 'story-mock-2')?.isUnread).to.be.false
+
+            page.destroy()
+        } finally {
+            fetchChats.restore()
+        }
+    })
+
+    it('prepends a picked photo as an unread story through the delegated change, surviving re-renders', () => {
+        const fetchChats = sinon.stub(ChatsController, 'fetchChats').resolves()
+
+        try {
+            const page = new ChatPage({} as never)
+            const before = callbacksOf(page).stories ?? []
+
+            // посторонние ре-рендеры до выбора: открытие/автозакрытие
+            // вьюера перерисовало страницу (события обязаны навеситься заново)
+            callbacksOf(page).onSelectStory?.('story-mock-1')
+            clock.tick(5000)
+            expect(callbacksOf(page).viewerStory).to.be.null
+
+            // end-to-end через делегированный change: files подменяем —
+            // настоящий FileList в jsdom не собрать
+            const input = page.element?.querySelector('input[type="file"]') as HTMLInputElement
+            const file = new File(['photo'], 'photo.png', { type: 'image/png' })
+
+            Object.defineProperty(input, 'files', { value: [file], configurable: true })
+            input.dispatchEvent(new window.Event('change', { bubbles: true }))
+
+            const after = callbacksOf(page).stories ?? []
+
+            expect(after.length).to.eq(before.length + 1)
+            expect(after[0]?.type).to.eq('add')
+            expect(after[1]?.owner).to.eq('You story')
+            expect(after[1]?.isUnread).to.be.true
+            expect(after[1]?.src.startsWith('blob:')).to.be.true
+
+            // вьюер при добавлении не открывался
+            expect(callbacksOf(page).viewerStory).to.be.null
+
+            // DOM-порядок: add-плитка осталась первой в ряду историй
+            const tiles = page.element?.querySelectorAll('.chat-story .chat-story__container')
+
+            expect(tiles?.length).to.eq(after.length)
+            expect(tiles?.[0]?.classList.contains('chat-story__container_type_add-story')).to.be.true
+
+            page.destroy()
+        } finally {
+            fetchChats.restore()
+        }
+    })
+
+    it('marks only the viewed story; delegated change without a file is a no-op', () => {
+        const fetchChats = sinon.stub(ChatsController, 'fetchChats').resolves()
+
+        try {
+            const page = new ChatPage({} as never)
+
+            callbacksOf(page).onSelectStory?.('story-mock-3')
+            callbacksOf(page).onCloseViewer?.()
+
+            const stories = callbacksOf(page).stories ?? []
+            const viewed = stories.filter(story => story.isUnread === false)
+
+            expect(viewed.map(story => story.id)).to.deep.eq(['story-mock-3'])
+
+            // делегированный change: input без файла игнорируется, value сброшен
+            const input = page.element?.querySelector('input[type="file"]') as HTMLInputElement | null
+            const change = new window.Event('change', { bubbles: true })
+
+            input?.dispatchEvent(change)
+
+            expect((callbacksOf(page).stories ?? []).length).to.eq(stories.length)
+
+            page.destroy()
+        } finally {
             fetchChats.restore()
         }
     })
