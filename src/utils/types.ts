@@ -137,5 +137,8 @@ export interface Message {
     replyToId?: number
     replyTo?: MessageReplyTo | null
     reactions?: ReactionSummary[]
+    // клиентский маркер системного сообщения об ошибке (провайдер бота
+    // недоступен): UI подсвечивает такой пузырь жёлтым (_error у bubble)
+    isError?: boolean
     [key: string]: unknown
 }

@@ -7,10 +7,12 @@
 // Маппинг креденциалов: бэкенд требует email (с '@') и пароль ≥ 12; поле login
 // формы входа маппится в email. UserResponse несёт только id/email/role/
 // is_active/created_at — недостающие поля AuthUser заполняются пустыми
-// значениями (login=display_name=email).
+// значениями (login=display_name=email); аватар — детерминированный из пула
+// статики (бэкенд аватары пользователей не хранит, см. utils/avatarPool.ts).
 
 import HTTPTransport, { TransportError } from '../../../utils/HTTPTransport.ts'
 import { readCsrfToken } from '../../../utils/csrf.ts'
+import { avatarPoolUrl } from '../../../utils/avatarPool.ts'
 import type { AuthPort, AuthUser, SignInRequest, SignUpRequest } from '../ports.ts'
 
 export interface OwnUserResponse {
@@ -32,7 +34,7 @@ export function toAuthUser(response: OwnUserResponse): AuthUser {
         second_name: '',
         display_name: response.email,
         phone: '',
-        avatar: '',
+        avatar: avatarPoolUrl(response.id),
     }
 }
 

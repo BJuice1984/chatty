@@ -23,7 +23,13 @@ export class UserAvatar extends Block<UserAvatarProps> {
 
         return this.compile(template, {
             ...this.props,
-            avatar: avatar !== undefined && avatar !== '' ? fileUrl(avatar) : avatar,
+            // пути, начинающиеся с '/', — статические ассеты приложения
+            // (пул аватаров из public/images), их не прогоняем через filesUrl
+            // бэкенда — то же правило, что у ChatAvatar
+            avatar:
+                avatar !== undefined && avatar !== '' && !avatar.startsWith('/')
+                    ? fileUrl(avatar)
+                    : avatar,
         })
     }
 }

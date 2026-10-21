@@ -49,6 +49,39 @@ function propsOf(messenger: unknown): MessengerTestProps {
 }
 
 describe('mapTypedMessages day markers', () => {
+    it('passes isError through to the rendered bubble modifier', () => {
+        // регрессия provider_failed: messenger.hbs перечисляет пропсы Message
+        // явно — потерянный isError означал серый пузырь вместо жёлтого
+        const [failed, normal] = mapTypedMessages(
+            [
+                { chat_id: 1, time: 't1', type: 'message', user_id: -1, content: '⚠ ошибка', isError: true },
+                { chat_id: 1, time: 't2', type: 'message', user_id: 7, content: 'привет' },
+            ],
+            7
+        )
+
+        expect((failed as { isError?: boolean }).isError).to.eq(true)
+        expect((normal as { isError?: boolean }).isError).to.eq(undefined)
+    })
+
+    it('renders the yellow _error bubble for isError messages', () => {
+        // Messenger тянет selectedChat/messages из стора (withStore) —
+        // сценарий живого provider_failed, а не прямые пропсы Message
+        store.set('selectedChat', 1)
+        store.set('messages', {
+            1: [{ chat_id: 1, time: 't1', type: 'message', user_id: -1, content: '⚠ ошибка', isError: true }],
+        })
+        const messenger = new Messenger({} as never)
+
+        expect(
+            messenger.element?.querySelector('.messenger__message-bubble')?.classList.contains('messenger__message-bubble_error')
+        ).to.be.true
+
+        messenger.destroy()
+        store.set('selectedChat', undefined)
+        store.set('messages', {})
+    })
+
     // Локальная ISO-метка без зоны: день метки не зависит от таймзоны машины
     const iso = (date: Date) => {
         const pad = (value: number) => String(value).padStart(2, '0')

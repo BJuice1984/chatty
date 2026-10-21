@@ -34,7 +34,9 @@ describe('auth api adapter', () => {
         expect(user.first_name).to.eq('')
         expect(user.second_name).to.eq('')
         expect(user.phone).to.eq('')
-        expect(user.avatar).to.eq('')
+        // аватар — детерминированный из пула статики (id 7 → 8-я картинка),
+        // own-бэкенд аватары пользователей не хранит
+        expect(user.avatar).to.eq('/images/avatars/8.svg')
     })
 
     it('should map the form login field to the backend email credential', () => {

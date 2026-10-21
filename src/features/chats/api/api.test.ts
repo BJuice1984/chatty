@@ -104,8 +104,9 @@ describe('chats api adapter', () => {
 
         expect(chat.id).to.eq(3)
         expect(chat.title).to.eq('own chat')
-        // аватар — детерминированный из локального пула (id 3 -> 4.svg)
-        expect(chat.avatar).to.eq('/images/avatars/4.svg')
+        // аватара по умолчанию нет: pool-аватар собеседника назначит
+        // контроллер, когда узнает участников (applyCompanionAvatar)
+        expect(chat.avatar).to.eq('')
         expect(chat.unread_count).to.eq(0)
     })
 
