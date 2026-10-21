@@ -1,0 +1,53 @@
+{
+    "revision": 2,
+    "id": "SPEC-STORIES",
+    "title": "Chat stories: fullscreen viewer, photo stories, unread ring",
+    "intent": "Bring the Instagram-style stories row on the chat page to life with client-only mock data: clicking a story opens a fullscreen photo viewer that auto-closes on a timer; clicking the add-story tile opens the OS file picker and the picked photo becomes the first story with an highlighted unread ring; the ring fades once the story has been viewed. No backend contract in this stage.",
+    "requirements": [
+        {
+            "id": "REQ-STORIES-VIEW",
+            "title": "Fullscreen story viewer with auto-close",
+            "description": "Clicking a story tile in chat__container-stories-list opens a fullscreen overlay showing the story photo. The overlay auto-closes after a fixed interval (5000 ms, STORY_VIEW_DURATION_MS constant) — the timer is owned by the chat page, not the viewer component (hbs-embedded children are re-instantiated on every parent re-render without destroy, so a component-owned timer would become a zombie). Manual close is also available (click on the backdrop, or Escape when the focused overlay handles the keydown — the page keeps focus on the overlay across re-renders). A thin CSS progress bar reflects the duration. Closing by any route marks the story viewed (callback to the page).",
+            "priority": "P1",
+            "source": "operator request 2026-10-21",
+            "acceptanceIds": ["AC-ST-1"],
+            "evidenceIds": ["EV-ST-1"],
+            "owner": "WS-FRONT-STORIES"
+        },
+        {
+            "id": "REQ-STORIES-ADD",
+            "title": "Create a story from a picked photo",
+            "description": "Clicking the chat-story__container_type_add-story tile triggers a hidden <input type=\"file\" accept=\"image/*\">; the picked image becomes a new story (object URL) placed first among regular stories — right after the add tile — with owner 'You story' and the highlighted unread ring. The viewer does not open automatically after adding.",
+            "priority": "P1",
+            "source": "operator request 2026-10-21",
+            "acceptanceIds": ["AC-ST-2"],
+            "evidenceIds": ["EV-ST-1"],
+            "owner": "WS-FRONT-STORIES"
+        },
+        {
+            "id": "REQ-STORIES-READ",
+            "title": "Unread ring disappears after viewing",
+            "description": "Unviewed stories render with the existing gradient ring ($borderStoryGradientBorder); viewed stories render with a muted ring (new chat-story__container_viewed modifier). The viewed flag lives in page props for the mock stage and resets on reload. Clicking a story marks it viewed regardless of how the viewer closes.",
+            "priority": "P1",
+            "source": "operator request 2026-10-21",
+            "acceptanceIds": ["AC-ST-1", "AC-ST-3"],
+            "evidenceIds": ["EV-ST-1"],
+            "owner": "WS-FRONT-STORIES"
+        }
+    ],
+    "constraints": [
+        "Client-only stage: no backend, API, controller or Store changes; story state lives in ChatPage props and is rebuilt on reload.",
+        "Layers only downward: components receive callbacks via props; StoryViewer is a reusable src/components block; no api/ imports in UI.",
+        "Block lifecycle truth: hbs-embedded children are re-instantiated on parent re-render and old instances get no destroy() and no fresh CDM — the page owns the auto-close timer (cleared before re-arm, on every close path and in its destroy()), the overlay focus and the file input wiring (delegated change event that survives re-renders).",
+        "No refs on raw HTML inputs (refs come only from component helpers): the hidden file input is found via querySelector at click time.",
+        "Object URLs stay in memory for the page lifetime (mock stage, no revoke); no network calls.",
+        "Styling reuses the stage-15 adaptive base and existing story.scss tokens; breakpoints 375/768/1280 stay consistent.",
+        "Existing frontend suite stays green; guard-architecture --all --strict passes."
+    ],
+    "nonGoals": [
+        "video stories and multi-segment stories",
+        "server-side stories contract, feeds, or viewed-state persistence",
+        "story grouping by owner with a ring playlist",
+        "uploading the picked photo anywhere"
+    ]
+}

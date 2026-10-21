@@ -1,0 +1,25 @@
+{
+    "taskCount": 1,
+    "executableOwners": [
+        "worker-frontend-stories"
+    ],
+    "capabilityHints": [
+        "typescript",
+        "scss",
+        "handlebars",
+        "mocha",
+        "ALK"
+    ],
+    "riskFlags": {
+        "architecture": false,
+        "security": false,
+        "performance": false,
+        "browser": true,
+        "data": false,
+        "release": false,
+        "migration": false,
+        "external": false
+    },
+    "requirementsBytes": 2400,
+    "externalSpecification": false
+}
