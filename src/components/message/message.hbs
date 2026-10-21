@@ -6,7 +6,7 @@
         <div class="messenger__message-quote" data-testid="message-quote"><span class="messenger__message-quote-label">В ответ</span><span class="messenger__message-quote-text">{{quoteSnippet}}</span></div>
     {{/if}}
     <div class="messenger__message-row">
-        <div class="messenger__message-bubble {{#if isMine}}messenger__message-bubble_mine{{else}}messenger__message-bubble_theirs{{/if}}">
+        <div class="messenger__message-bubble {{#if isMine}}messenger__message-bubble_mine{{else}}messenger__message-bubble_theirs{{/if}}{{#if isError}} messenger__message-bubble_error{{/if}}">
             <h4 class="messenger__message-content">{{content}}</h4>
             {{#if fileUrl}}
                 <a class="messenger__message-attachment" href="{{fileUrl}}" target="_blank" rel="noopener noreferrer">Вложение</a>

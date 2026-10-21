@@ -40,6 +40,19 @@ describe('message bubble', () => {
         message.destroy()
     })
 
+    it('system error: yellow _error modifier on the bubble only with isError', () => {
+        // провайдер бота недоступен: контроллер пишет сообщение с isError,
+        // пузырь подсвечивается жёлтым (chats-social, provider_failed)
+        const failed = new Message({ content: '⚠ Ассистент недоступен', user_id: -1, isMine: false, isError: true, time: localIso(new Date()) })
+        const normal = new Message({ content: 'привет', user_id: 2, isMine: false, time: localIso(new Date()) })
+
+        expect(failed.element?.querySelector('.messenger__message-bubble')?.classList.contains('messenger__message-bubble_error')).to.be.true
+        expect(normal.element?.querySelector('.messenger__message-bubble')?.classList.contains('messenger__message-bubble_error')).to.be.false
+
+        failed.destroy()
+        normal.destroy()
+    })
+
     it('renders HH:MM from the ISO time', () => {
         const message = new Message({ content: 'привет', user_id: 1, time: '2026-10-19T09:07:00' })
 

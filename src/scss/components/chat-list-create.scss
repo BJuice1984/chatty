@@ -2,14 +2,56 @@
 @import '../utils/variable';
 
 .chat-list-create {
-    @include size(56px, 100%);
-
     display: none;
     flex-direction: row;
     justify-content: space-between;
+    align-items: center;
+    width: 100%;
+    box-sizing: border-box;
 
     &_visible {
-      display: flex;
+        display: flex;
     }
-    
+
+    /* Форма создания — универсальный Form с классом .login-form от страницы
+       логина: паддинги 50px 30px 30px рассчитаны на отдельную страницу и
+       выталкивали инпут из строки списка. Переопределяем скоупом по образцу
+       композера (.messenger__composer .login-form в messenger.scss) */
+
+    .login-form {
+        padding: 0;
+        gap: 4px;
+        width: 100%;
+
+        /* контейнер инпута держит фикс-высоту 57px (запас под ошибку на
+           странице логина): высота по контенту — строка подрастает, только
+           когда ошибка валидации видна */
+
+        label {
+            height: auto;
+        }
+    }
+
+    /* Планшет (768–1023): сайдбар 280px — пустая аватар-заглушка (первый
+       div строки) съедает ширину, прячем её, инпут занимает всю строку */
+    @media (min-width: $tablet) and (max-width: ($desktop - 1px)) {
+
+        > div:first-child {
+            display: none;
+        }
+    }
+
+    /* Мобильная ветка (<768): без заглушки; касательный таргет 44px (как у
+       modal.scss) и font-size 16px против авто-зума iOS Safari при фокусе */
+    @media (max-width: ($tablet - 1px)) {
+
+        > div:first-child {
+            display: none;
+        }
+
+        .login-form input {
+            min-height: 44px;
+            font-size: 16px;
+        }
+    }
 }

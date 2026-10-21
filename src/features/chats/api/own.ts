@@ -14,6 +14,7 @@
 
 import HTTPTransport from '../../../utils/HTTPTransport.ts'
 import { readCsrfToken } from '../../../utils/csrf.ts'
+import { avatarPoolUrl } from '../../../utils/avatarPool.ts'
 import type { ChatInfo, ReactionSummary } from '../../../utils/types.ts'
 import type { ChatsPort, ChatsUserSearchResult, ReactionToggleResult } from '../ports.ts'
 
@@ -48,8 +49,11 @@ export function toChatInfo(response: OwnChatResponse): ChatInfo {
     return {
         id: response.id,
         title: response.title,
-        // контракт не даёт картинок: раздаём локальные аватарки по id чата
-        avatar: `/images/avatars/${(response.id % 8) + 1}.svg`,
+        // контракт не даёт картинок: по умолчанию пусто; аватаром личного
+        // диалога становится pool-аватар собеседника, когда контроллер
+        // узнаёт участников (getChatUsers после открытия чата или добавления
+        // в него пользователя) — см. applyCompanionAvatar в controller.ts
+        avatar: '',
         unread_count: response.unread_count ?? 0,
         // ИИ-чат: бейдж и акцент в списке чатов
         is_ai: response.is_ai,
@@ -96,7 +100,7 @@ export const ownChatsPort: ChatsPort = {
             first_name: member.display_name,
             second_name: '',
             phone: '',
-            avatar: `/images/avatars/${(member.id % 8) + 1}.svg`,
+            avatar: avatarPoolUrl(member.id),
         }))
     },
     changeChatAvatar() {

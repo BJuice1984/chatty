@@ -373,6 +373,15 @@
       color: $bubbleTheirsTextColor;
       border-bottom-left-radius: 4px;
     }
+
+    /* Системная ошибка (провайдер бота недоступен): жёлтая подсветка
+       поверх стороны пузыря; текст наследует color отсюда */
+
+    &_error {
+      background-color: rgb(255 193 7 / 12%);
+      color: $warningColor;
+      border: 1px solid rgb(255 193 7 / 45%);
+    }
   }
 
   &__message-time {
