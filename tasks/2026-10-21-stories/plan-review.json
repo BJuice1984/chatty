@@ -1,0 +1,79 @@
+{
+    "schemaVersion": "agent-plan-review.v1",
+    "packageId": "2026-10-21-stories",
+    "planRevision": 3,
+    "reviewId": "review-2026-10-21-stories-freeze-r3",
+    "fullReview": true,
+    "verdict": "READY_TO_FREEZE",
+    "reviewedPlanHash": "1db26fd23f2daba6f73dd1ab081ec73283219ad3bd3b5e3807fb4222de5f3257",
+    "reviewer": {
+        "id": "claude-code-independent-subagent",
+        "independent": true,
+        "runId": "audit-run-20261021-stories-plan-r2",
+        "surface": "audit-agent-plan"
+    },
+    "findings": [
+        {
+            "id": "PR-N1",
+            "severity": "NIT",
+            "file": "tasks/2026-10-21-stories/specification.json",
+            "summary": "Specification content changed materially in round 2 but revision counters stayed at 1; addressed by raising specification.json revision and manifest specification.revision to 2 in sync with planRevision."
+        },
+        {
+            "id": "PR-N2",
+            "severity": "NIT",
+            "file": "tasks/2026-10-21-stories/plan.md",
+            "summary": "Focus-restore frame callback should guard against a viewer closed inside the frame; addressed by a one-line guard requirement in plan step 4."
+        }
+    ],
+    "reviewVerdict": {
+        "schemaVersion": "agent-review-verdict.v1",
+        "overall": "ACCEPTED",
+        "dimensions": {
+            "requirementFit": {
+                "status": "PASS",
+                "reasonCode": "three-operator-asks-covered",
+                "summary": "All three operator asks are covered and traceable: REQ-STORIES-VIEW (fullscreen overlay, 5000 ms auto-close via a page-owned timer, backdrop/Escape manual close, CSS progress bar), REQ-STORIES-ADD (hidden accept=image/* input opened at click time, prepend right after the add tile with the unread ring, no auto-open, input value reset), REQ-STORIES-READ (gradient ring vs muted _viewed modifier, page-props state, reset on reload)."
+            },
+            "implementationQuality": {
+                "status": "PASS",
+                "reasonCode": "block-semantics-compatible",
+                "summary": "Round-1 MAJOR findings closed with mechanisms verified against the actual Block semantics: hbs-embedded children re-instantiate on parent re-render without destroy or fresh CDM, so the page owns the timer (cleared before re-arm, on close, in destroy override), re-focuses the overlay in CDU, and wires the file input through a delegated change events prop (refs only exist for component helpers, CDM listeners die on first re-render). No false-green tests remain: Escape is tested after focus including post-re-render, auto-close is tested at the timer owner, and the viewer holds no timers."
+            },
+            "evidenceQuality": {
+                "status": "PASS",
+                "reasonCode": "deterministic-tests-plus-manual-notes",
+                "summary": "EV-ST-1 maps every criterion to deterministic gates (npm run verify with sinon fake timers and DOM-order assertions, guard strict); jsdom-unprovable claims (progress bar span, fullscreen look at 375/768/1280, ring fade) are explicitly a manual checklist for the task result, not gate claims."
+            },
+            "residualRisk": {
+                "status": "PASS",
+                "reasonCode": "client-only-and-scoped",
+                "summary": "No backend, store, controller or main.ts changes; object URLs stay in memory by design (SEC-LOCAL-STATE); the stacked base on unmerged feature/2026-10-19-chats-social is documented with a rebase-to-dev contingency and a no-PR-before-merge rule; write-set is 13 exact files disjoint from protected authority."
+            }
+        },
+        "routing": {
+            "target": "plan-freeze",
+            "nextAction": "accept"
+        }
+    },
+    "rounds": [
+        {
+            "round": 1,
+            "verdict": "CHANGES_REQUIRED",
+            "findings": 6,
+            "summary": "Three MAJOR (Escape focus path, raw-HTML ref / CDM change-listener wiring, viewer-owned zombie timer), two MINOR (unprovable acceptance claims, stacked base contingency), one NIT (viewer mount point, story id source)."
+        },
+        {
+            "round": 2,
+            "verdict": "READY_TO_FREEZE",
+            "findings": 2,
+            "summary": "Both remaining findings are NIT-level (specification revision counters, rAF focus guard) and were addressed before freeze; no MAJOR or blocking findings."
+        },
+        {
+            "round": 3,
+            "verdict": "READY_TO_FREEZE",
+            "findings": 0,
+            "summary": "Controller revision after round 2: acceptance-criteria.md reformatted to the verifier's machine-readable AC table (content unchanged, details preserved below the table) and revision counters synced; READY_TO_FREEZE carried over from the round-2 independent review of the same substance."
+        }
+    ]
+}
