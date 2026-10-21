@@ -27,6 +27,9 @@ export interface ChatInfo {
     title: string
     avatar: string
     unread_count: number
+    // ИИ-чат (stage chats-social): собственный бэкенд отдаёт is_ai — по нему
+    // список чатов рисует бейдж и акцент
+    is_ai?: boolean
     last_message?: {
         time: string
         content: string
@@ -100,6 +103,24 @@ export interface MessageFile {
     upload_date: string
 }
 
+// Цитируемое сообщение (stage chats-social): серверный снимок — кто сказал
+// и укороченный текст (первые 80 символов считает бэкенд)
+export interface MessageReplyTo {
+    id: number
+    user_id: number
+    snippet: string
+}
+
+// Сводка реакций одного сообщения (stage chats-social). ВАЖНО: флаг mine
+// относителен — REST-ответ и история считают его относительно запросившего,
+// WS-broadcast относительно отправителя действия. Собственные чипы фронт
+// всегда пересчитывает viewer-side (см. ChatsFeatureController)
+export interface ReactionSummary {
+    emoji: string
+    count: number
+    mine: boolean
+}
+
 export interface Message {
     chat_id: number
     time: string
@@ -110,5 +131,11 @@ export interface Message {
     // вычисляемый безопасный URL вложения (filesUrl + /{file_id}/download)
     // — рендерится компонентом message
     file_url?: string
+    // идентичность сообщения: ключ реакций, реплаев и дедупликации истории
+    id?: number
+    // цепочка ответов (stage chats-social): id цели и серверный снимок цитаты
+    replyToId?: number
+    replyTo?: MessageReplyTo | null
+    reactions?: ReactionSummary[]
     [key: string]: unknown
 }

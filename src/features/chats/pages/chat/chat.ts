@@ -1,10 +1,13 @@
 // Feature-страница чатов (stage 4): замена src/pages/chat.
 // Компоненты (User/Messenger) получают поведение через пропсы — компоненты
 // не могут импортировать фичи вверх по слоям.
+// chats-social: колбэки @-поиска, добавления пользователя, реакций и
+// реплаев; chatPaneOpen дополнительно сбрасывается при очистке selectedChat
+// (WS chat_deleted сбрасывает выбор через контроллер).
 
 import Block from '../../../../core/Block.ts'
 import { AppState, withStore } from '../../../../utils/Store.ts'
-import type { ChatInfo, SearchUserData } from '../../../../utils/types.ts'
+import type { ChatInfo } from '../../../../utils/types.ts'
 import { emptyValidationMessage } from '../../../../utils/constants.ts'
 import { emptyValidator } from '../../../../utils/validators.ts'
 import ChatsController from '../../controller.ts'
@@ -25,6 +28,40 @@ interface ChatPageProps {
 }
 
 class ChatPageBase extends Block {
+    // Дочерние Messenger-инстансы пересоздаются перерисовкой (семантика
+    // stage 14 — CDM только на дереве момента монтирования), поэтому
+    // автоскролл списка сообщений живёт здесь: инстанс страницы стабилен.
+    // При открытии чата показываем последние сообщения; новые докручивают
+    // список, только если читали низ.
+    private pinnedToBottom = true
+
+    // Перерисовка дочернего Messenger пересоздаёт DOM списка и сбрасывает
+    // scrollTop. После рендера: если читали низ — докручиваем (или едем в
+    // низ при смене чата), иначе восстанавливаем сохранённую позицию —
+    // иначе любая реакция/ре-рендер отбрасывает чтение истории наверх.
+    private restoreMessagesScroll(toBottom: boolean): void {
+        const before = this.element?.querySelector('.messenger__container') as
+            { scrollTop?: number } | undefined
+        const saved = before != null && typeof before.scrollTop === 'number' ? before.scrollTop : 0
+
+        const run = () => {
+            const container = this.element?.querySelector('.messenger__container') as
+                { scrollTop?: number, scrollHeight?: number } | null
+
+            // утиная проверка: jsdom-тесты не дают HTMLElement; элемента
+            // может не быть вовсе (изолированные тесты)
+            if (container != null && typeof container.scrollHeight === 'number') {
+                container.scrollTop = toBottom ? container.scrollHeight : saved
+            }
+        }
+
+        // CDU выполняется до FLOW_RENDER — скроллим в следующем кадре
+        if (typeof requestAnimationFrame === 'function') {
+            requestAnimationFrame(run)
+        } else {
+            setTimeout(run, 0)
+        }
+    }
     constructor(propsFromStore: ChatPageProps) {
         super({
             chatPaneOpen: false,
@@ -48,11 +85,17 @@ class ChatPageBase extends Block {
             onDeleteChat: (id: number) => {
                 void ChatsController.delete(id)
             },
-            onAddUser: async (login: SearchUserData, chatId: number) => {
-                await ChatsController.addUsersByLogin(login, chatId)
+            // @-поиск для модалки добавления: контроллер ходит в GET /users
+            onSearchUsers: async (login: string) => ChatsController.searchUsers(login),
+            // клик по найденному пользователю добавляет его в чат
+            onAddUser: async (userId: number, chatId: number) => {
+                await ChatsController.addUsersToChat([userId], chatId)
             },
-            onSendMessage: (chatId: number, message: string) => {
-                void ChatsController.sendMessage(chatId, message)
+            onSendMessage: (chatId: number, message: string, replyToId?: number) => {
+                void ChatsController.sendMessage(chatId, message, replyToId)
+            },
+            onSetReaction: (chatId: number, messageId: number, emoji: string) => {
+                void ChatsController.setReaction(chatId, messageId, emoji)
             },
             inputs: [
                 {
@@ -99,12 +142,105 @@ class ChatPageBase extends Block {
         })
     }
 
+    // Скролл списка чатов: перерисовки страницы (выделение выбранного и
+    // пр.) пересоздают DOM списка и сбрасывают позицию. Узор как у списка
+    // сообщений: модульная память + document-capture scroll-синк (событие —
+    // единственный всегда-верный источник) + восстановление в кадре.
+    private static usersScroll = 0
+    private static usersSyncInstalled = false
+
+    private static installUsersSync(): void {
+        if (ChatPageBase.usersSyncInstalled || typeof document === 'undefined') {
+            return
+        }
+
+        ChatPageBase.usersSyncInstalled = true
+
+        document.addEventListener('scroll', (event: Event) => {
+            const el = event.target as { className?: unknown, scrollTop?: number }
+
+            if (typeof el.className !== 'string' || !el.className.includes('chat__container-users-list')) {
+                return
+            }
+
+            if (typeof el.scrollTop === 'number') {
+                ChatPageBase.usersScroll = el.scrollTop
+            }
+        }, true)
+    }
+
+    private restoreUsersScroll(): void {
+        const run = () => {
+            const list = this.element?.querySelector('.chat__container-users-list') as
+                { scrollTop?: number } | null
+
+            if (list != null && typeof list.scrollTop === 'number') {
+                list.scrollTop = ChatPageBase.usersScroll
+            }
+        }
+
+        if (typeof requestAnimationFrame === 'function') {
+            requestAnimationFrame(run)
+        } else {
+            setTimeout(run, 0)
+        }
+    }
+
+    // chat_deleted (WS): контроллер очистил selectedChat в сторе — withStore
+    // принёс undefined в пропсы, панель возвращается к списку чатов.
+    // Гвардия по переходу «был выбор → пропал»: панель не захлопывается,
+    // пока чат ещё не выбирали (мобильный вход на страницу)
+    protected componentDidUpdate(oldProps: unknown, newProps: { selectedChat?: number, messages?: unknown[] }) {
+        this.restoreUsersScroll()
+
+        if (
+            (oldProps as { selectedChat?: number }).selectedChat !== undefined &&
+            newProps.selectedChat === undefined &&
+            (this.props as { chatPaneOpen?: boolean }).chatPaneOpen === true
+        ) {
+            this.setProps({ chatPaneOpen: false })
+        }
+
+        // автоскролл: смена чата — всегда вниз; рост сообщений — только если
+        // читали низ (pinnedToBottom обновляется scroll-слушателем из CDM)
+        const chatChanged = (oldProps as { selectedChat?: number }).selectedChat !== newProps.selectedChat
+        const oldLen = ((oldProps as { messages?: unknown[] }).messages ?? []).length
+        const newLen = (newProps.messages ?? []).length
+
+        if (chatChanged) {
+            this.pinnedToBottom = true
+            this.restoreMessagesScroll(true)
+        } else if (newLen > oldLen && this.pinnedToBottom) {
+            this.restoreMessagesScroll(true)
+        } else {
+            // перерисовка без роста (реакция, реплай-черновик): вернуть
+            // читаемую позицию, сброшенную пересозданием DOM списка
+            this.restoreMessagesScroll(false)
+        }
+
+        return true
+    }
+
     componentDidMount() {
+        ChatPageBase.installUsersSync()
+
         // Список чатов нужен при каждом заходе на страницу (LIVE-3): SPA-вход
         // после логина не повторяет bootstrap из main.ts. CDM диспатчится
         // Router-ом при монтировании; уход с маршрута уничтожает инстанс,
         // поэтому возврат монтирует свежий и фетч повторяется.
         void ChatsController.fetchChats()
+
+        // scroll не всплывает — слушаем контейнер сообщений напрямую; узел
+        // умирает вместе с инстансом, утечки нет
+        const container = this.element?.querySelector('.messenger__container')
+
+        container?.addEventListener('scroll', () => {
+            const el = container as { scrollHeight?: number, scrollTop?: number, clientHeight?: number }
+
+            if (typeof el.scrollHeight === 'number') {
+                this.pinnedToBottom = el.scrollHeight - (el.scrollTop ?? 0) - (el.clientHeight ?? 0) < 120
+            }
+        })
     }
 
     render() {
@@ -115,6 +251,7 @@ class ChatPageBase extends Block {
 const withChats = withStore((state: AppState) => {
     return {
         chats: state.chats,
+        selectedChat: state.selectedChat,
     }
 })
 

@@ -85,17 +85,17 @@ export class Store extends EventBus {
         const previous = getSlice(this.state, keypath)
         const isObject = typeof previous === 'object' && previous !== null
 
-        // Глубокий снимок до мержа: helpers.set мутирует и предыдущее
-        // значение, и data (вложенные объекты merge подменяет старыми
-        // ссылками), поэтому ссылочное сравнение после мержа ложно видело
-        // «без изменений» и навсегда подавляло эмит вложенных слайсов
-        // (chatHistory, aiAssistant) после первого патча (LIVE-5).
-        const previousSnapshot = isObject ? structuredClone(previous) : previous
+        // Снимок-строка до мержа (JSON безопасен для значений с функциями —
+        // structuredClone бросал на chatUsers с onClick, из-за чего стор
+        // вечно держал участников первого чата): helpers.set мутирует
+        // предыдущее значение, поэтому сравнение ведём по строке-снапшоту,
+        // снятому ДО мержа (LIVE-5).
+        const previousSnapshot = isObject ? JSON.stringify(previous) : previous
 
         set(this.state, keypath, data)
 
         const changed = isObject
-            ? JSON.stringify(previousSnapshot) !== JSON.stringify(getSlice(this.state, keypath))
+            ? previousSnapshot !== JSON.stringify(getSlice(this.state, keypath))
             : !shallowEqual(previousSnapshot, data)
 
         if (!changed) {

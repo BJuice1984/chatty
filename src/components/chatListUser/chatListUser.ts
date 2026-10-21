@@ -2,8 +2,12 @@
 // колбэки из пропсов (фича chats), компонент контроллеров не импортирует.
 
 import Block from '../../core/Block.ts'
+import Handlebars from 'handlebars'
 import type { ChatInfo } from '../../utils/types.ts'
 import template from './chatListUser.hbs'
+
+// equality-хелпер для выделения выбранного чата в списке (chat.hbs)
+Handlebars.registerHelper('eq', (left: unknown, right: unknown) => left === right)
 
 export interface UserProps extends ChatInfo {
     // eslint-disable-next-line no-unused-vars
@@ -34,6 +38,7 @@ export class User extends Block {
     }
 
     render() {
+
         return this.compile(template, this.props)
     }
 }

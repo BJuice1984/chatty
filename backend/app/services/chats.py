@@ -29,6 +29,15 @@ class ChatService:
     def list_for_user(self, user_id: int) -> list[Chat]:
         return self.chats.list_for_user(user_id)
 
+    def unread_counts(self, user_id: int) -> dict[int, int]:
+        """Непрочитанные по каждому чату: чужие сообщения новее последнего
+        прочитанного маркера (chat_last_reads); своих сообщений не считаем."""
+        return self.chats.unread_counts(user_id)
+
+    def mark_read(self, chat_id: int, user_id: int, message_id: int) -> None:
+        """Открытие истории читает чат до message_id включительно."""
+        self.chats.mark_read(chat_id, user_id, message_id)
+
     def require_chat(self, chat_id: int) -> Chat:
         chat = self.chats.get_by_id(chat_id)
         if chat is None:
@@ -40,6 +49,20 @@ class ChatService:
         if not self.chats.is_member(chat_id, user_id):
             raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail='chat_membership_required')
         return chat
+
+    def require_owned(self, chat_id: int, requester_id: int) -> Chat:
+        """Удалять чат может только владелец; посторонним и участникам — 403."""
+
+        chat = self.require_chat(chat_id)
+        if chat.owner_id != requester_id:
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail='chat_owner_required')
+        return chat
+
+    def delete(self, chat: Chat) -> None:
+        """Удаляет строку чата; зависимые строки снимаются каскадами БД по FK-правилам."""
+
+        self.chats.delete(chat)
+        self.session.commit()
 
     def add_member(self, chat_id: int, requester_id: int, user_id: int) -> ChatMember:
         self.require_member(chat_id, requester_id)

@@ -5,6 +5,7 @@
 // hbs-шаблон грузится тестовым погрузчиком (прецедент — ai-assistant).
 
 import { expect } from 'chai'
+import sinon from 'sinon'
 import '../../features/ai-assistant/hbs-test-loader.ts'
 import { Message } from './message.ts'
 
@@ -97,5 +98,136 @@ describe('message bubble', () => {
         expect(message.element?.querySelector('.messenger__message-content')?.textContent?.trim()).to.equal('привет')
         expect(message.element?.querySelector('.messenger__message-time')).to.not.exist
         message.destroy()
+    })
+})
+
+// Реакции и реплаи (chats-social): аффордансы только у сообщений с id,
+// чипы с подсветкой своего, фиксированный набор эмодзи, блок цитаты —
+// NaN-safe (мусорный/пустой сниппет не рендерится).
+
+describe('message reactions affordances', () => {
+    it('renders the actions for an identified message and hides them without id', () => {
+        const withId = new Message({ content: 'привет', user_id: 1, chat_id: 3, id: 11 })
+        const withoutId = new Message({ content: 'привет', user_id: 1 })
+
+        expect(withId.element?.querySelector('[data-testid="message-actions"]')).to.exist
+        expect(withId.element?.querySelector('[data-testid="message-reactions-toggle"]')).to.exist
+        expect(withId.element?.querySelector('[data-testid="message-reply"]')).to.exist
+        expect(withoutId.element?.querySelector('[data-testid="message-actions"]')).to.not.exist
+
+        withId.destroy()
+        withoutId.destroy()
+    })
+
+    it('opens the fixed emoji set on the affordance click and closes after pick', () => {
+        const onSetReaction = sinon.spy()
+        const message = new Message({ content: 'привет', user_id: 1, chat_id: 3, id: 11, onSetReaction })
+
+        message.element?.querySelector('[data-testid="message-reactions-toggle"]')?.dispatchEvent(new MouseEvent('click', { bubbles: true }))
+
+        const picker = message.element?.querySelector('[data-testid="emoji-picker"]')
+
+        expect(picker).to.exist
+        expect(picker?.querySelectorAll('[data-testid="emoji-option"]')).to.have.length(6)
+
+        picker?.querySelector<HTMLButtonElement>('[data-emoji="❤️"]')?.dispatchEvent(new MouseEvent('click', { bubbles: true }))
+
+        expect(onSetReaction.calledOnceWith(3, 11, '❤️')).to.be.true
+        expect(message.element?.querySelector('[data-testid="emoji-picker"]')).to.not.exist
+
+        message.destroy()
+    })
+
+    it('toggles a reaction from the chip click', () => {
+        const onSetReaction = sinon.spy()
+        const message = new Message({
+            content: 'привет',
+            user_id: 1,
+            chat_id: 3,
+            id: 11,
+            onSetReaction,
+            reactions: [{ emoji: '👍', count: 2, mine: true }],
+        })
+
+        message.element?.querySelector<HTMLButtonElement>('[data-testid="reaction-chip"]')?.dispatchEvent(new MouseEvent('click', { bubbles: true }))
+
+        expect(onSetReaction.calledOnceWith(3, 11, '👍')).to.be.true
+
+        message.destroy()
+    })
+
+    it('renders chips with counts and highlights the own one', () => {
+        const message = new Message({
+            content: 'привет',
+            user_id: 1,
+            chat_id: 3,
+            id: 11,
+            reactions: [
+                { emoji: '👍', count: 2, mine: true },
+                { emoji: '😂', count: 1, mine: false },
+            ],
+        })
+
+        const chips = message.element?.querySelectorAll('[data-testid="reaction-chip"]') ?? []
+
+        expect(chips).to.have.length(2)
+        expect(chips[0].classList.contains('messenger__reaction-chip_mine')).to.be.true
+        expect(chips[1].classList.contains('messenger__reaction-chip_mine')).to.be.false
+        expect(chips[0].querySelector('[data-testid="reaction-count"]')?.textContent?.trim()).to.equal('2')
+
+        message.destroy()
+    })
+
+    it('renders no chips row for an empty summary', () => {
+        const message = new Message({ content: 'привет', user_id: 1, chat_id: 3, id: 11, reactions: [] })
+
+        expect(message.element?.querySelector('[data-testid="message-reactions"]')).to.not.exist
+
+        message.destroy()
+    })
+
+    it('emits the reply draft from the reply action', () => {
+        const onReply = sinon.spy()
+        const message = new Message({ content: 'цитируемое', user_id: 1, chat_id: 3, id: 11, onReply })
+
+        message.element?.querySelector('[data-testid="message-reply"]')?.dispatchEvent(new MouseEvent('click', { bubbles: true }))
+
+        expect(onReply.calledOnceWith({ id: 11, snippet: 'цитируемое' })).to.be.true
+
+        message.destroy()
+    })
+})
+
+describe('message reply quote block', () => {
+    it('renders the quoted snippet with the reply label', () => {
+        const message = new Message({
+            content: 'ответ',
+            user_id: 1,
+            chat_id: 3,
+            id: 12,
+            replyTo: { id: 11, user_id: 2, snippet: 'первое сообщение' },
+        })
+
+        const quote = message.element?.querySelector('[data-testid="message-quote"]')
+
+        expect(quote?.textContent?.trim()).to.contain('В ответ')
+        expect(quote?.textContent?.trim()).to.contain('первое сообщение')
+
+        message.destroy()
+    })
+
+    it('NaN-safe: null quote and empty snippet render no block', () => {
+        const nullQuote = new Message({ content: 'ответ', user_id: 1, replyTo: null })
+        const emptySnippet = new Message({
+            content: 'ответ',
+            user_id: 1,
+            replyTo: { id: 11, user_id: 2, snippet: '' },
+        })
+
+        expect(nullQuote.element?.querySelector('[data-testid="message-quote"]')).to.not.exist
+        expect(emptySnippet.element?.querySelector('[data-testid="message-quote"]')).to.not.exist
+
+        nullQuote.destroy()
+        emptySnippet.destroy()
     })
 })

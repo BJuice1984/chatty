@@ -1,0 +1,590 @@
+{
+    "schemaVersion": "agent-plan-manifest.v1",
+    "status": "FROZEN",
+    "planRevision": 2,
+    "package": {
+        "id": "2026-10-19-chats-social",
+        "title": "Stage 16: P2P chats — search, delete, reactions, replies, AI badges",
+        "workspaceRoot": ".",
+        "artifactRoot": "work/2026-10-19-chats-social",
+        "planArtifactRoot": "tasks/2026-10-19-chats-social"
+    },
+    "planFiles": [
+        "tasks/2026-10-19-chats-social/acceptance-criteria.md",
+        "tasks/2026-10-19-chats-social/developer-overview.md",
+        "tasks/2026-10-19-chats-social/plan-review-request.md",
+        "tasks/2026-10-19-chats-social/plan-review.json",
+        "tasks/2026-10-19-chats-social/plan.manifest.json",
+        "tasks/2026-10-19-chats-social/plan.md",
+        "tasks/2026-10-19-chats-social/specification.json",
+        "tasks/2026-10-19-chats-social/tier-request.json",
+        "tasks/2026-10-19-chats-social/tier-resolution.json"
+    ],
+    "packageIntegrity": {
+        "required": true,
+        "lockSchemaVersion": "agent-plan-lock.v2",
+        "inventorySource": "planFiles",
+        "undeclaredTopLevelFiles": "reject",
+        "allowedUnlistedFiles": [
+            "plan.lock.json"
+        ]
+    },
+    "author": {
+        "id": "claude-code",
+        "surface": "agent-first-planning",
+        "runId": "2026-10-19-chats-social-draft"
+    },
+    "baseRevision": {
+        "ref": "dev",
+        "sha": "2003f1da8817e662cdbdf79fd9d72fa2edc5606d"
+    },
+    "specification": {
+        "tier": "S2",
+        "intent": "Complete the social side of messaging with a backend contract phase and a frontend experience phase.",
+        "status": "DRAFT",
+        "source": "tasks/2026-10-19-chats-social/specification.json",
+        "requirements": [
+            {
+                "id": "REQ-BACKEND-SOCIAL",
+                "title": "Backend social contract",
+                "description": "Users search, chat deletion, reactions with WS broadcast, replies with snippets.",
+                "priority": "P1",
+                "source": "operator request 2026-10-19",
+                "acceptanceIds": [
+                    "AC-BE-1",
+                    "AC-BE-2"
+                ],
+                "evidenceIds": [
+                    "EV-BE-1",
+                    "EV-BE-2"
+                ],
+                "owner": "WS-BACKEND-SOCIAL"
+            },
+            {
+                "id": "REQ-FRONT-SOCIAL",
+                "title": "Frontend social experience",
+                "description": "Modals, @-search, delete, reactions UI, replies UI, AI badges, live P2P loop.",
+                "priority": "P1",
+                "source": "operator request 2026-10-19",
+                "acceptanceIds": [
+                    "AC-FE-1",
+                    "AC-FE-2",
+                    "AC-FE-3"
+                ],
+                "evidenceIds": [
+                    "EV-FE-1",
+                    "EV-FE-2"
+                ],
+                "owner": "WS-FRONT-SOCIAL"
+            }
+        ],
+        "tierResolutionRequest": {
+            "requestedTier": "S2",
+            "taskCount": 2,
+            "executableOwners": [
+                "worker-backend-social",
+                "worker-frontend-social"
+            ],
+            "capabilityHints": [
+                "python",
+                "fastapi",
+                "alembic",
+                "pytest",
+                "typescript",
+                "scss",
+                "websocket",
+                "ALK"
+            ],
+            "riskFlags": {
+                "architecture": true,
+                "security": true,
+                "browser": true,
+                "data": true
+            },
+            "requirementsBytes": 2600,
+            "externalSpecification": false
+        },
+        "revision": 1,
+        "artifact": "tasks/2026-10-19-chats-social/specification.json",
+        "goal": "A reviewed two-phase plan for the social messaging features.",
+        "constraints": [
+            "Additive migration only; alembic head clean on the existing volume.",
+            "WS events backward-compatible; message contract only gains optional fields.",
+            "Fixed server-side emoji set; unique(message, user, emoji) toggle semantics.",
+            "Owner-only deletion; members lose access cleanly.",
+            "Frontend reuses the stage-15 adaptive base.",
+            "Existing suites stay green (203 frontend, 152 backend)."
+        ],
+        "nonGoals": [
+            "read receipts",
+            "typing indicators",
+            "message editing/deletion",
+            "mentions parsing"
+        ],
+        "scope": {
+            "in": [
+                "users search",
+                "chat delete",
+                "reactions",
+                "replies",
+                "header modals",
+                "AI badges",
+                "P2P loop",
+                "tests",
+                "live evidence"
+            ],
+            "out": [
+                "read receipts",
+                "typing indicators",
+                "edit/delete messages"
+            ]
+        }
+    },
+    "readOnly": [
+        "tasks/README.md",
+        "AGENTS.md",
+        "docs/deployment/own-backend.md"
+    ],
+    "forbiddenWrites": [
+        ".alk",
+        "work",
+        "src/main.ts",
+        "src/features/index.ts",
+        "src/features/chats/module.ts",
+        "src/features/chats/store.ts",
+        "src/core",
+        "src/helpers/helpers.ts",
+        "docs/project-principles.json",
+        ".github/workflows",
+        "netlify.toml"
+    ],
+    "leadOwned": [
+        {
+            "path": "tasks/2026-10-19-chats-social",
+            "owner": "controller",
+            "reason": "Controller owns plan-package artifacts."
+        },
+        {
+            "path": "docs/progress/progress_log.md",
+            "owner": "controller",
+            "reason": "Controller maintains the progress log."
+        }
+    ],
+    "workstreams": [
+        {
+            "id": "WS-BACKEND-SOCIAL",
+            "title": "Backend: users search, chat delete, reactions, replies",
+            "owner": "worker-backend-social",
+            "reviewer": "independent-release-reviewer",
+            "dependsOn": [],
+            "writes": [
+                "backend/alembic/versions/005_reactions_replies.py",
+                "backend/app/api/v1/endpoints/__init__.py",
+                "backend/app/api/v1/endpoints/chats.py",
+                "backend/app/api/v1/endpoints/users.py",
+                "backend/app/models/__init__.py",
+                "backend/app/models/message.py",
+                "backend/app/models/reaction.py",
+                "backend/app/repositories/chats.py",
+                "backend/app/repositories/messages.py",
+                "backend/app/repositories/reactions.py",
+                "backend/app/repositories/users.py",
+                "backend/app/schemas/message.py",
+                "backend/app/schemas/reaction.py",
+                "backend/app/schemas/user.py",
+                "backend/app/services/chats.py",
+                "backend/app/services/messages.py",
+                "backend/app/ws/hub.py",
+                "backend/app/ws/router.py",
+                "backend/tests/integration/chat/test_social_api.py",
+                "backend/tests/unit/chat/test_reactions_repository.py"
+            ],
+            "readOnly": [
+                "tasks/README.md",
+                "docs/deployment/own-backend.md"
+            ],
+            "forbiddenWrites": [
+                ".github/workflows",
+                "netlify.toml"
+            ],
+            "leadOwned": [],
+            "launchGate": "dev at the declared base (PR #28) with verify:all green; the compose stack can be recreated for integration checks.",
+            "capabilityHints": [
+                "python",
+                "fastapi",
+                "alembic",
+                "pytest",
+                "websocket"
+            ],
+            "requiredTools": [
+                "python3",
+                "docker"
+            ],
+            "contextRefs": [
+                "developer-overview.md",
+                "plan.md"
+            ],
+            "acceptanceIds": [
+                "AC-BE-1",
+                "AC-BE-2"
+            ],
+            "evidenceIds": [
+                "EV-BE-1",
+                "EV-BE-2"
+            ],
+            "executionPolicy": {
+                "maxAttempts": 2,
+                "maxWallSeconds": 5400
+            },
+            "artifactPaths": {
+                "result": "work/2026-10-19-chats-social/evidence/WS-BACKEND-SOCIAL/task-result-{attempt}.json",
+                "review": "work/2026-10-19-chats-social/evidence/WS-BACKEND-SOCIAL/task-review-{attempt}.json"
+            },
+            "required": true,
+            "plannedItems": [
+                "users search endpoint",
+                "chat delete endpoint",
+                "migration 005",
+                "reactions api + ws broadcast",
+                "replies contract",
+                "reaction summaries",
+                "integration tests"
+            ],
+            "qualityFloor": "Additive migration; owner-only delete; fixed emoji set with unique toggle; WS backward-compatible; verify:backend green."
+        },
+        {
+            "id": "WS-FRONT-SOCIAL",
+            "title": "Frontend: modals, @search, delete, reactions, replies, AI badges",
+            "owner": "worker-frontend-social",
+            "reviewer": "independent-release-reviewer",
+            "dependsOn": [
+                "WS-BACKEND-SOCIAL"
+            ],
+            "writes": [
+                "src/components/chatListUser/chatListUser.hbs",
+                "src/components/chatListUser/chatListUser.test.ts",
+                "src/components/components.ts",
+                "src/components/form-container/form-container.hbs",
+                "src/components/form-container/form-container.ts",
+                "src/components/message/message.hbs",
+                "src/components/message/message.test.ts",
+                "src/components/message/message.ts",
+                "src/components/messenger/messenger.hbs",
+                "src/components/messenger/messenger.test.ts",
+                "src/components/messenger/messenger.ts",
+                "src/components/modal/modal.hbs",
+                "src/components/modal/modal.test.ts",
+                "src/components/modal/modal.ts",
+                "src/features/chats/api/api.test.ts",
+                "src/features/chats/api/own.ts",
+                "src/features/chats/chats.test.ts",
+                "src/features/chats/controller.ts",
+                "src/features/chats/history/history.test.ts",
+                "src/features/chats/pages/chat/chat.hbs",
+                "src/features/chats/pages/chat/chat.test.ts",
+                "src/features/chats/pages/chat/chat.ts",
+                "src/features/chats/ports.ts",
+                "src/features/chats/ws/gateway.ts",
+                "src/features/chats/ws/own.ts",
+                "src/features/chats/ws/ws.test.ts",
+                "src/scss/components/_all.scss",
+                "src/scss/components/chat-list-user.scss",
+                "src/scss/components/chat.scss",
+                "src/scss/components/messenger.scss",
+                "src/scss/components/modal.scss",
+                "src/utils/types.ts"
+            ],
+            "readOnly": [
+                "tasks/README.md",
+                "AGENTS.md"
+            ],
+            "forbiddenWrites": [
+                "src/main.ts",
+                "src/core",
+                "src/features/chats/store.ts"
+            ],
+            "leadOwned": [],
+            "launchGate": "WS-BACKEND-SOCIAL accepted (task-review ACCEPTED) so the frontend builds on the reviewed contract.",
+            "capabilityHints": [
+                "typescript",
+                "scss",
+                "websocket",
+                "testing"
+            ],
+            "requiredTools": [
+                "node",
+                "npm"
+            ],
+            "contextRefs": [
+                "developer-overview.md",
+                "plan.md",
+                "AGENTS.md"
+            ],
+            "acceptanceIds": [
+                "AC-FE-1",
+                "AC-FE-2",
+                "AC-FE-3"
+            ],
+            "evidenceIds": [
+                "EV-FE-1",
+                "EV-FE-2"
+            ],
+            "executionPolicy": {
+                "maxAttempts": 2,
+                "maxWallSeconds": 7200
+            },
+            "artifactPaths": {
+                "result": "work/2026-10-19-chats-social/evidence/WS-FRONT-SOCIAL/task-result-{attempt}.json",
+                "review": "work/2026-10-19-chats-social/evidence/WS-FRONT-SOCIAL/task-review-{attempt}.json"
+            },
+            "required": true,
+            "plannedItems": [
+                "ports and adapters",
+                "controller-free ui state",
+                "modal layer",
+                "add-user @search",
+                "delete confirm",
+                "reactions ui",
+                "replies ui",
+                "ai badge",
+                "chat_deleted handling",
+                "component tests",
+                "live p2p evidence"
+            ],
+            "qualityFloor": "All modals usable at 375/768/1280; reactions and replies work both directions live; AI chats visually distinct; existing 203 tests green."
+        }
+    ],
+    "acceptance": {
+        "criteria": [
+            {
+                "id": "AC-BE-1",
+                "title": "Users search and chat deletion",
+                "requirementIds": [
+                    "REQ-BACKEND-SOCIAL"
+                ],
+                "evidenceIds": [
+                    "EV-BE-1"
+                ],
+                "independentEvidenceIds": [],
+                "statement": "GET /users?login= returns prefix matches (auth, case, cap, own-exclusion rules tested); DELETE /chats/{id} deletes for the owner, refuses non-owners; integration pytest covers both.",
+                "description": "Integration tests.",
+                "source": "acceptance-criteria.md",
+                "priority": "P1"
+            },
+            {
+                "id": "AC-BE-2",
+                "title": "Reactions and replies contract",
+                "requirementIds": [
+                    "REQ-BACKEND-SOCIAL"
+                ],
+                "evidenceIds": [
+                    "EV-BE-2"
+                ],
+                "independentEvidenceIds": [],
+                "statement": "Migration 005 adds reactions (unique message+user+emoji, fixed set) and messages.reply_to_id; reaction toggle broadcasts a WS event and summaries ride with messages; reply_to_id accepted on send and returned as {id, user_id, snippet}; pytest covers all; verify:backend green.",
+                "description": "Tests + migration receipt.",
+                "source": "acceptance-criteria.md",
+                "priority": "P1"
+            },
+            {
+                "id": "AC-FE-1",
+                "title": "Header modals rebuilt",
+                "requirementIds": [
+                    "REQ-FRONT-SOCIAL"
+                ],
+                "evidenceIds": [
+                    "EV-FE-1"
+                ],
+                "independentEvidenceIds": [],
+                "statement": "Add-user modal with @login search (results, add flow, feedback) and delete-chat modal with confirmation, styled at 375/768/1280; component tests cover the flows.",
+                "description": "Component tests.",
+                "source": "acceptance-criteria.md",
+                "priority": "P1"
+            },
+            {
+                "id": "AC-FE-2",
+                "title": "Reactions and replies UI",
+                "requirementIds": [
+                    "REQ-FRONT-SOCIAL"
+                ],
+                "evidenceIds": [
+                    "EV-FE-1"
+                ],
+                "independentEvidenceIds": [],
+                "statement": "Emoji picker per message with chips (counts, own highlighted, toggle, WS reconciliation) and reply flow with quoted preview above the input and quoted block in bubbles; component tests for both.",
+                "description": "Component tests.",
+                "source": "acceptance-criteria.md",
+                "priority": "P1"
+            },
+            {
+                "id": "AC-FE-3",
+                "title": "AI badges and live P2P loop",
+                "requirementIds": [
+                    "REQ-FRONT-SOCIAL"
+                ],
+                "evidenceIds": [
+                    "EV-FE-2"
+                ],
+                "independentEvidenceIds": [],
+                "statement": "AI chats are visually distinct in the list; live: user A finds user B by @login, adds them, both exchange messages with a reaction and a reply; viewport receipts at 375/768 plus screenshots.",
+                "description": "Live receipts.",
+                "source": "acceptance-criteria.md",
+                "priority": "P1"
+            }
+        ],
+        "evidence": [
+            {
+                "id": "EV-BE-1",
+                "description": "Users-search and chat-delete pytest receipts.",
+                "source": "WS-BACKEND-SOCIAL",
+                "validation": "npm run verify:backend (integration suites)",
+                "artifactPath": "work/2026-10-19-chats-social/evidence/WS-BACKEND-SOCIAL/EV-BE-1.json",
+                "required": true
+            },
+            {
+                "id": "EV-BE-2",
+                "description": "Migration + reactions/replies pytest receipts.",
+                "source": "WS-BACKEND-SOCIAL",
+                "validation": "npm run verify:backend + alembic upgrade head on the local stack",
+                "artifactPath": "work/2026-10-19-chats-social/evidence/WS-BACKEND-SOCIAL/EV-BE-2.json",
+                "required": true
+            },
+            {
+                "id": "EV-FE-1",
+                "description": "verify receipt with new component tests.",
+                "source": "WS-FRONT-SOCIAL",
+                "validation": "npm run verify + stylelint + guard",
+                "artifactPath": "work/2026-10-19-chats-social/evidence/WS-FRONT-SOCIAL/EV-FE-1.json",
+                "required": true
+            },
+            {
+                "id": "EV-FE-2",
+                "description": "Live P2P receipts and screenshots.",
+                "source": "WS-FRONT-SOCIAL",
+                "validation": "playwright two-session receipts + viewport checks",
+                "artifactPath": "work/2026-10-19-chats-social/evidence/WS-FRONT-SOCIAL/EV-FE-2.json",
+                "required": true
+            }
+        ],
+        "releaseGate": "Social features accepted with deterministic tests and live two-session receipts.",
+        "qualityFloor": "No criterion is accepted from prose alone."
+    },
+    "validation": {
+        "commands": [
+            "npm run verify:backend",
+            "npm run verify",
+            "npm run verify:all",
+            "docker compose --env-file ~/.config/chatty/own-backend.env config --quiet",
+            "node .claude/hooks/scripts/guard-architecture.mjs --all --strict"
+        ]
+    },
+    "orchestration": {
+        "startMode": "reviewed-plan",
+        "remediationMode": "ask",
+        "maxPlanReviewRounds": 3,
+        "maxTaskAttempts": 2,
+        "maxParallelTasks": 1,
+        "maxValidationRunsPerTask": 2,
+        "maxToolCallsPerIteration": 30,
+        "maxUsageIterationsPerAttempt": 12,
+        "maxToolCallsPerTask": 300,
+        "maxToolCallsPerRun": 650,
+        "maxReportedTokensPerTask": 24000,
+        "maxReportedTokensPerRun": 36000,
+        "maxEvidenceArtifactBytes": 1048576,
+        "maxEvidenceBytesPerTask": 4194304,
+        "maxEvidenceBytesPerRun": 4194304,
+        "maxTaskWallSeconds": 7200,
+        "maxRunWallSeconds": 16000,
+        "maxContextBytes": 180000,
+        "maxRenderedPacketBytes": 50000,
+        "stateFile": "work/2026-10-19-chats-social/run.state.json",
+        "eventLog": "work/2026-10-19-chats-social/events.jsonl",
+        "stepReviewRequired": true,
+        "finalAuditRequired": true
+    },
+    "implementationAudit": {
+        "required": true,
+        "finalRequired": true
+    },
+    "developerOverview": "tasks/2026-10-19-chats-social/developer-overview.md",
+    "releaseTarget": {
+        "kind": "local-only",
+        "environment": "Vite own mode + Docker Compose owned backend",
+        "productionPromotionClaimed": false
+    },
+    "releaseImpact": "Social messaging features; additive backend migration; no production claim.",
+    "nonGoals": [
+        "read receipts",
+        "typing indicators",
+        "message editing/deletion",
+        "mentions parsing"
+    ],
+    "finalAuditGates": [
+        "[AC-BE-1|EV-BE-1] users search and owner-only chat deletion proven",
+        "[AC-BE-2|EV-BE-2] migration additive, reactions toggle + WS broadcast, replies with snippets, verify:backend green",
+        "[AC-FE-1|EV-FE-1] modals rebuilt with component coverage at all breakpoints",
+        "[AC-FE-2|EV-FE-1] reactions and replies UI with component coverage",
+        "[AC-FE-3|EV-FE-2] AI badges live and the two-session P2P loop works with receipts"
+    ],
+    "securityGates": [
+        {
+            "id": "SEC-DELETE-POLICY",
+            "statement": "Chat deletion is owner-only and cascades per FK rules; members never silently lose other chats.",
+            "evidenceIds": [
+                "EV-BE-1"
+            ]
+        },
+        {
+            "id": "SEC-AUTH",
+            "statement": "New endpoints are cookie-authenticated and membership-checked; the reaction emoji set is fixed server-side.",
+            "evidenceIds": [
+                "EV-BE-1",
+                "EV-BE-2"
+            ]
+        }
+    ],
+    "budgetPolicy": {
+        "units": "tokens-and-resources",
+        "reroute": "pause-and-review",
+        "maxTotalTokens": 36000,
+        "maxParallelWorkstreams": 1,
+        "maxRunWallSeconds": 16000,
+        "criticalPathWallSeconds": 12600,
+        "aggregateWorkstreamWallSeconds": 12600,
+        "retryReserveWallSeconds": 3400
+    },
+    "budgets": {
+        "defaultWorkstreamTokens": 24000,
+        "maxEvidenceBytesPerRun": 4194304
+    },
+    "contextLimits": {
+        "profile": "small-context-profile.v1",
+        "maxPlanContextBytes": 180000,
+        "maxRenderedPacketBytes": 50000,
+        "smallContextPacketBytes": 34000,
+        "maxReferenceFilesPerPacket": 16,
+        "includeOnlyOwnedWrites": true,
+        "excludeRuntimeWorkArtifacts": true
+    },
+    "planReview": {
+        "required": true,
+        "requestPath": "tasks/2026-10-19-chats-social/plan-review-request.md",
+        "reviewerClass": "independent-plan-reviewer",
+        "maxRounds": 3,
+        "implementationAuthorized": false,
+        "report": "tasks/2026-10-19-chats-social/plan-review.json",
+        "reviewedRevision": 2,
+        "verdict": "READY_TO_FREEZE"
+    },
+    "tierResolution": {
+        "status": "RESOLVED",
+        "tier": "S2",
+        "requestedTier": "S2",
+        "reason": "architecture/data-risk (migration), security-risk (delete policy, auth) and browser-risk",
+        "independentReviewRequired": true,
+        "requestPath": "tasks/2026-10-19-chats-social/tier-request.json",
+        "resolutionPath": "tasks/2026-10-19-chats-social/tier-resolution.json",
+        "requestDigest": "46ef63aaa100cbc634d3790e3a1992aa07caad75382ca962d99507a5444bf9af"
+    }
+}

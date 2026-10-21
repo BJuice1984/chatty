@@ -3,7 +3,12 @@ import sinon from 'sinon'
 import { JSDOM } from 'jsdom'
 import { env, joinUrl } from '../../../utils/env.ts'
 import store from '../../../utils/Store.ts'
-import { appendMessages, chatMessagesPort, closeAllChatSockets } from './gateway.ts'
+import {
+    appendMessages,
+    chatMessagesPort,
+    closeAllChatSockets,
+    setChatsEventListeners,
+} from './gateway.ts'
 import { OwnWsAdapter, ownChatUrl, toMessage } from './own.ts'
 import { chatHistorySlice } from '../history/store.ts'
 import type { Message } from '../../../utils/types.ts'
@@ -37,12 +42,41 @@ describe('chats ws gateway', () => {
         expect(chatMessagesPort).to.have.property('sendMessage')
         expect(chatMessagesPort).to.have.property('connect')
         expect(chatMessagesPort).to.have.property('loadHistory')
+        expect(chatMessagesPort).to.have.property('closeChat')
         expect(closeAllChatSockets).to.be.a('function')
     })
 
     it('should keep the message identity for history deduplication', () => {
         // stage 11: merge истории дедуплицирует по id — own-маппинг сохраняет его
         expect(toMessage(ownResponse).id).to.eq(11)
+    })
+
+    it('should map the reply chain and reactions onto the Message DTO', () => {
+        const mapped = toMessage({
+            ...ownResponse,
+            id: 21,
+            reply_to_id: 11,
+            reply_to: { id: 11, user_id: 2, snippet: 'первое' },
+            reactions: [
+                { emoji: '❤️', count: 2, mine: false },
+                { emoji: '👍', count: 1, mine: true },
+            ],
+        })
+
+        expect(mapped.replyToId).to.eq(11)
+        expect(mapped.replyTo).to.deep.eq({ id: 11, user_id: 2, snippet: 'первое' })
+        expect(mapped.reactions).to.deep.eq([
+            { emoji: '❤️', count: 2, mine: false },
+            { emoji: '👍', count: 1, mine: true },
+        ])
+    })
+
+    it('should map reply-less messages without the quote block', () => {
+        const mapped = toMessage(ownResponse)
+
+        expect(mapped.replyTo).to.eq(null)
+        expect(mapped.replyToId).to.eq(undefined)
+        expect(mapped.reactions).to.deep.eq([])
     })
 
     it('should reject own-mode history requests for unconnected chats', async () => {
@@ -255,5 +289,170 @@ describe('own ws adapter reconnect (HD-R2)', () => {
         await connected
 
         expect(created[0].sent.filter(item => item.includes('"before_id":null'))).to.have.length(1)
+    })
+})
+
+// chats-social: маршрутизация событий реакции/удаления чата и реплаи.
+// Реакцию адаптер не трактует сам — сводка broadcast'а несёт mine относительно
+// отправителя действия, пересчёт viewer-side делает контроллер (шлюз-слушатель).
+// chat_deleted: сокет чата закрывается явно, без backoff-реконнекта.
+describe('own ws adapter social events', () => {
+    type SocketListener = (event: { data?: string }) => void
+
+    const created: FakeWebSocket[] = []
+
+    class FakeWebSocket {
+        static readonly CONNECTING = 0
+        static readonly OPEN = 1
+        static readonly CLOSING = 2
+        static readonly CLOSED = 3
+
+        readyState = FakeWebSocket.CONNECTING
+        sent: string[] = []
+        closed = false
+        listeners = new Map<string, SocketListener[]>()
+
+        constructor() {
+            created.push(this)
+        }
+
+        addEventListener(type: string, listener: SocketListener) {
+            this.listeners.set(type, [...(this.listeners.get(type) ?? []), listener])
+        }
+
+        removeEventListener() {}
+
+        send(data: string) {
+            this.sent.push(data)
+        }
+
+        close() {
+            this.readyState = FakeWebSocket.CLOSED
+            this.closed = true
+        }
+
+        triggerOpen() {
+            this.readyState = FakeWebSocket.OPEN
+            for (const listener of [...(this.listeners.get('open') ?? [])]) {
+                listener({})
+            }
+        }
+
+        triggerMessage(data: string) {
+            for (const listener of [...(this.listeners.get('message') ?? [])]) {
+                listener({ data })
+            }
+        }
+    }
+
+    let clock: sinon.SinonFakeTimers
+    let originalWebSocket: typeof WebSocket
+
+    beforeEach(() => {
+        clock = sinon.useFakeTimers()
+        created.length = 0
+        originalWebSocket = globalThis.WebSocket
+        globalThis.WebSocket = FakeWebSocket as unknown as typeof WebSocket
+        store.set('messages', { 3: [] })
+        chatHistorySlice.resetHistory(3)
+    })
+
+    afterEach(() => {
+        globalThis.WebSocket = originalWebSocket
+        clock.restore()
+        store.set('messages', { 3: [] })
+        chatHistorySlice.resetHistory(3)
+    })
+
+    async function connectedSocket(): Promise<{ adapter: OwnWsAdapter; socket: FakeWebSocket }> {
+        const adapter = new OwnWsAdapter()
+        const connected = adapter.connect(3)
+
+        created[0].triggerOpen()
+        await connected
+
+        return { adapter, socket: created[0] }
+    }
+
+    it('forwards reaction events to the gateway listener as-is', async () => {
+        const onReaction = sinon.spy()
+
+        setChatsEventListeners({ onReaction })
+
+        const { socket } = await connectedSocket()
+
+        socket.triggerMessage(JSON.stringify({
+            type: 'reaction',
+            content: { chat_id: 3, message_id: 11, user_id: 42, emoji: '👍', active: true },
+        }))
+
+        expect(onReaction.calledOnceWith({
+            chat_id: 3,
+            message_id: 11,
+            user_id: 42,
+            emoji: '👍',
+            active: true,
+        })).to.be.true
+    })
+
+    it('closes the chat socket on chat_deleted and does not reconnect', async () => {
+        const onChatDeleted = sinon.spy()
+
+        setChatsEventListeners({ onChatDeleted })
+
+        const { socket } = await connectedSocket()
+
+        socket.triggerMessage(JSON.stringify({ type: 'chat_deleted', content: { chat_id: 3 } }))
+
+        expect(onChatDeleted.calledOnceWith(3)).to.be.true
+        expect(socket.readyState).to.eq(FakeWebSocket.CLOSED)
+        expect(socket.closed).to.be.true
+
+        // явное закрытие не реконнектит: новых сокетов не появляется
+        await clock.tickAsync(10_000)
+
+        expect(created).to.have.length(1)
+    })
+
+    it('sends a reply with reply_to_id in the message event', async () => {
+        const { adapter, socket } = await connectedSocket()
+
+        await adapter.sendMessage(3, 'ответ', 21)
+
+        expect(socket.sent[socket.sent.length - 1]).to.eq(
+            '{"type":"message","content":{"content":"ответ","reply_to_id":21}}'
+        )
+    })
+
+    it('keeps the scalar content shape for plain messages', async () => {
+        const { adapter, socket } = await connectedSocket()
+
+        await adapter.sendMessage(3, 'просто')
+
+        expect(socket.sent[socket.sent.length - 1]).to.eq('{"type":"message","content":"просто"}')
+    })
+
+    it('closes through the adapter closeChat without reconnect', async () => {
+        const { adapter, socket } = await connectedSocket()
+
+        await adapter.closeChat(3)
+
+        expect(socket.closed).to.be.true
+
+        await clock.tickAsync(10_000)
+
+        expect(created).to.have.length(1)
+    })
+
+    it('ignores reaction notifications while no listener is attached', async () => {
+        // слушатель не регистрируется — notify не должен падать
+        const { socket } = await connectedSocket()
+
+        expect(() =>
+            socket.triggerMessage(JSON.stringify({
+                type: 'reaction',
+                content: { chat_id: 3, message_id: 11, user_id: 42, emoji: '👍', active: false },
+            }))
+        ).to.not.throw()
     })
 })

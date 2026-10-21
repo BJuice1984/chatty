@@ -23,8 +23,12 @@ export class ChatAvatar extends Block<ChatAvatarProps> {
 
         return this.compile(template, {
             ...this.props,
-            // null не дотягивается до fileUrl: контракт ожидает строку (LIVE-4)
-            src: typeof src === 'string' && src !== '' ? fileUrl(src) : '',
+            // null не дотягивается до fileUrl: контракт ожидает строку (LIVE-4);
+            // пути, начинающиеся с '/', — статические ассеты приложения (аватары
+            // из public/images), их не прогоняем через filesUrl бэкенда
+            src: typeof src === 'string' && src.startsWith('/')
+                ? src
+                : (typeof src === 'string' && src !== '' ? fileUrl(src) : ''),
         })
     }
 }

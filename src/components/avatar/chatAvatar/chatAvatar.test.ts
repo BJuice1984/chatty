@@ -28,11 +28,20 @@ describe('chat avatar null guard', () => {
         }
     })
 
-    it('maps a non-empty path through fileUrl', () => {
-        const avatar = render('/avatars/chat-3.png')
+    it('maps a non-empty relative path through fileUrl', () => {
+        const avatar = render('avatars/chat-3.png')
 
         expect(avatar.element?.tagName).to.eq('IMG')
-        expect(avatar.element?.getAttribute('src')).to.eq(fileUrl('/avatars/chat-3.png'))
+        expect(avatar.element?.getAttribute('src')).to.eq(fileUrl('avatars/chat-3.png'))
+        avatar.destroy()
+    })
+
+    it('keeps app-static paths starting with a slash as-is', () => {
+        // локальные ассеты (public/images/avatars) не прогоняем через filesUrl
+        const avatar = render('/images/avatars/3.svg')
+
+        expect(avatar.element?.tagName).to.eq('IMG')
+        expect(avatar.element?.getAttribute('src')).to.eq('/images/avatars/3.svg')
         avatar.destroy()
     })
 })

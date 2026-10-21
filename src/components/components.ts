@@ -1,6 +1,6 @@
 export { Button } from './button/button.ts'
 export { Form } from './form/form.ts'
-export { FormContainer } from './form-container/form-container.ts'
+export { Modal } from './modal/modal.ts'
 export { LabeledInput } from './input/labeledInput/labeledInput.ts'
 export { Input } from './input/input/input.ts'
 export { InputError } from './input/inputError/inputError.ts'

@@ -9,8 +9,10 @@ from app.core.deps import get_current_user, get_db
 from app.models.user import User
 from app.schemas.chat import ChatCreate, ChatMemberCreate, ChatMemberResponse, ChatResponse
 from app.schemas.message import MessageCreate, MessagePage, MessageResponse
+from app.schemas.reaction import ReactionSet, ReactionSummaryResponse
 from app.services.chats import ChatService
 from app.services.messages import MessageService
+from app.ws.hub import hub
 
 
 router = APIRouter(prefix='/chats', tags=['chats'])
@@ -31,8 +33,20 @@ async def list_chats(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ) -> list[ChatResponse]:
-    chats = ChatService(db).list_for_user(current_user.id)
-    return [ChatResponse.model_validate(chat) for chat in chats]
+    service = ChatService(db)
+    chats = service.list_for_user(current_user.id)
+    unread = service.unread_counts(current_user.id)
+    return [
+        ChatResponse(
+            id=chat.id,
+            title=chat.title,
+            owner_id=chat.owner_id,
+            is_ai=chat.is_ai,
+            created_at=chat.created_at,
+            unread_count=unread.get(chat.id, 0),
+        )
+        for chat in chats
+    ]
 
 
 @router.get('/{chat_id}', response_model=ChatResponse)
@@ -43,6 +57,22 @@ async def get_chat(
 ) -> ChatResponse:
     chat = ChatService(db).require_member(chat_id, current_user.id)
     return ChatResponse.model_validate(chat)
+
+
+@router.delete('/{chat_id}', status_code=status.HTTP_204_NO_CONTENT)
+async def delete_chat(
+    chat_id: int,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> None:
+    service = ChatService(db)
+    chat = service.require_owned(chat_id, current_user.id)
+    # порядок критичен: сначала событие по живым сокетам (строка ещё существует),
+    # затем удаление строки (каскады БД снимают messages/members/files/documents/
+    # chunks/bot_runs/reactions), затем закрытие сокетов чата
+    await hub.broadcast(chat_id, {'type': 'chat_deleted', 'content': {'chat_id': chat_id}})
+    service.delete(chat)
+    await hub.close_chat(chat_id)
 
 
 @router.post('/{chat_id}/members', response_model=ChatMemberResponse, status_code=status.HTTP_201_CREATED)
@@ -64,14 +94,15 @@ async def list_messages(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ) -> MessagePage:
-    messages, next_before_id = MessageService(db).history(
+    service = MessageService(db)
+    messages, next_before_id = service.history(
         chat_id,
         current_user.id,
         before_id=before_id,
         limit=limit,
     )
     return MessagePage(
-        messages=[MessageResponse.model_validate(message) for message in messages],
+        messages=service.present(messages, current_user.id),
         before_id=before_id,
         limit=limit,
         next_before_id=next_before_id,
@@ -85,5 +116,51 @@ async def create_message(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ) -> MessageResponse:
-    message = MessageService(db).create(chat_id, current_user.id, payload)
-    return MessageResponse.model_validate(message)
+    service = MessageService(db)
+    message = service.create(chat_id, current_user.id, payload)
+    return service.present_one(message, current_user.id)
+
+
+@router.post('/{chat_id}/messages/{message_id}/reactions', response_model=ReactionSummaryResponse)
+async def set_reaction(
+    chat_id: int,
+    message_id: int,
+    payload: ReactionSet,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> ReactionSummaryResponse:
+    active, reactions = MessageService(db).set_reaction(
+        chat_id,
+        message_id,
+        current_user.id,
+        payload.emoji,
+    )
+    await hub.broadcast(
+        chat_id,
+        {
+            'type': 'reaction',
+            'content': {
+                'chat_id': chat_id,
+                'message_id': message_id,
+                'user_id': current_user.id,
+                'emoji': payload.emoji,
+                'active': active,
+            },
+        },
+    )
+    return ReactionSummaryResponse(message_id=message_id, active=active, reactions=reactions)
+
+@router.get('/{chat_id}/members')
+async def list_chat_members(
+    chat_id: int,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> list[dict[str, object]]:
+    """Участники чата: [{id, login}] — login это email-хэнл контракта."""
+    service = ChatService(db)
+    service.require_member(chat_id, current_user.id)
+    members = service.chats.list_members(chat_id)
+    return [
+        {'id': user_id, 'login': email, 'display_name': email.split('@')[0]}
+        for user_id, email in members
+    ]

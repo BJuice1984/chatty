@@ -1,0 +1,10 @@
+{
+    "status": "RESOLVED",
+    "tier": "S2",
+    "requestedTier": "S2",
+    "reason": "architecture/data-risk (migration), security-risk (delete policy, auth) and browser-risk",
+    "independentReviewRequired": true,
+    "requestPath": "tasks/2026-10-19-chats-social/tier-request.json",
+    "resolutionPath": "tasks/2026-10-19-chats-social/tier-resolution.json",
+    "requestDigest": "46ef63aaa100cbc634d3790e3a1992aa07caad75382ca962d99507a5444bf9af"
+}
