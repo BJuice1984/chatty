@@ -1,0 +1,83 @@
+{
+    "revision": 4,
+    "id": "SPEC-AVATARS-STORIES",
+    "title": "Avatars and stories on the own backend via /files and object storage",
+    "intent": "Move avatars and stories from client-side mocks to the own backend. Avatars (user profile and chat) upload through a new POST /files/avatars endpoint into RustFS with metadata in PostgreSQL and flow back as avatar_url fields in auth/chats/members responses (avatar pool stays as fallback). Stories become a real backend contract: POST /stories (multipart image), GET /stories feed (own first, then others, newest first; 24h TTL; per-viewer viewed flag), POST /stories/{id}/view. The chat page consumes the feed through a stories module inside the chats feature (src/features/chats/stories/: port, own adapter, controller, Store slice) instead of page-local mocks; the existing viewer/timer/page-ownership semantics stay unchanged.",
+    "requirements": [
+        {
+            "id": "REQ-AVATAR-BACKEND",
+            "title": "User and chat avatars stored via /files + RustFS",
+            "description": "Migration 007 makes files.chat_id nullable (global media: no chat binding) and adds users.avatar_file_id / chats.avatar_file_id (FK files.id, nullable, ON DELETE SET NULL); the migration uses batch_alter_table for the widened column and new FKs (required on SQLite, harmless on PostgreSQL). New endpoint POST /files/avatars (multipart: kind=user|chat, chat_id required for kind=chat, uploaded) validates the body the same way as chat uploads (max_upload_bytes, safe name) plus an image/* content-type whitelist (400 invalid_content_type otherwise), writes a File row with chat_id NULL, uploads the object to RustFS, then points users.avatar_file_id (own avatar) or chats.avatar_file_id (owner-only for kind=chat: non-owner gets 403) at the new file. The response carries avatar_url in the form \"{file_id}/download\" (relative to the files base URL, no leading slash). avatar_url is exposed as a Python property on the User and Chat models (so from_attributes response models pick it up without hand-built payloads) in the /auth/me, /auth/login, /auth/register, /auth/refresh user responses and in GET /chats, GET /chats/{id}; GET /chats/{id}/members gains avatar_url per member (the members query widens beyond (user_id, email) in the chat repository/service); null means no avatar uploaded. GET /files/{id}/download keeps participant-only access for chat attachments; files with chat_id NULL (avatars, story media) are downloadable by any authenticated user.",
+            "priority": "P1",
+            "source": "operator request 2026-10-21",
+            "acceptanceIds": [
+                "AC-BE-AVATARS",
+                "AC-BE-ACCESS"
+            ],
+            "evidenceIds": [
+                "EV-BE-1"
+            ],
+            "owner": "WS-BE-MEDIA"
+        },
+        {
+            "id": "REQ-STORIES-BACKEND",
+            "title": "Stories: upload, feed with viewed state, 24h TTL",
+            "description": "Migration 007 adds stories (id, owner_id FK users RESTRICT, file_id FK files CASCADE, unique; created_at) and story_views (story_id FK stories CASCADE + user_id FK users CASCADE composite PK, viewed_at). POST /stories (multipart: uploaded) validates image/* and max_upload_bytes, creates a File row with chat_id NULL, uploads to RustFS and creates a Story owned by the current user. GET /stories returns active stories (created_at within settings.story_ttl_hours, default 24) capped at 100: the caller's own stories first, then everyone else's, both groups by created_at desc; each item carries id, owner_id, owner_display_name (email local part, same rule as UserSearchItem), owner_avatar_url, image_url (\"{file_id}/download\"), created_at, viewed (bool: story_views row exists for the caller). POST /stories/{story_id}/view upserts a story_views row idempotently and returns 204; viewing an inactive (expired) story is still accepted (idempotent no-op) to keep the client simple. The router is registered in build_api_router alongside files.",
+            "priority": "P1",
+            "source": "operator request 2026-10-21",
+            "acceptanceIds": [
+                "AC-BE-STORIES"
+            ],
+            "evidenceIds": [
+                "EV-BE-1"
+            ],
+            "owner": "WS-BE-MEDIA"
+        },
+        {
+            "id": "REQ-STORIES-FRONT",
+            "title": "Frontend stories: backend-backed feed, upload, viewed ring",
+            "description": "New stories module inside the chats feature: src/features/chats/stories/ (same in-feature pattern as chats/history — a cross-feature import from the chat page would trip the architecture guard): StoriesPort (fetchStories, uploadStory(file), markViewed(id)), a stories Store slice (state.stories, module-owned setter), an own adapter over HTTPTransport (/stories endpoints, csrfToken on writes, image_url resolved to an absolute URL via fileUrl, alt synthesized from the owner name — the backend feed has no alt field), and a controller. The chat page drops the initialStories mocks (mock tiles and blob-URL creation are removed): stories come from the Store via withStore, the add tile stays a page-built static first tile, CDM triggers fetchStories(). Opening a story keeps the existing viewer semantics untouched (page-owned 5000 ms timer, focus restore, delegated change). On close by any route the page only resets the viewer (setProps viewerStory) and calls StoriesController.markViewed(id) with the numeric server id; markViewed patches the Store slice synchronously first (the ring fades through the withStore re-render — the page never writes stories props itself, so no optimistic slice and Store slice can race) and only then fires the POST (failure logged, the next fetch reconciles). The add tile keeps opening the hidden file input; the delegated change handler now calls StoriesController.uploadStory(file) which POSTs the file and refetches the feed, so the new story appears first with the unread ring served by the backend.",
+            "priority": "P1",
+            "source": "operator request 2026-10-21",
+            "acceptanceIds": [
+                "AC-FE-STORIES"
+            ],
+            "evidenceIds": [
+                "EV-FE-1"
+            ],
+            "owner": "WS-FE-MEDIA"
+        },
+        {
+            "id": "REQ-AVATARS-FRONT",
+            "title": "Frontend avatars: real avatars with pool fallback, uploads from profile and chat header",
+            "description": "auth own adapter: toAuthUser maps avatar_url from the API (format \"{file_id}/download\", no leading slash — avatar components already resolve such values through fileUrl) and falls back to avatarPoolUrl(id) when avatar_url is null. chats own adapter: toChatInfo maps avatar_url ?? '' (the controller keeps applyCompanionAvatar semantics: a chat's own avatar is never overwritten; direct chats fall back to the companion's avatar, now real when uploaded); getChatUsers maps member avatar_url with the same fallback. changeChatAvatar is implemented without a port signature change: the UI file input already appends the tile's chat id to the FormData as the chatId field (the id of the chat whose avatar tile was clicked, not necessarily selectedChat — src/components/input/inputFile/inputFile.ts), so the adapter reads chatId from the FormData, rebuilds it into the contract form (uploaded, kind=chat, chat_id) and POSTs /files/avatars; on success the controller refetches chats. The profile port's changeAvatar is implemented the same way (kind=user) and its contract narrows to Promise<{avatar: string}>; the controller patches state.user.avatar from the response avatar_url.",
+            "priority": "P1",
+            "source": "operator request 2026-10-21",
+            "acceptanceIds": [
+                "AC-FE-AVATARS"
+            ],
+            "evidenceIds": [
+                "EV-FE-1"
+            ],
+            "owner": "WS-FE-MEDIA"
+        }
+    ],
+    "constraints": [
+        "Layers only downward (pages -> components -> controllers -> api -> utils -> core); guard-architecture --all --strict stays green; no runtime api/ imports from UI; no cross-feature imports — the stories module lives inside the chats feature (chats/history precedent).",
+        "Block lifecycle truth stays as implemented by plan 2026-10-21-stories: the page owns the auto-close timer, the overlay focus and the delegated file-input change; the viewer stays presentational with no timers.",
+        "Avatar URL convention: API values are file-relative paths without a leading slash (\"{file_id}/download\"); values starting with '/' remain app static assets (avatar pool) and are never resolved through filesUrl. Story feed image_url is resolved to an absolute URL by the adapter before it reaches the Store.",
+        "Single source of truth for stories is the Store slice: the page never writes stories props locally (no optimistic page patch racing the withStore mapping); markViewed patches the slice synchronously before its POST.",
+        "No access regressions: chat-attachment downloads stay participant-only (403 otherwise); only chat_id NULL media (avatars, stories) is readable by any authenticated user. Cookies are SameSite=lax and the API origin is same-site with the app origin in dev (ports do not split a site), so <img> requests carry the session cookie.",
+        "Migration 007 is additive and forward-only and uses batch_alter_table for altered columns/constraints (SQLite-safe, PostgreSQL-neutral); a manual upgrade/downgrade round-trip against the compose PostgreSQL is an evidence note, not an automated gate (npm run verify:backend runs pytest + alembic heads only).",
+        "Existing frontend suites and backend suites stay green; mock stories (initialStories, ava-1/2/3 tiles, URL.createObjectURL path) are removed; the avatar pool stays as fallback for users without an uploaded avatar.",
+        "Evidence gates: npm run verify:all and node .claude/hooks/scripts/guard-architecture.mjs --all --strict."
+    ],
+    "nonGoals": [
+        "WS push events for new stories or avatar changes (UI refreshes on fetch after own actions and on page entry)",
+        "video stories, multi-segment stories, grouping by owner with a ring playlist",
+        "story deletion by the owner, view counters, per-viewer story privacy lists",
+        "server-side image processing (crop, resize, re-encode)",
+        "chat member avatars inside GET /chats responses (the N+1 members traffic debt stays a separate topic)",
+        "non-owner chat avatar changes (owner-only is kept)"
+    ]
+}
