@@ -13,6 +13,7 @@ import sinon from 'sinon'
 import '../../../ai-assistant/hbs-test-loader.ts'
 import store from '../../../../utils/Store.ts'
 import ChatsController from '../../controller.ts'
+import StoriesController from '../../stories/controller.ts'
 import { ChatPage } from './chat.ts'
 
 interface ChatPageCallbacks {
@@ -23,17 +24,17 @@ interface ChatPageCallbacks {
     onAddUser?: (userId: number, chatId: number) => Promise<void>
     onSetReaction?: (chatId: number, messageId: number, emoji: string) => void
     onSendMessage?: (chatId: number, message: string, replyToId?: number) => void
-    // stories (мок-стадия)
+    // stories: срез стора (DTO-форма, числовые id); рендер-список
+    // (add-плитка + строковые id) страница строит только в render()
     onSelectStory?: (id?: string) => void
     onCloseViewer?: () => void
     viewerStory?: { owner: string, src: string, alt: string } | null
     stories?: {
-        id: string
+        id: number
         owner: string
         src: string
         alt: string
-        isUnread?: boolean
-        type?: string
+        viewed: boolean
     }[]
 }
 
@@ -248,37 +249,61 @@ describe('chat page social callbacks', () => {
     })
 })
 
-// stories (мок-стадия): таймер автозакрытия принадлежит странице —
-// авто-закрытие, ручные close-пути и устойчивость к посторонним
-// перерисовкам проверяются здесь, у владельца таймера
+// stories: лента — срез стора (features/chats/stories), таймер автозакрытия
+// принадлежит странице; страница НЕ пишет stories-пропсы: гашение кольца —
+// markViewed контроллера (синхронный стор-патч), что и проверяется стабами
 describe('chat page stories', () => {
     let clock: sinon.SinonFakeTimers
 
-    // Node-глобал URL не даёт createObjectURL (это браузерный/jsdom API) —
-    // минимальный тестовый полифилл, прод-код зовёт настоящий API
-    if (typeof URL.createObjectURL !== 'function') {
-        ;(URL as unknown as { createObjectURL: (file: File) => string }).createObjectURL =
-            (file: File) => `blob:mock-${file.name}`
-    }
+    const feed = [
+        {
+            id: 41,
+            owner: 'Midala Huininja',
+            ownerAvatarUrl: '',
+            src: 'http://localhost:8000/api/v1/files/11/download',
+            alt: 'История Midala Huininja',
+            viewed: false,
+        },
+        {
+            id: 42,
+            owner: 'Athalia Putri',
+            ownerAvatarUrl: '',
+            src: 'http://localhost:8000/api/v1/files/12/download',
+            alt: 'История Athalia Putri',
+            viewed: false,
+        },
+        {
+            id: 43,
+            owner: 'Erlan Sadewa',
+            ownerAvatarUrl: '',
+            src: 'http://localhost:8000/api/v1/files/13/download',
+            alt: 'История Erlan Sadewa',
+            viewed: false,
+        },
+    ]
 
     beforeEach(() => {
         clock = sinon.useFakeTimers()
+        store.set('stories', feed)
     })
 
     afterEach(() => {
         clock.restore()
         store.set('chats', undefined)
+        store.set('stories', undefined)
     })
 
-    it('opens the viewer on a story click and auto-closes at 5000 ms marking it viewed', () => {
+    it('opens the viewer on a story click and auto-closes at 5000 ms calling markViewed', () => {
         const fetchChats = sinon.stub(ChatsController, 'fetchChats').resolves()
+        const fetchStories = sinon.stub(StoriesController, 'fetchStories').resolves()
+        const markViewed = sinon.stub(StoriesController, 'markViewed')
 
         try {
             const page = new ChatPage({} as never)
 
-            callbacksOf(page).onSelectStory?.('story-mock-1')
+            callbacksOf(page).onSelectStory?.('41')
 
-            expect(callbacksOf(page).viewerStory?.src).to.eq('/images/ava-1.jpg')
+            expect(callbacksOf(page).viewerStory?.src).to.eq(feed[0].src)
 
             clock.tick(4999)
             expect(callbacksOf(page).viewerStory).to.not.be.null
@@ -286,78 +311,94 @@ describe('chat page stories', () => {
             clock.tick(1)
             expect(callbacksOf(page).viewerStory).to.be.null
 
-            const viewed = callbacksOf(page).stories?.find(story => story.id === 'story-mock-1')
-            const other = callbacksOf(page).stories?.find(story => story.id === 'story-mock-2')
+            // просмотр маркирует контроллер с числовым id — ровно один раз
+            expect(markViewed.calledOnceWith(41)).to.be.true
 
-            expect(viewed?.isUnread).to.be.false
-            expect(other?.isUnread).to.be.true
+            // страница не трогала срез: props.stories — прежний объект
+            expect(callbacksOf(page).stories).to.equal(feed)
 
             page.destroy()
         } finally {
+            markViewed.restore()
+            fetchStories.restore()
             fetchChats.restore()
         }
     })
 
     it('manual close clears the timer: no late fire after the viewer is closed', () => {
         const fetchChats = sinon.stub(ChatsController, 'fetchChats').resolves()
+        const fetchStories = sinon.stub(StoriesController, 'fetchStories').resolves()
+        const markViewed = sinon.stub(StoriesController, 'markViewed')
 
         try {
             const page = new ChatPage({} as never)
 
-            callbacksOf(page).onSelectStory?.('story-mock-1')
+            callbacksOf(page).onSelectStory?.('41')
             callbacksOf(page).onCloseViewer?.()
 
             expect(callbacksOf(page).viewerStory).to.be.null
+            expect(markViewed.calledOnceWith(41)).to.be.true
 
             const storiesAfterClose = callbacksOf(page).stories
 
             clock.tick(5000)
 
-            // повторного close не было: массив историй тот же объект
+            // повторного close и markViewed не было: срез не менялся
+            expect(markViewed.calledOnce).to.be.true
             expect(callbacksOf(page).stories).to.equal(storiesAfterClose)
             expect(callbacksOf(page).viewerStory).to.be.null
 
             page.destroy()
         } finally {
+            markViewed.restore()
+            fetchStories.restore()
             fetchChats.restore()
         }
     })
 
     it('keeps the viewer open through an unrelated re-render (store update)', () => {
         const fetchChats = sinon.stub(ChatsController, 'fetchChats').resolves()
+        const fetchStories = sinon.stub(StoriesController, 'fetchStories').resolves()
+        const markViewed = sinon.stub(StoriesController, 'markViewed')
 
         try {
             const page = new ChatPage({} as never)
 
-            callbacksOf(page).onSelectStory?.('story-mock-2')
+            callbacksOf(page).onSelectStory?.('42')
 
             // посторонняя перерисовка: withStore принёс новые chats
             store.set('chats', [])
 
-            expect(callbacksOf(page).viewerStory?.src).to.eq('/images/ava-2.jpg')
+            expect(callbacksOf(page).viewerStory?.src).to.eq(feed[1].src)
 
             // исходный таймер продолжает жить и закрывает один раз
             clock.tick(5000)
 
             expect(callbacksOf(page).viewerStory).to.be.null
-            expect(callbacksOf(page).stories?.find(story => story.id === 'story-mock-2')?.isUnread).to.be.false
+            expect(markViewed.calledOnceWith(42)).to.be.true
 
             page.destroy()
         } finally {
+            markViewed.restore()
+            fetchStories.restore()
             fetchChats.restore()
         }
     })
 
-    it('prepends a picked photo as an unread story through the delegated change, surviving re-renders', () => {
+    it('routes a picked photo to the controller upload through the delegated change, surviving re-renders', () => {
         const fetchChats = sinon.stub(ChatsController, 'fetchChats').resolves()
+        const fetchStories = sinon.stub(StoriesController, 'fetchStories').resolves()
+        const uploadStory = sinon.stub(StoriesController, 'uploadStory').resolves()
+        // setup-фаза открывает/закрывает вьюер: просмотр не предмет теста,
+        // реальный markViewed патчил бы срез (identity-ассерты ниже)
+        const markViewed = sinon.stub(StoriesController, 'markViewed')
 
         try {
             const page = new ChatPage({} as never)
-            const before = callbacksOf(page).stories ?? []
 
             // посторонние ре-рендеры до выбора: открытие/автозакрытие
             // вьюера перерисовало страницу (события обязаны навеситься заново)
-            callbacksOf(page).onSelectStory?.('story-mock-1')
+            callbacksOf(page).onSelectStory?.('41')
             clock.tick(5000)
             expect(callbacksOf(page).viewerStory).to.be.null
 
@@ -369,53 +410,132 @@ describe('chat page stories', () => {
             Object.defineProperty(input, 'files', { value: [file], configurable: true })
             input.dispatchEvent(new window.Event('change', { bubbles: true }))
 
-            const after = callbacksOf(page).stories ?? []
-
-            expect(after.length).to.eq(before.length + 1)
-            expect(after[0]?.type).to.eq('add')
-            expect(after[1]?.owner).to.eq('You story')
-            expect(after[1]?.isUnread).to.be.true
-            expect(after[1]?.src.startsWith('blob:')).to.be.true
+            // файл ушёл контроллеру ровно один раз; никакой оптимистичной
+            // вставки — срез тот же (ленту рефетчит контроллер)
+            expect(uploadStory.calledOnce).to.be.true
+            expect((uploadStory.firstCall.args[0] as File).name).to.eq('photo.png')
+            expect(callbacksOf(page).stories).to.equal(feed)
 
             // вьюер при добавлении не открывался
             expect(callbacksOf(page).viewerStory).to.be.null
 
-            // DOM-порядок: add-плитка осталась первой в ряду историй
+            // DOM-порядок: add-плитка первой в ряду историй
             const tiles = page.element?.querySelectorAll('.chat-story .chat-story__container')
 
-            expect(tiles?.length).to.eq(after.length)
             expect(tiles?.[0]?.classList.contains('chat-story__container_type_add-story')).to.be.true
 
             page.destroy()
         } finally {
+            markViewed.restore()
+            uploadStory.restore()
+            fetchStories.restore()
+            fetchChats.restore()
+        }
+    })
+
+    it('ignores chat-avatar file inputs: an avatar change never uploads a story', () => {
+        const fetchChats = sinon.stub(ChatsController, 'fetchChats').resolves()
+        const fetchStories = sinon.stub(StoriesController, 'fetchStories').resolves()
+        const uploadStory = sinon.stub(StoriesController, 'uploadStory').resolves()
+        const changeChatAvatar = sinon.stub(ChatsController, 'changeChatAvatar').resolves()
+
+        try {
+            // непустой список чатов: в users-list рендерятся скрытые
+            // аватарные инпуты (InputFile name=avatar id=<chatId>)
+            store.set('chats', [
+                { id: 1, title: 'Chat 1', unread_count: 0 },
+                { id: 2, title: 'Chat 2', unread_count: 0 },
+            ])
+
+            const page = new ChatPage({} as never)
+            const avatarInput = page.element?.querySelector(
+                'input[type="file"]:not(.chat-story-file-input)'
+            ) as HTMLInputElement
+
+            expect(avatarInput, 'chat avatar inputs rendered').to.not.be.null
+
+            const file = new File(['avatar'], 'avatar.png', { type: 'image/png' })
+
+            Object.defineProperty(avatarInput, 'files', { value: [file], configurable: true })
+            avatarInput.dispatchEvent(new window.Event('change', { bubbles: true }))
+
+            // смена аватара чата — не история: сторизный контроллер не позван
+            expect(uploadStory.called).to.be.false
+
+            page.destroy()
+        } finally {
+            changeChatAvatar.restore()
+            uploadStory.restore()
+            fetchStories.restore()
+            fetchChats.restore()
+        }
+    })
+
+    it('the add tile opens the story picker, not the first chat avatar input', () => {
+        const fetchChats = sinon.stub(ChatsController, 'fetchChats').resolves()
+        const fetchStories = sinon.stub(StoriesController, 'fetchStories').resolves()
+        const clicked: HTMLElement[] = []
+        // HTMLElement нет в node-глобалах mochaSetup, а глобальный window
+        // может быть из другого jsdom (тест-файлы перезаписывают document) —
+        // окно берём у текущего document, в котором рендерит Block
+        const elementCtor = (document.defaultView ?? window) as typeof window
+        const click = sinon.stub(elementCtor.HTMLElement.prototype, 'click').callsFake(function (this: HTMLElement) {
+            clicked.push(this)
+        })
+
+        try {
+            store.set('chats', [
+                { id: 1, title: 'Chat 1', unread_count: 0 },
+                { id: 2, title: 'Chat 2', unread_count: 0 },
+            ])
+
+            const page = new ChatPage({} as never)
+
+            callbacksOf(page).onSelectStory?.('add-story')
+
+            // пикер открылся на сторизном инпуте: аватарные инпуты чатов
+            // идут в DOM раньше и обязаны быть пропущены
+            expect(clicked).to.have.lengthOf(1)
+            expect(clicked[0]?.className).to.contain('chat-story-file-input')
+
+            page.destroy()
+        } finally {
+            click.restore()
+            fetchStories.restore()
             fetchChats.restore()
         }
     })
 
     it('marks only the viewed story; delegated change without a file is a no-op', () => {
         const fetchChats = sinon.stub(ChatsController, 'fetchChats').resolves()
+        const fetchStories = sinon.stub(StoriesController, 'fetchStories').resolves()
+        const markViewed = sinon.stub(StoriesController, 'markViewed')
+        const uploadStory = sinon.stub(StoriesController, 'uploadStory').resolves()
 
         try {
             const page = new ChatPage({} as never)
 
-            callbacksOf(page).onSelectStory?.('story-mock-3')
+            callbacksOf(page).onSelectStory?.('43')
             callbacksOf(page).onCloseViewer?.()
 
-            const stories = callbacksOf(page).stories ?? []
-            const viewed = stories.filter(story => story.isUnread === false)
+            // markViewed — только закрытая история, срез страница не меняла
+            expect(markViewed.calledOnceWith(43)).to.be.true
+            expect(callbacksOf(page).stories).to.equal(feed)
 
-            expect(viewed.map(story => story.id)).to.deep.eq(['story-mock-3'])
-
-            // делегированный change: input без файла игнорируется, value сброшен
+            // делегированный change: input без файла игнорируется
             const input = page.element?.querySelector('input[type="file"]') as HTMLInputElement | null
             const change = new window.Event('change', { bubbles: true })
 
             input?.dispatchEvent(change)
 
-            expect((callbacksOf(page).stories ?? []).length).to.eq(stories.length)
+            expect(uploadStory.called).to.be.false
+            expect(callbacksOf(page).stories).to.equal(feed)
 
             page.destroy()
         } finally {
+            uploadStory.restore()
+            markViewed.restore()
+            fetchStories.restore()
             fetchChats.restore()
         }
     })

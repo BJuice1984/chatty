@@ -12,6 +12,9 @@ export enum StoreEvents {
 export interface AppState {
     chatUsers?: ChatUser[] | undefined
     selectedChat?: number
+    // лента историй: тип живёт в фичевом модуле (features/chats/stories),
+    // ядро остаётся shape-agnostic — как у chats; каст в срезе модуля
+    stories?: { [key: string]: unknown }[]
     messages?: Record<number, Message[]>
     // человекочитаемая ошибка последнего запроса авторизации (сеть/бэкенд):
     // контроллер auth пишет, страницы входа/регистрации показывают под формой

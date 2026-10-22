@@ -27,6 +27,8 @@ class ChatResponse(BaseModel):
     # непрочитанные для запрашивающего: чужие сообщения новее последнего
     # прочитанного (0, если всё прочитано)
     unread_count: int = 0
+    # аватар чата (свой или None); заполняется из Chat.avatar_url
+    avatar_url: str | None = None
 
 
 class ChatMemberResponse(BaseModel):

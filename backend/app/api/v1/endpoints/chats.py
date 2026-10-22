@@ -44,6 +44,7 @@ async def list_chats(
             is_ai=chat.is_ai,
             created_at=chat.created_at,
             unread_count=unread.get(chat.id, 0),
+            avatar_url=chat.avatar_url,
         )
         for chat in chats
     ]
@@ -161,6 +162,13 @@ async def list_chat_members(
     service.require_member(chat_id, current_user.id)
     members = service.chats.list_members(chat_id)
     return [
-        {'id': user_id, 'login': email, 'display_name': email.split('@')[0]}
-        for user_id, email in members
+        {
+            'id': user_id,
+            'login': email,
+            'display_name': email.split('@')[0],
+            'avatar_url': (
+                f'{avatar_file_id}/download' if avatar_file_id is not None else None
+            ),
+        }
+        for user_id, email, avatar_file_id in members
     ]

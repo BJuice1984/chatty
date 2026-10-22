@@ -17,12 +17,23 @@ class Chat(Base):
     title: Mapped[str] = mapped_column(String(200), nullable=False)
     owner_id: Mapped[int] = mapped_column(ForeignKey('users.id', ondelete='RESTRICT'), nullable=False, index=True)
     is_ai: Mapped[bool] = mapped_column(Boolean, default=False, server_default='0', nullable=False)
+    # use_alter: files<->chats/users FK-цикл, drop_all без него не сортирует таблицы
+    avatar_file_id: Mapped[int | None] = mapped_column(
+        ForeignKey('files.id', ondelete='SET NULL', use_alter=True),
+        nullable=True,
+    )
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
         default=lambda: datetime.now(UTC),
         server_default=func.now(),
         nullable=False,
     )
+
+    @property
+    def avatar_url(self) -> str | None:
+        """Avatar as a files-relative path for from_attributes responses."""
+
+        return f'{self.avatar_file_id}/download' if self.avatar_file_id is not None else None
 
 
 class ChatMember(Base):

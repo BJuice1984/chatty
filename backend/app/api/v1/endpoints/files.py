@@ -14,7 +14,8 @@ from sqlalchemy.orm import Session
 from app.core.deps import get_current_user, get_db, get_settings
 from app.core.config import Settings
 from app.models.user import User
-from app.schemas.file import FileResponse
+from app.schemas.file import AvatarUploadResponse, FileResponse
+from app.services.chats import ChatService
 from app.services.files import FileService, get_object_storage
 
 
@@ -47,6 +48,51 @@ async def upload_file(
         raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail='file_storage_upload_failed') from exc
     service.mark_upload_ready(prepared.file)
     return service.response(prepared.file)
+
+
+@router.post('/avatars', response_model=AvatarUploadResponse, status_code=status.HTTP_201_CREATED)
+async def upload_avatar(
+    request: Request,
+    kind: str = Form('user'),
+    chat_id: int | None = Form(None),
+    uploaded: UploadFile = UploadFileMarker(...),
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+    settings: Settings = Depends(get_settings),
+) -> AvatarUploadResponse:
+    """User/chat avatar upload into global media storage (images only)."""
+
+    if kind not in {'user', 'chat'}:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail='invalid_avatar_kind')
+    if kind == 'chat' and chat_id is None:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail='chat_id_required')
+
+    # владение чатом проверяем ДО загрузки: 403/404 не должны расходовать
+    # объектное хранилище и оставлять осиротевшую File-строку
+    chat = ChatService(db).require_owned(chat_id, current_user.id) if kind == 'chat' else None
+
+    body = await uploaded.read(settings.max_upload_bytes + 1)
+    storage = get_object_storage(settings, request.app.state)
+    files = FileService(db, storage, settings)
+    prepared = files.prepare_media_upload(
+        owner_id=current_user.id,
+        original_name=uploaded.filename or '',
+        content_type=uploaded.content_type,
+        body=body,
+    )
+    try:
+        await asyncio.to_thread(storage.upload, prepared.file.object_key, body, prepared.content_type)
+    except Exception as exc:
+        files.mark_upload_failed(prepared.file)
+        raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail='file_storage_upload_failed') from exc
+    files.mark_upload_ready(prepared.file)
+
+    if kind == 'chat':
+        files.set_chat_avatar(chat, prepared.file)
+    else:
+        files.set_user_avatar(current_user, prepared.file)
+
+    return files.avatar_response(prepared.file)
 
 
 @router.get('/{file_id}/download')
