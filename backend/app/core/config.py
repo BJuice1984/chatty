@@ -38,8 +38,9 @@ class Settings(BaseSettings):
     max_upload_bytes: int = Field(default=10 * 1024 * 1024, ge=1, le=1024 * 1024 * 1024)
     # how long a story stays in the feed, hours
     story_ttl_hours: int = Field(default=24, ge=1, le=24 * 30)
-    # demo story feed seed (three users with real story files)
-    seed_demo_stories: bool = Field(default=True)
+    # demo story feed seed (three users with real story files); opt-in
+    # only via the operator env — clean stacks stay free of demo users
+    seed_demo_stories: bool = Field(default=False)
     object_storage_endpoint: str = 'http://object-storage:9000'
     object_storage_bucket: str = 'chatty-files'
     object_storage_region: str = 'us-east-1'
