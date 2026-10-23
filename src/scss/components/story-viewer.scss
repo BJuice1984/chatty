@@ -81,6 +81,11 @@
         white-space: nowrap;
     }
 
+    //кнопка удаления своей истории: тот же крестик, что у close,
+
+    //но с красным hover — иконка общая с close через запятую
+
+    &__delete,
     &__close {
         @include reset;
         @include size(28px, 28px);

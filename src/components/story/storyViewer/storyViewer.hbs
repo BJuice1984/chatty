@@ -7,6 +7,9 @@
         </div>
         <div class="chat-story-viewer__head">
             <p class="chat-story-viewer__owner">{{story.owner}}</p>
+            {{#if story.isOwn}}
+            <button type="button" class="chat-story-viewer__delete" data-testid="story-viewer-delete" aria-label="Удалить историю"></button>
+            {{/if}}
             <button type="button" class="chat-story-viewer__close" data-testid="story-viewer-close" aria-label="Закрыть историю"></button>
         </div>
         <img class="chat-story-viewer__img" src="{{story.src}}" alt="{{story.alt}}">

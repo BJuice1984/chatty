@@ -4,18 +4,22 @@
 // chats-social: колбэки @-поиска, добавления пользователя, реакций и
 // реплаев; chatPaneOpen дополнительно сбрасывается при очистке selectedChat
 // (WS chat_deleted сбрасывает выбор через контроллер).
-// stories (мок-стадия): состояние историй живёт в пропсах страницы —
-// таймер автозакрытия и фокус оверлея принадлежат именно странице, потому
-// что hbs-дети пересоздаются каждой перерисовкой родителя (старые без
-// destroy() и без повторного CDM) — таймер внутри вьюера стал бы зомби.
+// stories: лента приходит из стора (срез features/chats/stories), страница
+// сохраняет только жизненный цикл UI — таймер автозакрытия и фокус оверлея
+// принадлежат именно странице, потому что hbs-дети пересоздаются каждой
+// перерисовкой родителя (старые без destroy() и без повторного CDM) — таймер
+// внутри вьюера стал бы зомби. Пропсы stories страница не пишет: единственный
+// писатель — StoriesController (иначе оптимистичный патч гонялся бы с
+// withStore-мэппингом на любом постороннем store.set).
 
-import { nanoid } from 'nanoid'
 import Block from '../../../../core/Block.ts'
 import { AppState, withStore } from '../../../../utils/Store.ts'
 import type { ChatInfo } from '../../../../utils/types.ts'
 import { emptyValidationMessage } from '../../../../utils/constants.ts'
 import { emptyValidator } from '../../../../utils/validators.ts'
 import ChatsController from '../../controller.ts'
+import StoriesController from '../../stories/controller.ts'
+import type { StoryDto } from '../../stories/ports.ts'
 import type { ViewerStory } from '../../../../components/story/storyViewer/storyViewer.ts'
 import template from './chat.hbs'
 
@@ -27,18 +31,24 @@ export const STORY_VIEW_DURATION_MS = 5000
 const ADD_STORY_ID = 'add-story'
 
 export interface StoryItem {
+    // серверные id строкифицируются при построении рендер-списка: единый
+    // тип id через страницу (add-плитка id не числовой)
     id: string
     owner: string
     src: string
     alt: string
     // выделенная (непросмотренная) рамка; add-плитка поле не задаёт
     isUnread?: boolean
+    // своя история: зелёная рамка и удаление из вьюера
+    isOwn?: boolean
     extraClass?: string
     type?: 'add'
 }
 
 interface ChatPageProps {
-    stories: StoryItem[]
+    // лента из стора (срез features/chats/stories): тип модуля — дубль
+    // внутри одной фичи разъезжался бы с контрактом
+    stories: StoryDto[]
     // открытая в viewer история (или null); id открытой хранит openedStoryId
     viewerStory?: ViewerStory | null
     chats?: ChatInfo[]
@@ -56,40 +66,32 @@ class ChatPageBase extends Block {
     // список, только если читали низ.
     private pinnedToBottom = true
 
-    // Мок-стадия stories: истории переживают перезагрузку только до
-    // перезахода на страницу — инстанс пересоздаётся, состояние в пропсах
-    private static initialStories(): StoryItem[] {
-        return [
-            {
-                id: ADD_STORY_ID,
-                owner: 'You story',
-                extraClass: 'chat-story__container_type_add-story',
-                src: '/images/add-story-icon.svg',
-                alt: 'Иконка. Создать историю',
-                type: 'add',
-            },
-            {
-                id: 'story-mock-1',
-                owner: 'Midala Huininja',
-                src: '/images/ava-1.jpg',
-                alt: 'Аватар пользователя',
-                isUnread: true,
-            },
-            {
-                id: 'story-mock-2',
-                owner: 'Athalia Putri',
-                src: '/images/ava-2.jpg',
-                alt: 'Аватар пользователя',
-                isUnread: true,
-            },
-            {
-                id: 'story-mock-3',
-                owner: 'Erlan Sadewa',
-                src: '/images/ava-3.jpg',
-                alt: 'Аватар пользователя',
-                isUnread: true,
-            },
-        ]
+    // Статичная add-плитка первой в рендер-списке: реальные истории
+    // приносит стор (features/chats/stories), мок-плитки убраны
+    private static addStoryTile(): StoryItem {
+        return {
+            id: ADD_STORY_ID,
+            owner: 'You story',
+            extraClass: 'chat-story__container_type_add-story',
+            src: '/images/add-story-icon.svg',
+            alt: 'Иконка. Создать историю',
+            type: 'add',
+        }
+    }
+
+    // Рендер-список: add-плитка + серверные истории из пропсов стора
+    // (числовые id строкифицируются — единый тип id через страницу)
+    private get renderStories(): StoryItem[] {
+        const feed = this.pageProps.stories ?? []
+
+        return [ChatPageBase.addStoryTile(), ...feed.map(story => ({
+            id: String(story.id),
+            owner: story.owner,
+            src: story.src,
+            alt: story.alt,
+            isUnread: !story.viewed,
+            isOwn: story.isOwn === true,
+        }))]
     }
 
     // Таймер автозакрытия вьюера: владелец — стабильный инстанс страницы
@@ -107,7 +109,7 @@ class ChatPageBase extends Block {
     }
 
     private storyById(id: string): StoryItem | undefined {
-        return (this.pageProps.stories ?? []).find(story => story.id === id)
+        return this.renderStories.find(story => story.id === id)
     }
 
     private openStory(id: string): void {
@@ -124,28 +126,37 @@ class ChatPageBase extends Block {
         this.storyTimer = setTimeout(() => this.closeStory(id), STORY_VIEW_DURATION_MS)
         this.openedStoryId = id
         this.setProps({
-            viewerStory: { owner: story.owner, src: story.src, alt: story.alt },
+            viewerStory: {
+                owner: story.owner,
+                src: story.src,
+                alt: story.alt,
+                isOwn: story.isOwn === true,
+            },
         })
         this.focusViewer()
     }
 
-    // Единый close-путь (таймаут, бэкдроп, крестик, Escape): чистит таймер
-    // и одним setProps закрывает вьюер с маркировкой просмотренной
-    // (null — закрытие без открытой истории, только сброс вьюера)
-    private closeStory(id: string | null): void {
+    // Сброс вьюера без маркировки просмотра (общая часть close-путей)
+    private closeViewer(): void {
         if (this.storyTimer != null) {
             clearTimeout(this.storyTimer)
             this.storyTimer = null
         }
 
         this.openedStoryId = null
+        this.setProps({ viewerStory: null })
+    }
 
-        const stories = this.pageProps.stories ?? []
-        const nextStories = id == null
-            ? stories
-            : stories.map(story => (story.id === id && story.isUnread === true ? { ...story, isUnread: false } : story))
+    // Единый close-путь (таймаут, бэкдроп, крестик, Escape): сбрасывает
+    // вьюер и маркирует просмотр. Срез стора контроллер патчит синхронно
+    // ДО POST — кольцо гаснет через withStore, сама страница stories-пропсы
+    // не пишет (null — сброс без открытой)
+    private closeStory(id: string | null): void {
+        this.closeViewer()
 
-        this.setProps({ viewerStory: null, stories: nextStories })
+        if (id != null && id !== ADD_STORY_ID) {
+            StoriesController.markViewed(Number(id))
+        }
     }
 
     // Фокус на оверлей ради Escape: ставится при открытии и после каждой
@@ -173,11 +184,18 @@ class ChatPageBase extends Block {
 
     // Делегированный change с корня страницы (переживает перерисовки —
     // _addEvents перевешивает events; слушатель в CDM умер бы на первом
-    // ре-рендере после fetchChats): скрытый input выбора фото истории
+    // ре-рендере после fetchChats): скрытый input выбора фото истории.
+    // Гвардия по классу, а не по type=file: в списке чатов свои скрытые
+    // file-инпуты аватаров (InputFile name=avatar), их выбор не должен
+    // уезжать на бэкенд историей
     private handleStoryFileChange(event: Event): void {
         const target = event.target as HTMLInputElement | null
 
-        if (target == null || typeof target.type !== 'string' || target.type !== 'file') {
+        if (
+            target == null ||
+            typeof target.className !== 'string' ||
+            !target.className.includes('chat-story-file-input')
+        ) {
             return
         }
 
@@ -187,41 +205,19 @@ class ChatPageBase extends Block {
         target.value = ''
 
         if (file != null) {
-            this.addStoryFromFile(file)
+            // файл уходит на бэкенд, лента рефетчится контроллером — своя
+            // новая история приходит первой с кольцом с сервера; без
+            // оптимистичного blob-вставления
+            void StoriesController.uploadStory(file)
         }
-    }
-
-    // Выбранное фото → новая история первой среди обычных (сразу после
-    // add-плитки) с выделенной рамкой; вьюер не открывается
-    private addStoryFromFile(file: File): void {
-        const stories = this.pageProps.stories ?? []
-        const addIndex = stories.findIndex(story => story.type === 'add')
-
-        if (addIndex === -1) {
-            return
-        }
-
-        const next: StoryItem = {
-            id: nanoid(8),
-            owner: 'You story',
-            src: URL.createObjectURL(file),
-            alt: 'История пользователя',
-            isUnread: true,
-        }
-
-        this.setProps({
-            stories: [
-                ...stories.slice(0, addIndex + 1),
-                next,
-                ...stories.slice(addIndex + 1),
-            ],
-        })
     }
 
     // Открытие пикера add-плиткой: ref на сыром HTML не существует (refs
-    // собираются только из компонент-хелперов) — querySelector в момент клика
+    // собираются только из компонент-хелперов) — querySelector в момент
+    // клика. Селектор точечный по классу: первый input[type=file] в DOM —
+    // скрытый аватарный инпут первого чата списка
     private openStoryPicker(): void {
-        const input = this.element?.querySelector<HTMLInputElement>('input[type="file"]')
+        const input = this.element?.querySelector<HTMLInputElement>('input.chat-story-file-input')
 
         input?.click()
     }
@@ -274,6 +270,17 @@ class ChatPageBase extends Block {
                 // viewerStory-объект id не несёт — вьюер презентационный
                 this.closeStory(this.openedStoryId)
             },
+            onDeleteViewer: () => {
+                // удаление своей истории: вьюер закрывается БЕЗ маркировки
+                // просмотра — история исчезает из ленты после рефетча
+                const id = this.openedStoryId
+
+                this.closeViewer()
+
+                if (id != null && id !== ADD_STORY_ID) {
+                    void StoriesController.deleteStory(Number(id))
+                }
+            },
             onClick: () => {
                 this.refs.create.setProps({ isShown: true })
             },
@@ -324,8 +331,11 @@ class ChatPageBase extends Block {
                     },
                 },
             ],
-            stories: ChatPageBase.initialStories(),
             chats: propsFromStore.chats,
+            // лента историй из стора (мэппинг withChats): конструктор
+            // перечисляет пропсы явно — stories обязана проброситься сюда,
+            // иначе потеряется между withStore и Block
+            stories: propsFromStore.stories ?? [],
             events: {
                 // делегированный change (см. handleStoryFileChange)
                 change: (event: Event) => {
@@ -439,6 +449,8 @@ class ChatPageBase extends Block {
         // Router-ом при монтировании; уход с маршрута уничтожает инстанс,
         // поэтому возврат монтирует свежий и фетч повторяется.
         void ChatsController.fetchChats()
+        // лента историй — так же на каждом заходе (мок-стадия убрана)
+        void StoriesController.fetchStories()
 
         // scroll не всплывает — слушаем контейнер сообщений напрямую; узел
         // умирает вместе с инстансом, утечки нет
@@ -454,7 +466,9 @@ class ChatPageBase extends Block {
     }
 
     render() {
-        return this.compile(template, this.props)
+        // рендер-список историй (add-плитка + стор) подменяет сырой пропс:
+        // шаблон по-прежнему итерирует stories, chat.hbs не меняется
+        return this.compile(template, { ...this.props, stories: this.renderStories })
     }
 }
 
@@ -462,6 +476,9 @@ const withChats = withStore((state: AppState) => {
     return {
         chats: state.chats,
         selectedChat: state.selectedChat,
+        // лента историй (срез features/chats/stories) — рендер-список
+        // (add-плитка + строковые id) страница строит в render()
+        stories: state.stories as StoryDto[] | undefined,
     }
 })
 

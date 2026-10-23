@@ -25,6 +25,8 @@ export interface OwnChatResponse {
     is_ai: boolean
     created_at: string
     unread_count?: number
+    // файловый путь аватара чата ("{file_id}/download") или null
+    avatar_url?: string | null
 }
 
 // Ответ GET /users?login= : id, полный (нижнерегистровый) email и выводимое
@@ -49,11 +51,10 @@ export function toChatInfo(response: OwnChatResponse): ChatInfo {
     return {
         id: response.id,
         title: response.title,
-        // контракт не даёт картинок: по умолчанию пусто; аватаром личного
-        // диалога становится pool-аватар собеседника, когда контроллер
-        // узнаёт участников (getChatUsers после открытия чата или добавления
-        // в него пользователя) — см. applyCompanionAvatar в controller.ts
-        avatar: '',
+        // свой аватар чата с бэкенда или пусто: аватаром личного диалога
+        // становится (уже реальный) аватар собеседника, когда контроллер
+        // узнаёт участников — см. applyCompanionAvatar в controller.ts
+        avatar: response.avatar_url ?? '',
         unread_count: response.unread_count ?? 0,
         // ИИ-чат: бейдж и акцент в списке чатов
         is_ai: response.is_ai,
@@ -89,7 +90,7 @@ export const ownChatsPort: ChatsPort = {
     },
     async getChatUsers(chatId: number) {
         const members = await (http.get(`/${chatId}/members`) as unknown as Promise<
-            { id: number; login: string; display_name: string }[]
+            { id: number; login: string; display_name: string; avatar_url?: string | null }[]
         >)
 
         return members.map(member => ({
@@ -100,11 +101,32 @@ export const ownChatsPort: ChatsPort = {
             first_name: member.display_name,
             second_name: '',
             phone: '',
-            avatar: avatarPoolUrl(member.id),
+            // реальный аватар участника, иначе pool-фолбэк
+            avatar: member.avatar_url ?? avatarPoolUrl(member.id),
         }))
     },
-    changeChatAvatar() {
-        unsupported('changeChatAvatar')
+    async changeChatAvatar(data: FormData) {
+        // id чата UI кладёт в FormData полем chatId (кликнутая плитка —
+        // не обязательно selectedChat); файловое поле называется avatar
+        const chatId = data.get('chatId')
+        const file = data.get('avatar')
+
+        if (typeof chatId !== 'string' || chatId === '' || !(file instanceof File)) {
+            throw new Error('Операция changeChatAvatar недоступна в own-режиме: форма не содержит chatId/avatar')
+        }
+
+        const payload = new FormData()
+
+        payload.append('uploaded', file)
+        payload.append('kind', 'chat')
+        payload.append('chat_id', chatId)
+
+        const response = await (new HTTPTransport('/files/avatars').post('', {
+            data: payload,
+            csrfToken: readCsrfToken(),
+        }) as unknown as Promise<{ avatar_url: string | null }>)
+
+        return { avatar: response.avatar_url ?? '' }
     },
     async searchUsers(data) {
         const users = await (usersHttp.get('', { data: { login: data.login } }) as unknown as Promise<OwnUserSearchResponse>)

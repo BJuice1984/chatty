@@ -69,6 +69,32 @@
         min-height: 108px;
         border-bottom: $borderChatBottom;
         list-style: none;
+        overflow-x: auto;
+
+        //много историй: ряд скроллится вбок, плитки не сжимаются;
+
+        //полоса — в фирменном стиле (как у списка сообщений)
+
+        &::-webkit-scrollbar {
+            height: 6px;
+        }
+
+        &::-webkit-scrollbar-thumb {
+            background-color: $thirdTextColor;
+            border-radius: 6px;
+        }
+
+        &::-webkit-scrollbar-track {
+            background-color: $secondColor;
+            border-radius: 8px;
+        }
+
+        scrollbar-width: thin;
+        scrollbar-color: $thirdTextColor $secondColor;
+
+        .chat-story {
+            flex-shrink: 0;
+        }
     }
 
     &__search-bar {

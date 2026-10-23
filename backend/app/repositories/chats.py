@@ -119,14 +119,14 @@ class ChatRepository:
 
         self.session.commit()
 
-    def list_members(self, chat_id: int) -> list[tuple[int, str]]:
-        """Участники чата как (user_id, email-хэнл) — для UI-списка и меток
-        «уже добавлен» в поиске пользователей."""
+    def list_members(self, chat_id: int) -> list[tuple[int, str, int | None]]:
+        """Участники чата как (user_id, email-хэнл, avatar_file_id) — для
+        UI-списка, меток «уже добавлен» в поиске и аватаров участников."""
         rows = (
-            self.session.query(ChatMember.user_id, User.email)
+            self.session.query(ChatMember.user_id, User.email, User.avatar_file_id)
             .join(User, User.id == ChatMember.user_id)
             .filter(ChatMember.chat_id == chat_id)
             .order_by(ChatMember.user_id)
             .all()
         )
-        return [(row.user_id, row.email) for row in rows]
+        return [(row.user_id, row.email, row.avatar_file_id) for row in rows]

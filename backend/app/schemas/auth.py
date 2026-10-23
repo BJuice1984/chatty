@@ -36,6 +36,8 @@ class UserResponse(BaseModel):
     role: str
     is_active: bool
     created_at: datetime
+    # populated from the User.avatar_url property (None when not uploaded)
+    avatar_url: str | None = None
 
 
 class MessageResponse(BaseModel):

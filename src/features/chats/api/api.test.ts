@@ -66,7 +66,6 @@ class FakeXHR {
 
 const unsupportedMethods = [
     'removeUsers',
-    'changeChatAvatar',
 ] as const
 
 async function captureError(action: () => unknown): Promise<unknown> {
@@ -113,6 +112,13 @@ describe('chats api adapter', () => {
     it('should carry is_ai through toChatInfo both ways', () => {
         expect(toChatInfo(ownChat).is_ai).to.be.false
         expect(toChatInfo({ ...ownChat, is_ai: true }).is_ai).to.be.true
+    })
+
+    it('maps the chat avatar_url file path onto ChatInfo', () => {
+        // свой аватар чата с бэкенда приходит файловым путём
+        expect(toChatInfo({ ...ownChat, avatar_url: '9/download' }).avatar).to.eq('9/download')
+        // без аватара — пусто: собеседника подставит контроллер
+        expect(toChatInfo({ ...ownChat, avatar_url: null }).avatar).to.eq('')
     })
 
     it('should return an empty token sentinel for the cookie-auth WS flow', async () => {
@@ -182,6 +188,52 @@ describe('chats api social operations (fake XHR)', () => {
         expect(call.method).to.eq('DELETE')
         expect(call.url).to.contain('/chats/7')
         expect(call.headers['X-CSRF-Token']).to.eq('token-1')
+    })
+
+    it('uploads a chat avatar over POST /files/avatars rebuilding the UI FormData', async () => {
+        FakeXHR.responses.push({ status: 201, response: { avatar_url: '9/download' } })
+
+        // UI-форма: файловое поле avatar + chatId кликнутой плитки
+        const data = new FormData()
+        const file = new File(['avatar'], 'avatar.png', { type: 'image/png' })
+
+        data.append('avatar', file)
+        data.append('chatId', '3')
+
+        const result = await ownChatsPort.changeChatAvatar(data)
+
+        const call = FakeXHR.calls[0]
+        const body = call.body as unknown as FormData
+
+        expect(call.method).to.eq('POST')
+        expect(call.url).to.contain('/files/avatars')
+        expect(call.headers['X-CSRF-Token']).to.eq('token-1')
+        expect(body.get('kind')).to.eq('chat')
+        expect(body.get('chat_id')).to.eq('3')
+        expect((body.get('uploaded') as File).name).to.eq('avatar.png')
+        expect(result).to.deep.eq({ avatar: '9/download' })
+    })
+
+    it('rejects a chat avatar upload when the UI form carries no chatId or file', async () => {
+        const error = await captureError(() => ownChatsPort.changeChatAvatar(new FormData()))
+
+        expect(error).to.be.instanceOf(Error)
+        expect((error as Error).message).to.match(/недоступна в own-режиме/)
+    })
+
+    it('maps member avatar_url with the pool fallback in getChatUsers', async () => {
+        FakeXHR.responses.push({
+            status: 200,
+            response: [
+                { id: 7, login: 'ada@example.com', display_name: 'ada', avatar_url: '5/download' },
+                { id: 8, login: 'bob@example.com', display_name: 'bob', avatar_url: null },
+            ],
+        })
+
+        const members = await ownChatsPort.getChatUsers(3)
+
+        expect(members[0]?.avatar).to.eq('5/download')
+        expect(members[1]?.avatar).to.eq('/images/avatars/1.svg')
     })
 
     it('toggles a reaction over POST reactions with the emoji body', async () => {

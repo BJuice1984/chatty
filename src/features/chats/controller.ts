@@ -287,9 +287,12 @@ export class ChatsFeatureController {
 
     async changeChatAvatar(userData: FormData): Promise<void> {
         try {
-            const newChatAva = await this.port.changeChatAvatar(userData)
+            await this.port.changeChatAvatar(userData)
 
-            store.set('newChatAva', newChatAva.avatar)
+            // свежий список чатов принесёт avatar_url загруженного аватара
+            // (рефетч вместо точечного newChatAva: адрес записи знает только
+            // адаптер, а лента уже единый источник)
+            await this.fetchChats()
         } catch (e: unknown) {
             console.error('Ошибка при изменении аватара чата:', e)
         }

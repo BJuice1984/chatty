@@ -21,6 +21,8 @@ export interface OwnUserResponse {
     role: string
     is_active: boolean
     created_at: string
+    // файловый путь ("{file_id}/download") или null, когда аватара нет
+    avatar_url?: string | null
 }
 
 const http = new HTTPTransport('/auth')
@@ -34,7 +36,8 @@ export function toAuthUser(response: OwnUserResponse): AuthUser {
         second_name: '',
         display_name: response.email,
         phone: '',
-        avatar: avatarPoolUrl(response.id),
+        // реальный аватар с бэкенда, иначе детерминированный из пула статики
+        avatar: response.avatar_url ?? avatarPoolUrl(response.id),
     }
 }
 

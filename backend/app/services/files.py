@@ -12,10 +12,12 @@ from fastapi import HTTPException, status
 from sqlalchemy.orm import Session
 
 from app.core.config import Settings
+from app.models.chat import Chat
 from app.models.file import File
+from app.models.user import User
 from app.repositories.chats import ChatRepository
 from app.repositories.files import FileRepository
-from app.schemas.file import FileResponse
+from app.schemas.file import AvatarUploadResponse, FileResponse
 
 
 class ObjectStorage(Protocol):
@@ -24,6 +26,9 @@ class ObjectStorage(Protocol):
 
     def download(self, object_key: str) -> 'DownloadedObject':
         """Return a private object stream."""
+
+    def delete(self, object_key: str) -> None:
+        """Remove an object; missing keys are ignored (idempotent)."""
 
 
 @dataclass(frozen=True)
@@ -102,6 +107,10 @@ class Boto3ObjectStorage:
             content_length=response.get('ContentLength'),
         )
 
+    def delete(self, object_key: str) -> None:
+        self._ensure_bucket()
+        self._client.delete_object(Bucket=self._bucket, Key=object_key)
+
 
 def get_object_storage(settings: Settings, state: object) -> ObjectStorage:
     existing = getattr(state, 'object_storage', None)
@@ -178,6 +187,50 @@ class FileService:
         self.session.refresh(file)
         return PreparedUpload(file=file, content_type=normalized_type)
 
+    def prepare_media_upload(
+        self,
+        *,
+        owner_id: int,
+        original_name: str,
+        content_type: str | None,
+        body: bytes,
+    ) -> PreparedUpload:
+        """Global media (avatars, story images): images only, no chat binding."""
+
+        safe_name = PurePath(original_name.replace('\\', '/')).name.strip()
+        if not safe_name or safe_name in {'.', '..'}:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail='invalid_file_name')
+        if len(body) > self.settings.max_upload_bytes:
+            raise HTTPException(status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE, detail='file_too_large')
+        normalized_type = (content_type or 'application/octet-stream').strip()
+        if not normalized_type or len(normalized_type) > 255:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail='invalid_content_type')
+        if not normalized_type.startswith('image/'):
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail='invalid_content_type')
+
+        file = self.files.add(
+            File(
+                chat_id=None,
+                owner_id=owner_id,
+                object_key=f"media/{uuid4().hex}",
+                original_name=safe_name,
+                content_type=normalized_type,
+                size_bytes=len(body),
+                status='pending',
+            )
+        )
+        self.session.commit()
+        self.session.refresh(file)
+        return PreparedUpload(file=file, content_type=normalized_type)
+
+    def set_user_avatar(self, user: User, file: File) -> None:
+        user.avatar_file_id = file.id
+        self.session.commit()
+
+    def set_chat_avatar(self, chat: Chat, file: File) -> None:
+        chat.avatar_file_id = file.id
+        self.session.commit()
+
     def mark_upload_failed(self, file: File) -> None:
         file.status = 'failed'
         self.session.commit()
@@ -191,7 +244,10 @@ class FileService:
         file = self.files.get_by_id(file_id)
         if file is None:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail='file_not_found')
-        self._require_member(file.chat_id, user_id)
+        # global media (avatars, stories) is readable by any authenticated
+        # user; chat attachments stay participant-only
+        if file.chat_id is not None:
+            self._require_member(file.chat_id, user_id)
         if file.status != 'ready':
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail='file_not_ready')
         try:
@@ -212,6 +268,21 @@ class FileService:
             status=file.status,
             created_at=file.created_at,
             updated_at=file.updated_at,
+        )
+
+    def avatar_response(self, file: File) -> AvatarUploadResponse:
+        return AvatarUploadResponse(
+            file_id=file.id,
+            chat_id=file.chat_id,
+            owner_id=file.owner_id,
+            object_key=file.object_key,
+            original_name=file.original_name,
+            content_type=file.content_type,
+            size_bytes=file.size_bytes,
+            status=file.status,
+            created_at=file.created_at,
+            updated_at=file.updated_at,
+            avatar_url=f'{file.id}/download',
         )
 
     def _require_member(self, chat_id: int, user_id: int) -> None:

@@ -39,7 +39,13 @@ export class ProfileFeatureController {
 
     async changeUserAvatar(userData: FormData): Promise<void> {
         try {
-            profileSlice.setUser(await this.port.changeAvatar(userData))
+            const { avatar } = await this.port.changeAvatar(userData)
+            const user = profileSlice.getUser()
+
+            // точечный патч аватара: остальные поля профиля не менялись
+            if (user != null && avatar !== '') {
+                profileSlice.setUser({ ...user, avatar })
+            }
         } catch (e: unknown) {
             console.error('Ошибка при изменении аватара пользователя:', e)
         }

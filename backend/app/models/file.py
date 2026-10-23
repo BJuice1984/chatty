@@ -14,7 +14,8 @@ class File(Base):
     __tablename__ = 'files'
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
-    chat_id: Mapped[int] = mapped_column(ForeignKey('chats.id', ondelete='CASCADE'), nullable=False, index=True)
+    # NULL — global media (avatars, story images) outside any chat
+    chat_id: Mapped[int | None] = mapped_column(ForeignKey('chats.id', ondelete='CASCADE'), nullable=True, index=True)
     owner_id: Mapped[int] = mapped_column(ForeignKey('users.id', ondelete='RESTRICT'), nullable=False, index=True)
     object_key: Mapped[str] = mapped_column(String(512), unique=True, nullable=False)
     original_name: Mapped[str] = mapped_column(String(255), nullable=False)

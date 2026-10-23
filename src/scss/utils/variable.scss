@@ -21,6 +21,9 @@ $boxShadowLogin: 0 0 6px 0 rgb(0 0 0 / 14%) inset, 0 4px 4px 0 rgb(0 0 0 / 25%);
 //Story
 $borderStoryGradientBorder: linear-gradient(to right, $borderGradientFirstColor , $borderGradientSecondColor);
 $borderStoryGradientBorderHovered: linear-gradient(to bottom, red, orange);
+$borderOwnStoryGradientFirstColor: #C9F7D8; //Own story
+$borderOwnStoryGradientSecondColor: #0E9F6E; //Own story
+$borderOwnStoryGradientBorder: linear-gradient(to right, $borderOwnStoryGradientFirstColor, $borderOwnStoryGradientSecondColor);
 $borderStory: 3px solid $mainColor;
 $borderChat: 1px solid #8175FF;
 $borderChatBottom: 1px solid #1a182b;

@@ -20,8 +20,10 @@ export interface ProfilePort {
     searchUsersByLogin(data: SearchUserData): Promise<ProfileUser[]>
     // eslint-disable-next-line no-unused-vars
     changeProfile(data: ChangeUserData): Promise<ProfileUser>
+    // ответ — только файловый путь загруженного аватара: контроллер
+    // патчит state.user.avatar, полный ProfileUser не возвращается
     // eslint-disable-next-line no-unused-vars
-    changeAvatar(data: FormData): Promise<ProfileUser>
+    changeAvatar(data: FormData): Promise<{ avatar: string }>
 }
 
 export type LogoutAction = () => Promise<void>

@@ -123,3 +123,34 @@ remain separate evidence.
    backup.
 4. Rerun the health/readiness curls and the auth smoke; only then record the
    rollback as complete.
+
+## Demo story feed seed (`CHATTY_SEED_DEMO_STORIES`)
+
+The api container startup runs `python -m app.seed` after migrations. Besides
+the optional admin seed (`CHATTY_SEED_ADMIN_EMAIL`/`CHATTY_SEED_ADMIN_PASSWORD`)
+it can seed a demo story feed: three users (`midala@chatty.demo`,
+`athalia@chatty.demo`, `erlan@chatty.demo`) each with a real story — the photo
+is uploaded to RustFS and the `files`/`stories` rows are created exactly as a
+live upload would, so the frontend feed is indistinguishable from real users'
+stories.
+
+The demo seed is **opt-in via the operator env only** (default off, so clean
+stacks stay free of demo users):
+
+```bash
+# operator env file (gitignored)
+CHATTY_SEED_DEMO_STORIES=true
+```
+
+Behaviour details:
+
+- idempotent: repeated restarts neither duplicate users/files/stories nor
+  re-upload objects;
+- TTL support: a demo story whose `created_at` is within an hour of falling
+  out of the 24h feed TTL is refreshed on the next startup — demo tiles never
+  silently disappear, but they do not jump above freshly uploaded personal
+  stories on every restart either;
+- turning the flag off does not delete anything already seeded; it only stops
+  maintaining the demo feed (the stories age out of the feed by TTL naturally);
+- demo users get a fixed technical password (`DemoStoriesDoNotLogin2026!`)
+  and are not meant for signing in.

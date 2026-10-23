@@ -17,6 +17,8 @@ interface StoryProps {
     // false — история просмотрена: рамка приглушается; undefined/true —
     // выделенная (непросмотренная) рамка. add-плитка не задаёт поле.
     isUnread?: boolean
+    // своя история: зелёная рамка-градиент вместо синей
+    isOwn?: boolean
     // eslint-disable-next-line no-unused-vars
     onClick?: (id?: string) => void
     [key: string]: unknown

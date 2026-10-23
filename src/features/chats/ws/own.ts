@@ -109,6 +109,29 @@ export function toMessage(response: OwnMessageResponse): Message {
     }
 }
 
+// Счётчик непрочитанных в реальном времени: чужое сообщение в чате,
+// который сейчас не открыт, сразу поднимает пилюлю в списке — без ожидания
+// перечитывания GET /chats. Свои сообщения не считаются (как и на бэкенде),
+// открытый чат прочитан по определению (last_read уходит с выдачей истории)
+function incrementUnread(chatId: number, authorId: number): void {
+    const state = store.getState()
+
+    if (state.selectedChat === chatId) {
+        return
+    }
+
+    if (state.user?.id === authorId) {
+        return
+    }
+
+    const chats = (state.chats ?? []).map(chat =>
+        (chat as { id?: number }).id === chatId
+            ? { ...chat, unread_count: ((chat as { unread_count?: number }).unread_count ?? 0) + 1 }
+            : chat)
+
+    store.set('chats', chats)
+}
+
 export class OwnWsAdapter {
     private sockets: Map<number, WSTransport> = new Map()
 
@@ -139,10 +162,13 @@ export class OwnWsAdapter {
             const wsEvent = event as OwnWsEvent
 
             if (wsEvent.type === 'message' && wsEvent.content != null) {
+                const message = toMessage(wsEvent.content as OwnMessageResponse)
+
                 store.set(`messages.${id}`, appendMessages(
                     store.getState().messages?.[id] ?? [],
-                    toMessage(wsEvent.content as OwnMessageResponse)
+                    message
                 ))
+                incrementUnread(id, message.user_id)
 
                 return
             }

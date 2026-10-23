@@ -34,9 +34,18 @@ describe('auth api adapter', () => {
         expect(user.first_name).to.eq('')
         expect(user.second_name).to.eq('')
         expect(user.phone).to.eq('')
-        // аватар — детерминированный из пула статики (id 7 → 8-я картинка),
-        // own-бэкенд аватары пользователей не хранит
+        // аватар — детерминированный из пула статики (id 7 → 8-я картинка):
+        // avatar_url в ответе нет
         expect(user.avatar).to.eq('/images/avatars/8.svg')
+    })
+
+    it('should map the uploaded avatar_url onto AuthUser, null falls back to the pool', () => {
+        const uploaded = toAuthUser({ ...ownResponse, avatar_url: '12/download' })
+
+        // файловый путь как есть: компоненты аватаров резолвят не-слэшевые
+        // значения через fileUrl
+        expect(uploaded.avatar).to.eq('12/download')
+        expect(toAuthUser({ ...ownResponse, avatar_url: null }).avatar).to.eq('/images/avatars/8.svg')
     })
 
     it('should map the form login field to the backend email credential', () => {

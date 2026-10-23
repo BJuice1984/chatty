@@ -4,7 +4,7 @@ from collections.abc import Iterable
 
 from fastapi import APIRouter
 
-from app.api.v1.endpoints import auth, chats, files
+from app.api.v1.endpoints import auth, chats, files, stories
 from app.ws.router import router as websocket_router
 
 
@@ -22,6 +22,7 @@ def build_api_router(domain_routers: Iterable[APIRouter] | None = None) -> APIRo
     router.include_router(auth.router)
     router.include_router(chats.router)
     router.include_router(files.router)
+    router.include_router(stories.router)
     router.include_router(websocket_router)
     for domain_router in [*_domain_routers, *(domain_routers or [])]:
         router.include_router(domain_router)
