@@ -73,4 +73,12 @@ describe('story tile', () => {
 
         story.destroy()
     })
+
+    it('renders the own-story green ring modifier only for isOwn', () => {
+        const own = new Story({ owner: 'me', src: 'x.png', alt: 'a', isOwn: true })
+        const foreign = new Story({ owner: 'ada', src: 'x.png', alt: 'a', isOwn: false })
+
+        expect(own.element?.querySelector('.chat-story__container_own')).to.not.be.null
+        expect(foreign.element?.querySelector('.chat-story__container_own')).to.be.null
+    })
 })

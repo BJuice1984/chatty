@@ -12,6 +12,8 @@ export interface StoryDto {
     src: string
     alt: string
     viewed: boolean
+    // своя история: зелёное кольцо и возможность удаления
+    isOwn: boolean
 }
 
 export interface StoriesPort {
@@ -23,4 +25,7 @@ export interface StoriesPort {
     // идемпотентная отметка просмотра (fire-and-forget со стороны контроллера)
     // eslint-disable-next-line no-unused-vars
     markViewed(id: number): Promise<void>
+    // удаление собственной истории (owner-only на бэкенде)
+    // eslint-disable-next-line no-unused-vars
+    deleteStory(id: number): Promise<void>
 }

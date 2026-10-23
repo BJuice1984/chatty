@@ -6,7 +6,7 @@
         </div>
         <ul class="chat__container-stories-list">
           {{#each stories}}
-            {{{ Story id=this.id owner=this.owner extraClass=this.extraClass src=this.src alt=this.alt isUnread=this.isUnread onClick=../this.onSelectStory }}}
+            {{{ Story id=this.id owner=this.owner extraClass=this.extraClass src=this.src alt=this.alt isUnread=this.isUnread isOwn=this.isOwn onClick=../this.onSelectStory }}}
           {{/each}}
         </ul>
         <div class="chat__search-bar">{{{ SearchBar }}}</div>
@@ -26,5 +26,5 @@
         {{{ Messenger onDeleteChat=this.onDeleteChat onAddUser=this.onAddUser onSearchUsers=this.onSearchUsers onSendMessage=this.onSendMessage onSetReaction=this.onSetReaction onBack=this.onBack }}}
     </div>
     <input class="chat-story-file-input" type="file" accept="image/*" aria-hidden="true" tabindex="-1">
-    {{{ StoryViewer story=this.viewerStory onClose=this.onCloseViewer }}}
+    {{{ StoryViewer story=this.viewerStory onClose=this.onCloseViewer onDelete=this.onDeleteViewer }}}
 </section>

@@ -21,6 +21,9 @@ class MemoryStorage:
         body, content_type = self.objects[object_key]
         return DownloadedObject(BytesIO(body), content_type, len(body))
 
+    def delete(self, object_key: str) -> None:
+        self.objects.pop(object_key, None)
+
 
 pytestmark = pytest.mark.anyio
 
@@ -135,3 +138,26 @@ async def test_stories_require_authentication(client, app):
         await anonymous.post('/api/v1/stories', files={'uploaded': ('s.png', b'x', 'image/png')})
     ).status_code == 401
     await anonymous.aclose()
+
+async def test_story_delete_own_only(client, app):
+    owner = await register(client, 'owner@example.com')
+
+    other_client = AsyncClient(transport=ASGITransport(app=app), base_url='http://testserver')
+    other = await register(other_client, 'other@example.com')
+
+    storage = MemoryStorage()
+    app.state.object_storage = storage
+
+    story = await upload_story(client)
+
+    assert (await other_client.delete(f"/api/v1/stories/{story['id']}")).status_code == 403
+    assert (await other_client.delete('/api/v1/stories/999999')).status_code == 404
+
+    deleted = await client.delete(f"/api/v1/stories/{story['id']}")
+    assert deleted.status_code == 204
+    assert (await client.get('/api/v1/stories')).json() == []
+
+    anonymous = AsyncClient(transport=ASGITransport(app=app), base_url='http://testserver')
+    assert (await anonymous.delete('/api/v1/stories/1')).status_code == 401
+    await anonymous.aclose()
+    await other_client.aclose()

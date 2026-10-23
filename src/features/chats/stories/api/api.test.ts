@@ -82,6 +82,7 @@ describe('stories api adapter (fake XHR)', () => {
                     image_url: '9/download',
                     created_at: '2026-10-22T00:00:00Z',
                     viewed: false,
+                    is_own: true,
                 },
                 {
                     id: 6,
@@ -91,6 +92,7 @@ describe('stories api adapter (fake XHR)', () => {
                     image_url: '10/download',
                     created_at: '2026-10-22T00:00:01Z',
                     viewed: true,
+                    is_own: false,
                 },
             ],
         })
@@ -103,6 +105,8 @@ describe('stories api adapter (fake XHR)', () => {
         // alt в контракте бэкенда нет — синтез из имени владельца
         expect(stories[0]?.alt).to.eq('История ada')
         expect(stories[0]?.viewed).to.be.false
+        expect(stories[0]?.isOwn).to.be.true
+        expect(stories[1]?.isOwn).to.be.false
 
         // у владельца без аватара — pool-фолбэк по его id
         expect(stories[1]?.ownerAvatarUrl).to.eq('/images/avatars/1.svg')
@@ -139,6 +143,18 @@ describe('stories api adapter (fake XHR)', () => {
 
         expect(call.method).to.eq('POST')
         expect(call.url).to.contain('/stories/12/view')
+        expect(call.headers['X-CSRF-Token']).to.eq('token-1')
+    })
+
+    it('deletes an own story over DELETE /stories/{id} with the csrf header', async () => {
+        FakeXHR.responses.push({ status: 204, response: null })
+
+        await ownStoriesPort.deleteStory(5)
+
+        const call = FakeXHR.calls[0]
+
+        expect(call.method).to.eq('DELETE')
+        expect(call.url).to.contain('/stories/5')
         expect(call.headers['X-CSRF-Token']).to.eq('token-1')
     })
 })

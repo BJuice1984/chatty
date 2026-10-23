@@ -84,6 +84,66 @@ def test_feed_orders_own_first_then_others_and_filters_ttl(session: Session):
     assert expired.id not in {item.id for item in feed}
 
 
+def test_feed_is_own_and_delete(session: Session):
+    settings = Settings(environment='test', database_url='sqlite://', jwt_secret='test-secret-that-is-long-enough-for-jwt-signing')
+    mine, other = make_user(session, 'mine@example.com'), make_user(session, 'other@example.com')
+    own_story = make_story(session, mine)
+    other_story = make_story(session, other)
+
+    class Storage:
+        def __init__(self):
+            self.deleted: list[str] = []
+
+        def upload(self, *args):
+            pass
+
+        def download(self, *args):
+            raise AssertionError('unused')
+
+        def delete(self, object_key):
+            self.deleted.append(object_key)
+
+    storage = Storage()
+    feed = StoryService(session, settings).list_feed(mine.id)
+    assert next(item for item in feed if item.id == own_story.id).is_own is True
+    assert next(item for item in feed if item.id == other_story.id).is_own is False
+
+    service = StoryService(session, settings)
+    import pytest as _pytest
+
+    with _pytest.raises(Exception) as foreign:
+        service.delete(other_story.id, mine.id, storage)
+    assert '403' in str(foreign.value.status_code) or foreign.value.status_code == 403
+
+    service.delete(own_story.id, mine.id, storage)
+    from sqlalchemy import select
+
+    from app.models.story import Story as StoryRow
+
+    assert session.scalar(select(StoryRow).where(StoryRow.id == own_story.id)) is None
+    # файл-строка удалена вместе с историей
+    from app.models.file import File as FileRow
+
+    assert session.scalar(select(FileRow).where(FileRow.id == own_story.file_id)) is None
+
+
+def test_feed_orders_others_unviewed_first(session: Session):
+    settings = Settings(environment='test', database_url='sqlite://', jwt_secret='test-secret-that-is-long-enough-for-jwt-signing')
+    mine, other = make_user(session, 'mine@example.com'), make_user(session, 'other@example.com')
+
+    old_unviewed = make_story(session, other, hours_ago=3)
+    new_viewed = make_story(session, other, hours_ago=1)
+    session.add(StoryView(story_id=new_viewed.id, user_id=mine.id))
+    own = make_story(session, mine, hours_ago=2)
+    session.flush()
+
+    feed = StoryService(session, settings).list_feed(mine.id)
+    ids = [item.id for item in feed]
+
+    # свои первыми; чужие — непросмотренные выше просмотренных при любой свежести
+    assert ids == [own.id, old_unviewed.id, new_viewed.id]
+
+
 def test_feed_resolves_viewed_per_caller(session: Session):
     settings = Settings(environment='test', database_url='sqlite://', jwt_secret='test-secret-that-is-long-enough-for-jwt-signing')
     mine, viewer = make_user(session, 'mine@example.com'), make_user(session, 'viewer@example.com')
@@ -98,6 +158,11 @@ def test_feed_resolves_viewed_per_caller(session: Session):
     service.mark_viewed(story.id, mine.id)
     service.mark_viewed(story.id, mine.id)
     assert session.query(StoryView).filter_by(user_id=mine.id).count() == 1
+
+    # своя история владельцу всегда непросмотренная: собственный просмотр
+    # кольцо не гасит (UX «You story»); чужим он остаётся просмотревшим
+    assert service.list_feed(mine.id)[0].viewed is False
+    assert service.list_feed(viewer.id)[0].viewed is True
 
 
 def test_feed_owner_fields(session: Session):

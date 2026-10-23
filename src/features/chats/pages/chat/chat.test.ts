@@ -433,6 +433,50 @@ describe('chat page stories', () => {
         }
     })
 
+    it('deleting an own story closes the viewer without marking it viewed', () => {
+        const fetchChats = sinon.stub(ChatsController, 'fetchChats').resolves()
+        const fetchStories = sinon.stub(StoriesController, 'fetchStories').resolves()
+        const markViewed = sinon.stub(StoriesController, 'markViewed')
+        const deleteStory = sinon.stub(StoriesController, 'deleteStory').resolves()
+
+        try {
+            // собственная история (isOwn) — в рендер-листе она с зелёным
+            // кольцом, вьюер получает кнопку удаления
+            store.set('stories', [{
+                id: 51,
+                owner: 'me',
+                ownerAvatarUrl: '',
+                src: 'http://localhost:8000/api/v1/files/21/download',
+                alt: 'История me',
+                viewed: false,
+                isOwn: true,
+            }])
+
+            const page = new ChatPage({} as never)
+
+            callbacksOf(page).onSelectStory?.('51')
+
+            const props = callbacksOf(page) as { onDeleteViewer?: () => void, viewerStory?: { isOwn?: boolean } | null }
+
+            expect(props.viewerStory?.isOwn).to.be.true
+
+            props.onDeleteViewer?.()
+
+            // вьюер закрыт, удаление уехало контроллеру с числовым id,
+            // просмотр НЕ маркируется — история исчезнет после рефетча
+            expect(callbacksOf(page).viewerStory).to.be.null
+            expect(deleteStory.calledOnceWith(51)).to.be.true
+            expect(markViewed.called).to.be.false
+
+            page.destroy()
+        } finally {
+            deleteStory.restore()
+            markViewed.restore()
+            fetchStories.restore()
+            fetchChats.restore()
+        }
+    })
+
     it('ignores chat-avatar file inputs: an avatar change never uploads a story', () => {
         const fetchChats = sinon.stub(ChatsController, 'fetchChats').resolves()
         const fetchStories = sinon.stub(StoriesController, 'fetchStories').resolves()

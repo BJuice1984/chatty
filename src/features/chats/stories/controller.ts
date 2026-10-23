@@ -33,6 +33,17 @@ class StoriesController {
             console.error('Ошибка при загрузке истории:', e)
         }
     }
+
+    // удаление своей истории: после DELETE лента рефетчится (свои
+    // истории остаются первыми)
+    async deleteStory(id: number): Promise<void> {
+        try {
+            await storiesPort.deleteStory(id)
+            await this.fetchStories()
+        } catch (e: unknown) {
+            console.error('Ошибка при удалении истории:', e)
+        }
+    }
 }
 
 export default new StoriesController()

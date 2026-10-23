@@ -13,8 +13,8 @@ import { ownStoriesPort } from './api/own.ts'
 import StoriesController from './controller.ts'
 
 const feed: StoryDto[] = [
-    { id: 1, owner: 'ada', ownerAvatarUrl: '', src: 'http://x/1', alt: 'История ada', viewed: false },
-    { id: 2, owner: 'bob', ownerAvatarUrl: '', src: 'http://x/2', alt: 'История bob', viewed: false },
+    { id: 1, owner: 'ada', ownerAvatarUrl: '', src: 'http://x/1', alt: 'История ada', viewed: false, isOwn: false },
+    { id: 2, owner: 'bob', ownerAvatarUrl: '', src: 'http://x/2', alt: 'История bob', viewed: false, isOwn: false },
 ]
 
 describe('stories controller', () => {
@@ -71,9 +71,18 @@ describe('stories controller', () => {
             })
     })
 
+    it('deleteStory awaits the delete and refetches the feed', () => {
+        const deleted = sinon.stub(ownStoriesPort, 'deleteStory').resolves()
+
+        return StoriesController.deleteStory(2).then(() => {
+            expect(deleted.calledOnceWith(2)).to.be.true
+            expect(fetchStories.calledOnce).to.be.true
+        })
+    })
+
     it('uploadStory awaits the upload and refetches the feed', () => {
         const refetched: StoryDto[] = [
-            { id: 3, owner: 'ada', ownerAvatarUrl: '', src: 'http://x/3', alt: 'История ada', viewed: false },
+            { id: 3, owner: 'ada', ownerAvatarUrl: '', src: 'http://x/3', alt: 'История ada', viewed: false, isOwn: false },
         ]
 
         fetchStories.resolves(refetched)

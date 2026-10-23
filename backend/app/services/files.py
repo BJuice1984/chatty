@@ -27,6 +27,9 @@ class ObjectStorage(Protocol):
     def download(self, object_key: str) -> 'DownloadedObject':
         """Return a private object stream."""
 
+    def delete(self, object_key: str) -> None:
+        """Remove an object; missing keys are ignored (idempotent)."""
+
 
 @dataclass(frozen=True)
 class DownloadedObject:
@@ -103,6 +106,10 @@ class Boto3ObjectStorage:
             content_type=response.get('ContentType') or 'application/octet-stream',
             content_length=response.get('ContentLength'),
         )
+
+    def delete(self, object_key: str) -> None:
+        self._ensure_bucket()
+        self._client.delete_object(Bucket=self._bucket, Key=object_key)
 
 
 def get_object_storage(settings: Settings, state: object) -> ObjectStorage:

@@ -18,3 +18,6 @@ class StoryResponse(BaseModel):
     created_at: datetime
     # resolved for the requesting viewer
     viewed: bool
+    # the story belongs to the requesting viewer (own stories: green ring,
+    # deletion allowed; the feed always serves them unviewed)
+    is_own: bool

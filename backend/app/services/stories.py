@@ -57,12 +57,17 @@ class StoryService:
                 ),
                 image_url=f'{story.file_id}/download',
                 created_at=story.created_at,
-                viewed=story.id in viewed_ids,
+                # свои истории владельцу всегда непросмотренные: кольцо
+                # не гаснет от собственного просмотра (UX «You story»)
+                viewed=story.owner_id != user_id and story.id in viewed_ids,
+                is_own=story.owner_id == user_id,
             )
 
         mine = [story for story in active if story.owner_id == user_id]
         others = [story for story in active if story.owner_id != user_id]
-        # active_stories returns newest first; each group keeps that order
+        # чужие: непросмотренные выше просмотренных (внутри групп — свежесть);
+        # свои всегда первыми и всегда непросмотренные для владельца
+        others.sort(key=lambda story: story.id in viewed_ids)
         return [to_response(story) for story in [*mine, *others]]
 
     def mark_viewed(self, story_id: int, user_id: int) -> None:
@@ -73,3 +78,23 @@ class StoryService:
         if self.stories.find_view(story_id, user_id) is None:
             self.stories.add_view(StoryView(story_id=story_id, user_id=user_id))
             self.session.commit()
+
+    def delete(self, story_id: int, user_id: int, storage) -> None:
+        """Owner-only story removal: story row, file row and the object."""
+
+        story = self.stories.get_by_id(story_id)
+        if story is None:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail='story_not_found')
+        if story.owner_id != user_id:
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail='story_owner_required')
+        file = self.session.get(File, story.file_id)
+        object_key = file.object_key if file is not None else None
+        self.session.delete(story)
+        if file is not None:
+            self.session.delete(file)
+        self.session.commit()
+        if object_key is not None:
+            try:
+                storage.delete(object_key)
+            except Exception as exc:  # строка удалена, объект остался — не роняем запрос
+                print(f'story delete: object {object_key} left in storage: {exc}')

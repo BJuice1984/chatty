@@ -39,6 +39,8 @@ export interface StoryItem {
     alt: string
     // выделенная (непросмотренная) рамка; add-плитка поле не задаёт
     isUnread?: boolean
+    // своя история: зелёная рамка и удаление из вьюера
+    isOwn?: boolean
     extraClass?: string
     type?: 'add'
 }
@@ -88,6 +90,7 @@ class ChatPageBase extends Block {
             src: story.src,
             alt: story.alt,
             isUnread: !story.viewed,
+            isOwn: story.isOwn === true,
         }))]
     }
 
@@ -123,16 +126,18 @@ class ChatPageBase extends Block {
         this.storyTimer = setTimeout(() => this.closeStory(id), STORY_VIEW_DURATION_MS)
         this.openedStoryId = id
         this.setProps({
-            viewerStory: { owner: story.owner, src: story.src, alt: story.alt },
+            viewerStory: {
+                owner: story.owner,
+                src: story.src,
+                alt: story.alt,
+                isOwn: story.isOwn === true,
+            },
         })
         this.focusViewer()
     }
 
-    // Единый close-путь (таймаут, бэкдроп, крестик, Escape): чистит таймер
-    // и сбрасывает вьюер. Просмотр маркирует контроллер markViewed: срез
-    // стора патчится синхронно ДО POST — кольцо гаснет через withStore,
-    // сама страница stories-пропсы не пишет (null — сброс без открытой)
-    private closeStory(id: string | null): void {
+    // Сброс вьюера без маркировки просмотра (общая часть close-путей)
+    private closeViewer(): void {
         if (this.storyTimer != null) {
             clearTimeout(this.storyTimer)
             this.storyTimer = null
@@ -140,6 +145,14 @@ class ChatPageBase extends Block {
 
         this.openedStoryId = null
         this.setProps({ viewerStory: null })
+    }
+
+    // Единый close-путь (таймаут, бэкдроп, крестик, Escape): сбрасывает
+    // вьюер и маркирует просмотр. Срез стора контроллер патчит синхронно
+    // ДО POST — кольцо гаснет через withStore, сама страница stories-пропсы
+    // не пишет (null — сброс без открытой)
+    private closeStory(id: string | null): void {
+        this.closeViewer()
 
         if (id != null && id !== ADD_STORY_ID) {
             StoriesController.markViewed(Number(id))
@@ -256,6 +269,17 @@ class ChatPageBase extends Block {
                 // id открытой истории хранит страница (openedStoryId);
                 // viewerStory-объект id не несёт — вьюер презентационный
                 this.closeStory(this.openedStoryId)
+            },
+            onDeleteViewer: () => {
+                // удаление своей истории: вьюер закрывается БЕЗ маркировки
+                // просмотра — история исчезает из ленты после рефетча
+                const id = this.openedStoryId
+
+                this.closeViewer()
+
+                if (id != null && id !== ADD_STORY_ID) {
+                    void StoriesController.deleteStory(Number(id))
+                }
             },
             onClick: () => {
                 this.refs.create.setProps({ isShown: true })

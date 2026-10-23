@@ -13,12 +13,16 @@ export interface ViewerStory {
     owner: string
     src: string
     alt: string
+    // своя история: в шапке появляется кнопка удаления
+    isOwn?: boolean
 }
 
 interface StoryViewerProps {
     // открытая история; null/undefined — вьюер скрыт
     story?: ViewerStory | null
     onClose?: () => void
+    // удаление своей истории (кнопка видна только при story.isOwn)
+    onDelete?: () => void
     [key: string]: unknown
 }
 
@@ -30,8 +34,14 @@ export class StoryViewer extends Block {
                 click: (event: Event) => {
                     const target = event.target as HTMLElement | null
 
+                    if (target?.closest('[data-testid="story-viewer-delete"]') != null) {
+                        ;(this.props as StoryViewerProps).onDelete?.()
+
+                        return
+                    }
+
                     if (target?.closest('[data-testid="story-viewer-backdrop"], [data-testid="story-viewer-close"]') != null) {
-                        (this.props as StoryViewerProps).onClose?.()
+                        ;(this.props as StoryViewerProps).onClose?.()
                     }
                 },
                 keydown: (event: Event) => {

@@ -62,3 +62,14 @@ async def view_story(
     settings: Settings = Depends(get_settings),
 ) -> None:
     StoryService(db, settings).mark_viewed(story_id, current_user.id)
+
+@router.delete('/{story_id}', status_code=status.HTTP_204_NO_CONTENT)
+async def delete_story(
+    story_id: int,
+    request: Request,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+    settings: Settings = Depends(get_settings),
+) -> None:
+    storage = get_object_storage(settings, request.app.state)
+    StoryService(db, settings).delete(story_id, current_user.id, storage)

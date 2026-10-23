@@ -19,6 +19,9 @@ class MemoryStorage:
         body, content_type = self.objects[object_key]
         return DownloadedObject(BytesIO(body), content_type, len(body))
 
+    def delete(self, object_key: str) -> None:
+        self.objects.pop(object_key, None)
+
 
 pytestmark = pytest.mark.anyio
 

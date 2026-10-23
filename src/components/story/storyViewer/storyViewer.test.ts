@@ -110,4 +110,19 @@ describe('story viewer', () => {
 
         viewer.destroy()
     })
+
+    it('shows the delete affordance only for own stories and routes the click to onDelete', () => {
+        const onClose = sinon.spy()
+        const onDelete = sinon.spy()
+        const own = new StoryViewer({ story: { owner: 'me', src: 'x.png', alt: 'a', isOwn: true }, onClose, onDelete })
+        const foreign = new StoryViewer({ story: { owner: 'ada', src: 'x.png', alt: 'a', isOwn: false }, onClose, onDelete })
+
+        expect(own.element?.querySelector('[data-testid="story-viewer-delete"]')).to.not.be.null
+        expect(foreign.element?.querySelector('[data-testid="story-viewer-delete"]')).to.be.null
+
+        ;(own.element?.querySelector('[data-testid="story-viewer-delete"]') as HTMLElement).click()
+
+        expect(onDelete.calledOnce).to.be.true
+        expect(onClose.called).to.be.false
+    })
 })

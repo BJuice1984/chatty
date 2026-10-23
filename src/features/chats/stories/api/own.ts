@@ -18,6 +18,7 @@ interface OwnStoryResponse {
     image_url: string
     created_at: string
     viewed: boolean
+    is_own: boolean
 }
 
 const http = new HTTPTransport('/stories')
@@ -35,6 +36,7 @@ function toStoryDto(response: OwnStoryResponse): StoryDto {
         src: fileUrl(response.image_url),
         alt: `История ${owner}`,
         viewed: response.viewed,
+        isOwn: response.is_own,
     }
 }
 
@@ -55,5 +57,9 @@ export const ownStoriesPort: StoriesPort = {
 
     async markViewed(id: number) {
         await http.post(`/${id}/view`, { csrfToken: readCsrfToken() })
+    },
+
+    async deleteStory(id: number) {
+        await http.delete(`/${id}`, { csrfToken: readCsrfToken() })
     },
 }

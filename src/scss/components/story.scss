@@ -39,6 +39,17 @@
         background-color: $borderYourStory;
       }
 
+      //своя история: зелёный градиент вместо синего (просмотр не гасит)
+
+      &_own {
+        background-image: $borderOwnStoryGradientBorder;
+
+        &::before {
+          background-image: $borderOwnStoryGradientBorder;
+          opacity: 0.45;
+        }
+      }
+
       &_type_add-story {
         background-image: none;
         background-color: $borderYourStory;
