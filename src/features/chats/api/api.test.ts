@@ -5,6 +5,7 @@
 
 import { expect } from 'chai'
 import { JSDOM } from 'jsdom'
+import { avatarPoolUrl } from '../../../utils/avatarPool.ts'
 import { ownChatsPort, toChatInfo } from './own.ts'
 import { chatsPort } from './index.ts'
 
@@ -99,26 +100,67 @@ describe('chats api adapter', () => {
     })
 
     it('should map own ChatResponse onto ChatInfo with defaults', () => {
-        const chat = toChatInfo(ownChat)
+        const chat = toChatInfo(ownChat, 7)
 
         expect(chat.id).to.eq(3)
         expect(chat.title).to.eq('own chat')
-        // аватара по умолчанию нет: pool-аватар собеседника назначит
-        // контроллер, когда узнает участников (applyCompanionAvatar)
+        // аватара по умолчанию нет: без members в ответе собеседник
+        // не вычисляется
         expect(chat.avatar).to.eq('')
         expect(chat.unread_count).to.eq(0)
     })
 
     it('should carry is_ai through toChatInfo both ways', () => {
-        expect(toChatInfo(ownChat).is_ai).to.be.false
-        expect(toChatInfo({ ...ownChat, is_ai: true }).is_ai).to.be.true
+        expect(toChatInfo(ownChat, 7).is_ai).to.be.false
+        expect(toChatInfo({ ...ownChat, is_ai: true }, 7).is_ai).to.be.true
     })
 
     it('maps the chat avatar_url file path onto ChatInfo', () => {
-        // свой аватар чата с бэкенда приходит файловым путём
-        expect(toChatInfo({ ...ownChat, avatar_url: '9/download' }).avatar).to.eq('9/download')
-        // без аватара — пусто: собеседника подставит контроллер
-        expect(toChatInfo({ ...ownChat, avatar_url: null }).avatar).to.eq('')
+        // свой аватар чата с бэкенда приходит файловым путём и главнее собеседника
+        expect(toChatInfo({ ...ownChat, avatar_url: '9/download' }, 7).avatar).to.eq('9/download')
+        // без аватара — пусто: собеседника подставит лестница members
+        expect(toChatInfo({ ...ownChat, avatar_url: null }, 7).avatar).to.eq('')
+    })
+
+    // Лестница аватара списка: свой avatar_url чата → реальный avatar_url
+    // единственного собеседника → pool-фолбэк → пусто; групповые чаты и
+    // ответы без members/без meId остаются без аватара
+    const member = (id: number, avatarUrl: string | null = null) => ({
+        id,
+        login: `u${id}@example.com`,
+        display_name: `u${id}`,
+        avatar_url: avatarUrl,
+    })
+
+    it('resolves the lone companion real avatar from the list members', () => {
+        const chat = toChatInfo({ ...ownChat, members: [member(7), member(42, '15/download')] }, 7)
+
+        expect(chat.avatar).to.eq('15/download')
+    })
+
+    it('falls back to the companion pool avatar when the member has none', () => {
+        const chat = toChatInfo({ ...ownChat, members: [member(7), member(42)] }, 7)
+
+        expect(chat.avatar).to.eq(avatarPoolUrl(42))
+    })
+
+    it('keeps group chats and chat-own avatars above the companion ladder', () => {
+        // два не-я участника — не диалог, аватара нет
+        const group = toChatInfo({ ...ownChat, members: [member(7), member(1), member(2)] }, 7)
+
+        expect(group.avatar).to.eq('')
+        // свой аватар чата главнее собеседника
+        const withOwn = toChatInfo(
+            { ...ownChat, avatar_url: '9/download', members: [member(7), member(42, '15/download')] },
+            7
+        )
+
+        expect(withOwn.avatar).to.eq('9/download')
+    })
+
+    it('does not compute a companion without meId or without members', () => {
+        expect(toChatInfo({ ...ownChat, members: [member(7), member(42, '15/download')] }).avatar).to.eq('')
+        expect(toChatInfo(ownChat, 7).avatar).to.eq('')
     })
 
     it('should return an empty token sentinel for the cookie-auth WS flow', async () => {

@@ -1,6 +1,8 @@
 // Own-адаптер порта chats (stage 7; stage chats-social добавил поиск
-// пользователей, удаление чата и реакции): контракт собственного бэкенда —
-// POST /chats (создание), GET /chats (список), POST /chats/{id}/members
+// пользователей, удаление чата и реакции; 2026-10-25-chats-list-members —
+// составы участников в списке): контракт собственного бэкенда —
+// POST /chats (создание), GET /chats (список с краткими составами
+// участников), POST /chats/{id}/members
 // (добавление участника, по одному user_id на вызов), GET /users?login=
 // (префиксный поиск), DELETE /chats/{id} (owner-only, перед удалением бэкенд
 // рассылает WS chat_deleted и закрывает сокеты чата), POST
@@ -18,6 +20,14 @@ import { avatarPoolUrl } from '../../../utils/avatarPool.ts'
 import type { ChatInfo, ReactionSummary } from '../../../utils/types.ts'
 import type { ChatsPort, ChatsUserSearchResult, ReactionToggleResult } from '../ports.ts'
 
+export interface OwnChatMemberResponse {
+    id: number
+    login: string
+    display_name: string
+    // файловый путь аватара участника ("{file_id}/download") или null
+    avatar_url?: string | null
+}
+
 export interface OwnChatResponse {
     id: number
     title: string
@@ -27,6 +37,9 @@ export interface OwnChatResponse {
     unread_count?: number
     // файловый путь аватара чата ("{file_id}/download") или null
     avatar_url?: string | null
+    // краткие составы участников из GET /chats; на старом ответе их нет —
+    // собеседник тогда не вычисляется
+    members?: OwnChatMemberResponse[]
 }
 
 // Ответ GET /users?login= : id, полный (нижнерегистровый) email и выводимое
@@ -47,14 +60,32 @@ function unsupported(method: string): never {
     throw new Error(`Операция ${method} недоступна в own-режиме: контракт бэкенда её не предоставляет`)
 }
 
-export function toChatInfo(response: OwnChatResponse): ChatInfo {
+// Аватар чата: свой avatar_url с бэкенда, иначе — реальный аватар
+// единственного собеседника (не я) с pool-фолбэком; без meId или без
+// составов в ответе собеседник не вычисляется; групповые чаты (не ровно
+// один не-я участник) остаются без аватара
+function companionAvatar(
+    members: OwnChatMemberResponse[] | undefined,
+    meId: number | undefined
+): string {
+    if (members === undefined || meId === undefined) {
+        return ''
+    }
+
+    const companion = members.filter(member => member.id !== meId)
+
+    if (companion.length !== 1) {
+        return ''
+    }
+
+    return companion[0].avatar_url ?? avatarPoolUrl(companion[0].id)
+}
+
+export function toChatInfo(response: OwnChatResponse, meId?: number): ChatInfo {
     return {
         id: response.id,
         title: response.title,
-        // свой аватар чата с бэкенда или пусто: аватаром личного диалога
-        // становится (уже реальный) аватар собеседника, когда контроллер
-        // узнаёт участников — см. applyCompanionAvatar в controller.ts
-        avatar: response.avatar_url ?? '',
+        avatar: response.avatar_url ?? companionAvatar(response.members, meId),
         unread_count: response.unread_count ?? 0,
         // ИИ-чат: бейдж и акцент в списке чатов
         is_ai: response.is_ai,
@@ -62,10 +93,10 @@ export function toChatInfo(response: OwnChatResponse): ChatInfo {
 }
 
 export const ownChatsPort: ChatsPort = {
-    async fetchChats() {
+    async fetchChats(meId?: number) {
         const chats = await (http.get('') as unknown as Promise<OwnChatResponse[]>)
 
-        return chats.map(toChatInfo)
+        return chats.map(chat => toChatInfo(chat, meId))
     },
     async createChat(data) {
         await http.post('', { data: { title: data.title }, csrfToken: readCsrfToken() })

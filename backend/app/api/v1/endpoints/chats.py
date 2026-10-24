@@ -7,7 +7,13 @@ from sqlalchemy.orm import Session
 
 from app.core.deps import get_current_user, get_db
 from app.models.user import User
-from app.schemas.chat import ChatCreate, ChatMemberCreate, ChatMemberResponse, ChatResponse
+from app.schemas.chat import (
+    ChatCreate,
+    ChatMemberBrief,
+    ChatMemberCreate,
+    ChatMemberResponse,
+    ChatResponse,
+)
 from app.schemas.message import MessageCreate, MessagePage, MessageResponse
 from app.schemas.reaction import ReactionSet, ReactionSummaryResponse
 from app.services.chats import ChatService
@@ -36,6 +42,9 @@ async def list_chats(
     service = ChatService(db)
     chats = service.list_for_user(current_user.id)
     unread = service.unread_counts(current_user.id)
+    # составы участников одним пакетным IN-запросом — ни одного
+    # per-chat members-запроса из списка чатов
+    members = service.members_for_chats([chat.id for chat in chats])
     return [
         ChatResponse(
             id=chat.id,
@@ -45,6 +54,7 @@ async def list_chats(
             created_at=chat.created_at,
             unread_count=unread.get(chat.id, 0),
             avatar_url=chat.avatar_url,
+            members=members.get(chat.id, []),
         )
         for chat in chats
     ]
@@ -156,19 +166,9 @@ async def list_chat_members(
     chat_id: int,
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
-) -> list[dict[str, object]]:
-    """Участники чата: [{id, login}] — login это email-хэнл контракта."""
+) -> list[ChatMemberBrief]:
+    """Участники чата: полный состав без cap (панель участников); форма —
+    общий to_member_brief (совпадает с members в GET /chats)."""
     service = ChatService(db)
     service.require_member(chat_id, current_user.id)
-    members = service.chats.list_members(chat_id)
-    return [
-        {
-            'id': user_id,
-            'login': email,
-            'display_name': email.split('@')[0],
-            'avatar_url': (
-                f'{avatar_file_id}/download' if avatar_file_id is not None else None
-            ),
-        }
-        for user_id, email, avatar_file_id in members
-    ]
+    return service.list_member_briefs(chat_id)

@@ -130,3 +130,20 @@ class ChatRepository:
             .all()
         )
         return [(row.user_id, row.email, row.avatar_file_id) for row in rows]
+
+    def list_members_for_chats(self, chat_ids: list[int]) -> list[tuple[int, int, str, int | None]]:
+        """Участники многих чатов одним IN-запросом как (chat_id, user_id,
+        email-хэнл, avatar_file_id) — для пакетного состава в GET /chats;
+        порядок детерминирован (чат, порядок вступления, user_id)."""
+        if not chat_ids:
+            return []
+        rows = (
+            self.session.query(
+                ChatMember.chat_id, ChatMember.user_id, User.email, User.avatar_file_id
+            )
+            .join(User, User.id == ChatMember.user_id)
+            .filter(ChatMember.chat_id.in_(chat_ids))
+            .order_by(ChatMember.chat_id, ChatMember.joined_at, ChatMember.user_id)
+            .all()
+        )
+        return [(row.chat_id, row.user_id, row.email, row.avatar_file_id) for row in rows]

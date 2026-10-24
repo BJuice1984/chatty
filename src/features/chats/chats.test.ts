@@ -2,7 +2,6 @@ import { expect } from 'chai'
 import sinon from 'sinon'
 import { JSDOM } from 'jsdom'
 import store from '../../utils/Store.ts'
-import { avatarPoolUrl } from '../../utils/avatarPool.ts'
 import { ChatsFeatureController, applyReactionDelta, toggleOwnReaction } from './controller.ts'
 import { chatsSlice } from './store.ts'
 import { notifyChatDeleted, notifyReactionEvent } from './ws/gateway.ts'
@@ -90,47 +89,18 @@ describe('chats feature boundary', () => {
         expect(chatsSlice.getSelectedChat()).to.eq(42)
     })
 
-    // Аватар чата (own-режим): по умолчанию пуст; аватаром личного диалога
-    // становится pool-аватар единственного собеседника, как только известны
-    // участники (открытие чата или добавление пользователя — addUsers
-    // перезванивает getChatUsers)
-    const member = (id: number, login: string) => ({
-        id,
-        login,
-        display_name: login.split('@', 1)[0],
-        email: login,
-        first_name: login,
-        second_name: '',
-        phone: '',
-        avatar: '',
-    })
-
-    it('should set the lone companion pool avatar once members are known', async () => {
-        chatsSlice.setChats([{ id: 7, title: 'duo', avatar: '', unread_count: 0 }])
-        store.set('user', { ...member(1, 'me@example.com'), id: 1 })
-        const port = makePort({
-            getChatUsers: async () => [member(1, 'me@example.com'), member(42, 'bob@example.com')],
-        })
-        const controller = new ChatsFeatureController(port, makeMessages())
-
-        await controller.getChatUsers(7)
-
-        expect(chatsSlice.getChats()[0].avatar).to.eq(avatarPoolUrl(42))
-
-        store.set('user', null)
-    })
-
-    it('should enrich companion avatars right after fetchChats, before any chat is opened', async () => {
-        store.set('user', { ...member(1, 'me@example.com'), id: 1 })
+    // Список чатов приходит с аватарами в самом ответе (members в GET /chats
+    // собирает аватар собеседника адаптер): отдельных запросов участников на
+    // каждый чат больше нет — N+1 закрыт, значения кладутся как приехали
+    it('should store list avatars as fetched and issue zero member requests', async () => {
+        store.set('user', { id: 1 })
+        const getChatUsers = sinon.spy(async () => [])
         const port = makePort({
             fetchChats: async () => [
-                { id: 7, title: 'duo', avatar: '', unread_count: 0 },
+                { id: 7, title: 'duo', avatar: '15/download', unread_count: 0 },
                 { id: 9, title: 'group', avatar: '', unread_count: 0 },
             ],
-            getChatUsers: async (chatId: number) =>
-                chatId === 7
-                    ? [member(1, 'me@example.com'), member(42, 'bob@example.com')]
-                    : [member(1, 'me@example.com'), member(2, 'a@example.com'), member(3, 'b@example.com')],
+            getChatUsers,
         })
         const controller = new ChatsFeatureController(port, makeMessages())
 
@@ -138,34 +108,38 @@ describe('chats feature boundary', () => {
 
         const chats = chatsSlice.getChats()
 
-        expect(chats.find(chat => chat.id === 7)?.avatar).to.eq(avatarPoolUrl(42))
+        expect(chats.find(chat => chat.id === 7)?.avatar).to.eq('15/download')
         expect(chats.find(chat => chat.id === 9)?.avatar).to.eq('')
+        expect(getChatUsers.notCalled).to.be.true
 
         store.set('user', null)
     })
 
-    it('should keep group chats and chats with an avatar untouched', async () => {
+    // Смена одного аватара чата — точечный патч стора из ответа загрузки:
+    // без рефетча списка (и его WS-connect-цикла по всем чатам); id чата —
+    // из FormData той же формы, что читает адаптер
+    it('should patch one chat avatar point-wise without refetching the list', async () => {
         chatsSlice.setChats([
-            { id: 9, title: 'group', avatar: '', unread_count: 0 },
-            { id: 10, title: 'custom', avatar: '/images/avatars/1.svg', unread_count: 0 },
+            { id: 7, title: 'duo', avatar: '', unread_count: 0 },
+            { id: 9, title: 'other', avatar: 'keep-me', unread_count: 0 },
         ])
-        store.set('user', { ...member(1, 'me@example.com'), id: 1 })
+        const fetchChats = sinon.spy(async () => [])
         const port = makePort({
-            getChatUsers: async () => [
-                member(1, 'me@example.com'),
-                member(2, 'a@example.com'),
-                member(3, 'b@example.com'),
-            ],
+            fetchChats,
+            changeChatAvatar: async () => ({ avatar: '11/download' }),
         })
         const controller = new ChatsFeatureController(port, makeMessages())
+        const form = new FormData()
 
-        await controller.getChatUsers(9)
-        await controller.getChatUsers(10)
+        form.append('chatId', '7')
 
-        expect(chatsSlice.getChats()[0].avatar).to.eq('')
-        expect(chatsSlice.getChats()[1].avatar).to.eq('/images/avatars/1.svg')
+        await controller.changeChatAvatar(form)
 
-        store.set('user', null)
+        const chats = chatsSlice.getChats()
+
+        expect(chats.find(chat => chat.id === 7)?.avatar).to.eq('11/download')
+        expect(chats.find(chat => chat.id === 9)?.avatar).to.eq('keep-me')
+        expect(fetchChats.notCalled).to.be.true
     })
 
     it('should add users by login through the port and refresh both lists', async () => {
