@@ -10,7 +10,25 @@ from app.models.chat import Chat, ChatMember
 from app.models.user import User
 from app.repositories.chats import ChatRepository
 from app.repositories.users import UserRepository
-from app.schemas.chat import ChatCreate
+from app.schemas.chat import ChatCreate, ChatMemberBrief
+from app.schemas.file import avatar_url as file_avatar_url
+
+# Cap кратких составов в GET /chats: гвард, не контракт пагинации
+# (прецедент FEED_CAP историй); диалоги (<= 2 участников) не режутся —
+# правило «единственный собеседник» нужно только им.
+MEMBERS_BRIEF_CAP = 10
+
+
+def to_member_brief(user_id: int, email: str, avatar_file_id: int | None) -> ChatMemberBrief:
+    """Единая точка сборки формы участника: и список чатов, и эндпоинт
+    участников строят её здесь, чтобы формы не разъехались (login —
+    email-хэнл контракта, display_name — его локальная часть)."""
+    return ChatMemberBrief(
+        id=user_id,
+        login=email,
+        display_name=email.split('@')[0],
+        avatar_url=file_avatar_url(avatar_file_id),
+    )
 
 
 class ChatService:
@@ -33,6 +51,22 @@ class ChatService:
         """Непрочитанные по каждому чату: чужие сообщения новее последнего
         прочитанного маркера (chat_last_reads); своих сообщений не считаем."""
         return self.chats.unread_counts(user_id)
+
+    def members_for_chats(self, chat_ids: list[int]) -> dict[int, list[ChatMemberBrief]]:
+        """Краткие составы участников для GET /chats: один IN-запрос по всем
+        чатам, группировка по chat_id, cap MEMBERS_BRIEF_CAP (диалоги <= 2
+        участников не режутся). Только для списка чатов — эндпоинт
+        /chats/{id}/members отдаёт полный состав без cap."""
+        grouped: dict[int, list[ChatMemberBrief]] = {}
+        for chat_id, user_id, email, avatar_file_id in self.chats.list_members_for_chats(chat_ids):
+            briefs = grouped.setdefault(chat_id, [])
+            if len(briefs) < MEMBERS_BRIEF_CAP:
+                briefs.append(to_member_brief(user_id, email, avatar_file_id))
+        return grouped
+
+    def list_member_briefs(self, chat_id: int) -> list[ChatMemberBrief]:
+        """Полный состав чата без cap (панель участников), user_id ASC."""
+        return [to_member_brief(*row) for row in self.chats.list_members(chat_id)]
 
     def mark_read(self, chat_id: int, user_id: int, message_id: int) -> None:
         """Открытие истории читает чат до message_id включительно."""

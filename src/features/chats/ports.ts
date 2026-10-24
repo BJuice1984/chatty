@@ -34,7 +34,10 @@ export interface ReactionToggleResult {
 }
 
 export interface ChatsPort {
-    fetchChats(): Promise<ChatInfo[]>
+    // meId — идентичность вьюера для правила «единственный собеседник» в
+    // аватарах списка: адаптер стор не читает, контроллер передаёт параметром
+    // eslint-disable-next-line no-unused-vars
+    fetchChats(meId?: number): Promise<ChatInfo[]>
     // eslint-disable-next-line no-unused-vars
     createChat(data: CreateChatData): Promise<void>
     // eslint-disable-next-line no-unused-vars

@@ -9,8 +9,7 @@
 // REST-ответом toggle (его сводка viewer-relative), чужие — дельтой события.
 
 import store from '../../utils/Store.ts'
-import { avatarPoolUrl } from '../../utils/avatarPool.ts'
-import type { ChatInfo, ChatUser, Message, ReactionSummary } from '../../utils/types.ts'
+import type { ChatInfo, Message, ReactionSummary } from '../../utils/types.ts'
 import { chatsPort } from './api/index.ts'
 import type { ChatMessagesPort, ChatReactionEvent, ChatsPort, ChatsUserSearchResult } from './ports.ts'
 import { chatsSlice } from './store.ts'
@@ -125,7 +124,9 @@ export class ChatsFeatureController {
         let chats: ChatInfo[] = []
 
         try {
-            chats = await this.port.fetchChats()
+            // meId для правила «единственный собеседник» в аватарах списка:
+            // адаптер стор не читает, идентичность передаём параметром
+            chats = await this.port.fetchChats(store.getState().user?.id)
         } catch (e: unknown) {
             console.error('Ошибка при получении списка чата:', e)
         }
@@ -140,25 +141,9 @@ export class ChatsFeatureController {
             }
         }
 
+        // аватары диалогов приходят в самом ответе списка (members), отдельных
+        // запросов участников на каждый чат больше нет
         chatsSlice.setChats(chats)
-
-        // аватары диалогов — сразу в списке, не после первого открытия чата:
-        // own-контракт GET /chats участников не несёт, поэтому для чатов без
-        // аватара подтягиваем участников параллельно и назначаем pool-аватар
-        // собеседника; отказ обогащения не должен ронять сам список
-        await Promise.all(
-            chats
-                .filter(chat => chat.avatar === '')
-                .map(async chat => {
-                    try {
-                        const users = await this.port.getChatUsers(chat.id)
-
-                        this.applyCompanionAvatar(chat.id, users)
-                    } catch (e: unknown) {
-                        console.error(`Ошибка при загрузке участников чата ${chat.id}:`, e)
-                    }
-                })
-        )
     }
 
     async addUsersToChat(users: number[], chatId: number): Promise<void> {
@@ -287,12 +272,22 @@ export class ChatsFeatureController {
 
     async changeChatAvatar(userData: FormData): Promise<void> {
         try {
-            await this.port.changeChatAvatar(userData)
+            const { avatar } = await this.port.changeChatAvatar(userData)
 
-            // свежий список чатов принесёт avatar_url загруженного аватара
-            // (рефетч вместо точечного newChatAva: адрес записи знает только
-            // адаптер, а лента уже единый источник)
-            await this.fetchChats()
+            // точечный патч одного чата из ответа загрузки — без рефетча
+            // всего списка (рефетч заодно гонял бы WS-connect-цикл по
+            // каждому чату); id чата читаем из той же формы, что и адаптер
+            // (кликнутая плитка — не обязательно selectedChat)
+            const chatId = Number(userData.get('chatId'))
+            const chats = (store.getState().chats ?? []) as ChatInfo[]
+
+            chatsSlice.setChats(
+                chats.map(item =>
+                    item.id === chatId
+                        ? { ...item, avatar }
+                        : item
+                )
+            )
         } catch (e: unknown) {
             console.error('Ошибка при изменении аватара чата:', e)
         }
@@ -307,41 +302,9 @@ export class ChatsFeatureController {
             })
 
             chatsSlice.setChatUsers(users)
-            this.applyCompanionAvatar(id, users)
         } catch (e: unknown) {
             console.error('Ошибка при получении пользователей чата:', e)
         }
-    }
-
-    // Аватар чата (own-режим): бэкенд аватары не хранит, по умолчанию пусто.
-    // Как только известны участники, аватаром личного диалога (ровно один
-    // собеседник, не я) становится его pool-аватар — назначение срабатывает
-    // и после добавления пользователя в чат (addUsers перезванивает
-    // getChatUsers), и при открытии чата; групповые чаты и чаты без
-    // собеседников остаются без аватара. Список чатов участников не несёт:
-    // после перезагрузки аватар восстановится при первом открытии чата
-    private applyCompanionAvatar(chatId: number, users: ChatUser[]): void {
-        const chats = (store.getState().chats ?? []) as ChatInfo[]
-        const chat = chats.find(item => item.id === chatId)
-
-        if (chat === undefined || chat.avatar !== '') {
-            return
-        }
-
-        const meId = store.getState().user?.id
-        const companion = users.filter(user => user.id !== meId)
-
-        if (companion.length !== 1) {
-            return
-        }
-
-        chatsSlice.setChats(
-            chats.map(item =>
-                item.id === chatId
-                    ? { ...item, avatar: avatarPoolUrl(companion[0].id) }
-                    : item
-            )
-        )
     }
 
     sendMessage(chatId: number, message: string, replyToId?: number): Promise<void> {

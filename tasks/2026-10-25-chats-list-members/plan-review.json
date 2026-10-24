@@ -1,0 +1,60 @@
+{
+    "schemaVersion": "agent-plan-review.v1",
+    "packageId": "2026-10-25-chats-list-members",
+    "planRevision": 2,
+    "reviewId": "review-2026-10-25-chats-list-members-freeze-r2",
+    "fullReview": true,
+    "verdict": "READY_TO_FREEZE",
+    "reviewedPlanHash": "958699f6e7dda44f2379acbfc8efd3e78af00d71efef477e4a018556f57c2c5a",
+    "reviewer": {
+        "id": "claude-code-independent-subagent",
+        "independent": true,
+        "runId": "audit-run-20261025-chats-list-members-plan",
+        "surface": "audit-agent-plan"
+    },
+    "findings": [],
+    "reviewVerdict": {
+        "schemaVersion": "agent-review-verdict.v1",
+        "overall": "ACCEPTED",
+        "dimensions": {
+            "requirementFit": {
+                "status": "PASS",
+                "reasonCode": "n-plus-1-and-point-patch-covered",
+                "summary": "The members-in-GET-/chats design removes the per-chat member requests (controller N+1 block and applyCompanionAvatar both deleted, pinned by a getChatUsers-notCalled mocha regression); the point-wise changeChatAvatar Store patch meets the operator requirement (no full refetch on one avatar change); the avatar ladder and meId handling are pinned by mapper tests."
+            },
+            "implementationQuality": {
+                "status": "PASS",
+                "reasonCode": "write-sets-verified-against-code",
+                "summary": "Write-sets sufficient and verified against the code (api/index.ts is a pure re-export; utils/types.ts untouched; ai-assistant holds its own DTO copy; ChatAvatar already renders both URL forms; no migration needed). The default_factory analysis verified: POST /chats and GET /chats/{id} both return ChatResponse.model_validate(chat) and would 500 without the members default. Layers respect the guard: meId is a port parameter, the adapter never reads the Store."
+            },
+            "evidenceQuality": {
+                "status": "PASS",
+                "reasonCode": "claims-are-provable",
+                "summary": "Round 1 rejected the unprovable 'exactly three SQL statements' claim; revision 2 pins what tests can prove: one IN query, zero per-chat member requests, uncapped /members regression pin (full list, user_id ASC), default-field regression, cap/order case. Gates match the repo evidence contract; the Windows-only ingestion-converter failures are documented as environment-specific and outside the write-set."
+            },
+            "residualRisk": {
+                "status": "PASS",
+                "reasonCode": "bounded-and-pinned",
+                "summary": "Remaining risks bounded: unread_counts keeps its per-read-marker count shape (explicit out-of-scope debt), companion avatar freshness depends on the next list fetch (WS push is a non-goal), chatId-from-FormData is fragile under UI refactors but pinned by a test. One NIT-level wording ambiguity in Wave 1 item 3 ('same helper') is dominated by unambiguous statements in three other places and does not block freeze."
+            }
+        },
+        "routing": {
+            "target": "plan-freeze",
+            "nextAction": "accept"
+        }
+    },
+    "rounds": [
+        {
+            "round": 1,
+            "verdict": "CHANGES_REQUIRED",
+            "findings": 5,
+            "summary": "Full review of revision 1: 1 MAJOR (the 'exactly three SQL statements' claim is false against ChatRepository.unread_counts — three statements plus per-chat read-marker counts — and unprovable by gates), 3 MINOR (cap could leak into /chats/{id}/members through the shared grouper; the three chats.test.ts avatar cases not all enumerated — 147-169 would stay vacuously green; the chatId source for the point-wise patch unspecified), 1 NIT (media test file unnamed)."
+        },
+        {
+            "round": 2,
+            "verdict": "READY_TO_FREEZE",
+            "findings": 0,
+            "summary": "Confirm pass over revision 2: all five findings closed across plan.md, acceptance-criteria.md and the manifest (not just plan.md); the SQL claim replaced by the provable one-IN-query/zero-per-chat-requests criterion; /members pinned uncapped with user_id ASC; all three avatar test cases enumerated (108-121, 123-145 -> N+1 regression, 147-169 deleted); chatId-from-FormData specified with the port contract unchanged; the launchGate documents the Windows-only converter failures. No new findings; freeze authorized."
+        }
+    ]
+}
