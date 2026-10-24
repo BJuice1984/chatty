@@ -444,7 +444,12 @@ describe('own ws adapter social events', () => {
         expect(created).to.have.length(1)
     })
 
-    it('bumps the chat unread badge in real time for foreign messages in unopened chats', async () => {
+    // Таймаут поднят: store.set ниже синхронно будит все подписки Store,
+    // дожившие до конца сьюта (утечка WithStore из ранних тест-файлов), и на
+    // медленной машине перерисовки не влезают в mocha-дефолт 2000 мс.
+    it('bumps the chat unread badge in real time for foreign messages in unopened chats', async function () {
+        this.timeout(10_000)
+
         store.set('user', { id: 7, display_name: '', first_name: '', second_name: '', email: '', login: '', phone: '', avatar: '' })
         store.set('chats', [{ id: 3, title: 'Project', unread_count: 0 }, { id: 9, title: 'Other', unread_count: 2 }])
         store.set('selectedChat', 9)
