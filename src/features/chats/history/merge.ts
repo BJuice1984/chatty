@@ -26,7 +26,7 @@ export function mergeHistoryMessages(
 ): Message[] {
     const batch = [...incoming].reverse()
 
-    const seen = new Set(current.map(message => historyMessageKey(message as HistoryMessage)))
+    const seen = new Set(current.map(message => historyMessageKey(message)))
 
     const fresh = batch.filter(message => {
         const key = historyMessageKey(message)
