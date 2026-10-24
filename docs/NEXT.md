@@ -1,38 +1,35 @@
 # NEXT — точка входа для следующей сессии
 
-Обновлено: 2026-10-23 (после влития PR #32 `feature/2026-10-21-avatars-stories`).
+Обновлено: 2026-10-25 (после ALK-прогона `2026-10-25-chats-list-members` — N+1
+аватаров закрыт, ветка `feature/2026-10-25-chats-list-members`, PR в `dev`).
 
 ## Состояние
 
-Тема «истории и аватары на own-бэкенде» полностью закрыта и влита в `dev`
-(весь стек: `chats-social` → `2026-10-21-stories` (#31) →
-`2026-10-21-avatars-stories` (#32)). Гейты на момент влития: фронт
-`npm run verify` — 319 mocha, бэкенд `verify:backend` — 181 pytest,
-`guard-architecture --all --strict` — 0 нарушений, миграция `007_avatars_stories`
-round-trip проверена и на scratch-SQLite, и на чистом compose-PostgreSQL.
+N+1 аватаров списка чатов закрыт: `GET /chats` отдаёт краткие составы
+участников (`members: [{id, login, display_name, avatar_url}]`, один
+batch-IN-запрос, cap 10 по `joined_at`, диалоги не режутся; `POST /chats` и
+`GET /chats/{id}` — `members: []` через `default_factory`), фронт-адаптер
+`toChatInfo(response, meId)` собирает аватар диалога лестницей «свой
+avatar_url чата → реальный аватар собеседника → pool → пусто»,
+контроллер больше не делает per-chat members-запросов
+(`applyCompanionAvatar` удалён), а `changeChatAvatar` патчит ровно один чат
+в сторе из ответа загрузки — без рефетча списка. Гейты: фронт 322 mocha,
+бэкенд 179 pytest passed (+4 известные Windows-специфичные падения
+ingestion-конвертера — вне чатов, см. runbook-заметку ниже), guard strict 0.
 
-Контракт: `/files` (глобальные медиа `chat_id IS NULL`), `POST /files/avatars`
-(kind=user|chat, owner-only чаты), `/stories` (лента: свои первыми и всегда
-непросмотренные владельцу; чужие — непросмотренные выше просмотренных; TTL 24 ч,
-cap 100, `is_own`; идемпотентный view; owner-only delete), `avatar_url`
-(«{file_id}/download») в auth/chats/members; фронт — `src/features/chats/stories/`,
-реалтайм-счётчик непрочитанных в `ws/own.ts` (`incrementUnread`), демо-сид
-opt-in `CHATTY_SEED_DEMO_STORIES` (ранбук: `docs/deployment/own-backend.md`).
+## Приоритеты следующей сессии (согласовано 2026-10-23, п.1 закрыт 2026-10-25)
 
-## Приоритеты следующей сессии (согласовано 2026-10-23)
-
-1. **N+1 аватаров в списке чатов** — главный приоритет: `fetchChats` делает
-   `GET /chats/{id}/members` на каждый чат ради аватара собеседника
-   (`applyCompanionAvatar` в `src/features/chats/controller.ts`).
-   Решение: участники/аватар прямо в `GET /chats` (бэкенд + own-адаптер +
-   упрощение контроллера).
-2. **WS-push новых историй** — лента сейчас обновляется только при заходе на
-   страницу или после собственных действий; событие по WS сделает кольца живыми.
-3. **RAG-эмбеддинги** — на OpenAI-совместимом инференс-сервере поднять
+1. **WS-push новых историй** — лента сейчас обновляется только при заходе на
+   страницу или после собственных действий; событие по WS сделает кольца
+   живыми.
+2. **RAG-эмбеддинги** — на OpenAI-совместимом инференс-сервере поднять
    `/v1/embeddings` и закрыть пробел AI-ассистента (`src/features/ai-assistant/`).
 
 Хвосты: `mark_viewed` — check-then-insert гонка (теоретическая) →
-`INSERT ... ON CONFLICT DO NOTHING` в `backend/app/services/stories.py`.
+`INSERT ... ON CONFLICT DO NOTHING` в `backend/app/services/stories.py`;
+консолидация `unread_counts` в один запрос (сейчас 3 запроса + COUNT на чат
+с маркером чтения — найдено ревью 2026-10-25, осознанно вне скоупа
+chats-list-members).
 
 ## Окружение (воспроизводимо на новой машине)
 
@@ -49,6 +46,12 @@ docker compose --env-file <operator-env> up -d --build api
 # единый гейт фронта и архитектуры
 npm run verify && node .claude/hooks/scripts/guard-architecture.mjs --all --strict
 ```
+
+Windows-заметка: `npm run verify:backend` не резолвит `.sh` через cmd —
+запускайте скрипт напрямую: `PYTHON_BIN=~/.venvs/chatty-backend/Scripts/python.exe
+bash backend/verify.sh`; 4 теста `tests/unit/ingestion/test_converter.py`
+на Windows-хостах падают (subprocess с shell-скриптом, WinError 193) —
+environment-специфика, на Unix-машинах зелёные.
 
 Для нетривиальной фичи — полный ALK-цикл (см. `tasks/README.md` и текущий
 пример пакета `tasks/2026-10-21-avatars-stories/`); история работы —
