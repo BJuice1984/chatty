@@ -1,0 +1,323 @@
+{
+    "schemaVersion": "agent-plan-manifest.v1",
+    "status": "FROZEN",
+    "planRevision": 2,
+    "package": {
+        "id": "2026-10-25-chats-list-members",
+        "title": "Chat-list members in GET /chats: kill the avatar N+1 and patch avatar changes point-wise",
+        "workspaceRoot": ".",
+        "artifactRoot": "work/2026-10-25-chats-list-members",
+        "planArtifactRoot": "tasks/2026-10-25-chats-list-members"
+    },
+    "packageIntegrity": {
+        "required": true,
+        "lockSchemaVersion": "agent-plan-lock.v2",
+        "inventorySource": "planFiles",
+        "undeclaredTopLevelFiles": "reject",
+        "allowedUnlistedFiles": [
+            "plan.lock.json",
+            "plan-review.json"
+        ]
+    },
+    "author": {
+        "id": "claude-code",
+        "surface": "agent-first-planning",
+        "runId": "2026-10-25-chats-list-members-draft"
+    },
+    "baseRevision": {
+        "ref": "dev",
+        "sha": "c09f27ec582a6e3a83deb08c13f3d342c35bd388"
+    },
+    "specification": {
+        "tier": "S1",
+        "intent": "Remove the chat-list avatar N+1: GET /chats returns member briefs (id, login, display_name, avatar_url) batched as one IN query over all listed chats, capped at 10 per chat by joined_at (dialogs never truncated); the frontend adapter maps the dialog companion's real avatar with the pool fallback inside a pure toChatInfo(response, meId) mapper driven by an additive fetchChats(meId?) port parameter; the controller drops its per-chat getChatUsers enrichment and applyCompanionAvatar entirely; changeChatAvatar patches the single chat's avatar in the Store from the port's {avatar} return instead of refetching the whole list.",
+        "status": "DRAFT",
+        "requirements": [
+            {
+                "id": "REQ-BE-MEMBERS",
+                "title": "GET /chats carries batched member briefs",
+                "description": "ChatResponse gains members: list[ChatMemberBrief] with default_factory=list (POST /chats and GET /chats/{id} keep their model_validate path alive and return members: []); ChatMemberBrief matches the GET /chats/{id}/members shape and both are assembled by one shared to_member_brief helper (avatar_url reuses schemas/file.py); ChatRepository.list_members_for_chats(chat_ids) is a single IN query ordered (chat_id, joined_at, user_id) — zero per-chat member requests from the list endpoint; ChatService.members_for_chats groups with MEMBERS_BRIEF_CAP = 10 (dialogs never truncated) and is used ONLY by GET /chats — GET /chats/{id}/members keeps its full uncapped list ordered user_id ASC, regression-pinned; the unread_counts query shape is untouched (consolidating it is out of scope); no migration.",
+                "priority": "P1",
+                "source": "docs/NEXT.md priority 1 (agreed 2026-10-23)",
+                "acceptanceIds": [
+                    "AC-BE-MEMBERS"
+                ],
+                "evidenceIds": [
+                    "EV-BE-1"
+                ],
+                "owner": "WS-BE-LIST-MEMBERS"
+            },
+            {
+                "id": "REQ-FE-COMPANION",
+                "title": "Frontend: companion avatar from the list response, point-wise avatar patch",
+                "description": "ChatsPort.fetchChats gains an additive meId?: number parameter (the adapter never reads the Store); toChatInfo(response, meId) is a pure mapper with the avatar ladder chat.avatar_url > companion real avatar_url > avatarPoolUrl(companion.id) > '' and the lone-non-me-member rule (group chats, meId undefined or missing members -> no companion); controller.fetchChats computes meId once and issues zero getChatUsers calls; applyCompanionAvatar is deleted; changeChatAvatar reads the chat id from the same FormData chatId field the adapter reads (port contract stays {avatar}), patches the one chat through chatsSlice.setChats without calling fetchChats (operator requirement 2026-10-25); stale comments claiming GET /chats carries no members are purged.",
+                "priority": "P1",
+                "source": "docs/NEXT.md priority 1 + operator requirement 2026-10-25 (no full refetch on one avatar change)",
+                "acceptanceIds": [
+                    "AC-FE-N1"
+                ],
+                "evidenceIds": [
+                    "EV-FE-1"
+                ],
+                "owner": "WS-FE-CHATS-LIST-MEMBERS"
+            }
+        ],
+        "goal": "One request loads the chat list with dialog companion avatars (real avatar with pool fallback); avatar changes update the list point-wise.",
+        "constraints": [
+            "Layers downward only; guard-architecture --all --strict stays green; the api layer never reads the Store (meId comes from the controller).",
+            "ChatResponse.members default is load-bearing: POST /chats and GET /chats/{id} build via model_validate(chat) and must keep returning members: [].",
+            "Avatar URL convention unchanged: files-relative \"{file_id}/download\" values render through fileUrl, leading-\"/\" values are app static assets (the pool).",
+            "The WS getToken->connect loop of fetchChats stays untouched (port contract); call sites of controller.fetchChats do not change.",
+            "No migration: alembic heads output must not change.",
+            "Existing suites stay green; test counts grow from the 319 mocha / 181 pytest baseline."
+        ],
+        "nonGoals": [
+            "WS push for avatar changes (NEXT priority 2 territory)",
+            "populating members in POST /chats and GET /chats/{id} beyond the empty default",
+            "consolidating the unread_counts query (keeps its current shape; separate NEXT debt)",
+            "chat-list pagination",
+            "the ai-assistant copy of the chats DTO (backward compatible, untouched)",
+            "the mark_viewed check-then-insert tail (separate NEXT item)"
+        ],
+        "scope": "backend/ chat schemas, repository, service and chats endpoints with their pytest; frontend chats feature (ports, own adapter, controller) with mocha; docs/NEXT.md and the progress log."
+    },
+    "readOnly": [
+        "AGENTS.md",
+        "tasks/README.md",
+        "docs/deployment/own-backend.md"
+    ],
+    "forbiddenWrites": [
+        "src/main.ts",
+        "src/features/index.ts",
+        "src/core",
+        "src/scss/libs",
+        "docs/project-principles.json",
+        ".github/workflows",
+        "netlify.toml",
+        "backend/alembic"
+    ],
+    "workstreams": [
+        {
+            "id": "WS-BE-LIST-MEMBERS",
+            "title": "Backend: batched member briefs in GET /chats",
+            "owner": "worker-backend-chats",
+            "reviewer": "independent-release-reviewer",
+            "dependsOn": [],
+            "writes": [
+                "backend/app/api/v1/endpoints/chats.py",
+                "backend/app/repositories/chats.py",
+                "backend/app/schemas/chat.py",
+                "backend/app/services/chats.py",
+                "backend/tests/integration/chat/test_http_and_ws.py",
+                "backend/tests/integration/chat/test_media_api.py"
+            ],
+            "readOnly": [
+                "AGENTS.md",
+                "backend/app/schemas/file.py",
+                "backend/app/services/stories.py",
+                "backend/tests/conftest.py"
+            ],
+            "forbiddenWrites": [],
+            "launchGate": "feature/2026-10-25-chats-list-members branch created at c09f27e; backend gate at base green on Unix hosts (on this Windows box the 4 ingestion-converter tests fail on subprocess WinError 193 — pre-existing, environment-specific, outside the write-set); npm run verify green at base (319 mocha).",
+            "capabilityHints": [
+                "fastapi",
+                "sqlalchemy",
+                "pytest",
+                "python"
+            ],
+            "requiredTools": [
+                "python",
+                "pytest"
+            ],
+            "contextRefs": [
+                "plan.md",
+                "acceptance-criteria.md"
+            ],
+            "acceptanceIds": [
+                "AC-BE-MEMBERS"
+            ],
+            "evidenceIds": [
+                "EV-BE-1"
+            ],
+            "executionPolicy": {
+                "maxAttempts": 3,
+                "maxWallSeconds": 3600
+            },
+            "artifactPaths": {
+                "result": "work/2026-10-25-chats-list-members/evidence/WS-BE-LIST-MEMBERS/task-result-{attempt}.json",
+                "review": "work/2026-10-25-chats-list-members/evidence/WS-BE-LIST-MEMBERS/task-review-{attempt}.json"
+            },
+            "required": true,
+            "plannedItems": [
+                "schemas: ChatMemberBrief + members with default_factory=list and the guarantee comment",
+                "repository: list_members_for_chats single IN query ordered (chat_id, joined_at, user_id)",
+                "service: members_for_chats grouping with MEMBERS_BRIEF_CAP=10 used ONLY by GET /chats; shared to_member_brief reusing schemas/file.py avatar_url; list_chat_members keeps the full uncapped user_id ASC list and only the brief assembly is shared",
+                "endpoint: list_chats attaches batched members (one IN query, zero per-chat member requests)",
+                "pytest: dialog companion avatar case, cap/order case, uncapped /members regression pin, POST /chats and GET /chats/{id} default-field regression"
+            ],
+            "qualityFloor": "npm run verify:backend green (pytest + alembic heads); alembic heads output unchanged; no frontend file touched."
+        },
+        {
+            "id": "WS-FE-CHATS-LIST-MEMBERS",
+            "title": "Frontend: companion avatar from the list, point-wise avatar patch",
+            "owner": "worker-frontend-chats",
+            "reviewer": "independent-release-reviewer",
+            "dependsOn": [
+                "WS-BE-LIST-MEMBERS"
+            ],
+            "writes": [
+                "docs/NEXT.md",
+                "docs/progress/progress_log.md",
+                "src/features/chats/api/api.test.ts",
+                "src/features/chats/api/own.ts",
+                "src/features/chats/chats.test.ts",
+                "src/features/chats/controller.ts",
+                "src/features/chats/ports.ts"
+            ],
+            "readOnly": [
+                "AGENTS.md",
+                "src/components/avatar/chatAvatar/chatAvatar.ts",
+                "src/utils/avatarPool.ts",
+                "src/utils/env.ts"
+            ],
+            "forbiddenWrites": [
+                "src/components",
+                "src/scss"
+            ],
+            "launchGate": "WS-BE-LIST-MEMBERS accepted at the integration baseline; npm run verify green at base.",
+            "capabilityHints": [
+                "typescript",
+                "mocha",
+                "sinon",
+                "ALK"
+            ],
+            "requiredTools": [
+                "node",
+                "npm"
+            ],
+            "contextRefs": [
+                "plan.md",
+                "acceptance-criteria.md"
+            ],
+            "acceptanceIds": [
+                "AC-FE-N1",
+                "AC-PROCESS"
+            ],
+            "evidenceIds": [
+                "EV-FE-1"
+            ],
+            "executionPolicy": {
+                "maxAttempts": 2,
+                "maxWallSeconds": 3600
+            },
+            "artifactPaths": {
+                "result": "work/2026-10-25-chats-list-members/evidence/WS-FE-CHATS-LIST-MEMBERS/task-result-{attempt}.json",
+                "review": "work/2026-10-25-chats-list-members/evidence/WS-FE-CHATS-LIST-MEMBERS/task-review-{attempt}.json"
+            },
+            "required": true,
+            "plannedItems": [
+                "ports: fetchChats(meId?: number), additive",
+                "own adapter: OwnChatResponse.members, pure toChatInfo(response, meId) with the avatar ladder, fetchChats forwards meId, header comments refreshed",
+                "controller: drop the N+1 block and applyCompanionAvatar (and its call in getChatUsers), meId computed in controller.fetchChats",
+                "controller: changeChatAvatar point-wise Store patch — chatId read from the FormData chatId field the same way the adapter reads it, port contract stays {avatar}, no fetchChats",
+                "mocha: mapper cases (real avatar, pool fallback, group, chat-avatar priority, meId undefined, missing members); chats.test.ts avatar cases 108-121, 123-145 and 147-169 all replaced or deleted (123-145 becomes the N+1 regression: getChatUsers not called; new point-wise patch case)",
+                "docs: NEXT.md priority 1 retired, progress log entry on top"
+            ],
+            "qualityFloor": "npm run verify green end to end; guard-architecture --all --strict zero violations; no template/component changes; WS getToken->connect loop untouched."
+        }
+    ],
+    "acceptance": {
+        "criteria": [
+            {
+                "id": "AC-BE-MEMBERS",
+                "title": "Batched member briefs in GET /chats",
+                "requirementIds": [
+                    "REQ-BE-MEMBERS"
+                ],
+                "evidenceIds": [
+                    "EV-BE-1"
+                ],
+                "independentEvidenceIds": [],
+                "statement": "GET /chats returns members in the GET /chats/{id}/members shape via one shared helper, batched as a single IN query — zero per-chat member requests (unread_counts keeps its shape, out of scope); briefs capped at 10 per chat by joined_at ASC, user_id ASC with dialogs never truncated; GET /chats/{id}/members keeps its full uncapped user_id ASC list (regression-pinned); POST /chats and GET /chats/{id} keep returning members: []; pytest covers the dialog companion case, the cap and order, the uncapped /members list, and the default-field regression.",
+                "description": "Backend integration tests.",
+                "source": "acceptance-criteria.md",
+                "priority": "P1"
+            },
+            {
+                "id": "AC-FE-N1",
+                "title": "Zero member requests from the chat list",
+                "requirementIds": [
+                    "REQ-FE-COMPANION"
+                ],
+                "evidenceIds": [
+                    "EV-FE-1"
+                ],
+                "independentEvidenceIds": [],
+                "statement": "toChatInfo(response, meId) resolves the dialog companion's real avatar with pool fallback (lone-non-me rule; group chats, meId undefined or missing members stay empty); controller.fetchChats issues zero getChatUsers calls (mocha regression); changeChatAvatar patches one chat through chatsSlice.setChats without fetchChats; applyCompanionAvatar deleted.",
+                "description": "Frontend unit tests.",
+                "source": "acceptance-criteria.md",
+                "priority": "P1"
+            },
+            {
+                "id": "AC-PROCESS",
+                "title": "Gates and bookkeeping",
+                "requirementIds": [
+                    "REQ-BE-MEMBERS",
+                    "REQ-FE-COMPANION"
+                ],
+                "evidenceIds": [
+                    "EV-FE-1"
+                ],
+                "independentEvidenceIds": [],
+                "statement": "npm run verify and npm run verify:backend pass with grown test counts (319 mocha / 181 pytest baseline); guard-architecture --all --strict zero violations; alembic heads unchanged; progress log entry and NEXT.md update; no file outside the manifest write-sets changes.",
+                "description": "Gate runs captured as evidence.",
+                "source": "acceptance-criteria.md",
+                "priority": "P1"
+            }
+        ]
+    },
+    "validation": {
+        "commands": [
+            "npm run verify",
+            "npm run verify:backend",
+            "node .claude/hooks/scripts/guard-architecture.mjs --all --strict"
+        ]
+    },
+    "orchestration": {
+        "startMode": "reviewed-plan",
+        "remediationMode": "ask",
+        "maxPlanReviewRounds": 2,
+        "maxTaskAttempts": 3,
+        "maxParallelTasks": 1,
+        "maxValidationRunsPerTask": 2,
+        "stateFile": "work/2026-10-25-chats-list-members/run.state.json",
+        "eventLog": "work/2026-10-25-chats-list-members/events.jsonl",
+        "stepReviewRequired": true,
+        "finalAuditRequired": true
+    },
+    "implementationAudit": {
+        "required": true,
+        "finalRequired": true
+    },
+    "planReview": {
+        "required": true,
+        "reviewerClass": "independent-plan-reviewer",
+        "maxRounds": 2,
+        "implementationAuthorized": false,
+        "report": "tasks/2026-10-25-chats-list-members/plan-review.json",
+        "reviewedRevision": 2,
+        "verdict": "READY_TO_FREEZE"
+    },
+    "releaseTarget": {
+        "kind": "local-only",
+        "environment": "Vite own mode + compose own-backend",
+        "productionPromotionClaimed": false
+    },
+    "releaseImpact": "GET /chats response shape (additive members field) and the chats feature controller/adapter; no router, auth, WS protocol or deployment changes.",
+    "planFiles": [
+        "tasks/2026-10-25-chats-list-members/acceptance-criteria.md",
+        "tasks/2026-10-25-chats-list-members/plan-review.json",
+        "tasks/2026-10-25-chats-list-members/plan.manifest.json",
+        "tasks/2026-10-25-chats-list-members/plan.md"
+    ]
+}
