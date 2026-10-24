@@ -1,6 +1,6 @@
 # Архитектура Chatty
 
-Документы в этой папке описывают архитектуру учебного мессенджера **Chatty** (проект курса middle.messenger Яндекс Практикума): SPA на чистом TypeScript без фреймворков, с собственным компонентным слоем на Handlebars-шаблонах.
+Документы в этой папке описывают архитектуру учебного мессенджера **Chatty** (проект middle.messenger): SPA на чистом TypeScript без фреймворков, с собственным компонентным слоем на Handlebars-шаблонах и единственным собственным бэкендом (`backend/`).
 
 ## Разделы
 
@@ -20,7 +20,7 @@
 flowchart TD
     UI["Страницы и компоненты<br/>(Block + .hbs)"] --> C["Контроллеры<br/>(синглтоны)"]
     C --> API["API-классы<br/>(BaseApi + HTTPTransport)"]
-    API --> BE["Бэкенд курса<br/>ya-praktikum.tech/api/v2"]
+    API --> BE["Собственный бэкенд<br/>FastAPI + PostgreSQL (backend/)"]
     C --> ST["Store (EventBus)"]
     BE -.->|"store.set() из контроллеров"| ST
     ST -->|"StoreEvents.Updated"| WS["withStore → setProps"]

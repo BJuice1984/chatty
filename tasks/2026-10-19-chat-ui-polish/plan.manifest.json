@@ -1,0 +1,412 @@
+{
+    "schemaVersion": "agent-plan-manifest.v1",
+    "status": "FROZEN",
+    "planRevision": 1,
+    "package": {
+        "id": "2026-10-19-chat-ui-polish",
+        "title": "Stage 15: chat message bubbles, timestamps, responsive layout",
+        "workspaceRoot": ".",
+        "artifactRoot": "work/2026-10-19-chat-ui-polish",
+        "planArtifactRoot": "tasks/2026-10-19-chat-ui-polish"
+    },
+    "planFiles": [
+        "tasks/2026-10-19-chat-ui-polish/acceptance-criteria.md",
+        "tasks/2026-10-19-chat-ui-polish/developer-overview.md",
+        "tasks/2026-10-19-chat-ui-polish/plan-review-request.md",
+        "tasks/2026-10-19-chat-ui-polish/plan-review.json",
+        "tasks/2026-10-19-chat-ui-polish/plan.manifest.json",
+        "tasks/2026-10-19-chat-ui-polish/plan.md",
+        "tasks/2026-10-19-chat-ui-polish/specification.json",
+        "tasks/2026-10-19-chat-ui-polish/tier-request.json",
+        "tasks/2026-10-19-chat-ui-polish/tier-resolution.json"
+    ],
+    "packageIntegrity": {
+        "required": true,
+        "lockSchemaVersion": "agent-plan-lock.v2",
+        "inventorySource": "planFiles",
+        "undeclaredTopLevelFiles": "reject",
+        "allowedUnlistedFiles": [
+            "plan.lock.json"
+        ]
+    },
+    "author": {
+        "id": "claude-code",
+        "surface": "agent-first-planning",
+        "runId": "2026-10-19-chat-ui-polish-draft"
+    },
+    "baseRevision": {
+        "ref": "dev",
+        "sha": "f69f46256c501eb477b39fc8d808ad57fcbca1ca"
+    },
+    "specification": {
+        "tier": "S2",
+        "intent": "Messenger-standard message presentation and a usable tablet/mobile layout.",
+        "status": "DRAFT",
+        "source": "tasks/2026-10-19-chat-ui-polish/specification.json",
+        "requirements": [
+            {
+                "id": "REQ-CHAT-UI",
+                "title": "Sides, timestamps, day markers, responsive",
+                "description": "Bubbles by side, HH:MM time, day markers, tablet/mobile layout with a mobile list-chat switch.",
+                "priority": "P1",
+                "source": "operator request 2026-10-19",
+                "acceptanceIds": [
+                    "AC-UI-1",
+                    "AC-UI-2",
+                    "AC-UI-3"
+                ],
+                "evidenceIds": [
+                    "EV-UI-1",
+                    "EV-UI-2"
+                ],
+                "owner": "WS-CHAT-UI"
+            }
+        ],
+        "tierResolutionRequest": {
+            "requestedTier": "S2",
+            "taskCount": 1,
+            "executableOwners": [
+                "worker-frontend-ui"
+            ],
+            "capabilityHints": [
+                "typescript",
+                "scss",
+                "responsive",
+                "handlebars",
+                "testing",
+                "ALK"
+            ],
+            "riskFlags": {
+                "browser": true
+            },
+            "requirementsBytes": 1100,
+            "externalSpecification": false
+        },
+        "revision": 1,
+        "artifact": "tasks/2026-10-19-chat-ui-polish/specification.json",
+        "goal": "A reviewed UI polish plan.",
+        "constraints": [
+            "View-side only formatting; no data-flow changes.",
+            "Mobile switch without router/store changes.",
+            "Existing suites stay green; no new lint suppressions.",
+            "Desktop geometry unchanged."
+        ],
+        "nonGoals": [
+            "dark theme",
+            "design-system rework",
+            "message grouping",
+            "virtualized lists"
+        ],
+        "scope": {
+            "in": [
+                "bubble styles",
+                "sides",
+                "time",
+                "day markers",
+                "breakpoints",
+                "mobile switch",
+                "component tests",
+                "viewport evidence"
+            ],
+            "out": [
+                "theme rework",
+                "data changes",
+                "router changes"
+            ]
+        }
+    },
+    "readOnly": [
+        "tasks/README.md",
+        "AGENTS.md",
+        "src/scss/libs",
+        "src/scss/utils/scrollbar.scss"
+    ],
+    "forbiddenWrites": [
+        ".alk",
+        "work",
+        "src/main.ts",
+        "src/features/index.ts",
+        "src/features/chats/module.ts",
+        "src/features/chats/store.ts",
+        "src/features/chats/controller.ts",
+        "src/helpers/helpers.ts",
+        "backend",
+        "docs/project-principles.json",
+        ".github/workflows",
+        "netlify.toml",
+        "src/utils"
+    ],
+    "leadOwned": [
+        {
+            "path": "tasks/2026-10-19-chat-ui-polish",
+            "owner": "controller",
+            "reason": "Controller owns plan-package artifacts."
+        },
+        {
+            "path": "docs/progress/progress_log.md",
+            "owner": "controller",
+            "reason": "Controller maintains the progress log."
+        }
+    ],
+    "workstreams": [
+        {
+            "id": "WS-CHAT-UI",
+            "title": "Bubbles, timestamps and responsive chat layout",
+            "owner": "worker-frontend-ui",
+            "reviewer": "independent-release-reviewer",
+            "dependsOn": [],
+            "writes": [
+                "src/components/message/message.hbs",
+                "src/components/message/message.ts",
+                "src/components/message/message.test.ts",
+                "src/components/messenger/messenger.hbs",
+                "src/components/messenger/messenger.ts",
+                "src/components/messenger/messenger.test.ts",
+                "src/features/chats/pages/chat/chat.hbs",
+                "src/features/chats/pages/chat/chat.ts",
+                "src/features/chats/pages/chat/chat.test.ts",
+                "src/scss/utils/variable.scss",
+                "src/scss/components/messenger.scss",
+                "src/scss/components/chat.scss",
+                "src/scss/components/chat-list-user.scss",
+                "src/scss/components/chat-bottom-bar.scss",
+                "src/scss/components/story.scss"
+            ],
+            "readOnly": [
+                "tasks/README.md",
+                "AGENTS.md",
+                "src/scss/libs"
+            ],
+            "forbiddenWrites": [
+                "src/utils",
+                "backend",
+                "src/main.ts",
+                "src/features/chats/store.ts"
+            ],
+            "leadOwned": [],
+            "launchGate": "dev at the declared base (PR #27) with npm run verify green (186 tests) and the live stack available for viewport evidence.",
+            "capabilityHints": [
+                "typescript",
+                "scss",
+                "responsive",
+                "handlebars",
+                "testing",
+                "ALK"
+            ],
+            "requiredTools": [
+                "node",
+                "npm"
+            ],
+            "contextRefs": [
+                "developer-overview.md",
+                "plan.md",
+                "AGENTS.md"
+            ],
+            "acceptanceIds": [
+                "AC-UI-1",
+                "AC-UI-2",
+                "AC-UI-3"
+            ],
+            "evidenceIds": [
+                "EV-UI-1",
+                "EV-UI-2"
+            ],
+            "executionPolicy": {
+                "maxAttempts": 2,
+                "maxWallSeconds": 5400
+            },
+            "artifactPaths": {
+                "result": "work/2026-10-19-chat-ui-polish/evidence/WS-CHAT-UI/task-result-{attempt}.json",
+                "review": "work/2026-10-19-chat-ui-polish/evidence/WS-CHAT-UI/task-review-{attempt}.json"
+            },
+            "required": true,
+            "plannedItems": [
+                "breakpoint tokens",
+                "bubble markup",
+                "time formatting",
+                "day markers",
+                "mobile switch",
+                "responsive messenger",
+                "responsive chat list",
+                "component tests",
+                "viewport evidence"
+            ],
+            "qualityFloor": "Every message renders with a side, HH:MM and correct day markers; no horizontal overflow at 375/768; desktop unchanged; suites and linters green."
+        }
+    ],
+    "acceptance": {
+        "criteria": [
+            {
+                "id": "AC-UI-1",
+                "title": "Sides, time, day markers",
+                "requirementIds": [
+                    "REQ-CHAT-UI"
+                ],
+                "evidenceIds": [
+                    "EV-UI-1"
+                ],
+                "independentEvidenceIds": [],
+                "statement": "Own messages right with the mine bubble, others left with the theirs bubble; every message shows HH:MM from the time field; the first message of a day carries a localized day marker; component tests cover it.",
+                "description": "Deterministic tests.",
+                "source": "acceptance-criteria.md",
+                "priority": "P1"
+            },
+            {
+                "id": "AC-UI-2",
+                "title": "Tablet and mobile layout",
+                "requirementIds": [
+                    "REQ-CHAT-UI"
+                ],
+                "evidenceIds": [
+                    "EV-UI-2"
+                ],
+                "independentEvidenceIds": [],
+                "statement": "At 375px and 768px the chat screen has no horizontal overflow, controls are reachable, and on mobile the list and chat pane switch (select shows the pane with a back control; back returns to the list); scripted geometry/DOM receipts plus screenshots at 375/768/1280.",
+                "description": "Viewport receipts.",
+                "source": "acceptance-criteria.md",
+                "priority": "P1"
+            },
+            {
+                "id": "AC-UI-3",
+                "title": "Desktop intact, gates green",
+                "requirementIds": [
+                    "REQ-CHAT-UI"
+                ],
+                "evidenceIds": [
+                    "EV-UI-1"
+                ],
+                "independentEvidenceIds": [],
+                "statement": "Desktop (>=1024) keeps the current two-column geometry; npm run verify incl. stylelint is green with no new suppressions.",
+                "description": "Suite + lint.",
+                "source": "acceptance-criteria.md",
+                "priority": "P2"
+            }
+        ],
+        "evidence": [
+            {
+                "id": "EV-UI-1",
+                "description": "verify receipt with the new component tests.",
+                "source": "WS-CHAT-UI",
+                "validation": "npm run verify + npm run stylelint",
+                "artifactPath": "work/2026-10-19-chat-ui-polish/evidence/WS-CHAT-UI/EV-UI-1.json",
+                "required": true
+            },
+            {
+                "id": "EV-UI-2",
+                "description": "Playwright viewport receipts and screenshots.",
+                "source": "WS-CHAT-UI",
+                "validation": "DOM/geometry assertions at 375/768/1280",
+                "artifactPath": "work/2026-10-19-chat-ui-polish/evidence/WS-CHAT-UI/EV-UI-2.json",
+                "required": true
+            }
+        ],
+        "releaseGate": "UI polish accepted with deterministic tests and viewport receipts.",
+        "qualityFloor": "No criterion is accepted from prose alone."
+    },
+    "validation": {
+        "commands": [
+            "npm run verify",
+            "npm run stylelint",
+            "node .claude/hooks/scripts/guard-architecture.mjs --all --strict"
+        ]
+    },
+    "orchestration": {
+        "startMode": "reviewed-plan",
+        "remediationMode": "ask",
+        "maxPlanReviewRounds": 3,
+        "maxTaskAttempts": 2,
+        "maxParallelTasks": 1,
+        "maxValidationRunsPerTask": 2,
+        "maxToolCallsPerIteration": 30,
+        "maxUsageIterationsPerAttempt": 12,
+        "maxToolCallsPerTask": 200,
+        "maxToolCallsPerRun": 320,
+        "maxReportedTokensPerTask": 18000,
+        "maxReportedTokensPerRun": 24000,
+        "maxEvidenceArtifactBytes": 1048576,
+        "maxEvidenceBytesPerTask": 4194304,
+        "maxEvidenceBytesPerRun": 4194304,
+        "maxTaskWallSeconds": 5400,
+        "maxRunWallSeconds": 10000,
+        "maxContextBytes": 160000,
+        "maxRenderedPacketBytes": 50000,
+        "stateFile": "work/2026-10-19-chat-ui-polish/run.state.json",
+        "eventLog": "work/2026-10-19-chat-ui-polish/events.jsonl",
+        "stepReviewRequired": true,
+        "finalAuditRequired": true
+    },
+    "implementationAudit": {
+        "required": true,
+        "finalRequired": true
+    },
+    "developerOverview": "tasks/2026-10-19-chat-ui-polish/developer-overview.md",
+    "releaseTarget": {
+        "kind": "local-only",
+        "environment": "Vite own mode + Docker Compose owned backend",
+        "productionPromotionClaimed": false
+    },
+    "releaseImpact": "UI polish only; no data or backend changes.",
+    "nonGoals": [
+        "dark theme",
+        "design-system rework",
+        "message grouping",
+        "virtualized lists"
+    ],
+    "finalAuditGates": [
+        "[AC-UI-1|EV-UI-1] sides, HH:MM and day markers with component tests",
+        "[AC-UI-2|EV-UI-2] no overflow at 375/768, mobile switch works, screenshots captured",
+        "[AC-UI-3|EV-UI-1] desktop intact, verify + stylelint green"
+    ],
+    "securityGates": [
+        {
+            "id": "SEC-VIEW-ONLY",
+            "statement": "Formatting is view-side only; no URL building beyond the existing safe fileUrl path.",
+            "evidenceIds": [
+                "EV-UI-1"
+            ]
+        }
+    ],
+    "budgetPolicy": {
+        "units": "tokens-and-resources",
+        "reroute": "pause-and-review",
+        "maxTotalTokens": 24000,
+        "maxParallelWorkstreams": 1,
+        "maxRunWallSeconds": 10000,
+        "criticalPathWallSeconds": 5400,
+        "aggregateWorkstreamWallSeconds": 5400,
+        "retryReserveWallSeconds": 2000
+    },
+    "budgets": {
+        "defaultWorkstreamTokens": 18000,
+        "maxEvidenceBytesPerRun": 4194304
+    },
+    "contextLimits": {
+        "profile": "small-context-profile.v1",
+        "maxPlanContextBytes": 160000,
+        "maxRenderedPacketBytes": 50000,
+        "smallContextPacketBytes": 34000,
+        "maxReferenceFilesPerPacket": 16,
+        "includeOnlyOwnedWrites": true,
+        "excludeRuntimeWorkArtifacts": true
+    },
+    "planReview": {
+        "required": true,
+        "requestPath": "tasks/2026-10-19-chat-ui-polish/plan-review-request.md",
+        "reviewerClass": "independent-plan-reviewer",
+        "maxRounds": 3,
+        "implementationAuthorized": false,
+        "report": "tasks/2026-10-19-chat-ui-polish/plan-review.json",
+        "reviewedRevision": 1,
+        "verdict": "READY_TO_FREEZE"
+    },
+    "tierResolution": {
+        "status": "RESOLVED",
+        "tier": "S2",
+        "requestedTier": "S2",
+        "reason": "browser-risk (responsive layout and DOM evidence)",
+        "independentReviewRequired": true,
+        "requestPath": "tasks/2026-10-19-chat-ui-polish/tier-request.json",
+        "resolutionPath": "tasks/2026-10-19-chat-ui-polish/tier-resolution.json",
+        "requestDigest": "7697885eac7dfd44b317c212e656e9906bd584961a8dfb4128f23dfdf6394cf5"
+    }
+}

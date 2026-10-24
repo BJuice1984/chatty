@@ -4,14 +4,15 @@
 
 ## Проект
 
-**Chatty** — мессенджер на чистом TypeScript без фреймворков (учебный проект курса middle.messenger Яндекс Практикума). Сборка — Vite 8, шаблоны — Handlebars, компонентный подход — собственный, на классе `Block`.
+**Chatty** — мессенджер на чистом TypeScript без фреймворков (учебный проект middle.messenger). Сборка — Vite 8, шаблоны — Handlebars, компонентный подход — собственный, на классе `Block`. Бэкенд один — собственный (`backend/`).
 
 Требования: Node `^20.19.0 || >=22.12.0`. TypeScript зафиксирован на **5.9** — TS 7 это нативный компилятор без JS API, который нужен `@typescript-eslint`; не обновляйте его, пока typescript-eslint не заявит поддержку.
 
 ## Команды
 
 ```bash
-npm run dev          # vite dev-сервер на порту 3000
+npm run dev          # vite dev-сервер на порту 3000 против локального own-бэкенда (.env.development)
+npx vite --mode own  # то же с явным Vite-режимом own (грузит .env.own)
 npm run build        # проверка типов (tsc) + сборка в dist/
 npm run typecheck    # только проверка типов (tsc --noEmit)
 npm start            # build + express-статика из dist/ на порту 3000
@@ -22,9 +23,13 @@ npm run eslint       # проверка src/ (flat config в eslint.config.js)
 npm run eslint:fix   # автофикс
 npm run stylelint    # проверка **/*{.css,.scss}
 npm run stylelint:fix
-npm run verify       # единый гейт: typecheck + test + eslint + stylelint (fail-fast на первой стадии)
+npm run verify       # единый гейт фронта: typecheck + test + eslint + stylelint (fail-fast)
+npm run verify:backend # гейт бэкенда: backend/verify.sh (pytest + alembic)
+npm run verify:all   # фронт + бэкенд вместе
 npm run cm           # интерактивный conventional-commit через commitizen
 ```
+
+Свой бэкенд поднимается compose-стеком из корня (`docker compose --env-file <операторский-env> up -d --build`; api + PostgreSQL + RustFS, Ollama — внешняя зависимость хоста). Preflight (`docker compose ... config --quiet`), health/ready-проверки и откат — в каноническом runbook `docs/deployment/own-backend.md`.
 
 ## Архитектура
 
@@ -38,8 +43,9 @@ npm run cm           # интерактивный conventional-commit через
 - `src/utils/Router.ts` — singleton (`export default new Router('#app')`), history API, монтирует страницу в `#app` из `index.html`. Маршруты — в `src/main.ts` (`Routes`).
 - `src/utils/Store.ts` — глобальное состояние на EventBus, `StoreEvents.Updated`. Типы состояния — `AppState`. Пишут в Store контроллеры (`store.set('chats', ...)`).
 - `src/controllers/` — синглтоны (`export default new ...Controller()`), единственное место бизнес-логики; вызывают API и пишут в Store.
-- `src/api/` — классы над `BaseApi`, работают через `HTTPTransport`. Бэкенд курса: `https://ya-praktikum.tech/api/v2` (`HTTPTransport.API_URL`).
-- `src/utils/HTTPTransport.ts` — обёртка над XMLHttpRequest. `src/utils/WSTransport.ts` — WebSocket для сообщений чата (`MessagesController`).
+- HTTP-адаптеры фич — `src/features/*/api/` над `HTTPTransport`; единственная реализация — own-адаптер собственного бэкенда.
+- `src/utils/HTTPTransport.ts` — обёртка над XMLHttpRequest (дефолтный timeout 30с, per-request override). `src/utils/WSTransport.ts` — WebSocket с bounded-реконнектом (растущий backoff, потолок попыток): явный `close()` не реконнектит и чистит ping/слушатели, `connect()` реджектится при исчерпании попыток.
+- `src/features/` — самодостаточные фичи-модули за портами (`ports.ts`), реализация — own-адаптеры. `src/features/chats/ws/` — WS-шлюз сообщений за портом `ChatMessagesPort` (own-адаптер с cookie-аутентификацией, замена legacy `MessagesController`). `src/features/chats/history/` — пагинация истории чата: курсор `before_id`, prepend-merge с дедупликацией по id, саморегистрирующийся хелпер `ChatHistory` (статус-строка «загрузить ещё» в `messenger.hbs`; модуль попадает в бандл импортом из ws-адаптера — components фичи не импортируют). `src/features/ai-assistant/` — AI-ассистент (RAG-поиск и вопрос-ответ).
 - Шаблоны `.hbs` лежат рядом с компонентами и предкомпилируются кастомным плагином `vite-plugin-handelbars-precompile.ts` (обратите внимание на опечатку «handelbars» в имени файла — она в коде и путях).
 - Стили — SCSS в `src/scss/` (миксины, переменные, normalize в `libs/`).
 - `server/server.js` — express-статика из `dist/` (для проверки прод-сборки локально).
@@ -56,18 +62,19 @@ npm run cm           # интерактивный conventional-commit через
 - Evidence-команда план-манифестов — `npm run verify` (см. slash-команду `/verify`): вердикты `verify: PASS/FAIL at <stage>`.
 - Входной скилл для агентов — `chatty-dev` (`.claude/skills/chatty-dev/SKILL.md`): слои, workflow, guard; активируется по description в новой сессии.
 - Автоматический архитектурный guard (PostToolUse): `.claude/hooks/scripts/guard-architecture.mjs` — блокирует импорты вверх по слоям и runtime-импорты `api/` из UI, предупреждает о типах из `api/` в UI. CLI: `node .claude/hooks/scripts/guard-architecture.mjs --all [--strict]`; исторический долг — `TRANSITIONAL_DEBT` в скрипте (починил — удали запись).
-- Ветки прогонов — `feature/<plan-id>` от main, результат — PR в main; `sprint_*` и `deploy` не трогать.
+- Ветки прогонов — `feature/<plan-id>` от принятого integration baseline. Для текущего AI-messenger контура baseline и целевая ветка PR — `dev`: backend foundation первым, frontend boundary вторым, каждый пакет отдельным проверяемым PR. Ветка `dev` должна существовать до freeze; `sprint_*` и `deploy` не трогать.
 - Стабильные принципы проекта для агентов — `docs/project-principles.json`; при правке пересчитывайте `principlesDigest` (процедура — в `tasks/README.md`).
 
 ## Соглашения и ограничения
 
 - Стиль кода enforced линтерами: отступы 4 пробела, одинарные кавычки, без точек с запятой, trailing-запятые в многострочных литералах. Не спорьте с `@stylistic`-правилами — запускайте `eslint:fix`.
 - Импорты пишутся с расширением `.ts` (`moduleResolution: bundler`, `allowImportingTsExtensions`).
+- Гейты по зонам: фронт — `npm run verify`, бэкенд — `npm run verify:backend`, итог контура — `npm run verify:all`. Локальный runbook собственного бэкенда (compose-preflight, health/ready, rollback) — `docs/deployment/own-backend.md`; `docs/deployment/internal-backend.md` остаётся как исторический справочник (superseded).
 - Тесты (`src/**/*.test.*`) исключены из eslint; `src/scss/libs/**` и `src/scss/utils/scrollbar.scss` — из stylelint.
 - Pre-commit хук husky запускает `npm run verify` — строгий гейт без автофиксов. Нужны фиксы — запускайте `npm run eslint:fix` / `npm run stylelint:fix` руками до коммита.
 - Commit-msg хук прогоняет commitlint (conventional commits; интерактивно — `npm run cm`). Аварийный обход через `--no-verify` нежелателен.
 - Окончания строк — LF везде (`.gitattributes` с `eol=lf`); на Windows не отключайте.
-- CI (`.github/workflows/tests.yml`) — автотесты Практикума (bats). Запускается **только на PR из веток `sprint_N` в main** и требует, чтобы репозиторий был публичным. Дополнительно `.github/workflows/verify.yml` гоняет `npm run verify` на всех PR и прямых пушах в main.
+- CI (`.github/workflows/verify.yml`) гоняет `npm run verify` на всех PR и прямых пушах в main.
 - Деплой — Netlify из `dist/` по `netlify.toml` (SPA-редирект `/* → /index.html`).
 - Значимые изменения (код, агентская среда, документация) сопровождайте записью в `docs/progress/progress_log.md` — новые записи сверху.
 - Репозиторий GitHub: `BJuice1984/chatty` (origin по SSH).

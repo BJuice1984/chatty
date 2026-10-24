@@ -1,0 +1,580 @@
+{
+    "schemaVersion": "agent-plan-manifest.v1",
+    "status": "FROZEN",
+    "planRevision": 5,
+    "package": {
+        "id": "2026-10-21-avatars-stories",
+        "title": "Avatars and stories on the own backend via /files and object storage",
+        "workspaceRoot": ".",
+        "artifactRoot": "work/2026-10-21-avatars-stories",
+        "planArtifactRoot": "tasks/2026-10-21-avatars-stories"
+    },
+    "packageIntegrity": {
+        "required": true,
+        "lockSchemaVersion": "agent-plan-lock.v2",
+        "inventorySource": "planFiles",
+        "undeclaredTopLevelFiles": "reject",
+        "allowedUnlistedFiles": [
+            "plan.lock.json",
+            "plan-review.json"
+        ]
+    },
+    "author": {
+        "id": "claude-code",
+        "surface": "agent-first-planning",
+        "runId": "2026-10-21-avatars-stories-draft"
+    },
+    "baseRevision": {
+        "ref": "feature/2026-10-21-stories",
+        "sha": "87b7e875a7a253f8b4a135a01a33d065475b10ad"
+    },
+    "specification": {
+        "tier": "S2",
+        "intent": "Move avatars and stories from client-side mocks to the own backend. Avatars (user profile and chat) upload through a new POST /files/avatars endpoint into RustFS with metadata in PostgreSQL and flow back as avatar_url fields in auth/chats/members responses (avatar pool stays as fallback). Stories become a real backend contract: POST /stories (multipart image), GET /stories feed (own first, then others, newest first; 24h TTL; per-viewer viewed flag), POST /stories/{id}/view. The chat page consumes the feed through a stories module inside the chats feature (src/features/chats/stories/: port, own adapter, controller, Store slice) instead of page-local mocks; the existing viewer/timer/page-ownership semantics stay unchanged.",
+        "status": "DRAFT",
+        "source": "tasks/2026-10-21-avatars-stories/specification.json",
+        "requirements": [
+            {
+                "id": "REQ-AVATAR-BACKEND",
+                "title": "User and chat avatars stored via /files + RustFS",
+                "description": "Migration 007 (batch_alter_table): files.chat_id nullable, users/chats.avatar_file_id; POST /files/avatars (kind=user|chat, owner-only chats, image/* whitelist, size limit) stores the object and points the avatar column at it; avatar_url (\"{file_id}/download\" or null, a model property picked up by from_attributes responses) joins the auth user responses, GET /chats, GET /chats/{id} and members (members query widened in the chat repository/service); download of chat_id-NULL media opens to any authenticated user, chat attachments stay participant-only; the upgrade/downgrade round-trip is a manual evidence note against compose PostgreSQL.",
+                "priority": "P1",
+                "source": "operator request 2026-10-21",
+                "acceptanceIds": [
+                    "AC-BE-AVATARS",
+                    "AC-BE-ACCESS"
+                ],
+                "evidenceIds": [
+                    "EV-BE-1"
+                ],
+                "owner": "WS-BE-MEDIA"
+            },
+            {
+                "id": "REQ-STORIES-BACKEND",
+                "title": "Stories: upload, feed with viewed state, 24h TTL",
+                "description": "stories + story_views tables; POST /stories (multipart image, same validation), GET /stories (active within story_ttl_hours, cap 100, own first then others, newest first, per-viewer viewed, owner display name and avatar), POST /stories/{id}/view idempotent 204; router registered next to files.",
+                "priority": "P1",
+                "source": "operator request 2026-10-21",
+                "acceptanceIds": [
+                    "AC-BE-STORIES"
+                ],
+                "evidenceIds": [
+                    "EV-BE-1"
+                ],
+                "owner": "WS-BE-MEDIA"
+            },
+            {
+                "id": "REQ-STORIES-FRONT",
+                "title": "Frontend stories: backend-backed feed, upload, viewed ring",
+                "description": "Stories module INSIDE the chats feature (src/features/chats/stories/, the chats/history precedent — cross-feature imports hit the guard): port, own adapter, module Store slice (state.stories), controller; the chat page drops initialStories/blob URLs, renders the Store feed with the static add tile first, fetches on CDM; on close it only resets the viewer and calls markViewed (numeric id) — the ring fades through the controller's synchronous slice patch before its POST; the picked file goes to uploadStory + refetch; viewer/timer/focus semantics untouched.",
+                "priority": "P1",
+                "source": "operator request 2026-10-21",
+                "acceptanceIds": [
+                    "AC-FE-STORIES"
+                ],
+                "evidenceIds": [
+                    "EV-FE-1"
+                ],
+                "owner": "WS-FE-MEDIA"
+            },
+            {
+                "id": "REQ-AVATARS-FRONT",
+                "title": "Frontend avatars: real avatars with pool fallback, uploads from profile and chat header",
+                "description": "auth/chats/member mappings use avatar_url with avatarPoolUrl fallback; changeChatAvatar keeps its port signature and reads the clicked tile's chat id from the UI FormData chatId field (inputFile.ts), rebuilding it into the /files/avatars contract and refetching chats on success; profile changeAvatar narrows to Promise<{avatar: string}> and the controller patches state.user.avatar; the companion-avatar rule is preserved.",
+                "priority": "P1",
+                "source": "operator request 2026-10-21",
+                "acceptanceIds": [
+                    "AC-FE-AVATARS"
+                ],
+                "evidenceIds": [
+                    "EV-FE-1"
+                ],
+                "owner": "WS-FE-MEDIA"
+            }
+        ],
+        "tierResolutionRequest": {
+            "capabilityHints": [
+                "typescript",
+                "scss",
+                "handlebars",
+                "fastapi",
+                "sqlalchemy",
+                "alembic",
+                "pytest",
+                "mocha",
+                "ALK"
+            ],
+            "executableOwners": [
+                "worker-backend-media",
+                "worker-frontend-media"
+            ],
+            "externalSpecification": false,
+            "requirementsBytes": 4800,
+            "riskFlags": {
+                "architecture": false,
+                "browser": true,
+                "data": true,
+                "external": false,
+                "migration": true,
+                "performance": false,
+                "release": false,
+                "security": false
+            },
+            "taskCount": 2
+        },
+        "revision": 4,
+        "artifact": "tasks/2026-10-21-avatars-stories/specification.json",
+        "goal": "A reviewed backend+frontend plan replacing avatar-pool stubs and mock stories with the /files media pipeline.",
+        "constraints": [
+            "Layers downward only; guard-architecture --all --strict stays green; no runtime api/ imports from UI; no cross-feature imports — the stories module lives inside the chats feature (chats/history precedent).",
+            "Block lifecycle truth of plan 2026-10-21-stories is preserved: the page owns the timer, overlay focus and delegated change; the viewer stays presentational.",
+            "Avatar URL convention: API returns \"{file_id}/download\" (no leading slash); leading-\"/\" values stay app static assets (avatar pool); story feed URLs are resolved to absolute URLs by the adapter.",
+            "Single source of truth for stories is the Store slice: the page never writes stories props; markViewed patches the slice synchronously before its POST.",
+            "No access widening beyond chat_id-NULL media for authenticated users; chat attachments stay participant-only (regression-pinned); cookies are SameSite=lax, same-site in dev.",
+            "Migration 007 additive and forward-only, batch_alter_table for altered column/FKs; the upgrade/downgrade round-trip against compose PostgreSQL is a manual evidence note, not an automated gate.",
+            "Mock stories (initialStories, ava-*.jpg tiles, URL.createObjectURL path) are removed; existing suites stay green."
+        ],
+        "nonGoals": [
+            "WS push for new stories or avatar changes",
+            "video/multi-segment stories, owner grouping/playlists",
+            "story deletion, view counters, privacy lists",
+            "server-side image processing",
+            "member avatars inside GET /chats (N+1 members debt stays separate)",
+            "non-owner chat avatar changes"
+        ],
+        "scope": "backend/ (FastAPI services, models, schemas, endpoints, alembic, pytest) and frontend media consumption (chats stories module src/features/chats/stories/, auth/chats/profile adapters and controllers, chat page, Store slice, tests)."
+    },
+    "readOnly": [
+        "AGENTS.md",
+        "tasks/README.md",
+        "tasks/2026-10-21-stories/plan.md",
+        "docs/deployment/own-backend.md",
+        "src/core/Block.ts",
+        "backend/alembic/versions/006_chat_last_reads.py",
+        "backend/app/repositories/files.py",
+        "backend/app/schemas/user.py",
+        "backend/tests/conftest.py"
+    ],
+    "forbiddenWrites": [
+        "src/main.ts",
+        "src/features/index.ts",
+        "src/core",
+        "src/helpers/helpers.ts",
+        "src/scss/libs",
+        "docs/project-principles.json",
+        ".github/workflows",
+        "netlify.toml"
+    ],
+    "leadOwned": [
+        {
+            "path": "tasks/2026-10-21-avatars-stories",
+            "owner": "controller",
+            "reason": "Controller owns plan-package artifacts."
+        }
+    ],
+    "workstreams": [
+        {
+            "id": "WS-BE-MEDIA",
+            "title": "Backend: media pipeline — avatars and stories through /files",
+            "owner": "worker-backend-media",
+            "reviewer": "independent-release-reviewer",
+            "dependsOn": [],
+            "writes": [
+                "backend/alembic/versions/007_avatars_stories.py",
+                "backend/app/api/v1/endpoints/auth.py",
+                "backend/app/api/v1/endpoints/chats.py",
+                "backend/app/api/v1/endpoints/files.py",
+                "backend/app/api/v1/endpoints/stories.py",
+                "backend/app/api/v1/router.py",
+                "backend/app/core/config.py",
+                "backend/app/models/__init__.py",
+                "backend/app/models/chat.py",
+                "backend/app/models/file.py",
+                "backend/app/models/story.py",
+                "backend/app/models/user.py",
+                "backend/app/repositories/chats.py",
+                "backend/app/repositories/stories.py",
+                "backend/app/schemas/auth.py",
+                "backend/app/schemas/chat.py",
+                "backend/app/schemas/file.py",
+                "backend/app/schemas/story.py",
+                "backend/app/services/chats.py",
+                "backend/app/services/files.py",
+                "backend/app/services/stories.py",
+                "backend/tests/integration/chat/test_http_and_ws.py",
+                "backend/tests/integration/chat/test_media_api.py",
+                "backend/tests/integration/chat/test_stories_api.py",
+                "backend/tests/unit/chat/test_stories_service.py"
+            ],
+            "readOnly": [
+                "AGENTS.md",
+                "docs/deployment/own-backend.md",
+                "backend/app/repositories/files.py",
+                "backend/app/schemas/user.py",
+                "backend/tests/conftest.py",
+                "backend/app/services/auth.py"
+            ],
+            "forbiddenWrites": [],
+            "leadOwned": [],
+            "launchGate": "feature/2026-10-21-avatars-stories branch created at 87b7e87; npm run verify:all green at base.",
+            "capabilityHints": [
+                "fastapi",
+                "sqlalchemy",
+                "alembic",
+                "pytest",
+                "python"
+            ],
+            "requiredTools": [
+                "python",
+                "pytest"
+            ],
+            "contextRefs": [
+                "developer-overview.md",
+                "plan.md",
+                "acceptance-criteria.md"
+            ],
+            "acceptanceIds": [
+                "AC-BE-AVATARS",
+                "AC-BE-ACCESS",
+                "AC-BE-STORIES"
+            ],
+            "evidenceIds": [
+                "EV-BE-1"
+            ],
+            "executionPolicy": {
+                "maxAttempts": 3,
+                "maxWallSeconds": 7200
+            },
+            "artifactPaths": {
+                "result": "work/2026-10-21-avatars-stories/evidence/WS-BE-MEDIA/task-result-{attempt}.json",
+                "review": "work/2026-10-21-avatars-stories/evidence/WS-BE-MEDIA/task-review-{attempt}.json"
+            },
+            "required": true,
+            "plannedItems": [
+                "migration 007 (batch_alter_table: nullable files.chat_id, avatar columns, stories, story_views) with a reversible downgrade",
+                "models and schemas (File.chat_id optional, Story/StoryView, avatar_url properties on User/Chat, avatar_url fields)",
+                "FileService: global-media upload path (image/* whitelist, media/ object keys), avatar setters, download NULL-branch",
+                "StoryService + repository: create, feed (own-first, TTL, cap 100, per-viewer viewed), idempotent mark_viewed",
+                "endpoints: POST /files/avatars, /stories router (POST/GET/view), router registration",
+                "avatar_url in auth responses, GET /chats, GET /chats/{id}; members avatar_url via the widened chat repository/service query",
+                "integration tests (avatars, stories feed semantics, access regression) and a feed unit test; manual migration round-trip note (compose PostgreSQL)"
+            ],
+            "qualityFloor": "npm run verify:backend green (pytest + alembic heads); all new endpoint tests pass; chat-attachment outsider-403 pinned; no frontend file touched; the manual upgrade/downgrade round-trip note against compose PostgreSQL is attached to the evidence (not an automated gate)."
+        },
+        {
+            "id": "WS-FE-MEDIA",
+            "title": "Frontend: consume avatars and stories, drop client mocks",
+            "owner": "worker-frontend-media",
+            "reviewer": "independent-release-reviewer",
+            "dependsOn": [
+                "WS-BE-MEDIA"
+            ],
+            "writes": [
+                "docs/progress/progress_log.md",
+                "src/features/auth/api/api.test.ts",
+                "src/features/auth/api/own.ts",
+                "src/features/chats/api/api.test.ts",
+                "src/features/chats/api/own.ts",
+                "src/features/chats/controller.ts",
+                "src/features/chats/pages/chat/chat.test.ts",
+                "src/features/chats/pages/chat/chat.ts",
+                "src/features/chats/stories/api/api.test.ts",
+                "src/features/chats/stories/api/index.ts",
+                "src/features/chats/stories/api/own.ts",
+                "src/features/chats/stories/controller.test.ts",
+                "src/features/chats/stories/controller.ts",
+                "src/features/chats/stories/ports.ts",
+                "src/features/chats/stories/store.ts",
+                "src/features/profile/api/api.test.ts",
+                "src/features/profile/api/own.ts",
+                "src/features/profile/controller.ts",
+                "src/features/profile/ports.ts",
+                "src/utils/Store.ts",
+                "src/utils/types.ts"
+            ],
+            "readOnly": [
+                "AGENTS.md",
+                "src/core/Block.ts",
+                "src/utils/HTTPTransport.ts",
+                "src/utils/avatarPool.ts",
+                "src/utils/csrf.ts",
+                "src/utils/env.ts",
+                "tasks/2026-10-21-stories/plan.md"
+            ],
+            "forbiddenWrites": [
+                "src/components/story/storyViewer",
+                "src/scss"
+            ],
+            "leadOwned": [],
+            "launchGate": "WS-BE-MEDIA accepted at the integration baseline; npm run verify green at base.",
+            "capabilityHints": [
+                "typescript",
+                "handlebars",
+                "mocha",
+                "sinon",
+                "ALK"
+            ],
+            "requiredTools": [
+                "node",
+                "npm"
+            ],
+            "contextRefs": [
+                "developer-overview.md",
+                "plan.md",
+                "acceptance-criteria.md"
+            ],
+            "acceptanceIds": [
+                "AC-FE-STORIES",
+                "AC-FE-AVATARS",
+                "AC-PROCESS"
+            ],
+            "evidenceIds": [
+                "EV-FE-1"
+            ],
+            "executionPolicy": {
+                "maxAttempts": 2,
+                "maxWallSeconds": 7200
+            },
+            "artifactPaths": {
+                "result": "work/2026-10-21-avatars-stories/evidence/WS-FE-MEDIA/task-result-{attempt}.json",
+                "review": "work/2026-10-21-avatars-stories/evidence/WS-FE-MEDIA/task-review-{attempt}.json"
+            },
+            "required": true,
+            "plannedItems": [
+                "AppState.stories declared weakly typed like the chats slice ({[key: string]: unknown}[]); concrete StoryDto in features/chats/stories/ports.ts, cast in the module slice setter — no type imports from features into utils/Store.ts",
+                "features/chats/stories: ports, own adapter (fileUrl resolution, csrf writes), controller (fetch/upload+refetch/markViewed with synchronous slice patch then POST)",
+                "chat page: Store-fed stories with static add tile, CDM fetch, markViewed-on-close (page never writes stories props), uploadStory via delegated change, mock removal; chat.hbs needs no change",
+                "auth/chats/profile adapters and controllers: avatar_url mappings with pool fallback, changeChatAvatar reading chatId from the UI FormData, profile changeAvatar -> {avatar} + state.user patch",
+                "mocha coverage: stories adapter/controller, adapter mappings, FormData rebuilds, page contract with stubbed controller",
+                "progress log entry",
+                "rework of the profile api.test.ts changeAvatar-unsupported case into the real contract test"
+            ],
+            "qualityFloor": "npm run verify green end to end (existing ~297 tests stay green); verify:all green; guard strict green; viewer/timer/focus semantics untouched; no blob-URL or mock-story leftovers; the page never writes stories props (Store slice is the single source)."
+        }
+    ],
+    "acceptance": {
+        "criteria": [
+            {
+                "id": "AC-BE-AVATARS",
+                "title": "Avatar upload and avatar_url contract",
+                "requirementIds": [
+                    "REQ-AVATAR-BACKEND"
+                ],
+                "evidenceIds": [
+                    "EV-BE-1"
+                ],
+                "independentEvidenceIds": [],
+                "statement": "Migration 007 (batch_alter_table) reverses all five steps; a manual upgrade/downgrade round-trip against compose PostgreSQL is an evidence NOTE (not an automated gate); POST /files/avatars stores user/chat avatars (image/* whitelist, size limit, owner-only chats); avatar_url (model property) appears in auth responses, GET /chats, GET /chats/{id} and members; pytest covers the paths.",
+                "description": "Backend integration tests.",
+                "source": "acceptance-criteria.md",
+                "priority": "P1"
+            },
+            {
+                "id": "AC-BE-ACCESS",
+                "title": "Download access: global media open, chat attachments closed",
+                "requirementIds": [
+                    "REQ-AVATAR-BACKEND"
+                ],
+                "evidenceIds": [
+                    "EV-BE-1"
+                ],
+                "independentEvidenceIds": [],
+                "statement": "GET /files/{id}/download keeps participant-only access for chat attachments (outsider 403 regression-pinned) while chat_id-NULL media downloads for any authenticated user.",
+                "description": "Access regression tests.",
+                "source": "acceptance-criteria.md",
+                "priority": "P1"
+            },
+            {
+                "id": "AC-BE-STORIES",
+                "title": "Stories feed contract",
+                "requirementIds": [
+                    "REQ-STORIES-BACKEND"
+                ],
+                "evidenceIds": [
+                    "EV-BE-1"
+                ],
+                "independentEvidenceIds": [],
+                "statement": "POST /stories validates and stores an image; GET /stories returns active stories (TTL, cap 100, own first then others, newest first) with per-viewer viewed; POST /stories/{id}/view is idempotent (204, single row) including for expired stories; 401 without auth.",
+                "description": "Backend integration and unit tests.",
+                "source": "acceptance-criteria.md",
+                "priority": "P1"
+            },
+            {
+                "id": "AC-FE-STORIES",
+                "title": "Backend-backed stories on the chat page",
+                "requirementIds": [
+                    "REQ-STORIES-FRONT"
+                ],
+                "evidenceIds": [
+                    "EV-FE-1"
+                ],
+                "independentEvidenceIds": [],
+                "statement": "The stories module lives inside the chats feature; the page renders state.stories (mocks and blob URLs removed, add tile stays first), fetches on CDM, and on every close only resets the viewer while markViewed runs once with the numeric id — the ring fades through the controller's synchronous Store patch; the picked file goes through the controller; mocha pins the contract with stubs.",
+                "description": "Frontend unit tests.",
+                "source": "acceptance-criteria.md",
+                "priority": "P1"
+            },
+            {
+                "id": "AC-FE-AVATARS",
+                "title": "Real avatars with pool fallback and uploads",
+                "requirementIds": [
+                    "REQ-AVATARS-FRONT"
+                ],
+                "evidenceIds": [
+                    "EV-FE-1"
+                ],
+                "independentEvidenceIds": [],
+                "statement": "Adapters map avatar_url with avatarPoolUrl fallback; changeChatAvatar keeps its port signature, reads the chat id from the UI FormData chatId field and refetches chats on success; profile changeAvatar (Promise<{avatar}>) patches state.user.avatar; the companion-avatar rule is preserved; mocha covers mappings and FormData rebuilds.",
+                "description": "Frontend unit tests.",
+                "source": "acceptance-criteria.md",
+                "priority": "P1"
+            },
+            {
+                "id": "AC-PROCESS",
+                "title": "Gates and bookkeeping",
+                "requirementIds": [
+                    "REQ-AVATAR-BACKEND",
+                    "REQ-STORIES-BACKEND",
+                    "REQ-STORIES-FRONT",
+                    "REQ-AVATARS-FRONT"
+                ],
+                "evidenceIds": [
+                    "EV-FE-1"
+                ],
+                "independentEvidenceIds": [],
+                "statement": "npm run verify:all and guard strict pass; the progress log gets an entry; no file outside the manifest write-sets changes.",
+                "description": "Gate runs captured as evidence.",
+                "source": "acceptance-criteria.md",
+                "priority": "P1"
+            }
+        ]
+    },
+    "validation": {
+        "commands": [
+            "npm run verify:all",
+            "node .claude/hooks/scripts/guard-architecture.mjs --all --strict"
+        ]
+    },
+    "orchestration": {
+        "startMode": "reviewed-plan",
+        "remediationMode": "ask",
+        "maxPlanReviewRounds": 3,
+        "maxTaskAttempts": 3,
+        "maxParallelTasks": 1,
+        "maxValidationRunsPerTask": 2,
+        "maxToolCallsPerIteration": 30,
+        "maxUsageIterationsPerAttempt": 12,
+        "maxToolCallsPerTask": 250,
+        "maxToolCallsPerRun": 500,
+        "maxReportedTokensPerTask": 40000,
+        "maxReportedTokensPerRun": 80000,
+        "maxEvidenceArtifactBytes": 1048576,
+        "maxEvidenceBytesPerTask": 2097152,
+        "maxEvidenceBytesPerRun": 4194304,
+        "maxTaskWallSeconds": 7200,
+        "maxRunWallSeconds": 18000,
+        "maxContextBytes": 120000,
+        "maxRenderedPacketBytes": 40000,
+        "stateFile": "work/2026-10-21-avatars-stories/run.state.json",
+        "eventLog": "work/2026-10-21-avatars-stories/events.jsonl",
+        "stepReviewRequired": true,
+        "finalAuditRequired": true
+    },
+    "implementationAudit": {
+        "required": true,
+        "finalRequired": true
+    },
+    "developerOverview": "tasks/2026-10-21-avatars-stories/developer-overview.md",
+    "releaseTarget": {
+        "kind": "local-only",
+        "environment": "Vite own mode + compose own-backend",
+        "productionPromotionClaimed": false
+    },
+    "releaseImpact": "Backend media contract (avatars, stories) and its frontend consumption; Store gains a stories slice; no router, auth-flow or deployment changes.",
+    "nonGoals": [
+        "WS push for new stories or avatar changes",
+        "video/multi-segment stories, owner grouping/playlists",
+        "story deletion, view counters, privacy lists",
+        "server-side image processing",
+        "member avatars inside GET /chats (N+1 members debt stays separate)",
+        "non-owner chat avatar changes"
+    ],
+    "finalAuditGates": [
+        "[AC-BE-AVATARS|EV-BE-1] avatar upload/contract proven by pytest; migration clean",
+        "[AC-BE-ACCESS|EV-BE-1] access split proven: global media 200 authenticated, chat attachments outsider-403",
+        "[AC-BE-STORIES|EV-BE-1] feed semantics (own-first, TTL, viewed, idempotent view) proven by pytest",
+        "[AC-FE-STORIES|EV-FE-1] chat page consumes the Store feed; markViewed once per close; upload through controller; mocks gone",
+        "[AC-FE-AVATARS|EV-FE-1] avatar mappings, FormData rebuilds and state refresh proven by mocha",
+        "[AC-PROCESS|EV-FE-1] verify:all and guard strict green; progress log entry; no out-of-write-set changes"
+    ],
+    "securityGates": [
+        {
+            "id": "SEC-MEDIA-ACCESS",
+            "statement": "Global media (chat_id NULL) is readable by authenticated users only; chat attachments stay participant-only (regression-pinned); avatar/story uploads enforce image/* and max_upload_bytes; chat avatar changes are owner-only.",
+            "evidenceIds": [
+                "EV-BE-1"
+            ]
+        },
+        {
+            "id": "SEC-CONTRACT-HYGIENE",
+            "statement": "No secrets or object keys leak into frontend contracts: avatar_url/image_url carry relative file paths only; no new env or deploy surface.",
+            "evidenceIds": [
+                "EV-FE-1"
+            ]
+        }
+    ],
+    "budgetPolicy": {
+        "units": "tokens-and-resources",
+        "reroute": "pause-and-review",
+        "maxTotalTokens": 80000,
+        "maxParallelWorkstreams": 1,
+        "maxRunWallSeconds": 18000,
+        "criticalPathWallSeconds": 14400,
+        "aggregateWorkstreamWallSeconds": 14400,
+        "retryReserveWallSeconds": 3600
+    },
+    "budgets": {
+        "defaultWorkstreamTokens": 40000,
+        "maxEvidenceBytesPerRun": 4194304
+    },
+    "contextLimits": {
+        "profile": "small-context-profile.v1",
+        "maxPlanContextBytes": 120000,
+        "maxRenderedPacketBytes": 40000,
+        "smallContextPacketBytes": 30000,
+        "maxReferenceFilesPerPacket": 12,
+        "includeOnlyOwnedWrites": true,
+        "excludeRuntimeWorkArtifacts": true
+    },
+    "planReview": {
+        "required": true,
+        "requestPath": "tasks/2026-10-21-avatars-stories/plan-review-request.md",
+        "reviewerClass": "independent-plan-reviewer",
+        "maxRounds": 3,
+        "implementationAuthorized": false,
+        "report": "tasks/2026-10-21-avatars-stories/plan-review.json",
+        "reviewedRevision": 5,
+        "verdict": "READY_TO_FREEZE"
+    },
+    "tierResolution": {
+        "status": "RESOLVED",
+        "tier": "S2",
+        "requestedTier": "S2",
+        "reason": "multiple executable owners + browser-risk resolved by agent-lifecycle tier resolve",
+        "independentReviewRequired": true,
+        "requestPath": "tasks/2026-10-21-avatars-stories/tier-request.json",
+        "resolutionPath": "tasks/2026-10-21-avatars-stories/tier-resolution.json",
+        "requestDigest": "653c5e4eeb04a9f778834dc2605a91f7fa4c33a41a080a86f214c4735e21cdf3"
+    },
+    "planFiles": [
+        "tasks/2026-10-21-avatars-stories/acceptance-criteria.md",
+        "tasks/2026-10-21-avatars-stories/developer-overview.md",
+        "tasks/2026-10-21-avatars-stories/plan-review-request.md",
+        "tasks/2026-10-21-avatars-stories/plan-review.json",
+        "tasks/2026-10-21-avatars-stories/plan.manifest.json",
+        "tasks/2026-10-21-avatars-stories/plan.md",
+        "tasks/2026-10-21-avatars-stories/specification.json",
+        "tasks/2026-10-21-avatars-stories/tier-request.json",
+        "tasks/2026-10-21-avatars-stories/tier-resolution.json"
+    ]
+}

@@ -1,3 +1,39 @@
-<li class="messenger__container-message">
-    <h4 class="messenger__message-content {{#if isMine}}messenger__message-content_mine{{/if}}">{{content}}</h4>
+<li class="messenger__container-message {{#if isMine}}messenger__container-message_mine{{else}}messenger__container-message_theirs{{/if}}" data-message-id="{{id}}">
+    {{#if dayMarker}}
+        <h4 class="messenger__message-day">{{dayMarker}}</h4>
+    {{/if}}
+    {{#if quoteSnippet}}
+        <div class="messenger__message-quote" data-testid="message-quote"><span class="messenger__message-quote-label">В ответ</span><span class="messenger__message-quote-text">{{quoteSnippet}}</span></div>
+    {{/if}}
+    <div class="messenger__message-row">
+        <div class="messenger__message-bubble {{#if isMine}}messenger__message-bubble_mine{{else}}messenger__message-bubble_theirs{{/if}}{{#if isError}} messenger__message-bubble_error{{/if}}">
+            <h4 class="messenger__message-content">{{content}}</h4>
+            {{#if fileUrl}}
+                <a class="messenger__message-attachment" href="{{fileUrl}}" target="_blank" rel="noopener noreferrer">Вложение</a>
+            {{/if}}
+            {{#if formattedTime}}
+                <time class="messenger__message-time" datetime="{{time}}">{{formattedTime}}</time>
+            {{/if}}
+        </div>
+        {{#if id}}
+            <div class="messenger__message-actions" data-testid="message-actions">
+                <button type="button" class="messenger__message-action" data-testid="message-reply" aria-label="Ответить"></button>
+                <button type="button" class="messenger__message-action messenger__message-action_react" data-testid="message-reactions-toggle" aria-label="Реакции"></button>
+                {{#if reactionsOpen}}
+                    <div class="messenger__emoji-picker" data-testid="emoji-picker" role="menu" aria-label="Реакции">
+                        {{#each emojiSet}}
+                            <button type="button" class="messenger__emoji-option" data-testid="emoji-option" data-emoji="{{this}}" role="menuitem" aria-label="Поставить реакцию {{this}}">{{this}}</button>
+                        {{/each}}
+                    </div>
+                {{/if}}
+            </div>
+        {{/if}}
+    </div>
+    {{#if hasReactions}}
+        <div class="messenger__message-reactions" data-testid="message-reactions">
+            {{#each reactions}}
+                <button type="button" class="messenger__reaction-chip{{#if mine}} messenger__reaction-chip_mine{{/if}}" data-testid="reaction-chip" data-emoji="{{emoji}}" aria-label="Реакция {{emoji}}, {{count}}">{{emoji}}<span class="messenger__reaction-count" data-testid="reaction-count">{{count}}</span></button>
+            {{/each}}
+        </div>
+    {{/if}}
 </li>

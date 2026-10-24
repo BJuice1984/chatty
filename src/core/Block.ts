@@ -8,8 +8,11 @@ export interface Props {
 }
 
 interface WithChildren {
-    // eslint-disable-next-line no-unused-vars
-    __children?: { embed: (content: DocumentFragment) => void }[]
+    __children?: {
+        component?: Block
+        // eslint-disable-next-line no-unused-vars
+        embed: (content: DocumentFragment) => void
+    }[]
 }
 
 class Block<T extends Props = Props> {
@@ -26,6 +29,18 @@ class Block<T extends Props = Props> {
     public children: Record<string, Block>
     private eventBus: () => EventBus
     private _element: HTMLElement | null = null
+    private _destroyed = false
+    // CDM-флаг на инстанс (stage block-cdm): повторный dispatch полностью
+    // замолкает — CDM срабатывает ровно один раз за жизнь инстанса.
+    // В destroy() НЕ сбрасывается: уничтожённый инстанс и так молчит —
+    // destroy() снимает lifecycle-обработчики с EventBus.
+    private _cdmDispatched = false
+    // Компоненты, встроенные в шаблон хелперами registerComponent (stage 11):
+    // захват при compile() — destroy() обязан уничтожать и их, иначе
+    // withStore-обёртки течут подписками на Store при уходе с маршрута.
+    private _hbsChildren: Block[] = []
+    // eslint-disable-next-line no-unused-vars
+    private _lifecycleHandlers: Array<[string, (...args: unknown[]) => void]> = []
     // private _meta: { props: Props }
 
     constructor(propsWithChildren: T = {} as T) {
@@ -94,14 +109,20 @@ class Block<T extends Props = Props> {
     }
 
     _registerEvents(eventBus: EventBus) {
-        eventBus.on(Block.EVENTS.INIT, this._init.bind(this))
-        eventBus.on(Block.EVENTS.FLOW_CDM, this._componentDidMount.bind(this))
-        eventBus.on(Block.EVENTS.FLOW_CDU, (...args: unknown[]) => {
-            const [oldProps, newProps] = args as [Props, Props]
+        this._lifecycleHandlers = [
+            [Block.EVENTS.INIT, this._init.bind(this)],
+            [Block.EVENTS.FLOW_CDM, this._componentDidMount.bind(this)],
+            [Block.EVENTS.FLOW_CDU, (...args: unknown[]) => {
+                const [oldProps, newProps] = args as [Props, Props]
 
-            this._componentDidUpdate(oldProps, newProps)
+                this._componentDidUpdate(oldProps, newProps)
+            }],
+            [Block.EVENTS.FLOW_RENDER, this._render.bind(this)],
+        ]
+
+        this._lifecycleHandlers.forEach(([event, handler]) => {
+            eventBus.on(event, handler)
         })
-        eventBus.on(Block.EVENTS.FLOW_RENDER, this._render.bind(this))
     }
 
     private _init() {
@@ -119,9 +140,21 @@ class Block<T extends Props = Props> {
     componentDidMount() {}
 
     public dispatchComponentDidMount() {
+        // Полный short-circuit: при повторном заходе не спускаемся к детям —
+        // каждый узел дерева защищён собственным флагом.
+        if (this._cdmDispatched) {
+            return
+        }
+
+        this._cdmDispatched = true
+
         this.eventBus().emit(Block.EVENTS.FLOW_CDM)
 
+        // Инвариант симметрии dispatch ↔ destroy: обходим ТО ЖЕ множество
+        // детей, что и destroy() — this.children плюс компоненты, встроенные
+        // в .hbs-шаблон хелперами registerComponent (захват при compile()).
         Object.values(this.children).forEach(child => child.dispatchComponentDidMount())
+        this._hbsChildren.forEach(child => child.dispatchComponentDidMount())
     }
 
     private _componentDidUpdate(oldProps: Props, newProps: Props) {
@@ -145,6 +178,31 @@ class Block<T extends Props = Props> {
 
         // this.props = { ...this.props, ...(nextProps as object) }
         Object.assign(this.props, nextProps)
+    }
+
+    destroy() {
+        if (this._destroyed) {
+            return
+        }
+
+        this._destroyed = true
+
+        Object.values(this.children).forEach(child => child.destroy())
+
+        // hbs-встроенные дети (customData.root.__children у registerComponent)
+        // дискретны от this.children — уничтожаем отдельно. Двойное уничтожение
+        // исключено: _destroyed-флаг у каждого ребёнка свой.
+        this._hbsChildren.forEach(child => child.destroy())
+        this._hbsChildren = []
+
+        this._removeEvents()
+
+        this._lifecycleHandlers.forEach(([event, handler]) => {
+            this.eventBus().off(event, handler)
+        })
+
+        this._element?.remove()
+        this._element = null
     }
 
     get element() {
@@ -182,6 +240,12 @@ class Block<T extends Props = Props> {
         temp.innerHTML = html
 
         if (contextAndStubs.__children && Array.isArray(contextAndStubs.__children)) {
+            // Захват встроенных детей текущего рендера: их embed-функции
+            // кладут DOM, а component нужен destroy() (см. destroy()).
+            this._hbsChildren = contextAndStubs.__children
+                .map(({ component }) => component)
+                .filter((child): child is Block => child != null)
+
             contextAndStubs.__children.forEach(({ embed }) => {
                 embed(temp.content)
             })

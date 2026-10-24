@@ -1,0 +1,32 @@
+<section class="chat">
+    <div class="chat__container-users">
+        <div class="chat__container-header">
+            <h2 class="chat__header">More</h2>
+        </div>
+        <div class="chat__container-profile">
+          <div class="chat__container-profile-ava">
+            {{{ UserAvatar avatar=this.user.avatar }}}
+          </div>
+          <div class="chat__container-profile-info">
+            <p class="chat__container-profile-info-contact">{{this.user.first_name}}</p>
+            <p class="chat__container-profile-info-contact chat__container-profile-info-contact_type_tel">{{this.user.phone}}</p>
+          </div>
+          <img class="chat__container-profile-arrow" src="/images/arrow.svg" alt="Иконка. Стрелка вперёд">
+        </div>
+        <ul class="chat__container-profile-settings">
+            {{{ ProfileSettingsItem setting-name="Account" setting-img-src="/images/account-icon.svg" setting-alt="Иконка. Настройки аккаунта"}}}
+            {{{ ProfileSettingsItem setting-name="Chats" setting-img-src="/images/bottom-bar-icon_chats.svg" setting-alt="Иконка. Чаты"}}}
+        </ul>
+        <ul class="chat__container-profile-settings chat__container-profile-settings_type_last">
+            {{{ ProfileSettingsItem setting-name="Appearance" setting-img-src="/images/appearance-icon.svg" setting-alt="Иконка. Солнышко"}}}
+            {{{ ProfileSettingsItem setting-name="Notification" setting-img-src="/images/notification-icon.svg" setting-alt="Иконка. Колокольчик"}}}
+            {{{ ProfileSettingsItem setting-name="Privacy" setting-img-src="/images/privacy-icon.svg" setting-alt="Иконка. Щит"}}}
+            {{{ ProfileSettingsItem setting-name="Data Usage" setting-img-src="/images/data-usage-icon.svg" setting-alt="Иконка. Папочка"}}}
+        </ul>
+        {{{ BottomBar }}}
+    </div>
+    <div class="chat__container-profile-changing">
+        {{{ Avatar avatar=this.user.avatar onUserFile=this.onUserAvatar }}}
+        {{{ Form inputs=this.inputs buttons=this.buttons user=this.user }}}
+    </div>
+</section>

@@ -12,6 +12,13 @@ dist
 dist-ssr
 *.local
 
+# Environment configuration: commit only documented, secret-free examples
+.env
+.env.*
+!.env.example
+!.env.development
+!.env.own.example
+
 # Editor directories and files
 .vscode/*
 !.vscode/extensions.json

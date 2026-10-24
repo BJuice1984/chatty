@@ -1,6 +1,0 @@
-export { LoginPage } from './login/login.ts'
-export { RegisterPage } from './register/register.ts'
-export { ChatPage } from './chat/chat.ts'
-export { ProfilePage } from './profile/profile.ts'
-export { NotFoundPage } from './404/404.ts'
-export { ServerErrorPage } from './500/500.ts'

@@ -1,0 +1,55 @@
+{
+    "schemaVersion": "agent-plan-review.v1",
+    "packageId": "2026-09-28-api-cutover",
+    "planRevision": 4,
+    "reviewId": "review-2026-10-06-api-cutover-freeze-r4",
+    "fullReview": true,
+    "verdict": "READY_TO_FREEZE",
+    "reviewedPlanHash": "52e59060735225080ca1b96ef1ad27858673e9fb488f7a6120de077be43ea750",
+    "reviewer": {
+        "id": "claude-code-independent-subagent",
+        "independent": true,
+        "runId": "audit-run-20261006-api-cutover-plan-r2-r4",
+        "surface": "audit-agent-plan"
+    },
+    "findings": [
+        {
+            "id": "LOW-CUTOVER-REVIEW-REQUEST-HEADER",
+            "category": "plan-package-hygiene",
+            "severity": "LOW",
+            "status": "open",
+            "message": "plan-review-request.md still self-identifies as 'revision 3, round 2' while the manifest is planRevision 4; its five verification items remain accurate for the frozen content, and the manifest is the source of truth for planRevision. Cosmetic provenance drift only; the file is left byte-identical to the audited revision."
+        }
+    ],
+    "reviewVerdict": {
+        "schemaVersion": "agent-review-verdict.v1",
+        "overall": "ACCEPTED",
+        "dimensions": {
+            "requirementFit": {
+                "status": "PASS",
+                "reasonCode": "traceability-complete",
+                "summary": "REQ-API-CUTOVER maps to AC-CUTOVER-1/2, EV-CUTOVER-1/2, the single workstream and the final audit gates; both-mode selection, the legacy teardown and the three bounded smoke flows are explicit."
+            },
+            "implementationQuality": {
+                "status": "PASS",
+                "reasonCode": "import-closure-complete",
+                "summary": "Three audit rounds established a complete import closure of the deletion set (src/api x5, MessagesController): all six importer files are in the 40-path write set with named replacement homes (Message DTO re-home, ChatsPort.searchUsers, chats/ws gateway, features/*/api adapters, sendMessage and attachment-URL props threading through chat.{ts,hbs} and messenger.{ts,hbs}); src/main.ts provably needs no edit."
+            },
+            "evidenceQuality": {
+                "status": "PASS",
+                "reasonCode": "deterministic-and-observable",
+                "summary": "Verify/build/guard --all --strict with zero expected debt, per-attempt artifact templates, UNAVAILABLE-never-PASS policy, console-level own-mode smoke honestly recorded against the practicum-calibrated form validators."
+            },
+            "residualRisk": {
+                "status": "PASS",
+                "reasonCode": "no-blocking-findings",
+                "summary": "Round-1 blockers closed and re-verified (messenger.hbs write gap; own-mode credential contract with explicit login-to-email mapping, UserResponse defaults and console-level smoke); one LOW open cosmetic finding on a stale review-request header."
+            }
+        },
+        "routing": {
+            "target": "plan-freeze",
+            "nextAction": "accept"
+        }
+    },
+    "summary": "Independent three-round read-only audit of the reconciled stage 7 package. Round 1 (r2) returned CHANGES_REQUIRED: messenger.hbs was missing from the write set (the safe-attachment-URL prop reaches the renderer only through the template helper hash) and the own-mode credential contract was undefined against the backend (email with @, password min 12 vs practicum-calibrated form validators). Round 2 (r3) verified all closures plus baseline, ownership disjointness, both-mode contracts against the real backend code and smoke honesty, returning PASS with three non-blocking wording findings. Round 3 (r4, focused) verified the three wording fixes landed exactly as declared with no other drift across the 40-path write set, per-attempt artifact templates and dev@66b2d44 baseline pin, and re-ran all structural checks itself. Verdict: READY_TO_FREEZE."
+}

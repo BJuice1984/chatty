@@ -1,0 +1,10 @@
+{
+    "status": "RESOLVED",
+    "tier": "S2",
+    "requestedTier": "S2",
+    "reason": "browser-risk (responsive layout and DOM evidence)",
+    "independentReviewRequired": true,
+    "requestPath": "tasks/2026-10-19-chat-ui-polish/tier-request.json",
+    "resolutionPath": "tasks/2026-10-19-chat-ui-polish/tier-resolution.json",
+    "requestDigest": "7697885eac7dfd44b317c212e656e9906bd584961a8dfb4128f23dfdf6394cf5"
+}

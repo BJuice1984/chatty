@@ -1,0 +1,18 @@
+{
+    "taskCount": 1,
+    "executableOwners": [
+        "worker-frontend-core"
+    ],
+    "capabilityHints": [
+        "typescript",
+        "dom",
+        "testing",
+        "ALK"
+    ],
+    "riskFlags": {
+        "architecture": true,
+        "browser": true
+    },
+    "requirementsBytes": 1200,
+    "externalSpecification": false
+}

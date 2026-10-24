@@ -1,0 +1,16 @@
+{
+    "taskCount": 1,
+    "executableOwners": ["worker-frontend-env"],
+    "capabilityHints": ["typescript", "vite", "handlebars", "browser"],
+    "riskFlags": {
+        "architecture": true,
+        "security": true,
+        "performance": false,
+        "browser": true,
+        "data": false,
+        "release": true,
+        "externalEnvironment": true
+    },
+    "requirementsBytes": 3600,
+    "externalSpecification": true
+}

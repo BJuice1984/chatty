@@ -1,0 +1,8 @@
+{
+    "taskCount": 1,
+    "executableOwners": ["worker-frontend-ai"],
+    "capabilityHints": ["typescript", "handlebars", "scss", "browser", "security"],
+    "riskFlags": {"architecture": true, "security": true, "performance": false, "browser": true, "data": true, "release": true, "externalEnvironment": true},
+    "requirementsBytes": 3900,
+    "externalSpecification": true
+}

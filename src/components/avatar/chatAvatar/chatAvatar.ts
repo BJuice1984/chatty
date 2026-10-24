@@ -1,9 +1,10 @@
 import Block from '../../../core/Block.ts'
+import { fileUrl } from '../../../utils/env.ts'
 import template from './chatAvatar.hbs'
 
-interface ChatAvatarProps {
+export interface ChatAvatarProps {
     onClick?: () => void
-    avatar: string
+    src?: string
     [key: string]: unknown
 }
 
@@ -18,6 +19,16 @@ export class ChatAvatar extends Block<ChatAvatarProps> {
     }
 
     render() {
-        return this.compile(template, this.props)
+        const src = this.props.src
+
+        return this.compile(template, {
+            ...this.props,
+            // null не дотягивается до fileUrl: контракт ожидает строку (LIVE-4);
+            // пути, начинающиеся с '/', — статические ассеты приложения (аватары
+            // из public/images), их не прогоняем через filesUrl бэкенда
+            src: typeof src === 'string' && src.startsWith('/')
+                ? src
+                : (typeof src === 'string' && src !== '' ? fileUrl(src) : ''),
+        })
     }
 }

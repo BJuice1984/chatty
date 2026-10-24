@@ -1,0 +1,586 @@
+{
+    "schemaVersion": "agent-plan-manifest.v1",
+    "status": "FROZEN",
+    "planRevision": 2,
+    "package": {
+        "id": "2026-09-28-hardening-docs",
+        "title": "Stage 11: hardening, history and documentation",
+        "workspaceRoot": ".",
+        "artifactRoot": "work/2026-09-28-hardening-docs",
+        "planArtifactRoot": "tasks/2026-09-28-hardening-docs"
+    },
+    "planFiles": [
+        "tasks/2026-09-28-hardening-docs/acceptance-criteria.md",
+        "tasks/2026-09-28-hardening-docs/developer-overview.md",
+        "tasks/2026-09-28-hardening-docs/harden-reconnect-history.md",
+        "tasks/2026-09-28-hardening-docs/plan-review-request.md",
+        "tasks/2026-09-28-hardening-docs/plan-review.json",
+        "tasks/2026-09-28-hardening-docs/plan.manifest.json",
+        "tasks/2026-09-28-hardening-docs/plan.md",
+        "tasks/2026-09-28-hardening-docs/specification.json",
+        "tasks/2026-09-28-hardening-docs/tier-request.json",
+        "tasks/2026-09-28-hardening-docs/tier-resolution.json"
+    ],
+    "packageIntegrity": {
+        "required": true,
+        "lockSchemaVersion": "agent-plan-lock.v2",
+        "inventorySource": "planFiles",
+        "undeclaredTopLevelFiles": "reject",
+        "allowedUnlistedFiles": [
+            "plan.lock.json"
+        ]
+    },
+    "author": {
+        "id": "codex",
+        "surface": "agent-first-planning",
+        "runId": "2026-09-28-hardening-docs-draft"
+    },
+    "baseRevision": {
+        "ref": "dev",
+        "sha": "99c5502b59158426693da076982daa81ab9df84e"
+    },
+    "specification": {
+        "tier": "S2",
+        "intent": "Make reconnect/close/history behavior deterministic and document a reproducible local release boundary without production claims.",
+        "status": "DRAFT",
+        "source": "tasks/2026-09-28-hardening-docs/specification.json",
+        "requirements": [
+            {
+                "id": "REQ-HARDEN-DOCS",
+                "title": "Runtime hardening and release boundary",
+                "description": "Add reconnect/backoff, cleanup and history pagination, close the stage 10 carry-forward UX debt (NEW-1, NEW-2/NEW-3, RV5/RV6) and the Block __children destroy leak, then document local own-backend operation, rollback/preflight and progress while preserving repository governance.",
+                "priority": "P1",
+                "source": "tasks/2026-09-28-ai-messenger-master-plan.md:108,126-132",
+                "acceptanceIds": [
+                    "AC-HARDEN-1",
+                    "AC-HARDEN-2",
+                    "AC-HARDEN-3"
+                ],
+                "evidenceIds": [
+                    "EV-HARDEN-1",
+                    "EV-HARDEN-2",
+                    "EV-HARDEN-3"
+                ],
+                "owner": "WS-HARDEN-DOCS"
+            }
+        ],
+        "tierResolutionRequest": {
+            "requestedTier": "S2",
+            "taskCount": 1,
+            "executableOwners": [
+                "worker-frontend-hardening"
+            ],
+            "capabilityHints": [
+                "typescript",
+                "websocket",
+                "browser",
+                "documentation",
+                "git",
+                "ALK"
+            ],
+            "riskFlags": {
+                "architecture": true,
+                "security": true,
+                "performance": true,
+                "browser": true,
+                "data": true,
+                "release": true,
+                "externalEnvironment": true
+            },
+            "requirementsBytes": 4100,
+            "externalSpecification": true
+        },
+        "revision": 2,
+        "artifact": "tasks/2026-09-28-hardening-docs/specification.json",
+        "goal": "A reviewed, deterministic implementation plan for stage 11.",
+        "constraints": [
+            "Stage 7 owns mode-specific adapters; shared WSTransport is hardened here.",
+            "History uses backend before_id/limit contract.",
+            "Docs do not alter course CI/deploy or principles authority.",
+            "No production promotion.",
+            "Stage 10 carry-forward fixes stay inside src/features/ai-assistant and shared utils with one regression test per finding.",
+            "Block core changes are limited to destroy-time child cleanup plus the minimal compile-time capture of the __children list, with existing Block tests kept green.",
+            "Composition edits inside src/features/chats and src/components/messenger are strictly additive."
+        ],
+        "nonGoals": [
+            "new backend domains",
+            "cloud deployment",
+            "data migration",
+            "OCR"
+        ],
+        "scope": {
+            "in": [
+                "WS hardening",
+                "history pagination",
+                "local runbook",
+                "progress",
+                "final audits",
+                "stage 10 UX-debt closure",
+                "Block child cleanup"
+            ],
+            "out": [
+                "new backend domains",
+                "cloud",
+                "production"
+            ]
+        }
+    },
+    "readOnly": [
+        "tasks/2026-09-28-ai-messenger-master-plan.md",
+        "tasks/README.md",
+        "src/utils/Store.ts",
+        "src/utils/types.ts",
+        "src/features/chats/controller.ts",
+        "docs/deployment/internal-backend.md",
+        "docs/arch/known-issues.md",
+        "docs/project-principles.json",
+        ".github/workflows/tests.yml",
+        ".github/workflows/verify.yml",
+        "netlify.toml"
+    ],
+    "forbiddenWrites": [
+        ".alk",
+        "work",
+        ".github/workflows/tests.yml",
+        ".github/workflows/verify.yml",
+        "netlify.toml",
+        "src/main.ts",
+        "src/features/index.ts",
+        "src/features/chats/module.ts",
+        "src/features/chats/controller.ts",
+        "src/features/chats/store.ts",
+        "backend"
+    ],
+    "leadOwned": [
+        {
+            "path": "tasks/2026-09-28-hardening-docs",
+            "owner": "controller",
+            "reason": "The controller owns frozen plan-package artifacts retained in the implementation delta."
+        },
+        {
+            "path": "docs/progress/progress_log.md",
+            "owner": "controller",
+            "reason": "The controller maintains the repository progress log for this implementation package."
+        }
+    ],
+    "workstreams": [
+        {
+            "id": "WS-HARDEN-DOCS",
+            "title": "WebSocket/history hardening and release docs",
+            "owner": "worker-frontend-hardening",
+            "reviewer": "independent-release-reviewer",
+            "dependsOn": [],
+            "writes": [
+                "src/utils/WSTransport.ts",
+                "src/utils/WSTransport.test.ts",
+                "src/utils/HTTPTransport.ts",
+                "src/utils/HTTPTransport.test.ts",
+                "src/core/Block.ts",
+                "src/core/Block.test.ts",
+                "src/features/chats/history",
+                "src/features/chats/ports.ts",
+                "src/features/chats/ws/gateway.ts",
+                "src/features/chats/ws/own.ts",
+                "src/features/chats/ws/practicum.ts",
+                "src/features/chats/ws/ws.test.ts",
+                "src/components/messenger/messenger.ts",
+                "src/components/messenger/messenger.hbs",
+                "src/features/ai-assistant/controller.ts",
+                "src/features/ai-assistant/controller.test.ts",
+                "src/features/ai-assistant/store.ts",
+                "src/features/ai-assistant/pages/assistant.hbs",
+                "src/features/ai-assistant/pages/assistant.ts",
+                "src/features/ai-assistant/pages/assistant.test.ts",
+                "README.md",
+                "AGENTS.md",
+                "CLAUDE.md",
+                "docs/deployment/own-backend.md"
+            ],
+            "readOnly": [
+                "src/utils/Store.ts",
+                "src/utils/types.ts",
+                "src/features/chats/controller.ts",
+                "docs/deployment/internal-backend.md",
+                "docs/project-principles.json",
+                ".github/workflows/tests.yml",
+                ".github/workflows/verify.yml",
+                "netlify.toml"
+            ],
+            "forbiddenWrites": [
+                "backend",
+                ".github/workflows/tests.yml",
+                ".github/workflows/verify.yml",
+                "netlify.toml"
+            ],
+            "leadOwned": [],
+            "launchGate": "Stages 7, 9 and 10 are accepted in origin/dev at the exact declared base SHA (dev@99c5502b59158426693da076982daa81ab9df84e, which carries the whole AI contour through PR #23); create feature/2026-09-28-hardening-docs from dev@99c5502b59158426693da076982daa81ab9df84e.",
+            "capabilityHints": [
+                "typescript",
+                "websocket",
+                "browser",
+                "documentation",
+                "git",
+                "ALK"
+            ],
+            "requiredTools": [
+                "node",
+                "npm",
+                "python3",
+                "docker"
+            ],
+            "contextRefs": [
+                "developer-overview.md",
+                "plan.md",
+                "harden-reconnect-history.md",
+                "tasks/README.md",
+                "docs/project-principles.json"
+            ],
+            "acceptanceIds": [
+                "AC-HARDEN-1",
+                "AC-HARDEN-2",
+                "AC-HARDEN-3"
+            ],
+            "evidenceIds": [
+                "EV-HARDEN-1",
+                "EV-HARDEN-2",
+                "EV-HARDEN-3"
+            ],
+            "executionPolicy": {
+                "maxAttempts": 2,
+                "maxWallSeconds": 3600
+            },
+            "artifactPaths": {
+                "result": "work/2026-09-28-hardening-docs/evidence/WS-HARDEN-DOCS/task-result-{attempt}.json",
+                "review": "work/2026-09-28-hardening-docs/evidence/WS-HARDEN-DOCS/task-review-{attempt}.json"
+            },
+            "required": true,
+            "plannedItems": [
+                "reconnect",
+                "backoff",
+                "close cleanup",
+                "before_id history",
+                "history ws port",
+                "stage 10 ux-debt closure",
+                "block child cleanup",
+                "browser checklist",
+                "runbook",
+                "rollback",
+                "progress",
+                "final audit"
+            ],
+            "qualityFloor": "Reconnect never duplicates listeners/messages, history never duplicates rows, every carry-forward fix keeps a regression test, and docs preserve governance with no production claim."
+        }
+    ],
+    "acceptance": {
+        "criteria": [
+            {
+                "id": "AC-HARDEN-1",
+                "title": "Runtime hardening",
+                "requirementIds": [
+                    "REQ-HARDEN-DOCS"
+                ],
+                "evidenceIds": [
+                    "EV-HARDEN-1"
+                ],
+                "independentEvidenceIds": [],
+                "statement": "WS reconnect/backoff, close cleanup and UI history pagination have regression coverage and bounded manual browser evidence without duplicate subscriptions/messages.",
+                "description": "Runtime obligations include manual evidence.",
+                "source": "acceptance-criteria.md",
+                "priority": "P1"
+            },
+            {
+                "id": "AC-HARDEN-2",
+                "title": "Local release boundary",
+                "requirementIds": [
+                    "REQ-HARDEN-DOCS"
+                ],
+                "evidenceIds": [
+                    "EV-HARDEN-2"
+                ],
+                "independentEvidenceIds": [],
+                "statement": "Frontend/backend/all gates, local runbook, rollback/preflight notes and final audit bind to exact revisions without production promotion.",
+                "description": "Documentation is reproducible and bounded.",
+                "source": "acceptance-criteria.md",
+                "priority": "P0"
+            },
+            {
+                "id": "AC-HARDEN-3",
+                "title": "Carry-forward debt closure",
+                "requirementIds": [
+                    "REQ-HARDEN-DOCS"
+                ],
+                "evidenceIds": [
+                    "EV-HARDEN-3"
+                ],
+                "independentEvidenceIds": [],
+                "statement": "Stage 10 carry-forward findings (NEW-1, NEW-2/NEW-3, RV5/RV6) and the Block __children destroy leak are fixed inside the declared write-set with one regression test per finding and no regression in existing suites.",
+                "description": "Debt closure is proven by deterministic tests only.",
+                "source": "acceptance-criteria.md",
+                "priority": "P2"
+            }
+        ],
+        "evidence": [
+            {
+                "id": "EV-HARDEN-1",
+                "description": "Focused reconnect/history tests and browser checklist receipt.",
+                "source": "WS-HARDEN-DOCS",
+                "validation": "npm run verify plus harden-reconnect-history.md",
+                "artifactPath": "work/2026-09-28-hardening-docs/evidence/WS-HARDEN-DOCS/EV-HARDEN-1.json",
+                "required": true
+            },
+            {
+                "id": "EV-HARDEN-2",
+                "description": "Full local gates, Compose config, runbook/progress and final audit receipt.",
+                "source": "WS-HARDEN-DOCS",
+                "validation": "npm run verify:all and docker compose config --quiet",
+                "artifactPath": "work/2026-09-28-hardening-docs/evidence/WS-HARDEN-DOCS/EV-HARDEN-2.json",
+                "required": true
+            },
+            {
+                "id": "EV-HARDEN-3",
+                "description": "Regression-test receipts for stage 10 carry-forward fixes and Block child cleanup.",
+                "source": "WS-HARDEN-DOCS",
+                "validation": "npm run verify with one regression test per finding",
+                "artifactPath": "work/2026-09-28-hardening-docs/evidence/WS-HARDEN-DOCS/EV-HARDEN-3.json",
+                "required": true
+            }
+        ],
+        "releaseGate": "Runtime hardening, local documentation and final audits are accepted without production promotion.",
+        "qualityFloor": "No criterion is accepted from prose alone."
+    },
+    "validation": {
+        "commands": [
+            "npm run verify",
+            "npm run verify:all",
+            "docker compose config --quiet",
+            "node .claude/hooks/scripts/guard-architecture.mjs --all --strict"
+        ],
+        "extraEvidence": [
+            {
+                "id": "EV-HARDEN-1",
+                "kind": "manual-reconnect-history-browser",
+                "timeoutSeconds": 1500
+            },
+            {
+                "id": "EV-HARDEN-2",
+                "kind": "local-release-and-final-audit",
+                "timeoutSeconds": 1800
+            }
+        ]
+    },
+    "orchestration": {
+        "startMode": "reviewed-plan",
+        "remediationMode": "ask",
+        "maxPlanReviewRounds": 3,
+        "maxTaskAttempts": 2,
+        "maxParallelTasks": 1,
+        "maxValidationRunsPerTask": 2,
+        "maxToolCallsPerIteration": 30,
+        "maxUsageIterationsPerAttempt": 12,
+        "maxToolCallsPerTask": 180,
+        "maxToolCallsPerRun": 420,
+        "maxReportedTokensPerTask": 22000,
+        "maxReportedTokensPerRun": 28000,
+        "maxEvidenceArtifactBytes": 1048576,
+        "maxEvidenceBytesPerTask": 4194304,
+        "maxEvidenceBytesPerRun": 4194304,
+        "maxTaskWallSeconds": 4800,
+        "maxRunWallSeconds": 16000,
+        "maxContextBytes": 180000,
+        "maxRenderedPacketBytes": 50000,
+        "stateFile": "work/2026-09-28-hardening-docs/run.state.json",
+        "eventLog": "work/2026-09-28-hardening-docs/events.jsonl",
+        "stepReviewRequired": true,
+        "finalAuditRequired": true
+    },
+    "implementationAudit": {
+        "required": true,
+        "finalRequired": true
+    },
+    "developerOverview": "tasks/2026-09-28-hardening-docs/developer-overview.md",
+    "releaseTarget": {
+        "kind": "local-only",
+        "environment": "Vite plus Docker Compose owned backend and native Ollama",
+        "productionPromotionClaimed": false
+    },
+    "releaseImpact": "Hardens runtime behavior and documents local operation; no production deployment or promotion is claimed.",
+    "nonGoals": [
+        "new backend domains",
+        "cloud deployment",
+        "data migration",
+        "OCR"
+    ],
+    "finalAuditGates": [
+        "[AC-HARDEN-1|EV-HARDEN-1] runtime hardening passes",
+        "[AC-HARDEN-2|EV-HARDEN-2] local release boundary and final audit pass",
+        "[AC-HARDEN-3|EV-HARDEN-3] carry-forward debt and Block cleanup are closed with regression coverage"
+    ],
+    "securityGates": [
+        {
+            "id": "SEC-CLEANUP",
+            "statement": "Close and destroy remove reconnect/listener state.",
+            "evidenceIds": [
+                "EV-HARDEN-1"
+            ]
+        },
+        {
+            "id": "SEC-RELEASE",
+            "statement": "Documentation preserves no-production and no-secret boundaries.",
+            "evidenceIds": [
+                "EV-HARDEN-2"
+            ]
+        }
+    ],
+    "sandbox": {
+        "network": "off-by-default-for-deterministic-checks",
+        "externalServices": [
+            "docker",
+            "ollama",
+            "owned backend"
+        ],
+        "secrets": "no-secrets-in-plan-or-evidence",
+        "productionPromotion": false
+    },
+    "runtimePolicy": {
+        "implementationAuthorized": false,
+        "productionPromotionClaimed": false,
+        "unavailableDependencyPolicy": "record UNAVAILABLE; never convert to PASS",
+        "preservationInvariants": [
+            "course CI, netlify.toml, sprint_* and deploy remain unchanged",
+            "principles authority remains docs/project-principles.json",
+            "frontend/backend ownership remains with earlier stages"
+        ],
+        "manualEvidenceRequired": [
+            "HARDEN-DISCONNECT",
+            "HARDEN-RECONNECT",
+            "HARDEN-CLOSE",
+            "HARDEN-HISTORY",
+            "HARDEN-ERROR"
+        ]
+    },
+    "budgetPolicy": {
+        "units": "tokens-and-resources",
+        "reroute": "pause-and-review",
+        "maxTotalTokens": 28000,
+        "maxParallelWorkstreams": 1,
+        "maxRunWallSeconds": 16000,
+        "criticalPathWallSeconds": 4800,
+        "aggregateWorkstreamWallSeconds": 4800,
+        "retryReserveWallSeconds": 2200
+    },
+    "budgets": {
+        "defaultWorkstreamTokens": 22000,
+        "maxEvidenceBytesPerRun": 4194304
+    },
+    "contextLimits": {
+        "profile": "small-context-profile.v1",
+        "maxPlanContextBytes": 180000,
+        "maxRenderedPacketBytes": 50000,
+        "smallContextPacketBytes": 34000,
+        "maxReferenceFilesPerPacket": 16,
+        "includeOnlyOwnedWrites": true,
+        "excludeRuntimeWorkArtifacts": true
+    },
+    "dependsOn": [
+        "2026-09-28-api-cutover",
+        "2026-09-28-backend-bot",
+        "2026-09-28-fe-ai-module"
+    ],
+    "reviewMesh": {
+        "enabledByDefault": false,
+        "blockingRequiresPlanOptIn": true,
+        "requiresExplicitActivation": true,
+        "budgetUnits": "tokens-and-resources",
+        "budgetCap": {
+            "maxInvocations": 0,
+            "maxInputTokens": 0,
+            "maxOutputTokens": 0
+        },
+        "independencePolicy": {
+            "mode": "single-independent-audit-required"
+        },
+        "reviewerModelClasses": [],
+        "liveCallsAllowed": false
+    },
+    "contextCheckpointPolicy": {
+        "enabled": true,
+        "maxCheckpointBytes": 131072,
+        "store": "work/2026-09-28-hardening-docs/checkpoints"
+    },
+    "controllerGates": {
+        "beforeExecution": [
+            "plan completeness PASS",
+            "independent plan audit PASS",
+            "explicit freeze"
+        ],
+        "afterEachWave": [
+            "ownership audit",
+            "validation receipts",
+            "no unresolved High finding"
+        ],
+        "beforeCompletion": [
+            "final implementation audit PASS",
+            "all final audit gates PASS"
+        ]
+    },
+    "planReview": {
+        "required": true,
+        "requestPath": "tasks/2026-09-28-hardening-docs/plan-review-request.md",
+        "reviewerClass": "independent-plan-reviewer",
+        "maxRounds": 3,
+        "implementationAuthorized": false,
+        "report": "tasks/2026-09-28-hardening-docs/plan-review.json",
+        "reviewedRevision": 2,
+        "verdict": "READY_TO_FREEZE"
+    },
+    "repositoryReferences": [
+        {
+            "id": "REF-ROADMAP",
+            "repoId": "chatty",
+            "owner": "codex",
+            "access": "read-only",
+            "paths": [
+                "tasks/2026-09-28-ai-messenger-master-plan.md"
+            ]
+        },
+        {
+            "id": "REF-ALK",
+            "repoId": "chatty",
+            "owner": "codex",
+            "access": "read-only",
+            "paths": [
+                "tasks/README.md"
+            ]
+        },
+        {
+            "id": "REF-PRINCIPLES",
+            "repoId": "chatty",
+            "owner": "codex",
+            "access": "read-only",
+            "paths": [
+                "docs/project-principles.json"
+            ]
+        }
+    ],
+    "tierResolution": {
+        "status": "RESOLVED",
+        "tier": "S2",
+        "requestedTier": "S2",
+        "reason": "architecture-risk, browser-risk, externalEnvironment-risk, performance-risk, security-risk and external-specification-required",
+        "independentReviewRequired": true,
+        "requestPath": "tasks/2026-09-28-hardening-docs/tier-request.json",
+        "resolutionPath": "tasks/2026-09-28-hardening-docs/tier-resolution.json",
+        "requestDigest": "4bfb3bedc62140d09396ab165da0a6249b3cef0d509f94bfc83df6ea46f86dd3"
+    },
+    "taskTemplates": {
+        "frontend": "small-context packet with transport/history files and npm/browser validation",
+        "release": "lead packet with docs, receipts and final audit"
+    },
+    "compatibility": {
+        "baseFrontend": "dev@99c5502b59158426693da076982daa81ab9df84e",
+        "practicumMode": "development",
+        "ownMode": "own",
+        "dataMigration": "none",
+        "productionPromotion": false
+    }
+}

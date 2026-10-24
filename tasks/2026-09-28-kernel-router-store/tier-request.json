@@ -1,0 +1,8 @@
+{
+    "taskCount": 1,
+    "executableOwners": ["worker-frontend-kernel"],
+    "capabilityHints": ["typescript", "jsdom", "mocha", "router", "store"],
+    "riskFlags": {"architecture": true, "security": false, "performance": true, "browser": true, "data": true, "release": false, "externalEnvironment": false},
+    "requirementsBytes": 3300,
+    "externalSpecification": true
+}

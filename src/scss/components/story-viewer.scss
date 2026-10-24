@@ -1,0 +1,154 @@
+@import '../utils/mixins';
+@import '../utils/variable';
+
+//Полноэкранный просмотр истории. Прогресс-бар — CSS-анимация на 5 s,
+
+//дубликат константы STORY_VIEW_DURATION_MS (5000) из chat.ts — держать
+
+//синхронно; таймер автозакрытия живёт на странице (hbs-дети пересоздаются
+
+//на каждой перерисовке, анимация перезапускается вместе с ними — принято
+
+//на мок-стадии stories).
+
+.chat-story-viewer {
+    position: fixed;
+    inset: 0;
+    z-index: 1000;
+    display: none;
+    outline: none; //tabindex="-1" ради клавиатуры, без визуального фокуса
+
+    &_open {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+    }
+
+    &_closed {
+        display: none;
+    }
+
+    &__backdrop {
+        position: absolute;
+        inset: 0;
+        background-color: rgb(0 0 0 / 85%);
+    }
+
+    &__stage {
+        position: relative;
+        z-index: 1;
+        display: flex;
+        flex-direction: column;
+        width: min(92vw, 420px);
+        max-height: 86vh;
+        box-sizing: border-box;
+        border-radius: 16px;
+        background-color: $secondColor;
+        padding: 12px 12px 16px;
+        gap: 10px;
+    }
+
+    &__progress {
+        @include size(100%, 3px);
+
+        border-radius: 2px;
+        background-color: rgb(255 255 255 / 25%);
+        overflow: hidden;
+    }
+
+    &__progress-bar {
+        height: 100%;
+        border-radius: 2px;
+        background-color: #fff;
+        animation: chat-story-viewer-progress 5s linear forwards;
+    }
+
+    &__head {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 8px;
+    }
+
+    &__owner {
+        @include reset;
+        @include text;
+        @include text-format(600, 14px, 20px);
+
+        color: $mainTextColor;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+    }
+
+    //кнопка удаления своей истории: тот же крестик, что у close,
+
+    //но с красным hover — иконка общая с close через запятую
+
+    &__delete,
+    &__close {
+        @include reset;
+        @include size(28px, 28px);
+
+        position: relative;
+        border: none;
+        border-radius: 50%;
+        background-color: rgb(255 255 255 / 15%);
+        cursor: pointer;
+        flex-shrink: 0;
+
+        &::before,
+        &::after {
+            position: absolute;
+            content: "";
+            top: 50%;
+            left: 50%;
+            width: 12px;
+            height: 2px;
+            border-radius: 1px;
+            background-color: #fff;
+        }
+
+        &::before {
+            transform: translate(-50%, -50%) rotate(45deg);
+        }
+
+        &::after {
+            transform: translate(-50%, -50%) rotate(-45deg);
+        }
+    }
+
+    &__img {
+        width: 100%;
+        max-height: calc(86vh - 96px);
+        object-fit: contain;
+        border-radius: 10px;
+    }
+}
+
+@keyframes chat-story-viewer-progress {
+
+    from {
+        width: 0;
+    }
+
+    to {
+        width: 100%;
+    }
+}
+
+//мобильный (<768): стейдж почти во всю ширину, вертикальные отступы меньше
+@media (max-width: $tablet - 1px) {
+
+    .chat-story-viewer {
+
+        &__stage {
+            width: min(94vw, 420px);
+            padding: 10px 10px 12px;
+        }
+
+        &__img {
+            max-height: calc(86vh - 88px);
+        }
+    }
+}

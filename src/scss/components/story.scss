@@ -32,6 +32,24 @@
         opacity: 1;
       }
 
+      //просмотренная история: рамка гаснет до приглушённой, hover живёт
+
+      &_viewed {
+        background-image: none;
+        background-color: $borderYourStory;
+      }
+
+      //своя история: зелёный градиент вместо синего (просмотр не гасит)
+
+      &_own {
+        background-image: $borderOwnStoryGradientBorder;
+
+        &::before {
+          background-image: $borderOwnStoryGradientBorder;
+          opacity: 0.45;
+        }
+      }
+
       &_type_add-story {
         background-image: none;
         background-color: $borderYourStory;
@@ -69,4 +87,12 @@
       white-space: nowrap;
       text-align: center;
     }
+}
+
+//скрытый пикер историй: открывается программно кликом по add-плитке,
+
+//нативный контрол никогда не показывается
+
+.chat-story-file-input {
+    display: none;
 }

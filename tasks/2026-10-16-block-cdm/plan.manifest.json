@@ -1,0 +1,388 @@
+{
+    "schemaVersion": "agent-plan-manifest.v1",
+    "status": "FROZEN",
+    "planRevision": 1,
+    "package": {
+        "id": "2026-10-16-block-cdm",
+        "title": "Stage 14: activate the Block CDM lifecycle",
+        "workspaceRoot": ".",
+        "artifactRoot": "work/2026-10-16-block-cdm",
+        "planArtifactRoot": "tasks/2026-10-16-block-cdm"
+    },
+    "planFiles": [
+        "tasks/2026-10-16-block-cdm/acceptance-criteria.md",
+        "tasks/2026-10-16-block-cdm/developer-overview.md",
+        "tasks/2026-10-16-block-cdm/plan-review-request.md",
+        "tasks/2026-10-16-block-cdm/plan-review.json",
+        "tasks/2026-10-16-block-cdm/plan.manifest.json",
+        "tasks/2026-10-16-block-cdm/plan.md",
+        "tasks/2026-10-16-block-cdm/specification.json",
+        "tasks/2026-10-16-block-cdm/tier-request.json",
+        "tasks/2026-10-16-block-cdm/tier-resolution.json"
+    ],
+    "packageIntegrity": {
+        "required": true,
+        "lockSchemaVersion": "agent-plan-lock.v2",
+        "inventorySource": "planFiles",
+        "undeclaredTopLevelFiles": "reject",
+        "allowedUnlistedFiles": [
+            "plan.lock.json"
+        ]
+    },
+    "author": {
+        "id": "claude-code",
+        "surface": "agent-first-planning",
+        "runId": "2026-10-16-block-cdm-draft"
+    },
+    "baseRevision": {
+        "ref": "dev",
+        "sha": "078f3f7d4293e07d1dfc14b6fdc20acef61cc5d8"
+    },
+    "specification": {
+        "tier": "S2",
+        "intent": "Activate the dormant componentDidMount lifecycle end-to-end.",
+        "status": "DRAFT",
+        "source": "tasks/2026-10-16-block-cdm/specification.json",
+        "requirements": [
+            {
+                "id": "REQ-BLOCK-CDM",
+                "title": "CDM lifecycle activation",
+                "description": "Router emits CDM; dispatch recurses into both child kinds; consumers migrate off the constructor workaround; regression tests.",
+                "priority": "P1",
+                "source": "live-smoke LIVE-3 follow-up",
+                "acceptanceIds": [
+                    "AC-CDM-1",
+                    "AC-CDM-2",
+                    "AC-CDM-3"
+                ],
+                "evidenceIds": [
+                    "EV-CDM-1",
+                    "EV-CDM-2"
+                ],
+                "owner": "WS-BLOCK-CDM"
+            }
+        ],
+        "tierResolutionRequest": {
+            "requestedTier": "S2",
+            "taskCount": 1,
+            "executableOwners": [
+                "worker-frontend-core"
+            ],
+            "capabilityHints": [
+                "typescript",
+                "dom",
+                "testing",
+                "ALK"
+            ],
+            "riskFlags": {
+                "architecture": true,
+                "browser": true
+            },
+            "requirementsBytes": 1200,
+            "externalSpecification": false
+        },
+        "revision": 1,
+        "artifact": "tasks/2026-10-16-block-cdm/specification.json",
+        "goal": "A reviewed plan activating the Block CDM lifecycle safely.",
+        "constraints": [
+            "No behavior change beyond the activated lifecycle: render order, EventBus flow (init → render → CDM) and destroy stay as documented in AGENTS.md.",
+            "main.ts bootstrap stays untouched (forbidden); the cold-load double fetch is safe because OwnWsAdapter.connect dedupes sockets synchronously and Store.set suppresses identical writes — the smoke pins the exact fetch profile.",
+            "Block core edits are limited to dispatch recursion, the per-instance mounted guard and its full short-circuit; no props/CDU changes."
+        ],
+        "nonGoals": [
+            "componentDidUpdate redesign",
+            "router rewrite"
+        ],
+        "scope": {
+            "in": [
+                "router CDM emission",
+                "dispatch recursion",
+                "remount guard",
+                "consumer migration",
+                "regression tests",
+                "live re-smoke"
+            ],
+            "out": [
+                "CDU redesign",
+                "data-loading patterns"
+            ]
+        }
+    },
+    "readOnly": [
+        "tasks/README.md",
+        "AGENTS.md",
+        "docs/arch/known-issues.md"
+    ],
+    "forbiddenWrites": [
+        ".alk",
+        "work",
+        "src/main.ts",
+        "src/features/index.ts",
+        "src/features/chats/module.ts",
+        "src/features/chats/store.ts",
+        "src/features/chats/controller.ts",
+        "src/helpers/helpers.ts",
+        "backend",
+        "docs/project-principles.json",
+        ".github/workflows",
+        "netlify.toml"
+    ],
+    "leadOwned": [
+        {
+            "path": "tasks/2026-10-16-block-cdm",
+            "owner": "controller",
+            "reason": "Controller owns plan-package artifacts."
+        },
+        {
+            "path": "docs/progress/progress_log.md",
+            "owner": "controller",
+            "reason": "Controller maintains the progress log."
+        }
+    ],
+    "workstreams": [
+        {
+            "id": "WS-BLOCK-CDM",
+            "title": "Activate the Block componentDidMount lifecycle",
+            "owner": "worker-frontend-core",
+            "reviewer": "independent-release-reviewer",
+            "dependsOn": [],
+            "writes": [
+                "src/core/Block.ts",
+                "src/core/Block.test.ts",
+                "src/utils/Router.ts",
+                "src/utils/Router.test.ts",
+                "src/features/chats/pages/chat/chat.ts",
+                "src/features/chats/pages/chat/chat.test.ts",
+                "src/features/ai-assistant/pages/assistant.ts",
+                "src/features/ai-assistant/pages/assistant.test.ts"
+            ],
+            "readOnly": [
+                "tasks/README.md",
+                "AGENTS.md",
+                "src/main.ts"
+            ],
+            "forbiddenWrites": [
+                "src/main.ts",
+                "backend",
+                ".github/workflows"
+            ],
+            "leadOwned": [],
+            "launchGate": "dev at the declared base carries the whole contour through PR #26; npm run verify green (181 tests).",
+            "capabilityHints": [
+                "typescript",
+                "dom",
+                "testing",
+                "ALK"
+            ],
+            "requiredTools": [
+                "node",
+                "npm"
+            ],
+            "contextRefs": [
+                "developer-overview.md",
+                "plan.md",
+                "AGENTS.md"
+            ],
+            "acceptanceIds": [
+                "AC-CDM-1",
+                "AC-CDM-2",
+                "AC-CDM-3"
+            ],
+            "evidenceIds": [
+                "EV-CDM-1",
+                "EV-CDM-2"
+            ],
+            "executionPolicy": {
+                "maxAttempts": 2,
+                "maxWallSeconds": 3600
+            },
+            "artifactPaths": {
+                "result": "work/2026-10-16-block-cdm/evidence/WS-BLOCK-CDM/task-result-{attempt}.json",
+                "review": "work/2026-10-16-block-cdm/evidence/WS-BLOCK-CDM/task-review-{attempt}.json"
+            },
+            "required": true,
+            "plannedItems": [
+                "router cdm emission",
+                "dispatch recursion both child kinds",
+                "remount guard",
+                "chatpage cdm migration",
+                "assistant cdm revival",
+                "block/router/page tests",
+                "live re-smoke"
+            ],
+            "qualityFloor": "CDM fires exactly once per mounted instance across both child kinds; no existing suite regresses; consumers leave no dormant lifecycle code."
+        }
+    ],
+    "acceptance": {
+        "criteria": [
+            {
+                "id": "AC-CDM-1",
+                "title": "Lifecycle active and safe",
+                "requirementIds": [
+                    "REQ-BLOCK-CDM"
+                ],
+                "evidenceIds": [
+                    "EV-CDM-1"
+                ],
+                "independentEvidenceIds": [],
+                "statement": "Router.render dispatches CDM on the mounted page; dispatchComponentDidMount recurses over the SAME child set destroy() walks (children + _hbsChildren, the dispatch-destroy symmetry invariant); CDM fires exactly once per instance — same-route revisit does not re-dispatch, leave→return mounts a fresh instance with fresh CDM; Block and Router tests prove all of it.",
+                "description": "Deterministic tests.",
+                "source": "acceptance-criteria.md",
+                "priority": "P1"
+            },
+            {
+                "id": "AC-CDM-2",
+                "title": "Consumers migrated",
+                "requirementIds": [
+                    "REQ-BLOCK-CDM"
+                ],
+                "evidenceIds": [
+                    "EV-CDM-1"
+                ],
+                "independentEvidenceIds": [],
+                "statement": "ChatPage fetches chats in componentDidMount (constructor workaround removed), the dormant AssistantPage loadChats CDM is live, the whole frontend suite is green.",
+                "description": "Suite green.",
+                "source": "acceptance-criteria.md",
+                "priority": "P1"
+            },
+            {
+                "id": "AC-CDM-3",
+                "title": "Live re-smoke",
+                "requirementIds": [
+                    "REQ-BLOCK-CDM"
+                ],
+                "evidenceIds": [
+                    "EV-CDM-2"
+                ],
+                "independentEvidenceIds": [],
+                "statement": "On the operator stack: chat list after login without a page reload; /assistant loads its AI chat list on entry; measurable fetch profile — cold /messenger: exactly 2 GET /chats, at most 2 getToken per chat and exactly 1 WS connection per chat (adapter dedup); SPA navigation to /messenger: 1 GET /chats; /assistant entry loads its AI chat list; rows in the evidence artifact.",
+                "description": "Live rows.",
+                "source": "acceptance-criteria.md",
+                "priority": "P2"
+            }
+        ],
+        "evidence": [
+            {
+                "id": "EV-CDM-1",
+                "description": "verify receipt with new Block/Router/page regression tests.",
+                "source": "WS-BLOCK-CDM",
+                "validation": "npm run verify + guard --all --strict + grep: dispatchComponentDidMount call sites in src are only Block.ts and Router.ts; page constructors contain no controller calls",
+                "artifactPath": "work/2026-10-16-block-cdm/evidence/WS-BLOCK-CDM/EV-CDM-1.json",
+                "required": true
+            },
+            {
+                "id": "EV-CDM-2",
+                "description": "Live re-smoke rows.",
+                "source": "WS-BLOCK-CDM",
+                "validation": "live stack rows",
+                "artifactPath": "work/2026-10-16-block-cdm/evidence/WS-BLOCK-CDM/EV-CDM-2.json",
+                "required": true
+            }
+        ],
+        "releaseGate": "Activated lifecycle accepted with regression coverage and live rows.",
+        "qualityFloor": "No criterion is accepted from prose alone."
+    },
+    "validation": {
+        "commands": [
+            "npm run verify",
+            "node .claude/hooks/scripts/guard-architecture.mjs --all --strict"
+        ]
+    },
+    "orchestration": {
+        "startMode": "reviewed-plan",
+        "remediationMode": "ask",
+        "maxPlanReviewRounds": 3,
+        "maxTaskAttempts": 2,
+        "maxParallelTasks": 1,
+        "maxValidationRunsPerTask": 2,
+        "maxToolCallsPerIteration": 30,
+        "maxUsageIterationsPerAttempt": 12,
+        "maxToolCallsPerTask": 150,
+        "maxToolCallsPerRun": 260,
+        "maxReportedTokensPerTask": 16000,
+        "maxReportedTokensPerRun": 22000,
+        "maxEvidenceArtifactBytes": 1048576,
+        "maxEvidenceBytesPerTask": 4194304,
+        "maxEvidenceBytesPerRun": 4194304,
+        "maxTaskWallSeconds": 3600,
+        "maxRunWallSeconds": 8000,
+        "maxContextBytes": 160000,
+        "maxRenderedPacketBytes": 50000,
+        "stateFile": "work/2026-10-16-block-cdm/run.state.json",
+        "eventLog": "work/2026-10-16-block-cdm/events.jsonl",
+        "stepReviewRequired": true,
+        "finalAuditRequired": true
+    },
+    "implementationAudit": {
+        "required": true,
+        "finalRequired": true
+    },
+    "developerOverview": "tasks/2026-10-16-block-cdm/developer-overview.md",
+    "releaseTarget": {
+        "kind": "local-only",
+        "environment": "Vite own mode + Docker Compose owned backend",
+        "productionPromotionClaimed": false
+    },
+    "releaseImpact": "Activates the documented component lifecycle; no production claim.",
+    "nonGoals": [
+        "componentDidUpdate redesign",
+        "router rewrite"
+    ],
+    "finalAuditGates": [
+        "[AC-CDM-1|EV-CDM-1] lifecycle active, recursive and remount-safe with tests",
+        "[AC-CDM-2|EV-CDM-1] consumers migrated, full suite green",
+        "[AC-CDM-3|EV-CDM-2] live rows: chat list and assistant list load with the pinned fetch profile (2 GET /chats cold, 1 WS per chat, 1 GET on SPA nav)"
+    ],
+    "securityGates": [
+        {
+            "id": "SEC-CORE-MINIMAL",
+            "statement": "Block edits stay limited to dispatch recursion and remount safety; no CDU/render changes.",
+            "evidenceIds": [
+                "EV-CDM-1"
+            ]
+        }
+    ],
+    "budgetPolicy": {
+        "units": "tokens-and-resources",
+        "reroute": "pause-and-review",
+        "maxTotalTokens": 22000,
+        "maxParallelWorkstreams": 1,
+        "maxRunWallSeconds": 8000,
+        "criticalPathWallSeconds": 3600,
+        "aggregateWorkstreamWallSeconds": 3600,
+        "retryReserveWallSeconds": 1600
+    },
+    "budgets": {
+        "defaultWorkstreamTokens": 16000,
+        "maxEvidenceBytesPerRun": 4194304
+    },
+    "contextLimits": {
+        "profile": "small-context-profile.v1",
+        "maxPlanContextBytes": 160000,
+        "maxRenderedPacketBytes": 50000,
+        "smallContextPacketBytes": 34000,
+        "maxReferenceFilesPerPacket": 16,
+        "includeOnlyOwnedWrites": true,
+        "excludeRuntimeWorkArtifacts": true
+    },
+    "planReview": {
+        "required": true,
+        "requestPath": "tasks/2026-10-16-block-cdm/plan-review-request.md",
+        "reviewerClass": "independent-plan-reviewer",
+        "maxRounds": 3,
+        "implementationAuthorized": false,
+        "report": "tasks/2026-10-16-block-cdm/plan-review.json",
+        "reviewedRevision": 1,
+        "verdict": "READY_TO_FREEZE"
+    },
+    "tierResolution": {
+        "status": "RESOLVED",
+        "tier": "S2",
+        "requestedTier": "S2",
+        "reason": "architecture-risk (core Block lifecycle) and browser-risk",
+        "independentReviewRequired": true,
+        "requestPath": "tasks/2026-10-16-block-cdm/tier-request.json",
+        "resolutionPath": "tasks/2026-10-16-block-cdm/tier-resolution.json",
+        "requestDigest": "310dd4f076b74c9c0385a7f57989ce7d6b577fe013f24fc9765adbfc13078db9"
+    }
+}

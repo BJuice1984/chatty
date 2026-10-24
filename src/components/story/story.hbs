@@ -1,5 +1,5 @@
 <li class="chat-story">
-  <div class="chat-story__container {{extraClass}}">
+  <div class="chat-story__container {{extraClass}}{{#if viewed}} chat-story__container_viewed{{/if}}{{#if isOwn}} chat-story__container_own{{/if}}">
     <div class="chat-story__img-container">
       <img class="chat-story__img" src="{{src}}" alt="{{alt}}">
     </div>

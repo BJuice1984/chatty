@@ -1,0 +1,30 @@
+<section class="chat{{#if chatPaneOpen}} chat_pane-open{{/if}}">
+    <div class="chat__container-users">
+        <div class="chat__container-header">
+            <h2 class="chat__header">Chatty</h2>
+            {{{ HeaderIcons onClick=this.onClick }}}
+        </div>
+        <ul class="chat__container-stories-list">
+          {{#each stories}}
+            {{{ Story id=this.id owner=this.owner extraClass=this.extraClass src=this.src alt=this.alt isUnread=this.isUnread isOwn=this.isOwn onClick=../this.onSelectStory }}}
+          {{/each}}
+        </ul>
+        <div class="chat__search-bar">{{{ SearchBar }}}</div>
+        <ul class="chat__container-users-list">
+          {{{ ChatListCreate ref="create" inputs=this.inputs buttons=this.buttons }}}
+          {{#each chats}}
+            {{#if this.avatar }}
+              {{{ User id=this.id last_message=this.last_message title=this.title unread_count=this.unread_count is_ai=this.is_ai isActive=(eq this.id ../selectedChat) src=this.avatar onSelect=../this.onSelectChat onChatFile=../this.onChatAvatar }}}
+            {{else}}
+              {{{ User id=this.id last_message=this.last_message title=this.title unread_count=this.unread_count is_ai=this.is_ai isActive=(eq this.id ../selectedChat) onSelect=../this.onSelectChat onChatFile=../this.onChatAvatar }}}
+            {{/if}}
+          {{/each}}
+        </ul>
+          {{{ BottomBar }}}
+    </div>
+    <div class="chat__container-chats">
+        {{{ Messenger onDeleteChat=this.onDeleteChat onAddUser=this.onAddUser onSearchUsers=this.onSearchUsers onSendMessage=this.onSendMessage onSetReaction=this.onSetReaction onBack=this.onBack }}}
+    </div>
+    <input class="chat-story-file-input" type="file" accept="image/*" aria-hidden="true" tabindex="-1">
+    {{{ StoryViewer story=this.viewerStory onClose=this.onCloseViewer onDelete=this.onDeleteViewer }}}
+</section>

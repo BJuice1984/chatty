@@ -1,0 +1,9 @@
+{
+    "revision": 1,
+    "id": "SPEC-BE-RAG",
+    "title": "Document ingestion and retrieval",
+    "intent": "Parse supported office/PDF/spreadsheet formats, persist document/chunk relations and expose authorized top-k retrieval with explicit readiness states.",
+    "requirements": [{"id": "REQ-BE-RAG", "title": "Document ingestion and RAG", "description": "Consume the accepted file contract, parse docx/doc/PDF/xlsx with bounded failure behavior, embed chunks and expose admin ingestion plus authorized top-k retrieval.", "priority": "P0", "source": "tasks/2026-09-28-ai-messenger-master-plan.md:74-90", "acceptanceIds": ["AC-RAG-1", "AC-RAG-2"], "evidenceIds": ["EV-RAG-1", "EV-RAG-2"], "owner": "WS-BE-RAG"}],
+    "constraints": ["Stage 6 file contract is the only file semantic source.", "Admin-only ingestion and chat-scoped retrieval are server-side.", "`.doc` conversion has a hard timeout and explicit failed state.", "No OCR, cloud fallback or production deployment."],
+    "nonGoals": ["OCR", "AI bot", "frontend UI", "cloud deployment"]
+}

@@ -15,18 +15,18 @@ export default new AuthController()
 | `ChatsController` | список/создание/удаление чатов, аватар чата, пользователи чата, токен WS | `chats`, `chatUsers`, `selectedChat` |
 | `MessagesController` | WebSocket-соединения чатов, отправка/история сообщений | `messages.<chatId>` |
 
-`MessagesController` — единственный, кто работает не через HTTP API: он хранит `Map<chatId, WSTransport>` активных сокетов, при `connect` получает токен чата (через `ChatsController`) и открывает `wss://ya-praktikum.tech/ws/chats/<userId>/<chatId>/<token>`. Входящие сообщения аккумулируются в `messages.<chatId>` (новые старые запрашиваются командой `get old`).
+WS-сообщения живут не через HTTP API: шлюз `src/features/chats/ws/gateway.ts` (замена legacy `MessagesController`) держит `Map<chatId, WSTransport>` активных сокетов и открывает `ws://<host>/ws/chats/<chatId>` с cookie-аутентификацией. Входящие сообщения аккумулируются в `messages.<chatId>`, история подгружается событием `history` с курсором `before_id`.
 
 ## API-классы — `src/api/`
 
-REST-клиенты бэкенда курса. `BaseApi` (`src/api/BaseApi.ts`) — абстрактный базовый класс с контрактом CRUD (`create`/`read`/`update`/`delete`) и защищённым `http: HTTPTransport`, инициализированным префиксом эндпоинта:
+REST-клиенты собственного бэкенда (HTTP-адаптеры фич — `src/features/*/api/`). `BaseApi` (legacy `src/api/BaseApi.ts`) — абстрактный базовый класс с контрактом CRUD (`create`/`read`/`update`/`delete`) и защищённым `http: HTTPTransport`, инициализированным префиксом эндпоинта:
 
 ```ts
 class AuthAPI extends BaseAPI {
     constructor() {
         super('/auth')
     }
-    // this.http.get('/user') → GET https://ya-praktikum.tech/api/v2/auth/user
+    // this.http.get('/me') → GET http://localhost:8000/api/v1/auth/me
 }
 ```
 
@@ -36,9 +36,9 @@ class AuthAPI extends BaseAPI {
 
 Обёртка над **XMLHttpRequest** (не fetch). Характеристики:
 
-- базовый URL — `HTTPTransport.API_URL = 'https://ya-praktikum.tech/api/v2'`;
+- базовый URL — из env (`VITE_API_URL`, локально `http://localhost:8000/api/v1`);
 - методы `get/put/post/delete`; GET-параметры сериализуются через `queryStringify` в query string;
-- `withCredentials = true` (куки сессии курса), `responseType = 'json'`;
+- `withCredentials = true` (cookie-сессия own-бэкенда + CSRF double-submit), `responseType = 'json'`;
 - тело: `FormData` уходит как multipart, объект — как JSON (`Content-Type: application/json`);
 - успех — 2xx, иначе `reject(new Error('Запрос не выполнен. Статус: N'))`; сетевые ошибки/таймаут/abort — отдельные reject'ы.
 
@@ -47,7 +47,7 @@ class AuthAPI extends BaseAPI {
 Обёртка над `WebSocket`, расширяющая `EventBus`. События — enum `WSTransportEvents`: `Connected`, `Message`, `Error`, `Close`.
 
 - `connect()` — открывает сокет, подписывается на его события и резолвит промис по `Connected`;
-- держит соединение пингом `{type: 'ping'}` каждые 5 секунд, `pong` от сервера игнорируется;
+- держит соединение пингом `{type: 'ping', content: {}}` каждые 5 секунд, `pong` от сервера игнорируется;
 - `send(data)` — JSON-сериализация; `close()` — закрытие (пинг-интервал очищается по событию `Close`).
 
 ## Сопутствующие хелперы — `src/helpers/`

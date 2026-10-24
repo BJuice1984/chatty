@@ -1,0 +1,10 @@
+{
+    "status": "RESOLVED",
+    "tier": "S2",
+    "requestedTier": "S2",
+    "reason": "architecture-risk, browser-risk, security-risk and external-specification-required",
+    "independentReviewRequired": true,
+    "requestPath": "tasks/2026-09-28-module-kernel-guard-v2/tier-request.json",
+    "resolutionPath": "tasks/2026-09-28-module-kernel-guard-v2/tier-resolution.json",
+    "requestDigest": "7a671608a57136baebf69e61e7529a5166198769cbf283ffe58aa55b7e05dbbb"
+}

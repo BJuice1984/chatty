@@ -1,0 +1,7 @@
+<article class="ai-assistant__document" data-testid="ai-document">
+    <h3 class="ai-assistant__document-title">{{title}}</h3>
+    <p class="ai-assistant__document-snippet">{{snippet}}</p>
+    {{#if hasFile}}
+        <a class="ai-assistant__document-link" href="{{href}}" download>Скачать документ</a>
+    {{/if}}
+</article>

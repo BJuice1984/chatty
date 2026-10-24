@@ -1,7 +1,10 @@
 import { expect } from 'chai'
 import sinon from 'sinon'
 import { JSDOM } from 'jsdom'
+import Handlebars from 'handlebars'
 import Block, { Props } from './Block'
+import { registerComponent } from './registerComponent.ts'
+import store, { AppState, ComponentProps, withStore } from '../utils/Store.ts'
 
 const dom = new JSDOM()
 global.document = dom.window.document
@@ -67,5 +70,184 @@ describe('Block', () => {
         const componentDidMountMock = sinon.stub(pageComponent, 'componentDidMount')
         pageComponent.dispatchComponentDidMount()
         expect(componentDidMountMock.calledOnce).to.be.true
+    })
+
+    it('should stay silent on repeated dispatch for the same instance', () => {
+        const pageComponent = new PageClass()
+        const componentDidMountMock = sinon.stub(pageComponent, 'componentDidMount')
+
+        pageComponent.dispatchComponentDidMount()
+        pageComponent.dispatchComponentDidMount()
+
+        expect(componentDidMountMock.calledOnce).to.be.true
+    })
+
+    it('should dispatch componentDidMount into both children and hbs-embedded children (dispatch ↔ destroy symmetry)', () => {
+        // Инвариант симметрии: dispatch обязан обойти ТО ЖЕ множество детей,
+        // что и destroy() — this.children + _hbsChildren (захват compile()).
+        const instances: Block[] = []
+
+        class EmbeddedBase extends Block {
+            // eslint-disable-next-line no-unused-vars
+            constructor(props?: Props) {
+                super(props)
+
+                instances.push(this)
+            }
+
+            render() {
+                const fragment = document.createDocumentFragment()
+                const div = document.createElement('div')
+                div.className = 'embedded-cdm-child'
+                fragment.appendChild(div)
+                return fragment
+            }
+        }
+
+        registerComponent('TestHbsCdmChild', EmbeddedBase as typeof Block)
+
+        class ParentPage extends Block {
+            render() {
+                return this.compile(Handlebars.compile('<section>{{{ TestHbsCdmChild }}}</section>'), {})
+            }
+        }
+
+        const regularChild = new PageClass({ text: 'child' })
+        const parent = new ParentPage({ child: regularChild })
+
+        const embeddedChild = instances[instances.length - 1]
+
+        const regularChildCdm = sinon.stub(regularChild, 'componentDidMount')
+        const embeddedChildCdm = sinon.stub(embeddedChild, 'componentDidMount')
+
+        parent.dispatchComponentDidMount()
+
+        expect(regularChildCdm.calledOnce).to.be.true
+        expect(embeddedChildCdm.calledOnce).to.be.true
+
+        // Повторный dispatch на дереве молчит целиком: полный short-circuit
+        // у родителя, собственные флаги у детей.
+        parent.dispatchComponentDidMount()
+
+        expect(regularChildCdm.calledOnce).to.be.true
+        expect(embeddedChildCdm.calledOnce).to.be.true
+
+        parent.destroy()
+    })
+
+    it('should remove element from DOM and detach events on destroy', () => {
+        const handlerStub = sinon.stub()
+        const pageComponent = new PageClass({
+            events: {
+                click: handlerStub,
+            },
+        })
+        const container = document.createElement('div')
+        const element = pageComponent.element!
+
+        container.appendChild(element)
+
+        element.dispatchEvent(new MouseEvent('click'))
+        expect(handlerStub.calledOnce).to.be.true
+
+        pageComponent.destroy()
+
+        expect(container.childElementCount).to.eq(0)
+        expect(pageComponent.element).to.be.null
+
+        element.dispatchEvent(new MouseEvent('click'))
+        expect(handlerStub.calledOnce).to.be.true
+    })
+
+    it('should unsubscribe lifecycle events on destroy', () => {
+        const pageComponent = new PageClass()
+        const componentDidMountMock = sinon.stub(pageComponent, 'componentDidMount')
+
+        pageComponent.destroy()
+        pageComponent.dispatchComponentDidMount()
+
+        expect(componentDidMountMock.called).to.be.false
+    })
+
+    it('should destroy children recursively', () => {
+        const child = new PageClass({ text: 'child' })
+        const parent = new PageClass({ text: 'parent' })
+
+        parent.children['child'] = child
+
+        const childDestroySpy = sinon.spy(child, 'destroy')
+
+        parent.destroy()
+
+        expect(childDestroySpy.calledOnce).to.be.true
+    })
+
+    it('should be idempotent on repeated destroy', () => {
+        const pageComponent = new PageClass()
+        const removeSpy = sinon.spy(pageComponent.element!, 'remove')
+
+        pageComponent.destroy()
+        pageComponent.destroy()
+
+        expect(removeSpy.calledOnce).to.be.true
+    })
+
+    it('should destroy handlebars-embedded children and unsubscribe their withStore wrapper', () => {
+        // Идиома «should not update a destroyed block» (Store.test.ts):
+        // ребёнок, встроенный в .hbs хелпером registerComponent (как
+        // Messenger в chat.hbs), раньше не уничтожался — withStore-подписка
+        // текла при уходе с маршрута.
+        const instances: Block[] = []
+
+        class EmbeddedBase extends Block {
+            constructor(props?: Props) {
+                super(props)
+
+                instances.push(this)
+            }
+
+            render() {
+                const fragment = document.createDocumentFragment()
+                const div = document.createElement('div')
+
+                div.className = 'embedded-child'
+                fragment.appendChild(div)
+
+                return fragment
+            }
+        }
+
+        const Embedded = withStore(
+            // eslint-disable-next-line no-unused-vars
+            ((state: AppState) => ({ selectedChat: state.selectedChat })) as unknown as (state: AppState) => ComponentProps
+        )(EmbeddedBase as typeof Block)
+
+        registerComponent('TestHbsEmbeddedChild', Embedded as typeof Block)
+
+        class ParentPage extends Block {
+            render() {
+                return this.compile(Handlebars.compile('<section>{{{ TestHbsEmbeddedChild }}}</section>'), {})
+            }
+        }
+
+        const parent = new ParentPage()
+
+        expect(instances).to.have.length(1)
+        expect(parent.element?.querySelector('.embedded-child')).to.exist
+
+        const child = instances[instances.length - 1]
+        const updateSpy = sinon.spy(
+            child as unknown as { componentDidUpdate: () => boolean },
+            'componentDidUpdate'
+        )
+
+        parent.destroy()
+
+        // После destroy родителя ребёнок отписан: обновления Store его больше
+        // не перерисовывают, элемент снят.
+        store.set('selectedChat', 77)
+
+        expect(updateSpy.called).to.be.false
+        expect(child.element).to.be.null
     })
 })

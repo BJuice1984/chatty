@@ -1,8 +1,13 @@
+// Аватар пользователя с возможностью смены (stage 4): загрузку обрабатывает
+// колбэк из пропсов (фича profile), компонент только проводит его в InputFile.
+
 import Block from '../../core/Block.ts'
 import template from './avatar.hbs'
 
 interface AvatarProps {
     avatar: string
+    // eslint-disable-next-line no-unused-vars
+    onUserFile?: (data: FormData) => void
     [key: string]: unknown
 }
 

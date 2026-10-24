@@ -8,7 +8,9 @@ export const nameValidator = (value: string) => {
 }
 
 export const passwordValidator = (value: string) => {
-    return /^(?=.*[A-Z])(?=.*\d).{8,40}$/.test(value)
+    // Минимум 12 — контракт собственного бэкенда (Credentials): короче он
+    // всё равно отвергает, валидация не должна обещать иное
+    return /^(?=.*[A-Z])(?=.*\d).{12,40}$/.test(value)
 }
 
 export const phoneValidator = (value: string) => {
@@ -16,7 +18,9 @@ export const phoneValidator = (value: string) => {
 }
 
 export const mailValidator = (value: string) => {
-    return /^\w+@[a-z0-9.-]+\.[a-z]{2,}$/i.test(value)
+    // Локальная часть допускает точки/дефисы/плюсы (manual.smoke2@…);
+    // пробелы по краям (частый копипаст) не валят поле — триммим при отправке
+    return /^[\w.%+-]+@[a-z0-9.-]+\.[a-z]{2,}$/i.test(value.trim())
 }
 
 export const emptyValidator = (value: string) => {

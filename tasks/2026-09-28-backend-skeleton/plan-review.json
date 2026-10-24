@@ -1,0 +1,60 @@
+{
+  "schemaVersion": "agent-plan-review.v1",
+  "reviewId": "review-2026-09-28-backend-skeleton-freeze-r2",
+  "packageId": "2026-09-28-backend-skeleton",
+  "planRevision": 2,
+  "reviewedPlanHash": "1e9673e422fc55ce612f15c7c0574f8cc09a2d4023d90735c4c49a1d6d627fb8",
+  "reviewer": {
+    "id": "opencode-nemotron-3-ultra-free-plan-audit",
+    "independent": true,
+    "runId": "2026-09-29-backend-freeze-audit-2",
+    "surface": "audit-agent-plan"
+  },
+  "fullReview": true,
+  "verdict": "READY_TO_FREEZE",
+  "summary": "Independent read-only audit found the backend plan complete and ready to freeze against the published dev baseline.",
+  "findings": [
+    {
+      "id": "INFO-PLAN-COMPLETE",
+      "severity": "INFO",
+      "status": "closed",
+      "category": "traceability",
+      "message": "All required plan files, requirements, acceptance criteria, evidence routes, budgets and audit gates are present and consistent."
+    },
+    {
+      "id": "INFO-DEV-BASELINE",
+      "severity": "INFO",
+      "status": "closed",
+      "category": "release",
+      "message": "The exact dev integration baseline is d79de677facf8b06290523f9589808069f6cf621 and is published at origin/dev."
+    },
+    {
+      "id": "INFO-OWNERSHIP",
+      "severity": "INFO",
+      "status": "closed",
+      "category": "ownership",
+      "message": "Backend writes and read-only boundaries are disjoint and include the tracked internal deployment document and root verification scripts."
+    },
+    {
+      "id": "INFO-SECURITY",
+      "severity": "INFO",
+      "status": "closed",
+      "category": "security",
+      "message": "Environment-only secrets, cookie JWT, refresh rotation, CSRF/origin checks, role boundaries and negative security tests are explicit."
+    },
+    {
+      "id": "INFO-VALIDATION",
+      "severity": "INFO",
+      "status": "closed",
+      "category": "validation",
+      "message": "Deterministic backend verification, Compose config, bounded health/auth smoke and explicit UNAVAILABLE handling are specified."
+    },
+    {
+      "id": "INFO-SCOPE",
+      "severity": "INFO",
+      "status": "closed",
+      "category": "scope",
+      "message": "Frontend wiring and local-model verification remain outside this package; implementation remains unauthorized until execution is separately started."
+    }
+  ]
+}

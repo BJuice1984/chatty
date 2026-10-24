@@ -1,0 +1,8 @@
+{
+    "taskCount": 1,
+    "executableOwners": ["worker-frontend-hardening"],
+    "capabilityHints": ["typescript", "websocket", "browser", "documentation", "git", "ALK"],
+    "riskFlags": {"architecture": true, "security": true, "performance": true, "browser": true, "data": true, "release": true, "externalEnvironment": true},
+    "requirementsBytes": 4100,
+    "externalSpecification": true
+}

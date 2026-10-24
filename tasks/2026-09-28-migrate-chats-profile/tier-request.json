@@ -1,0 +1,8 @@
+{
+    "taskCount": 1,
+    "executableOwners": ["worker-frontend-features"],
+    "capabilityHints": ["typescript", "handlebars", "vite", "migration"],
+    "riskFlags": {"architecture": true, "security": true, "performance": false, "browser": true, "data": true, "release": true, "externalEnvironment": true},
+    "requirementsBytes": 4200,
+    "externalSpecification": true
+}

@@ -1,0 +1,10 @@
+{
+    "status": "RESOLVED",
+    "tier": "S2",
+    "requestedTier": "S2",
+    "reason": "architecture-risk, browser-risk, externalEnvironment-risk, security-risk and external-specification-required",
+    "independentReviewRequired": true,
+    "requestPath": "tasks/2026-09-28-migrate-chats-profile/tier-request.json",
+    "resolutionPath": "tasks/2026-09-28-migrate-chats-profile/tier-resolution.json",
+    "requestDigest": "0889644ed1322cfc65a211c2b2e53e1f6cd579dbdf48d6a60ea96b2a7ebd63e6"
+}

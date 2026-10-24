@@ -1,0 +1,5 @@
+<section class="login">
+    <h2 class="login__header">Register</h2>
+    {{{ Form inputs=this.inputs buttons=this.buttons }}}
+    {{#if authError}}<p class="login__error" role="alert" data-testid="auth-error">{{authError}}</p>{{/if}}
+</section>

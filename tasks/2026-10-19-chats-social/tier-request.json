@@ -1,0 +1,25 @@
+{
+    "taskCount": 2,
+    "executableOwners": [
+        "worker-backend-social",
+        "worker-frontend-social"
+    ],
+    "capabilityHints": [
+        "python",
+        "fastapi",
+        "alembic",
+        "pytest",
+        "typescript",
+        "scss",
+        "websocket",
+        "ALK"
+    ],
+    "riskFlags": {
+        "architecture": true,
+        "security": true,
+        "browser": true,
+        "data": true
+    },
+    "requirementsBytes": 2600,
+    "externalSpecification": false
+}

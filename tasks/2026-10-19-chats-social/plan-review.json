@@ -1,0 +1,72 @@
+{
+    "schemaVersion": "agent-plan-review.v1",
+    "packageId": "2026-10-19-chats-social",
+    "planRevision": 2,
+    "reviewId": "review-2026-10-19-chats-social-freeze-r2",
+    "fullReview": true,
+    "verdict": "READY_TO_FREEZE",
+    "reviewedPlanHash": "64c4d4372af92b1fb2f098e9ac38cbd1e30a2490704efb9e88c26b80f7aba57c",
+    "reviewer": {
+        "id": "claude-code-independent-subagent",
+        "independent": true,
+        "runId": "audit-run-20261019-chats-social-plan-r2",
+        "surface": "audit-agent-plan"
+    },
+    "findings": [],
+    "reviewVerdict": {
+        "schemaVersion": "agent-review-verdict.v1",
+        "overall": "ACCEPTED",
+        "dimensions": {
+            "requirementFit": {
+                "status": "PASS",
+                "reasonCode": "two-phase-contract-complete",
+                "summary": "The backend phase provides every contract the frontend phase builds against: users search with a pinned response shape (login = full email, display_name = local-part derived server-side), owner-only chat deletion with the broadcast→delete→close-sockets order and full FK cascade expectations, reactions with a fixed emoji set and unique toggle semantics, replies carried through both REST and WS send paths, reaction summaries riding with messages."
+            },
+            "implementationQuality": {
+                "status": "PASS",
+                "reasonCode": "round1-findings-closed",
+                "summary": "All eleven round-1 findings closed and re-verified against the actual tree: write-sets now cover the FormContainer retirement and Modal registration (components.ts), the messages service/repository layers required by reply validation and viewer-scoped summaries, the port-literal test file, and the badge stylesheet; the single reactions entry mechanism (always-in-DOM affordance, CSS hover on pointer:fine, no JS long-press), explicit ON DELETE SET NULL, WebSocketMessageContent.reply_to_id, convention-correct test paths, the UNAVAILABLE retry policy for live evidence and the run budget fix."
+            },
+            "evidenceQuality": {
+                "status": "PASS",
+                "reasonCode": "deterministic-plus-two-session-live",
+                "summary": "Backend integration tests cover search rules, deletion policy with cascades (files/documents/chunks included), reaction toggle with the test-hub broadcast, reply validation and summaries; frontend component tests cover modals, reactions, replies and the AI badge; the live two-session P2P receipt has an explicit fallback policy (UNAVAILABLE + controller retry, user B ensured by idempotent login-or-register)."
+            },
+            "residualRisk": {
+                "status": "PASS",
+                "reasonCode": "additive-and-disjoint",
+                "summary": "The migration is additive; WS stays backward-compatible (unknown event types are ignored, the message contract only gains optional fields); the two workstreams write disjoint trees (backend/** vs src/**) with an explicit A→B dependency; RustFS orphaned bytes on chat deletion accepted as documented local-only behavior."
+            }
+        },
+        "routing": {
+            "target": "plan-freeze",
+            "nextAction": "accept"
+        }
+    },
+    "rounds": [
+        {
+            "round": 1,
+            "verdict": "CHANGES_REQUIRED",
+            "findings": 11,
+            "summary": "Eleven findings (2 HIGH write-set gaps: the FormContainer retirement needs components.ts and the form-container files; reply validation and viewer-scoped summaries need services/messages.py and repositories/messages.py; 2 MEDIUM: chats.test.ts port literals break; the users-search response shape lacked a display_name source; plus LOW: reaction entry mechanism unpinned, ondelete unspecified, deletion ordering, the WS reply field, test paths, evidence fallback policy, budget arithmetic). Architecture confirmed sound: WS backward-compatibility, DB-level cascades, the domain-router seam, hub-keyed broadcast reach."
+        },
+        {
+            "round": 2,
+            "verdict": "READY_TO_FREEZE",
+            "findings": 0,
+            "summary": "Every closure verified against the package files and the repository tree; a fresh consistency pass (plan item numbering after insertions, AC/EV binding across all three artifacts, write-set disjointness, budgets, base dev@2003f1d) found no violations; three non-blocking observations recorded (digest recomputation unavailable in the reviewer environment, the register_domain_router seam note for the implementer, revision numbering norm)."
+        }
+    ],
+    "reviewedAt": "2026-10-19",
+    "summary": "Independent two-round review of the stage 16 chats-social package (two disjoint workstreams: WS-BACKEND-SOCIAL — users search, owner-only chat deletion with the broadcast-first ordering, additive migration 005 for reactions and reply_to_id, WS-broadcast reaction toggles, reply snippets through REST and WS; WS-FRONT-SOCIAL — rebuilt header modals with @-login search, delete confirmation, one-mechanism reactions UI, reply quoting, AI chat badges and the chat_deleted flow). Round 1 demanded eleven fixes (write-set completeness front and back, contract pinning, mechanism and ordering decisions); round 2 verified every closure against the tree and returned READY_TO_FREEZE. Frozen digest 90e739ae0bc138f5d3034b2b2ac0f8e1872fa15509f5046c1b5d5a5a12fd09c2.",
+    "remediationAddendum": {
+        "revision": 2,
+        "date": "2026-10-19",
+        "trigger": "worker phase-B deviation DEV-1 (remediationMode ask)",
+        "operatorDecision": "ALLOW: extend the write-set (operator answer)",
+        "changes": [
+            "src/features/chats/history/history.test.ts added to WS-FRONT-SOCIAL writes: closeChat became a mandatory ChatMessagesPort member and two port literals in history.test.ts fail tsc without stubs — mechanical two-line test fix (stage-12 precedent)"
+        ],
+        "independentVerification": "the final audit re-verifies the path as part of the reviewed delta"
+    }
+}

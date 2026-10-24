@@ -48,7 +48,10 @@ agent-lifecycle audit ownership --base HEAD --fail-on-unowned --fail-on-forbidde
 
 ## Ветки прогонов
 
-Прогон плана живёт в ветке `feature/<plan-id>` от `main`, результат — PR в `main`.
+Обычный прогон плана живёт в ветке `feature/<plan-id>` от принятого integration baseline.
+Для текущего AI-messenger контура integration baseline и целевая ветка PR — `dev`:
+сначала backend foundation, затем frontend boundary, каждый пакет — отдельный PR после
+проверки предыдущего. Ветка `dev` должна существовать до freeze первого пакета.
 Ветки `sprint_*` и `deploy` принадлежат учебному потоку Практикума — не использовать и не менять.
 
 ## Запреты

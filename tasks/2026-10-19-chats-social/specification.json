@@ -1,0 +1,37 @@
+{
+    "revision": 1,
+    "id": "SPEC-CHATS-SOCIAL",
+    "title": "P2P chats: user search, chat deletion, reactions, replies, AI chat badges",
+    "intent": "Complete the social side of messaging: searchable user directory for chat membership, chat deletion, emoji reactions on messages, message quoting (replies), polished header modals across viewports, and visually distinct AI chats — backend contract first, frontend experience second.",
+    "requirements": [
+        {
+            "id": "REQ-BACKEND-SOCIAL",
+            "title": "Backend: users search, chat delete, reactions, replies",
+            "description": "GET /users?login= search by login prefix; DELETE /chats/{id} (owner or member policy per review); alembic migration adding reactions (message_id, user_id, emoji, unique) and messages.reply_to_id; reactions API (set/toggle) with WS broadcast; reply_to carried in MessageResponse (id + author + content snippet) and accepted on message create; pytest coverage.",
+            "priority": "P1",
+            "source": "operator request 2026-10-19 (items 2-5, reactions, quoting)",
+            "acceptanceIds": ["AC-BE-1", "AC-BE-2"],
+            "evidenceIds": ["EV-BE-1", "EV-BE-2"],
+            "owner": "WS-BACKEND-SOCIAL"
+        },
+        {
+            "id": "REQ-FRONT-SOCIAL",
+            "title": "Frontend: modals, @search, delete, reactions, replies, AI badges",
+            "description": "Header-button modals fully rebuilt (add-user with @login search results, delete-chat with confirmation) styled at all breakpoints; reactions UI (emoji picker on a message, chips under the bubble, own reaction highlighted, toggle); reply UI (reply action on a message, quoted preview above the input, quoted block rendered in the bubble); AI chats badged in the list and visually distinct; P2P flow usable end-to-end.",
+            "priority": "P1",
+            "source": "operator request 2026-10-19 (items 1-5, reactions, quoting)",
+            "acceptanceIds": ["AC-FE-1", "AC-FE-2", "AC-FE-3"],
+            "evidenceIds": ["EV-FE-1", "EV-FE-2"],
+            "owner": "WS-FRONT-SOCIAL"
+        }
+    ],
+    "constraints": [
+        "Backend migration is additive (new table + nullable column); alembic upgrade head stays clean on the existing volume.",
+        "WS events stay backward-compatible: existing clients ignore unknown event types; message content contract only gains optional fields.",
+        "Reactions are limited to a fixed emoji set server-side; one reaction per user per emoji per message (unique constraint), toggle semantics.",
+        "Deletion policy: only the chat owner can delete (decided at review if the model differs); members are not silently removed otherwise.",
+        "Frontend reuses the stage-15 bubble/adaptive patterns; no new media-query strategy.",
+        "Existing suites stay green (203 frontend, 152 backend)."
+    ],
+    "nonGoals": ["read receipts", "typing indicators", "message editing/deletion", "mentions parsing beyond @-search"]
+}

@@ -1,0 +1,10 @@
+{
+    "status": "RESOLVED",
+    "tier": "S2",
+    "requestedTier": "S2",
+    "reason": "architecture-risk, browser-risk, externalEnvironment-risk, security-risk and external-specification-required",
+    "independentReviewRequired": true,
+    "requestPath": "tasks/2026-09-28-env-api-abstraction/tier-request.json",
+    "resolutionPath": "tasks/2026-09-28-env-api-abstraction/tier-resolution.json",
+    "requestDigest": "0c66d1df28c9056b81e53a02162dc55a2ce1be41c0e5cdf19330b496b7f87070"
+}

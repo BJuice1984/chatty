@@ -1,0 +1,10 @@
+{
+    "status": "RESOLVED",
+    "tier": "S2",
+    "requestedTier": "S2",
+    "reason": "architecture-risk, externalEnvironment-risk, performance-risk, security-risk and external-specification-required",
+    "independentReviewRequired": true,
+    "requestPath": "tasks/2026-09-28-backend-docs-rag/tier-request.json",
+    "resolutionPath": "tasks/2026-09-28-backend-docs-rag/tier-resolution.json",
+    "requestDigest": "24197c362e96e4037eb288babef181c7cfe0f131eca1ce71fc8ec69359560fa0"
+}

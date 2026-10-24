@@ -1,0 +1,401 @@
+{
+    "schemaVersion": "agent-plan-manifest.v1",
+    "status": "FROZEN",
+    "planRevision": 3,
+    "package": {
+        "id": "2026-10-21-stories",
+        "title": "Stories UI: fullscreen viewer, add-story picker, unread ring (client-only)",
+        "workspaceRoot": ".",
+        "artifactRoot": "work/2026-10-21-stories",
+        "planArtifactRoot": "tasks/2026-10-21-stories"
+    },
+    "planFiles": [
+        "tasks/2026-10-21-stories/acceptance-criteria.md",
+        "tasks/2026-10-21-stories/developer-overview.md",
+        "tasks/2026-10-21-stories/plan-review-request.md",
+        "tasks/2026-10-21-stories/plan-review.json",
+        "tasks/2026-10-21-stories/plan.manifest.json",
+        "tasks/2026-10-21-stories/plan.md",
+        "tasks/2026-10-21-stories/specification.json",
+        "tasks/2026-10-21-stories/tier-request.json",
+        "tasks/2026-10-21-stories/tier-resolution.json"
+    ],
+    "packageIntegrity": {
+        "required": true,
+        "lockSchemaVersion": "agent-plan-lock.v2",
+        "inventorySource": "planFiles",
+        "undeclaredTopLevelFiles": "reject",
+        "allowedUnlistedFiles": [
+            "plan.lock.json",
+            "plan-review.json"
+        ]
+    },
+    "author": {
+        "id": "claude-code",
+        "surface": "agent-first-planning",
+        "runId": "2026-10-21-stories-draft"
+    },
+    "baseRevision": {
+        "ref": "feature/2026-10-19-chats-social",
+        "sha": "e3ff8817273debf3f16ddbf5c426ab8743534353"
+    },
+    "specification": {
+        "tier": "S2",
+        "intent": "Instagram-style stories row: fullscreen timed viewer, add-story from a picked photo, unread ring that fades after viewing. Client-only mocks, no backend contract.",
+        "status": "DRAFT",
+        "source": "tasks/2026-10-21-stories/specification.json",
+        "requirements": [
+            {
+                "id": "REQ-STORIES-VIEW",
+                "title": "Fullscreen story viewer with auto-close",
+                "description": "Click a story tile: fullscreen photo overlay, page-owned 5000 ms auto-close timer, backdrop/Escape (focused overlay) manual close, CSS progress bar, marks the story viewed.",
+                "priority": "P1",
+                "source": "operator request 2026-10-21",
+                "acceptanceIds": ["AC-ST-1"],
+                "evidenceIds": ["EV-ST-1"],
+                "owner": "WS-FRONT-STORIES"
+            },
+            {
+                "id": "REQ-STORIES-ADD",
+                "title": "Create a story from a picked photo",
+                "description": "Add tile opens a hidden image file input; the picked photo becomes the first regular story with the unread ring; viewer not auto-opened.",
+                "priority": "P1",
+                "source": "operator request 2026-10-21",
+                "acceptanceIds": ["AC-ST-2"],
+                "evidenceIds": ["EV-ST-1"],
+                "owner": "WS-FRONT-STORIES"
+            },
+            {
+                "id": "REQ-STORIES-READ",
+                "title": "Unread ring disappears after viewing",
+                "description": "Unread stories keep the gradient ring; viewed get a muted modifier; state lives in page props and resets on reload.",
+                "priority": "P1",
+                "source": "operator request 2026-10-21",
+                "acceptanceIds": ["AC-ST-1", "AC-ST-3"],
+                "evidenceIds": ["EV-ST-1"],
+                "owner": "WS-FRONT-STORIES"
+            }
+        ],
+        "tierResolutionRequest": {
+            "requestedTier": "S2",
+            "taskCount": 1,
+            "executableOwners": [
+                "worker-frontend-stories"
+            ],
+            "capabilityHints": [
+                "typescript",
+                "scss",
+                "handlebars",
+                "mocha",
+                "ALK"
+            ],
+            "riskFlags": {
+                "architecture": false,
+                "security": false,
+                "performance": false,
+                "browser": true,
+                "data": false,
+                "release": false,
+                "migration": false,
+                "external": false
+            },
+            "requirementsBytes": 2400,
+            "externalSpecification": false
+        },
+        "revision": 2,
+        "artifact": "tasks/2026-10-21-stories/specification.json",
+        "goal": "A reviewed client-only stories UI plan for the chat page.",
+        "constraints": [
+            "No backend, API, controller or Store changes; story state is ChatPage props.",
+            "Layers downward only; no api/ imports in UI; guard strict green.",
+            "Block lifecycle truth: hbs children re-instantiate on parent re-render (no destroy, no fresh CDM) — the page owns the timer (cleared before re-arm, on close, in destroy()), the overlay focus (restored in CDU) and the delegated file-input change handling; no refs on raw HTML.",
+            "Object URLs stay in memory for the page lifetime; no network calls.",
+            "Reuse the stage-15 adaptive base and story.scss tokens.",
+            "Existing frontend suite stays green."
+        ],
+        "nonGoals": [
+            "video or multi-segment stories",
+            "server-side stories contract or persistence",
+            "story grouping/playlist by owner",
+            "uploading the picked photo anywhere"
+        ],
+        "scope": {
+            "in": [
+                "interactive story tile",
+                "fullscreen viewer with timer",
+                "add-story file picker",
+                "unread ring state",
+                "component tests",
+                "scss + registration"
+            ],
+            "out": [
+                "backend stories",
+                "store/controller wiring",
+                "persistence"
+            ]
+        }
+    },
+    "readOnly": [
+        "tasks/README.md",
+        "AGENTS.md",
+        "src/core/Block.ts",
+        "src/components/modal/modal.ts",
+        "src/components/input/inputFile/inputFile.ts"
+    ],
+    "forbiddenWrites": [
+        "src/main.ts",
+        "src/features/index.ts",
+        "src/features/chats/store.ts",
+        "src/features/chats/controller.ts",
+        "src/core",
+        "src/helpers/helpers.ts",
+        "docs/project-principles.json",
+        ".github/workflows",
+        "netlify.toml"
+    ],
+    "leadOwned": [
+        {
+            "path": "tasks/2026-10-21-stories",
+            "owner": "controller",
+            "reason": "Controller owns plan-package artifacts."
+        },
+        {
+            "path": "docs/progress/progress_log.md",
+            "owner": "controller",
+            "reason": "Controller maintains the progress log."
+        }
+    ],
+    "workstreams": [
+        {
+            "id": "WS-FRONT-STORIES",
+            "title": "Frontend: interactive stories row, viewer, add-story picker",
+            "owner": "worker-frontend-stories",
+            "reviewer": "independent-release-reviewer",
+            "dependsOn": [],
+            "writes": [
+                "src/components/components.ts",
+                "src/components/story/story.hbs",
+                "src/components/story/story.test.ts",
+                "src/components/story/story.ts",
+                "src/components/story/storyViewer/storyViewer.hbs",
+                "src/components/story/storyViewer/storyViewer.test.ts",
+                "src/components/story/storyViewer/storyViewer.ts",
+                "src/features/chats/pages/chat/chat.hbs",
+                "src/features/chats/pages/chat/chat.test.ts",
+                "src/features/chats/pages/chat/chat.ts",
+                "src/scss/components/_all.scss",
+                "src/scss/components/story-viewer.scss",
+                "src/scss/components/story.scss"
+            ],
+            "readOnly": [
+                "tasks/README.md",
+                "AGENTS.md",
+                "src/core/Block.ts",
+                "src/components/modal/modal.ts"
+            ],
+            "forbiddenWrites": [
+                "src/main.ts",
+                "src/core",
+                "src/features/chats/store.ts",
+                "src/features/chats/controller.ts"
+            ],
+            "leadOwned": [],
+            "launchGate": "feature/2026-10-21-stories branch created at base e3ff881; npm run verify green at base.",
+            "capabilityHints": [
+                "typescript",
+                "scss",
+                "handlebars",
+                "testing"
+            ],
+            "requiredTools": [
+                "node",
+                "npm"
+            ],
+            "contextRefs": [
+                "developer-overview.md",
+                "plan.md",
+                "acceptance-criteria.md"
+            ],
+            "acceptanceIds": [
+                "AC-ST-1",
+                "AC-ST-2",
+                "AC-ST-3"
+            ],
+            "evidenceIds": [
+                "EV-ST-1"
+            ],
+            "executionPolicy": {
+                "maxAttempts": 2,
+                "maxWallSeconds": 5400
+            },
+            "artifactPaths": {
+                "result": "work/2026-10-21-stories/evidence/WS-FRONT-STORIES/task-result-{attempt}.json",
+                "review": "work/2026-10-21-stories/evidence/WS-FRONT-STORIES/task-review-{attempt}.json"
+            },
+            "required": true,
+            "plannedItems": [
+                "story tile props and events",
+                "presentational story viewer (backdrop/Escape close, CSS progress)",
+                "component registration",
+                "chat page story state, page-owned auto-close timer, focus restore in CDU, destroy cleanup",
+                "hidden file input wiring (delegated change, value reset)",
+                "scss viewed modifier and viewer styles",
+                "component tests (story, viewer, page)",
+                "progress log entry"
+            ],
+            "qualityFloor": "Auto-close exactly at 5000 ms at the page-owned timer with fake timers; no timer fires after any manual close; a re-render while open neither closes the viewer nor doubles the timer; add flow prepends with unread ring and the add tile stays first; existing suite green; guard strict green."
+        }
+    ],
+    "acceptance": {
+        "criteria": [
+            {
+                "id": "AC-ST-1",
+                "title": "Fullscreen viewer with auto-close and read marking",
+                "requirementIds": ["REQ-STORIES-VIEW", "REQ-STORIES-READ"],
+                "evidenceIds": ["EV-ST-1"],
+                "independentEvidenceIds": [],
+                "statement": "Clicking a story opens a fullscreen photo overlay; the page-owned timer auto-closes it after 5000 ms; backdrop click and Escape (overlay focused, including after an unrelated re-render while open) close earlier; any close route marks the story viewed; tests cover timer close, early close, cleanup, re-render stability and the viewed flag.",
+                "description": "Component tests.",
+                "source": "acceptance-criteria.md",
+                "priority": "P1"
+            },
+            {
+                "id": "AC-ST-2",
+                "title": "Add-story via file picker",
+                "requirementIds": ["REQ-STORIES-ADD"],
+                "evidenceIds": ["EV-ST-1"],
+                "independentEvidenceIds": [],
+                "statement": "The add tile opens the OS image picker through a hidden input (querySelector at click time); a picked photo is prepended right after the add tile with the unread ring and owner 'You story'; the viewer does not auto-open; the delegated change handler survives re-renders and resets the input value, so re-picking the same file works; tests assert the add tile stays first and the list grows by one.",
+                "description": "Component tests with a stub file handler.",
+                "source": "acceptance-criteria.md",
+                "priority": "P1"
+            },
+            {
+                "id": "AC-ST-3",
+                "title": "No regressions",
+                "requirementIds": ["REQ-STORIES-READ"],
+                "evidenceIds": ["EV-ST-1"],
+                "independentEvidenceIds": [],
+                "statement": "npm run verify passes end to end; guard-architecture --all --strict passes; visual notes (progress bar span, fullscreen look at 375/768/1280, ring fade) are attached to the task result as manual checklist items.",
+                "description": "Gate receipts.",
+                "source": "acceptance-criteria.md",
+                "priority": "P1"
+            }
+        ],
+        "evidence": [
+            {
+                "id": "EV-ST-1",
+                "description": "verify receipt (typecheck, mocha with the new story/viewer/page tests, eslint, stylelint) plus guard strict receipt.",
+                "source": "WS-FRONT-STORIES",
+                "validation": "npm run verify && node .claude/hooks/scripts/guard-architecture.mjs --all --strict",
+                "artifactPath": "work/2026-10-21-stories/evidence/WS-FRONT-STORIES/EV-ST-1.json",
+                "required": true
+            }
+        ],
+        "releaseGate": "Stories UI accepted with deterministic component tests and green repo gates.",
+        "qualityFloor": "No criterion is accepted from prose alone."
+    },
+    "validation": {
+        "commands": [
+            "npm run verify",
+            "node .claude/hooks/scripts/guard-architecture.mjs --all --strict"
+        ]
+    },
+    "orchestration": {
+        "startMode": "reviewed-plan",
+        "remediationMode": "ask",
+        "maxPlanReviewRounds": 3,
+        "maxTaskAttempts": 2,
+        "maxParallelTasks": 1,
+        "maxValidationRunsPerTask": 2,
+        "maxToolCallsPerIteration": 30,
+        "maxUsageIterationsPerAttempt": 12,
+        "maxToolCallsPerTask": 200,
+        "maxToolCallsPerRun": 400,
+        "maxReportedTokensPerTask": 20000,
+        "maxReportedTokensPerRun": 24000,
+        "maxEvidenceArtifactBytes": 1048576,
+        "maxEvidenceBytesPerTask": 2097152,
+        "maxEvidenceBytesPerRun": 2097152,
+        "maxTaskWallSeconds": 5400,
+        "maxRunWallSeconds": 9000,
+        "maxContextBytes": 120000,
+        "maxRenderedPacketBytes": 40000,
+        "stateFile": "work/2026-10-21-stories/run.state.json",
+        "eventLog": "work/2026-10-21-stories/events.jsonl",
+        "stepReviewRequired": true,
+        "finalAuditRequired": true
+    },
+    "implementationAudit": {
+        "required": true,
+        "finalRequired": true
+    },
+    "developerOverview": "tasks/2026-10-21-stories/developer-overview.md",
+    "releaseTarget": {
+        "kind": "local-only",
+        "environment": "Vite own mode",
+        "productionPromotionClaimed": false
+    },
+    "releaseImpact": "Chat-page stories UI only; no backend, store or contract changes.",
+    "nonGoals": [
+        "video or multi-segment stories",
+        "server-side stories contract or persistence",
+        "story grouping/playlist by owner",
+        "uploading the picked photo anywhere"
+    ],
+    "finalAuditGates": [
+        "[AC-ST-1|EV-ST-1] fullscreen auto-close viewer with page-owned timer hygiene and read marking proven by tests",
+        "[AC-ST-2|EV-ST-1] file-picker add flow prepends an unread story (add tile stays first), viewer not auto-opened",
+        "[AC-ST-3|EV-ST-1] verify and guard strict green, visual notes attached"
+    ],
+    "securityGates": [
+        {
+            "id": "SEC-LOCAL-STATE",
+            "statement": "No user photo leaves the page: object URLs stay in memory, no upload, no network calls from the stories feature.",
+            "evidenceIds": ["EV-ST-1"]
+        }
+    ],
+    "budgetPolicy": {
+        "units": "tokens-and-resources",
+        "reroute": "pause-and-review",
+        "maxTotalTokens": 24000,
+        "maxParallelWorkstreams": 1,
+        "maxRunWallSeconds": 9000,
+        "criticalPathWallSeconds": 5400,
+        "aggregateWorkstreamWallSeconds": 5400,
+        "retryReserveWallSeconds": 1800
+    },
+    "budgets": {
+        "defaultWorkstreamTokens": 20000,
+        "maxEvidenceBytesPerRun": 2097152
+    },
+    "contextLimits": {
+        "profile": "small-context-profile.v1",
+        "maxPlanContextBytes": 120000,
+        "maxRenderedPacketBytes": 40000,
+        "smallContextPacketBytes": 30000,
+        "maxReferenceFilesPerPacket": 12,
+        "includeOnlyOwnedWrites": true,
+        "excludeRuntimeWorkArtifacts": true
+    },
+    "planReview": {
+        "required": true,
+        "requestPath": "tasks/2026-10-21-stories/plan-review-request.md",
+        "reviewerClass": "independent-plan-reviewer",
+        "maxRounds": 3,
+        "implementationAuthorized": false,
+        "report": "tasks/2026-10-21-stories/plan-review.json",
+        "reviewedRevision": 3,
+        "verdict": "READY_TO_FREEZE"
+    },
+    "tierResolution": {
+        "status": "RESOLVED",
+        "tier": "S2",
+        "requestedTier": "S2",
+        "reason": "browser-risk (fullscreen overlay, timers, object URLs) resolved by agent-lifecycle tier resolve",
+        "independentReviewRequired": true,
+        "requestPath": "tasks/2026-10-21-stories/tier-request.json",
+        "resolutionPath": "tasks/2026-10-21-stories/tier-resolution.json",
+        "requestDigest": "75cf4bb1078eef5595eb1cdbb4590d7c5819bef2a6d45afbd5c4d5ff80ee1a10"
+    }
+}

@@ -1,8 +1,7 @@
 import { set } from '../helpers/helpers.ts'
 import EventBus from '../core/EventBus.ts'
 import Block from '../core/Block.ts'
-import { Message } from '../controllers/MessagesController.ts'
-import { ChatUser } from '../api/ChatsApi.ts'
+import type { ChatUser, Message } from './types.ts'
 
 
 export enum StoreEvents {
@@ -13,7 +12,13 @@ export enum StoreEvents {
 export interface AppState {
     chatUsers?: ChatUser[] | undefined
     selectedChat?: number
+    // лента историй: тип живёт в фичевом модуле (features/chats/stories),
+    // ядро остаётся shape-agnostic — как у chats; каст в срезе модуля
+    stories?: { [key: string]: unknown }[]
     messages?: Record<number, Message[]>
+    // человекочитаемая ошибка последнего запроса авторизации (сеть/бэкенд):
+    // контроллер auth пишет, страницы входа/регистрации показывают под формой
+    authError?: string | null
     user?: {
         display_name: string
         first_name: string
@@ -33,6 +38,7 @@ export interface ComponentProps {
     selectedChat?: number
     selectedChatUsers?: ChatUser[]
     messages?: Message[]
+    authError?: string | null
     user?: {
         first_name?: string
         second_name?: string
@@ -47,13 +53,67 @@ export interface ComponentProps {
     }[]
 }
 
+export function shallowEqual<T>(lhs: T, rhs: T): boolean {
+    if (lhs === rhs) {
+        return true
+    }
+
+    if (typeof lhs !== 'object' || lhs === null ||
+        typeof rhs !== 'object' || rhs === null) {
+        return false
+    }
+
+    const lhsKeys = Object.keys(lhs)
+    const rhsKeys = Object.keys(rhs)
+
+    if (lhsKeys.length !== rhsKeys.length) {
+        return false
+    }
+
+    return lhsKeys.every(key =>
+        (lhs as Record<string, unknown>)[key] === (rhs as Record<string, unknown>)[key]
+    )
+}
+
+function getSlice(state: AppState, keypath: string): unknown {
+    return keypath.split('.').reduce<unknown>((acc, key) => {
+        if (typeof acc !== 'object' || acc === null) {
+            return undefined
+        }
+
+        return (acc as Record<string, unknown>)[key]
+    }, state)
+}
+
 export class Store extends EventBus {
     private state: AppState = {}
 
     public set(keypath: string, data: unknown) {
+        const previous = getSlice(this.state, keypath)
+        const isObject = typeof previous === 'object' && previous !== null
+
+        // Снимок-строка до мержа (JSON безопасен для значений с функциями —
+        // structuredClone бросал на chatUsers с onClick, из-за чего стор
+        // вечно держал участников первого чата): helpers.set мутирует
+        // предыдущее значение, поэтому сравнение ведём по строке-снапшоту,
+        // снятому ДО мержа (LIVE-5).
+        const previousSnapshot = isObject ? JSON.stringify(previous) : previous
+
         set(this.state, keypath, data)
 
+        const changed = isObject
+            ? previousSnapshot !== JSON.stringify(getSlice(this.state, keypath))
+            : !shallowEqual(previousSnapshot, data)
+
+        if (!changed) {
+            return
+        }
+
         this.emit(StoreEvents.Updated, this.getState())
+    }
+
+    public update<K extends keyof AppState>(slice: K, data: AppState[K]) {
+        this.set(slice, data)
     }
 
     public getState() {
@@ -67,21 +127,36 @@ const store = new Store()
 // eslint-disable-next-line no-unused-vars
 export function withStore(mapStateToProps: (state: AppState) => ComponentProps) {
     return function wrap(Component: typeof Block) {
-        let previousState: ComponentProps
-
         return class WithStore extends Component {
+            private readonly storeHandler: () => void
+            private previousState: ComponentProps
+
             constructor(props: ComponentProps) {
-                previousState = mapStateToProps(store.getState())
+                const initialState = mapStateToProps(store.getState())
 
-                super({ ...props, ...previousState })
+                super({ ...props, ...initialState })
 
-                store.on(StoreEvents.Updated, () => {
+                this.previousState = initialState
+
+                this.storeHandler = () => {
                     const stateProps = mapStateToProps(store.getState())
 
-                    previousState = stateProps
+                    if (shallowEqual(stateProps, this.previousState)) {
+                        return
+                    }
+
+                    this.previousState = stateProps
 
                     this.setProps({ ...stateProps })
-                })
+                }
+
+                store.on(StoreEvents.Updated, this.storeHandler)
+            }
+
+            destroy() {
+                store.off(StoreEvents.Updated, this.storeHandler)
+
+                super.destroy()
             }
         }
     }
