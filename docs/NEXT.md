@@ -29,7 +29,11 @@ ingestion-конвертера — вне чатов, см. runbook-заметк
 `INSERT ... ON CONFLICT DO NOTHING` в `backend/app/services/stories.py`;
 консолидация `unread_counts` в один запрос (сейчас 3 запроса + COUNT на чат
 с маркером чтения — найдено ревью 2026-10-25, осознанно вне скоупа
-chats-list-members).
+chats-list-members); дубль `GET /chats` на холодной загрузке — бутстрап
+`src/main.ts:77` дублирует CDM-фетч страницы чатов (`pages/chat/chat.ts:451`,
+LIVE-3): убрать блок fetchChats из `main.ts` (он же делает бесполезный фетч
+на логине/регистрации); микроправка отдельной веткой — `main.ts` в
+forbiddenWrites пакета 2026-10-25-chats-list-members.
 
 ## Окружение (воспроизводимо на новой машине)
 
