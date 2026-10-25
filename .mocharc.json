@@ -1,6 +1,7 @@
 {
   "require": [
-    "./mochaSetup.ts"
+    "./mochaSetup.ts",
+    "./src/utils/storeLeakGuard.ts"
   ],
   "node-option": [
     "import=tsx"
