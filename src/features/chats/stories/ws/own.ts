@@ -41,8 +41,11 @@ export function connectStoriesSocket(): void {
     })
     transport.on(WSTransportEvents.Close, () => {
         // сокет умер (исчерпание реконнектов) либо закрыт явно — обнуляем
-        // ссылку, следующий CDM страницы откроет свежий
-        socket = null
+        // ссылку, следующий CDM страницы откроет свежий; guard симметричен
+        // catch-пути: поздний Close старого транспорта не трогает новый
+        if (socket === transport) {
+            socket = null
+        }
     })
 
     socket = transport
