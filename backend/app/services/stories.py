@@ -9,7 +9,7 @@ from sqlalchemy.orm import Session
 
 from app.core.config import Settings
 from app.models.file import File
-from app.models.story import Story, StoryView
+from app.models.story import Story
 from app.models.user import User
 from app.repositories.stories import StoryRepository
 from app.schemas.story import StoryResponse
@@ -96,9 +96,8 @@ class StoryService:
 
         if self.stories.get_by_id(story_id) is None:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail='story_not_found')
-        if self.stories.find_view(story_id, user_id) is None:
-            self.stories.add_view(StoryView(story_id=story_id, user_id=user_id))
-            self.session.commit()
+        self.stories.add_view_if_absent(story_id, user_id)
+        self.session.commit()
 
     def delete(self, story_id: int, user_id: int, storage) -> None:
         """Owner-only story removal: story row, file row and the object."""

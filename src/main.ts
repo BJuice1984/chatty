@@ -18,7 +18,6 @@ import { NotFoundPage } from './pages/404/404.ts'
 import { ServerErrorPage } from './pages/500/500.ts'
 import Router from './utils/Router.ts'
 import authController from './features/auth/controller.ts'
-import chatsController from './features/chats/controller.ts'
 import { MESSENGER, PROFILE, SIGNIN, SIGNUP } from './utils/constants.ts'
 
 export const Routes = {
@@ -72,10 +71,4 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
 
     Router.start()
-
-    try {
-        await chatsController.fetchChats()
-    } catch (e) {
-        console.error('Ошибка при загрузке чатов:', e)
-    }
 })

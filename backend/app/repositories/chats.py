@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from sqlalchemy import func, select
+from sqlalchemy import and_, func, select
 from sqlalchemy.orm import Session
 
 from app.models.chat import Chat, ChatMember
@@ -55,51 +55,30 @@ class ChatRepository:
 
     def unread_counts(self, user_id: int) -> dict[int, int]:
         """Чужие сообщения новее последнего прочитанного маркера по каждому чату
-        пользователя; своих сообщений не считаем."""
-        reads = {
-            row.chat_id: row.last_read_message_id
-            for row in self.session.query(ChatLastRead).filter(ChatLastRead.user_id == user_id).all()
-        }
-        counts: dict[int, int] = {}
-        member_rows = (
-            self.session.query(ChatMember.chat_id)
-            .filter(ChatMember.user_id == user_id)
-            .all()
-        )
-        chat_ids = [row.chat_id for row in member_rows]
-
-        if not chat_ids:
-            return counts
-
-        rows = (
-            self.session.query(Message.chat_id, func.count(Message.id))
-            .filter(
-                Message.chat_id.in_(chat_ids),
-                Message.user_id != user_id,
-                Message.id > 0,
-            )
-            .group_by(Message.chat_id)
-            .all()
-        )
-        raw = {chat_id: count for chat_id, count in rows}
-
-        for chat_id in chat_ids:
-            marker = reads.get(chat_id, 0)
-            if marker == 0:
-                counts[chat_id] = raw.get(chat_id, 0)
-                continue
-            newer = (
-                self.session.query(func.count(Message.id))
-                .filter(
-                    Message.chat_id == chat_id,
+        пользователя; своих сообщений не считаем. Один запрос: memberships
+        дают все чаты, маркер приезжает LEFT JOIN-ом, отсечение чужих новее
+        маркера — агрегатный COUNT FILTER (было 3 запроса + COUNT на каждый
+        чат с маркером)."""
+        statement = (
+            select(
+                ChatMember.chat_id,
+                func.count(Message.id).filter(
                     Message.user_id != user_id,
-                    Message.id > marker,
-                )
-                .scalar()
+                    Message.id > func.coalesce(ChatLastRead.last_read_message_id, 0),
+                ),
             )
-            counts[chat_id] = int(newer or 0)
-
-        return counts
+            .where(ChatMember.user_id == user_id)
+            .outerjoin(
+                ChatLastRead,
+                and_(
+                    ChatLastRead.user_id == user_id,
+                    ChatLastRead.chat_id == ChatMember.chat_id,
+                ),
+            )
+            .outerjoin(Message, Message.chat_id == ChatMember.chat_id)
+            .group_by(ChatMember.chat_id)
+        )
+        return {chat_id: int(count) for chat_id, count in self.session.execute(statement).all()}
 
     def mark_read(self, chat_id: int, user_id: int, message_id: int) -> None:
         """Upsert маркера чтения: двигаем только вперёд (старые страницы

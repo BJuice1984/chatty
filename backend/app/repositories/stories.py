@@ -5,6 +5,8 @@ from __future__ import annotations
 from datetime import datetime, timedelta
 
 from sqlalchemy import select
+from sqlalchemy.dialects.postgresql import insert as pg_insert
+from sqlalchemy.dialects.sqlite import insert as sqlite_insert
 from sqlalchemy.orm import Session
 
 from app.models.story import Story, StoryView
@@ -26,13 +28,16 @@ class StoryRepository:
         statement = select(StoryView.story_id).where(StoryView.user_id == user_id)
         return set(self.session.scalars(statement))
 
-    def find_view(self, story_id: int, user_id: int) -> StoryView | None:
-        return self.session.get(StoryView, (story_id, user_id))
+    def add_view_if_absent(self, story_id: int, user_id: int) -> None:
+        """Вставка просмотра без check-then-insert гонки: конфликт
+        композитного PK (story_id, user_id) гасится на стороне БД. Диалект
+        INSERT ... ON CONFLICT выбирается по bind-у сессии — юниты идут на
+        SQLite, прод на PostgreSQL."""
 
-    def add_view(self, view: StoryView) -> StoryView:
-        self.session.add(view)
-        self.session.flush()
-        return view
+        insert = pg_insert if self.session.get_bind().dialect.name == 'postgresql' else sqlite_insert
+        self.session.execute(
+            insert(StoryView).values(story_id=story_id, user_id=user_id).on_conflict_do_nothing()
+        )
 
     def active_stories(self, *, ttl_hours: int, cap: int, now: datetime) -> list[Story]:
         """Active stories newest first: feed grouping by owner happens above."""

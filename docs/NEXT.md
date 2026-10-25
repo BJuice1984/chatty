@@ -1,7 +1,8 @@
 # NEXT — точка входа для следующей сессии
 
-Обновлено: 2026-10-25 (после ALK-прогона `2026-10-25-stories-ws-push` —
-WS-push историй, ветка `feature/2026-10-25-stories-ws-push`, PR в `dev`).
+Обновлено: 2026-10-25 (хвосты stories-ws-push закрыты веткой
+`feature/2026-10-25-next-tails`; до этого — ALK-прогон
+`2026-10-25-stories-ws-push`, WS-push историй, PR #34 смёржен в `dev`).
 
 ## Состояние
 
@@ -24,18 +25,15 @@ pytest passed (+4 известных Windows-падения ingestion), guard st
 1. **RAG-эмбеддинги** — на OpenAI-совместимом инференс-сервере поднять
    `/v1/embeddings` и закрыть пробел AI-ассистента (`src/features/ai-assistant/`).
 
-Хвосты: `mark_viewed` — check-then-insert гонка (теоретическая) →
-`INSERT ... ON CONFLICT DO NOTHING` в `backend/app/services/stories.py`;
-консолидация `unread_counts` в один запрос (сейчас 3 запроса + COUNT на чат
-с маркером чтения — найдено ревью 2026-10-25, осознанно вне скоупа
-chats-list-members); дубль `GET /chats` на холодной загрузке — бутстрап
-`src/main.ts:77` дублирует CDM-фетч страницы чатов (`pages/chat/chat.ts:451`,
-LIVE-3): убрать блок fetchChats из `main.ts` (он же делает бесполезный фетч
-на логине/регистрации); микроправка отдельной веткой — `main.ts` в
-forbiddenWrites пакета 2026-10-25-chats-list-members. Пределы stories-push
-(осознанные, см. план пакета): события вне страницы чата пропускаются,
-другие вкладки владельца не получают `story_created`, запушенное кольцо
-может пережить серверный TTL.
+Хвосты закрыты 2026-10-25 веткой `feature/2026-10-25-next-tails`:
+`mark_viewed` — `INSERT ... ON CONFLICT DO NOTHING` по композитному PK;
+`unread_counts` — один SELECT (memberships + LEFT JOIN маркера + COUNT
+FILTER) вместо 3 запросов + COUNT на чат; дубль `GET /chats` — bootstrap
+`fetchChats` удалён из `src/main.ts` (CDM страницы чатов, LIVE-3, —
+единственный писатель на заходе). Остались осознанные пределы stories-push
+(см. план пакета): события вне страницы чата пропускаются, другие вкладки
+владельца не получают `story_created`, запушенное кольцо может пережить
+серверный TTL.
 
 ## Окружение (воспроизводимо на новой машине)
 
