@@ -14,6 +14,10 @@ export interface StoryDto {
     viewed: boolean
     // своя история: зелёное кольцо и возможность удаления
     isOwn: boolean
+    // момент создания (ISO): рендер гасит кольца, пережившие серверный
+    // TTL (stories/ttl.ts) — лента с бэкенда уже отфильтрована, но
+    // WS-запушенные и долго смонтированные кольца чистятся на клиенте
+    createdAt: string
 }
 
 export interface StoriesPort {

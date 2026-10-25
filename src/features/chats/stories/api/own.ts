@@ -10,7 +10,7 @@ import { fileUrl } from '../../../../utils/env.ts'
 import { avatarPoolUrl } from '../../../../utils/avatarPool.ts'
 import type { StoriesPort, StoryDto } from '../ports.ts'
 
-interface OwnStoryResponse {
+export interface OwnStoryResponse {
     id: number
     owner_id: number
     owner_display_name: string
@@ -23,7 +23,9 @@ interface OwnStoryResponse {
 
 const http = new HTTPTransport('/stories')
 
-function toStoryDto(response: OwnStoryResponse): StoryDto {
+// WS-фан-аут story_created приходит той же формой, что и REST-лента
+// (единый серверный сериализатор), — переиспользуем без второго маппера
+export function toStoryDto(response: OwnStoryResponse): StoryDto {
     const owner = response.owner_display_name
 
     return {
@@ -37,6 +39,7 @@ function toStoryDto(response: OwnStoryResponse): StoryDto {
         alt: `История ${owner}`,
         viewed: response.viewed,
         isOwn: response.is_own,
+        createdAt: response.created_at,
     }
 }
 

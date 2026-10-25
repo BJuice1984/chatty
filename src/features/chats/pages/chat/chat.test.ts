@@ -43,6 +43,20 @@ function callbacksOf(page: unknown): ChatPageCallbacks {
 }
 
 describe('chat page mobile pane switch', () => {
+    // CDM открывает глобальный stories-сокет; WebSocket-глобала в юнит-
+    // окружении нет (на Node ≥ 22 нативный клиент реально ходил бы в сеть)
+    // — стабим на каждый тест, как fetchChats; логика сокета покрыта
+    // своим модулем (stories/ws/own.test.ts)
+    let storiesSocket: sinon.SinonStub
+
+    beforeEach(() => {
+        storiesSocket = sinon.stub(StoriesController, 'connectStoriesSocket')
+    })
+
+    afterEach(() => {
+        storiesSocket.restore()
+    })
+
     it('starts with the pane closed', () => {
         const fetchChats = sinon.stub(ChatsController, 'fetchChats').resolves()
 
@@ -112,6 +126,16 @@ describe('chat page mobile pane switch', () => {
 })
 
 describe('chat page bootstrap', () => {
+    let storiesSocket: sinon.SinonStub
+
+    beforeEach(() => {
+        storiesSocket = sinon.stub(StoriesController, 'connectStoriesSocket')
+    })
+
+    afterEach(() => {
+        storiesSocket.restore()
+    })
+
     it('fetches chats on componentDidMount, not on construction (LIVE-3)', () => {
         const fetchChats = sinon.stub(ChatsController, 'fetchChats').resolves()
 
@@ -123,6 +147,25 @@ describe('chat page bootstrap', () => {
 
             page.dispatchComponentDidMount()
             expect(fetchChats.calledOnce).to.be.true
+
+            page.destroy()
+        } finally {
+            fetchChats.restore()
+        }
+    })
+
+    it('opens the stories socket on componentDidMount alongside the feed fetch', () => {
+        const fetchChats = sinon.stub(ChatsController, 'fetchChats').resolves()
+
+        try {
+            const page = new ChatPage({} as never)
+
+            // stories-ws-push: конструктор молчит — сокет открывается из CDM
+            expect(storiesSocket.called).to.be.false
+
+            page.dispatchComponentDidMount()
+
+            expect(storiesSocket.calledOnce).to.be.true
 
             page.destroy()
         } finally {
@@ -155,7 +198,14 @@ describe('chat page bootstrap', () => {
 // chats-social: chat_deleted сбрасывает selectedChat в сторе — панель чата
 // возвращается к списку без ручного onBack
 describe('chat page chat_deleted pane reset', () => {
+    let storiesSocket: sinon.SinonStub
+
+    beforeEach(() => {
+        storiesSocket = sinon.stub(StoriesController, 'connectStoriesSocket')
+    })
+
     afterEach(() => {
+        storiesSocket.restore()
         store.set('selectedChat', undefined)
     })
 
@@ -202,6 +252,16 @@ describe('chat page chat_deleted pane reset', () => {
 
 // chats-social: страница пробрасывает новые колбэки мессенджера в контроллер
 describe('chat page social callbacks', () => {
+    let storiesSocket: sinon.SinonStub
+
+    beforeEach(() => {
+        storiesSocket = sinon.stub(StoriesController, 'connectStoriesSocket')
+    })
+
+    afterEach(() => {
+        storiesSocket.restore()
+    })
+
     it('wires the typed user search through the controller', async () => {
         const searchUsers = sinon.stub(ChatsController, 'searchUsers').resolves([{ id: 9, login: 'b@example.com', display_name: 'b' }])
         const fetchChats = sinon.stub(ChatsController, 'fetchChats').resolves()
@@ -254,6 +314,7 @@ describe('chat page social callbacks', () => {
 // markViewed контроллера (синхронный стор-патч), что и проверяется стабами
 describe('chat page stories', () => {
     let clock: sinon.SinonFakeTimers
+    let storiesSocket: sinon.SinonStub
 
     const feed = [
         {
@@ -263,6 +324,7 @@ describe('chat page stories', () => {
             src: 'http://localhost:8000/api/v1/files/11/download',
             alt: 'История Midala Huininja',
             viewed: false,
+            createdAt: '2026-10-25T10:00:00Z',
         },
         {
             id: 42,
@@ -271,6 +333,7 @@ describe('chat page stories', () => {
             src: 'http://localhost:8000/api/v1/files/12/download',
             alt: 'История Athalia Putri',
             viewed: false,
+            createdAt: '2026-10-25T10:00:00Z',
         },
         {
             id: 43,
@@ -279,15 +342,18 @@ describe('chat page stories', () => {
             src: 'http://localhost:8000/api/v1/files/13/download',
             alt: 'История Erlan Sadewa',
             viewed: false,
+            createdAt: '2026-10-25T10:00:00Z',
         },
     ]
 
     beforeEach(() => {
         clock = sinon.useFakeTimers()
         store.set('stories', feed)
+        storiesSocket = sinon.stub(StoriesController, 'connectStoriesSocket')
     })
 
     afterEach(() => {
+        storiesSocket.restore()
         clock.restore()
         store.set('chats', undefined)
         store.set('stories', undefined)
@@ -450,6 +516,7 @@ describe('chat page stories', () => {
                 alt: 'История me',
                 viewed: false,
                 isOwn: true,
+                createdAt: '2026-10-25T10:00:00Z',
             }])
 
             const page = new ChatPage({} as never)
@@ -471,6 +538,49 @@ describe('chat page stories', () => {
             page.destroy()
         } finally {
             deleteStory.restore()
+            markViewed.restore()
+            fetchStories.restore()
+            fetchChats.restore()
+        }
+    })
+
+    it('hides rings past the server TTL on render: a stale story does not open', () => {
+        const fetchChats = sinon.stub(ChatsController, 'fetchChats').resolves()
+        const fetchStories = sinon.stub(StoriesController, 'fetchStories').resolves()
+        const markViewed = sinon.stub(StoriesController, 'markViewed')
+
+        try {
+            // фейковые таймеры стартуют с «ноль»: двигаем системное время на
+            // фикс-точку, где feed (10:00 сегодня) жив, а история двухдневной
+            // давности — истекла по серверному TTL 24ч
+            clock.setSystemTime(Date.parse('2026-10-25T12:00:00Z'))
+            store.set('stories', [
+                ...feed,
+                {
+                    id: 99,
+                    owner: 'Stale Ring',
+                    ownerAvatarUrl: '',
+                    src: 'http://localhost:8000/api/v1/files/99/download',
+                    alt: 'История Stale Ring',
+                    viewed: false,
+                    createdAt: '2026-10-23T00:00:00Z',
+                },
+            ])
+
+            const page = new ChatPage({} as never)
+            const select = callbacksOf(page).onSelectStory
+
+            // истёкшее кольцо не открывается — рендер-фильтр убрал его
+            // из списка; свежее — открывается
+            select?.('99')
+            expect((callbacksOf(page) as { viewerStory?: unknown }).viewerStory).to.not.exist
+
+            select?.('41')
+            expect((callbacksOf(page) as { viewerStory?: unknown }).viewerStory).to.exist
+            expect(markViewed.called).to.be.false
+
+            page.destroy()
+        } finally {
             markViewed.restore()
             fetchStories.restore()
             fetchChats.restore()

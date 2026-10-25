@@ -13,6 +13,7 @@ from app.models.user import User
 from app.schemas.story import StoryResponse
 from app.services.files import FileService, get_object_storage
 from app.services.stories import StoryService
+from app.ws.hub import stories_hub
 
 router = APIRouter(prefix='/stories', tags=['stories'])
 
@@ -40,8 +41,20 @@ async def create_story(
         files.mark_upload_failed(prepared.file)
         raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail='file_storage_upload_failed') from exc
     files.mark_upload_ready(prepared.file)
-    story = StoryService(db, settings).create(owner_id=current_user.id, file=prepared.file)
-    feed = StoryService(db, settings).list_feed(current_user.id)
+    story_service = StoryService(db, settings)
+    story = story_service.create(owner_id=current_user.id, file=prepared.file)
+    feed = story_service.list_feed(current_user.id)
+    # фан-аут после коммита (прецедент chat_deleted/reaction): фиксированная
+    # форма без пересчёта per-viewer — у всех не-владельцев новая история
+    # непросмотренная и чужая; владелец тоже получает кадр (его другие
+    # вкладки не ждали бы рефетча) — is_own/viewed для себя правит клиент
+    # по owner_id (StoriesController.applyStoryCreated)
+    await stories_hub.broadcast(
+        {
+            'type': 'story_created',
+            'content': story_service.to_broadcast_response(story, current_user).model_dump(mode='json'),
+        },
+    )
     return next(item for item in feed if item.id == story.id)
 
 
@@ -73,3 +86,8 @@ async def delete_story(
 ) -> None:
     storage = get_object_storage(settings, request.app.state)
     StoryService(db, settings).delete(story_id, current_user.id, storage)
+    # удаление — всем без исключения: убрать кольцо идемпотентно на клиенте,
+    # а другие вкладки владельца тоже выигрывают
+    await stories_hub.broadcast(
+        {'type': 'story_deleted', 'content': {'story_id': story_id}}
+    )

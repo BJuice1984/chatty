@@ -1,8 +1,10 @@
 from __future__ import annotations
 
 from datetime import UTC, datetime, timedelta
+from uuid import uuid4
 
 import pytest
+from fastapi import HTTPException
 from sqlalchemy import create_engine
 from sqlalchemy.orm import Session
 from sqlalchemy.pool import StaticPool
@@ -48,10 +50,13 @@ def make_story(session: Session, owner: User, *, hours_ago: float = 0) -> Story:
 
 
 def make_file(session: Session, owner: User) -> File:
+    # uuid, а не timestamp: гранулярность Windows-таймера склеивала два
+    # ключа подряд в unique-колонке — транзиентный IntegrityError (флейк
+    # полного сьюта, зелёный в изоляции)
     file = File(
         chat_id=None,
         owner_id=owner.id,
-        object_key=f'media/{owner.id}-{datetime.now(UTC).timestamp()}',
+        object_key=f'media/{owner.id}-{uuid4().hex}',
         original_name='s.png',
         content_type='image/png',
         size_bytes=1,
@@ -165,6 +170,25 @@ def test_feed_resolves_viewed_per_caller(session: Session):
     assert service.list_feed(viewer.id)[0].viewed is True
 
 
+def test_mark_viewed_with_existing_row_and_missing_story(session: Session):
+    settings = Settings(environment='test', database_url='sqlite://', jwt_secret='test-secret-that-is-long-enough-for-jwt-signing')
+    mine, other = make_user(session, 'mine@example.com'), make_user(session, 'other@example.com')
+    story = make_story(session, other)
+
+    # строка уже вставлена — конкурентный просмотр выиграл гонку: конфликт
+    # композитного PK гасится на стороне БД, а не IntegrityError наружу
+    session.add(StoryView(story_id=story.id, user_id=mine.id))
+    session.commit()
+
+    service = StoryService(session, settings)
+    service.mark_viewed(story.id, mine.id)
+    assert session.query(StoryView).filter_by(user_id=mine.id).count() == 1
+
+    with pytest.raises(HTTPException) as error:
+        service.mark_viewed(9999, mine.id)
+    assert error.value.status_code == 404
+
+
 def test_feed_owner_fields(session: Session):
     settings = Settings(environment='test', database_url='sqlite://', jwt_secret='test-secret-that-is-long-enough-for-jwt-signing')
     mine = make_user(session, 'mine@example.com')
@@ -180,3 +204,19 @@ def test_feed_owner_fields(session: Session):
     session.flush()
     item = StoryService(session, settings).list_feed(mine.id)[0]
     assert item.owner_avatar_url == f'{avatar.id}/download'
+
+
+def test_to_broadcast_response_equals_foreign_viewer_feed_item(session: Session):
+    settings = Settings(environment='test', database_url='sqlite://', jwt_secret='test-secret-that-is-long-enough-for-jwt-signing')
+    mine, viewer = make_user(session, 'mine@example.com'), make_user(session, 'viewer@example.com')
+    story = make_story(session, mine)
+
+    service = StoryService(session, settings)
+    broadcast = service.to_broadcast_response(story, mine)
+    assert broadcast.viewed is False
+    assert broadcast.is_own is False
+
+    # инвариант фиксированной формы: для любого не-владельца без просмотров
+    # она совпадает с per-viewer элементом ленты — формы не разъезжаются
+    feed_item = next(item for item in service.list_feed(viewer.id) if item.id == story.id)
+    assert broadcast.model_dump() == feed_item.model_dump()

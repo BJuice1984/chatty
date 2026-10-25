@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
-from sqlalchemy import func, select
+from sqlalchemy import and_, func, select
+from sqlalchemy.dialects.postgresql import insert as pg_insert
+from sqlalchemy.dialects.sqlite import insert as sqlite_insert
 from sqlalchemy.orm import Session
 
 from app.models.chat import Chat, ChatMember
@@ -55,68 +57,49 @@ class ChatRepository:
 
     def unread_counts(self, user_id: int) -> dict[int, int]:
         """Чужие сообщения новее последнего прочитанного маркера по каждому чату
-        пользователя; своих сообщений не считаем."""
-        reads = {
-            row.chat_id: row.last_read_message_id
-            for row in self.session.query(ChatLastRead).filter(ChatLastRead.user_id == user_id).all()
-        }
-        counts: dict[int, int] = {}
-        member_rows = (
-            self.session.query(ChatMember.chat_id)
-            .filter(ChatMember.user_id == user_id)
-            .all()
-        )
-        chat_ids = [row.chat_id for row in member_rows]
-
-        if not chat_ids:
-            return counts
-
-        rows = (
-            self.session.query(Message.chat_id, func.count(Message.id))
-            .filter(
-                Message.chat_id.in_(chat_ids),
-                Message.user_id != user_id,
-                Message.id > 0,
-            )
-            .group_by(Message.chat_id)
-            .all()
-        )
-        raw = {chat_id: count for chat_id, count in rows}
-
-        for chat_id in chat_ids:
-            marker = reads.get(chat_id, 0)
-            if marker == 0:
-                counts[chat_id] = raw.get(chat_id, 0)
-                continue
-            newer = (
-                self.session.query(func.count(Message.id))
-                .filter(
-                    Message.chat_id == chat_id,
+        пользователя; своих сообщений не считаем. Один запрос: memberships
+        дают все чаты, маркер приезжает LEFT JOIN-ом, отсечение чужих новее
+        маркера — агрегатный COUNT FILTER (было 3 запроса + COUNT на каждый
+        чат с маркером)."""
+        statement = (
+            select(
+                ChatMember.chat_id,
+                func.count(Message.id).filter(
                     Message.user_id != user_id,
-                    Message.id > marker,
-                )
-                .scalar()
+                    Message.id > func.coalesce(ChatLastRead.last_read_message_id, 0),
+                ),
             )
-            counts[chat_id] = int(newer or 0)
-
-        return counts
+            .where(ChatMember.user_id == user_id)
+            .outerjoin(
+                ChatLastRead,
+                and_(
+                    ChatLastRead.user_id == user_id,
+                    ChatLastRead.chat_id == ChatMember.chat_id,
+                ),
+            )
+            .outerjoin(Message, Message.chat_id == ChatMember.chat_id)
+            .group_by(ChatMember.chat_id)
+        )
+        return {chat_id: int(count) for chat_id, count in self.session.execute(statement).all()}
 
     def mark_read(self, chat_id: int, user_id: int, message_id: int) -> None:
-        """Upsert маркера чтения: двигаем только вперёд (старые страницы
-        истории не «прочитывают» новее уже увиденного)."""
-        existing = (
-            self.session.query(ChatLastRead)
-            .filter(ChatLastRead.user_id == user_id, ChatLastRead.chat_id == chat_id)
-            .one_or_none()
-        )
+        """Upsert маркера чтения одним атомарным INSERT ... ON CONFLICT:
+        двигаем только вперёд (старые страницы истории не «прочитывают»
+        новее уже увиденного); гонка двух конкурентных отметок гасится на
+        стороне БД, а не IntegrityError. Диалект — по bind-у сессии
+        (юниты — SQLite, прод — PostgreSQL), как в stories add_view."""
 
-        if existing is None:
-            self.session.add(
-                ChatLastRead(user_id=user_id, chat_id=chat_id, last_read_message_id=message_id)
+        insert = pg_insert if self.session.get_bind().dialect.name == 'postgresql' else sqlite_insert
+        statement = (
+            insert(ChatLastRead)
+            .values(user_id=user_id, chat_id=chat_id, last_read_message_id=message_id)
+            .on_conflict_do_update(
+                index_elements=['user_id', 'chat_id'],
+                set_={'last_read_message_id': message_id},
+                where=ChatLastRead.last_read_message_id < message_id,
             )
-        elif message_id > existing.last_read_message_id:
-            existing.last_read_message_id = message_id
-
+        )
+        self.session.execute(statement)
         self.session.commit()
 
     def list_members(self, chat_id: int) -> list[tuple[int, str, int | None]]:
@@ -130,3 +113,20 @@ class ChatRepository:
             .all()
         )
         return [(row.user_id, row.email, row.avatar_file_id) for row in rows]
+
+    def list_members_for_chats(self, chat_ids: list[int]) -> list[tuple[int, int, str, int | None]]:
+        """Участники многих чатов одним IN-запросом как (chat_id, user_id,
+        email-хэнл, avatar_file_id) — для пакетного состава в GET /chats;
+        порядок детерминирован (чат, порядок вступления, user_id)."""
+        if not chat_ids:
+            return []
+        rows = (
+            self.session.query(
+                ChatMember.chat_id, ChatMember.user_id, User.email, User.avatar_file_id
+            )
+            .join(User, User.id == ChatMember.user_id)
+            .filter(ChatMember.chat_id.in_(chat_ids))
+            .order_by(ChatMember.chat_id, ChatMember.joined_at, ChatMember.user_id)
+            .all()
+        )
+        return [(row.chat_id, row.user_id, row.email, row.avatar_file_id) for row in rows]

@@ -1,0 +1,342 @@
+{
+    "schemaVersion": "agent-plan-manifest.v1",
+    "status": "FROZEN",
+    "planRevision": 2,
+    "package": {
+        "id": "2026-10-25-stories-ws-push",
+        "title": "WS-push of new and deleted stories: live rings without a reload",
+        "workspaceRoot": ".",
+        "artifactRoot": "work/2026-10-25-stories-ws-push",
+        "planArtifactRoot": "tasks/2026-10-25-stories-ws-push"
+    },
+    "packageIntegrity": {
+        "required": true,
+        "lockSchemaVersion": "agent-plan-lock.v2",
+        "inventorySource": "planFiles",
+        "undeclaredTopLevelFiles": "reject",
+        "allowedUnlistedFiles": [
+            "plan.lock.json",
+            "plan-review.json"
+        ]
+    },
+    "author": {
+        "id": "claude-code",
+        "surface": "agent-first-planning",
+        "runId": "2026-10-25-stories-ws-push-draft"
+    },
+    "baseRevision": {
+        "ref": "dev",
+        "sha": "1767edfb5573b817c839259efdffbe93d34181b8"
+    },
+    "specification": {
+        "tier": "S1",
+        "intent": "Make the stories feed live: a dedicated /api/v1/ws/stories WebSocket channel (cookie auth + Origin check, no chat membership, ping/pong keepalive) backed by a user-keyed StoriesHub; POST /stories broadcasts story_created with a viewer-independent StoryResponse shape (viewed=False, is_own=False — true for every non-owner by construction) excluding the uploader, DELETE /stories/{id} broadcasts story_deleted to everyone; the frontend stories feature gains a singleton ws module over the UNMODIFIED WSTransport whose events reach StoriesController through a listener registry: story_created is mapped by the existing toStoryDto and inserted at the head of the others-unviewed group (id-dedupe), story_deleted removes the id — the chat page opens the socket on CDM next to fetchStories and the withStore-wrapped row re-renders in place.",
+        "status": "DRAFT",
+        "requirements": [
+            {
+                "id": "REQ-BE-STORIES-WS",
+                "title": "Backend: stories WS channel with created/deleted fan-out",
+                "description": "StoriesHub in backend/app/ws/hub.py keyed user_id -> set[WebSocket] (multi-socket per user, snapshot iteration with the ChatHub try/except + prune-stale policy, empty-set cleanup); /ws/stories endpoint in backend/app/ws/router.py copying the chat socket's structure (Origin allow-list -> sync _user_from_websocket -> accept -> hub connect -> receive loop answering only ping with the chat endpoint's exact pong frame -> finally disconnect; NO membership check, reject 1008); StoryService.to_broadcast_response(story, owner) with viewed=False/is_own=False over _common_fields(story, owner) shared with the list_feed mapper closure (the owner User is passed by the caller — create_story has current_user; never an owner-view mapper call); emission from the ENDPOINTS after commit (chat_deleted/reaction precedent): create_story broadcasts story_created with model_dump(mode='json') and exclude_user_id=current_user.id, delete_story broadcasts story_deleted {story_id} to everyone; no migration.",
+                "priority": "P1",
+                "source": "docs/NEXT.md priority 1 (WS-push of new stories); operator scope decision 2026-10-25: story_created + story_deleted",
+                "acceptanceIds": [
+                    "AC-BE-WS"
+                ],
+                "evidenceIds": [
+                    "EV-BE-1"
+                ],
+                "owner": "WS-BE-STORIES-PUSH"
+            },
+            {
+                "id": "REQ-FE-LIVE-FEED",
+                "title": "Frontend: live slice patches from the stories socket",
+                "description": "Export the existing private toStoryDto from src/features/chats/stories/api/own.ts (it copies viewed/is_own verbatim and resolves fileUrl/avatarPoolUrl/alt); new src/features/chats/stories/ws/gateway.ts single-listener registry (the chats/ws/gateway.ts anti-cycle pattern) and ws/own.ts singleton over the UNMODIFIED WSTransport: ownStoriesUrl()=joinUrl(env.wsUrl,'/ws/stories'), idempotent connectStoriesSocket() with subscriptions registered before connect() and a failed connect swallowed/logged (never an unhandled rejection — the transport's bounded reconnect already retries), Message callback receives the already-parsed {type,content} and routes story_created/story_deleted (unknown types ignored), closeStoriesSocket() plus transport-Close nulling the module reference so a later CDM reconnects; StoriesController stays the sole writer of state.stories: constructor registers the listener, public connectStoriesSocket() delegates, handleStoryCreated maps + id-dedupes + inserts at countLeadingOwnStories(current) (head of the others-unviewed group; 0 when no own stories), handleStoryDeleted filters by story_id (absent -> no-op); chat page CDM calls connectStoriesSocket() right after fetchStories(); chat.test.ts adds connectStoriesSocket to the existing CDM stub convention (fetchChats/fetchStories stubs) so the 18 page tests never touch a real WebSocket, plus one assertion pinning the CDM call; no explicit logout close (chat-socket symmetry).",
+                "priority": "P1",
+                "source": "docs/NEXT.md priority 1; approved session plan 2026-10-25",
+                "acceptanceIds": [
+                    "AC-FE-LIVE"
+                ],
+                "evidenceIds": [
+                    "EV-FE-1"
+                ],
+                "owner": "WS-FE-STORIES-PUSH"
+            }
+        ],
+        "goal": "When any user uploads a story, every other connected client's stories row shows the new ring live; when a story is deleted, the ring disappears — no page reload, no refetch.",
+        "constraints": [
+            "Layers downward only; guard-architecture --all --strict stays green; the stories ws module never imports the controller directly (listener registry), the controller never imports WSTransport.",
+            "WSTransport is reused UNMODIFIED (bounded reconnect, 5 s ping, explicit close never reconnects) — src/utils/WSTransport.ts and its test are forbidden writes.",
+            "The envelope {'type','content'} and the pong frame match the chat WS endpoint exactly; emissions come from endpoints after commit, never from the sync service layer.",
+            "The uploader is excluded from story_created per-user (all their sockets); story_deleted goes to everyone; the frontend id-dedupe keeps either policy safe.",
+            "No migration: alembic heads output must not change.",
+            "Existing suites stay green; test counts grow from the 322 mocha / 179 pytest baseline (4 ingestion-converter failures are pre-existing Windows specifics outside the write-set)."
+        ],
+        "nonGoals": [
+            "live updates while not on the chat page (socket opens on chat-page CDM; missed events converge on the next mount)",
+            "pushing story views to other clients",
+            "TTL-expiry pushes (a pushed story may expire server-side in a slice — same click behavior as a stale mount today)",
+            "opening the stories socket on login/registration pages",
+            "any WSTransport change",
+            "a stories unread badge (rings carry unreadness)",
+            "the owner's other tabs receiving story_created (broadcast-all is a one-line flip if ever wanted)",
+            "WS push for avatar changes, unread_counts consolidation, the main.ts duplicate GET /chats bootstrap tail (separate NEXT items)"
+        ],
+        "scope": "backend ws hub/router, stories service and endpoints with their pytest; frontend stories feature (api mapper export, new ws module + tests, controller, chat page CDM) with mocha; docs/NEXT.md and the progress log."
+    },
+    "readOnly": [
+        "AGENTS.md",
+        "tasks/README.md",
+        "docs/deployment/own-backend.md"
+    ],
+    "forbiddenWrites": [
+        "src/main.ts",
+        "src/core",
+        "src/utils/WSTransport.ts",
+        "src/utils/WSTransport.test.ts",
+        "src/features/chats/ws",
+        "src/scss/libs",
+        "docs/project-principles.json",
+        ".github/workflows",
+        "netlify.toml",
+        "backend/alembic"
+    ],
+    "workstreams": [
+        {
+            "id": "WS-BE-STORIES-PUSH",
+            "title": "Backend: /ws/stories channel with story_created/story_deleted fan-out",
+            "owner": "worker-backend-stories",
+            "reviewer": "independent-release-reviewer",
+            "dependsOn": [],
+            "writes": [
+                "backend/app/api/v1/endpoints/stories.py",
+                "backend/app/services/stories.py",
+                "backend/app/ws/hub.py",
+                "backend/app/ws/router.py",
+                "backend/tests/integration/chat/test_stories_ws.py",
+                "backend/tests/unit/chat/test_stories_service.py"
+            ],
+            "readOnly": [
+                "AGENTS.md",
+                "backend/tests/conftest.py",
+                "backend/tests/integration/chat/test_http_and_ws.py",
+                "backend/tests/integration/chat/test_stories_api.py",
+                "backend/app/schemas/story.py"
+            ],
+            "forbiddenWrites": [],
+            "launchGate": "feature/2026-10-25-stories-ws-push branch created at 1767edf (dev merge of PR #33); backend gate at base: 179 passed (4 ingestion-converter failures are pre-existing Windows specifics — subprocess WinError 193, outside the write-set); npm run verify green at base (322 mocha).",
+            "capabilityHints": [
+                "fastapi",
+                "pytest",
+                "websocket",
+                "python"
+            ],
+            "requiredTools": [
+                "python",
+                "pytest"
+            ],
+            "contextRefs": [
+                "plan.md",
+                "acceptance-criteria.md"
+            ],
+            "acceptanceIds": [
+                "AC-BE-WS"
+            ],
+            "evidenceIds": [
+                "EV-BE-1"
+            ],
+            "executionPolicy": {
+                "maxAttempts": 3,
+                "maxWallSeconds": 3600
+            },
+            "artifactPaths": {
+                "result": "work/2026-10-25-stories-ws-push/evidence/WS-BE-STORIES-PUSH/task-result-{attempt}.json",
+                "review": "work/2026-10-25-stories-ws-push/evidence/WS-BE-STORIES-PUSH/task-review-{attempt}.json"
+            },
+            "required": true,
+            "plannedItems": [
+                "hub: StoriesHub (user_id -> set[WebSocket]) with snapshot-iterating broadcast(payload, exclude_user_id=None), try/except + prune stale, empty-set cleanup; singleton stories_hub",
+                "router: /ws/stories endpoint — Origin check, sync _user_from_websocket, accept, hub connect, receive loop answering only ping with the chat endpoint's exact pong frame, finally disconnect; no membership check",
+                "service: to_broadcast_response(story) over shared _common_fields, viewed=False, is_own=False",
+                "endpoints: create_story broadcasts story_created (model_dump(mode='json'), exclude_user_id=current_user.id) after create; delete_story broadcasts story_deleted {story_id} after delete",
+                "integration tests (test_stories_ws.py, sync TestClient + register cookies + Origin header + MemoryStorage, <=3 sockets per test): auth rejection, foreign Origin 1008, ping/pong, two-recipient fan-out with the fixed shape, owner exclusion via frame order, disconnect cleanup, story_deleted",
+                "unit tests: to_broadcast_response == to_response(story, foreign viewer, empty viewed) invariant"
+            ],
+            "qualityFloor": "backend gate green (pytest + alembic heads unchanged; on this Windows box run `PYTHON_BIN=~/.venvs/chatty-backend/Scripts/python.exe bash backend/verify.sh` — npm run verify:backend does not resolve the .sh through cmd; the 4 ingestion-converter failures are pre-existing and outside the write-set); no frontend file touched."
+        },
+        {
+            "id": "WS-FE-STORIES-PUSH",
+            "title": "Frontend: live stories slice from the stories socket",
+            "owner": "worker-frontend-stories",
+            "reviewer": "independent-release-reviewer",
+            "dependsOn": [
+                "WS-BE-STORIES-PUSH"
+            ],
+            "writes": [
+                "docs/NEXT.md",
+                "docs/progress/progress_log.md",
+                "src/features/chats/pages/chat/chat.test.ts",
+                "src/features/chats/pages/chat/chat.ts",
+                "src/features/chats/stories/api/api.test.ts",
+                "src/features/chats/stories/api/own.ts",
+                "src/features/chats/stories/controller.test.ts",
+                "src/features/chats/stories/controller.ts",
+                "src/features/chats/stories/ws/gateway.ts",
+                "src/features/chats/stories/ws/own.test.ts",
+                "src/features/chats/stories/ws/own.ts"
+            ],
+            "readOnly": [
+                "AGENTS.md",
+                "src/utils/WSTransport.ts",
+                "src/utils/env.ts",
+                "src/features/chats/ws/gateway.ts",
+                "src/features/chats/ws/own.ts",
+                "src/features/chats/ws/ws.test.ts",
+                "src/components/story/story.ts"
+            ],
+            "forbiddenWrites": [
+                "src/components",
+                "src/scss",
+                "src/utils"
+            ],
+            "launchGate": "WS-BE-STORIES-PUSH accepted at the integration baseline; npm run verify green at base (322 mocha).",
+            "capabilityHints": [
+                "typescript",
+                "mocha",
+                "sinon",
+                "ALK"
+            ],
+            "requiredTools": [
+                "node",
+                "npm"
+            ],
+            "contextRefs": [
+                "plan.md",
+                "acceptance-criteria.md"
+            ],
+            "acceptanceIds": [
+                "AC-FE-LIVE",
+                "AC-PROCESS"
+            ],
+            "evidenceIds": [
+                "EV-FE-1"
+            ],
+            "executionPolicy": {
+                "maxAttempts": 2,
+                "maxWallSeconds": 3600
+            },
+            "artifactPaths": {
+                "result": "work/2026-10-25-stories-ws-push/evidence/WS-FE-STORIES-PUSH/task-result-{attempt}.json",
+                "review": "work/2026-10-25-stories-ws-push/evidence/WS-FE-STORIES-PUSH/task-review-{attempt}.json"
+            },
+            "required": true,
+            "plannedItems": [
+                "api/own.ts: export the existing toStoryDto (no separate mapper module)",
+                "ws/gateway.ts: StoriesSocketEvent union + single-listener setStoriesSocketListener + internal notify",
+                "ws/own.ts: ownStoriesUrl(), idempotent connectStoriesSocket() (subscriptions before connect; Message callback on the already-parsed frame; unknown types ignored), closeStoriesSocket(), transport-Close nulls the module reference",
+                "controller.ts: constructor registers the socket listener; public connectStoriesSocket() delegates; handleStoryCreated (toStoryDto, id-dedupe, insert at countLeadingOwnStories); handleStoryDeleted (filter, absent no-op)",
+                "chat.ts CDM: StoriesController.connectStoriesSocket() right after fetchStories()",
+                "chat.test.ts: add connectStoriesSocket to the existing CDM stub convention (fetchChats stubbed everywhere, stories methods in the stories describes) so no page test touches a real WebSocket; one new assertion that CDM calls connectStoriesSocket next to fetchStories",
+                "mocha ws/own.test.ts (FakeWebSocket pattern): idempotent connect, story_created routing to the listener, unknown/malformed tolerance, close -> fresh socket on reconnect, no handling after close",
+                "mocha controller.test.ts: insert after the own block / at 0, duplicate no-op, empty slice, delete + absent no-op, delegation stub, single listener registration",
+                "toStoryDto case on a viewed=false/is_own=false payload (absolute src, pool avatar fallback)",
+                "docs: NEXT.md priority 1 retired, progress log entry on top"
+            ],
+            "qualityFloor": "npm run verify green end to end (mocha grows from 322); guard-architecture --all --strict zero violations; no template/component/scss change; WSTransport untouched."
+        }
+    ],
+    "acceptance": {
+        "criteria": [
+            {
+                "id": "AC-BE-WS",
+                "title": "Stories WS channel with fixed-shape fan-out",
+                "requirementIds": [
+                    "REQ-BE-STORIES-WS"
+                ],
+                "evidenceIds": [
+                    "EV-BE-1"
+                ],
+                "independentEvidenceIds": [],
+                "statement": "/api/v1/ws/stories authenticates by the access cookie, enforces the Origin allow-list (reject 1008), requires no chat membership, answers ping with the chat endpoint's exact pong frame and ignores other inbound events; StoriesHub tracks sockets by user_id (multi-socket per user), prunes stale, cleans up on disconnect; POST /stories broadcasts story_created with viewed=False/is_own=False excluding the uploader, DELETE /stories/{id} broadcasts story_deleted {story_id} to everyone; emissions happen in the endpoints after commit; pytest covers auth rejection, foreign Origin, ping/pong, two-recipient fan-out, owner exclusion (frame order), disconnect cleanup and story_deleted; the unit test pins the invariant in executable form — to_broadcast_response(story, owner) equals the item list_feed(foreign_viewer_id) returns for that story (foreign viewer, no StoryView rows); alembic heads unchanged.",
+                "description": "Backend integration and unit tests.",
+                "source": "acceptance-criteria.md",
+                "priority": "P1"
+            },
+            {
+                "id": "AC-FE-LIVE",
+                "title": "Live slice patches from the stories socket",
+                "requirementIds": [
+                    "REQ-FE-LIVE-FEED"
+                ],
+                "evidenceIds": [
+                    "EV-FE-1"
+                ],
+                "independentEvidenceIds": [],
+                "statement": "A story_created frame routed through the stories ws module (singleton WSTransport on /ws/stories, idempotent connect whose failure is swallowed/logged — never an unhandled rejection, subscriptions before connect, Close nulls the reference) reaches StoriesController as the sole writer of state.stories: duplicate id no-op, otherwise toStoryDto-mapped insertion at the head of the others-unviewed group (right after the own block, 0 when none); story_deleted removes the id (absent no-op); chat page CDM connects next to fetchStories() (pinned by an assertion; the 18 existing page tests stub connectStoriesSocket per the CDM stub convention so no unit test touches a real WebSocket) and the withStore row re-renders without a reload; WSTransport reused unmodified; mocha covers the ws module and the controller cases.",
+                "description": "Frontend unit tests.",
+                "source": "acceptance-criteria.md",
+                "priority": "P1"
+            },
+            {
+                "id": "AC-PROCESS",
+                "title": "Gates and bookkeeping",
+                "requirementIds": [
+                    "REQ-BE-STORIES-WS",
+                    "REQ-FE-LIVE-FEED"
+                ],
+                "evidenceIds": [
+                    "EV-BE-1",
+                    "EV-FE-1"
+                ],
+                "independentEvidenceIds": [],
+                "statement": "npm run verify passes (mocha grows from 322), the backend gate passes (179 passed baseline + new tests; the 4 ingestion-converter failures are pre-existing Windows specifics outside the write-set), guard-architecture --all --strict reports zero violations, alembic heads unchanged; progress log entry and NEXT.md priority 1 retired; one PR to dev; no file outside the manifest write-sets changes.",
+                "description": "Gate runs captured as evidence.",
+                "source": "acceptance-criteria.md",
+                "priority": "P1"
+            }
+        ]
+    },
+    "validation": {
+        "commands": [
+            "npm run verify",
+            "npm run verify:backend",
+            "node .claude/hooks/scripts/guard-architecture.mjs --all --strict"
+        ]
+    },
+    "orchestration": {
+        "startMode": "reviewed-plan",
+        "remediationMode": "ask",
+        "maxPlanReviewRounds": 2,
+        "maxTaskAttempts": 3,
+        "maxParallelTasks": 1,
+        "maxValidationRunsPerTask": 2,
+        "stateFile": "work/2026-10-25-stories-ws-push/run.state.json",
+        "eventLog": "work/2026-10-25-stories-ws-push/events.jsonl",
+        "stepReviewRequired": true,
+        "finalAuditRequired": true
+    },
+    "implementationAudit": {
+        "required": true,
+        "finalRequired": true
+    },
+    "planReview": {
+        "required": true,
+        "reviewerClass": "independent-plan-reviewer",
+        "maxRounds": 2,
+        "implementationAuthorized": false,
+        "report": "tasks/2026-10-25-stories-ws-push/plan-review.json",
+        "reviewedRevision": 2,
+        "verdict": "READY_TO_FREEZE"
+    },
+    "releaseTarget": {
+        "kind": "local-only",
+        "environment": "Vite own mode + compose own-backend",
+        "productionPromotionClaimed": false
+    },
+    "releaseImpact": "Additive: one new WS endpoint and one new user-keyed hub (no chat WS protocol change), two new outbound event types on a dedicated channel, an exported mapper function, a new stories ws module and controller/page hooks; no router, auth, schema or deployment changes.",
+    "planFiles": [
+        "tasks/2026-10-25-stories-ws-push/acceptance-criteria.md",
+        "tasks/2026-10-25-stories-ws-push/plan-review.json",
+        "tasks/2026-10-25-stories-ws-push/plan.manifest.json",
+        "tasks/2026-10-25-stories-ws-push/plan.md"
+    ]
+}

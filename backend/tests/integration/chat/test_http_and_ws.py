@@ -49,6 +49,11 @@ async def test_chat_membership_messages_history_and_private_file(client, app):
     created = await client.post('/api/v1/chats', json={'title': 'Project'})
     assert created.status_code == 201
     chat_id = created.json()['id']
+    # дефолт members держит model_validate-путь POST /chats живым
+    assert created.json()['members'] == []
+    single = await client.get(f'/api/v1/chats/{chat_id}')
+    assert single.status_code == 200
+    assert single.json()['members'] == []
 
     added = await client.post(f'/api/v1/chats/{chat_id}/members', json={'user_id': member['id']})
     assert added.status_code == 201

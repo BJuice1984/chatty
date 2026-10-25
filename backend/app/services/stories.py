@@ -9,7 +9,7 @@ from sqlalchemy.orm import Session
 
 from app.core.config import Settings
 from app.models.file import File
-from app.models.story import Story, StoryView
+from app.models.story import Story
 from app.models.user import User
 from app.repositories.stories import StoryRepository
 from app.schemas.story import StoryResponse
@@ -44,19 +44,8 @@ class StoryService:
         } if owner_ids else {}
 
         def to_response(story: Story) -> StoryResponse:
-            owner = owners[story.owner_id]
-            login = owner.email.lower()
             return StoryResponse(
-                id=story.id,
-                owner_id=story.owner_id,
-                owner_display_name=login.split('@', 1)[0] or login,
-                owner_avatar_url=(
-                    f'{owner.avatar_file_id}/download'
-                    if owner.avatar_file_id is not None
-                    else None
-                ),
-                image_url=f'{story.file_id}/download',
-                created_at=story.created_at,
+                **self._common_fields(story, owners[story.owner_id]),
                 # свои истории владельцу всегда непросмотренные: кольцо
                 # не гаснет от собственного просмотра (UX «You story»)
                 viewed=story.owner_id != user_id and story.id in viewed_ids,
@@ -70,14 +59,47 @@ class StoryService:
         others.sort(key=lambda story: story.id in viewed_ids)
         return [to_response(story) for story in [*mine, *others]]
 
+    @staticmethod
+    def _common_fields(story: Story, owner: User) -> dict[str, object]:
+        """Владелец-зависимые поля ответа — единственное место сборки, чтобы
+        лента и WS-фан-аут не разъехались."""
+
+        login = owner.email.lower()
+        return {
+            'id': story.id,
+            'owner_id': story.owner_id,
+            'owner_display_name': login.split('@', 1)[0] or login,
+            'owner_avatar_url': (
+                f'{owner.avatar_file_id}/download'
+                if owner.avatar_file_id is not None
+                else None
+            ),
+            'image_url': f'{story.file_id}/download',
+            'created_at': story.created_at,
+        }
+
+    def to_broadcast_response(self, story: Story, owner: User) -> StoryResponse:
+        """Viewer-independent shape for the WS fan-out of a fresh story.
+
+        Форма не пересчитывается per-viewer: одним кадром уезжает всем,
+        включая автора (его другие вкладки получают кольцо сразу, а не
+        рефетчем) — viewed/is_own константы False/False, а владельца
+        опознаёт клиент по owner_id (StoriesController.applyStoryCreated).
+        """
+
+        return StoryResponse(
+            **self._common_fields(story, owner),
+            viewed=False,
+            is_own=False,
+        )
+
     def mark_viewed(self, story_id: int, user_id: int) -> None:
         """Idempotent view record; expired stories stay viewable by design."""
 
         if self.stories.get_by_id(story_id) is None:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail='story_not_found')
-        if self.stories.find_view(story_id, user_id) is None:
-            self.stories.add_view(StoryView(story_id=story_id, user_id=user_id))
-            self.session.commit()
+        self.stories.add_view_if_absent(story_id, user_id)
+        self.session.commit()
 
     def delete(self, story_id: int, user_id: int, storage) -> None:
         """Owner-only story removal: story row, file row and the object."""

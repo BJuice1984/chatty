@@ -1,38 +1,47 @@
 # NEXT — точка входа для следующей сессии
 
-Обновлено: 2026-10-23 (после влития PR #32 `feature/2026-10-21-avatars-stories`).
+Обновлено: 2026-10-25 (хвосты stories-ws-push закрыты веткой
+`feature/2026-10-25-next-tails`; до этого — ALK-прогон
+`2026-10-25-stories-ws-push`, WS-push историй, PR #34 смёржен в `dev`).
 
 ## Состояние
 
-Тема «истории и аватары на own-бэкенде» полностью закрыта и влита в `dev`
-(весь стек: `chats-social` → `2026-10-21-stories` (#31) →
-`2026-10-21-avatars-stories` (#32)). Гейты на момент влития: фронт
-`npm run verify` — 319 mocha, бэкенд `verify:backend` — 181 pytest,
-`guard-architecture --all --strict` — 0 нарушений, миграция `007_avatars_stories`
-round-trip проверена и на scratch-SQLite, и на чистом compose-PostgreSQL.
+Истории стали живыми: глобальный канал `/api/v1/ws/stories` (cookie-auth
++ Origin-check, без membership, ping→pong) с user-keyed `StoriesHub`
+(мультивкладочность, prune-stale, `exclude_user_id`); `POST /stories`
+фан-аутит `story_created` фиксированной формы (`viewed/is_own=False` для
+всех не-владельцев по построению, общий `_common_fields` с лентой) всем,
+кроме аплоадера; `DELETE /stories/{id}` — `story_deleted {story_id}`
+всем. Фронт: ws-модуль `features/chats/stories/ws/` (синглтон поверх
+нетронутого `WSTransport`, открывается на CDM страницы чатов рядом с
+`fetchStories`, Close обнуляет ссылку) → gateway-листенер →
+`StoriesController` (единственный писатель `state.stories`): дедуп по id,
+вставка чужой непросмотренной сразу после блока своих, удаление по id —
+кольца обновляются без перезагрузки. Гейты: фронт 337 mocha, бэкенд 184
+pytest passed (+4 известных Windows-падения ingestion), guard strict 0.
 
-Контракт: `/files` (глобальные медиа `chat_id IS NULL`), `POST /files/avatars`
-(kind=user|chat, owner-only чаты), `/stories` (лента: свои первыми и всегда
-непросмотренные владельцу; чужие — непросмотренные выше просмотренных; TTL 24 ч,
-cap 100, `is_own`; идемпотентный view; owner-only delete), `avatar_url`
-(«{file_id}/download») в auth/chats/members; фронт — `src/features/chats/stories/`,
-реалтайм-счётчик непрочитанных в `ws/own.ts` (`incrementUnread`), демо-сид
-opt-in `CHATTY_SEED_DEMO_STORIES` (ранбук: `docs/deployment/own-backend.md`).
+## Приоритеты следующей сессии (согласовано 2026-10-23, пп.1–2 закрыты 2026-10-25)
 
-## Приоритеты следующей сессии (согласовано 2026-10-23)
-
-1. **N+1 аватаров в списке чатов** — главный приоритет: `fetchChats` делает
-   `GET /chats/{id}/members` на каждый чат ради аватара собеседника
-   (`applyCompanionAvatar` в `src/features/chats/controller.ts`).
-   Решение: участники/аватар прямо в `GET /chats` (бэкенд + own-адаптер +
-   упрощение контроллера).
-2. **WS-push новых историй** — лента сейчас обновляется только при заходе на
-   страницу или после собственных действий; событие по WS сделает кольца живыми.
-3. **RAG-эмбеддинги** — на OpenAI-совместимом инференс-сервере поднять
+1. **RAG-эмбеддинги** — на OpenAI-совместимом инференс-сервере поднять
    `/v1/embeddings` и закрыть пробел AI-ассистента (`src/features/ai-assistant/`).
+   Подробный операторский план с runbook и чек-листом приёмки:
+   `docs/plans/2026-10-25-rag-embeddings.md` (код контура готов, исполнение
+   заблокировано доступом к инференс-серверу; выбрать вариант A/B/C и
+   зафиксировать модель эмбеддингов до первой загрузки документов).
 
-Хвосты: `mark_viewed` — check-then-insert гонка (теоретическая) →
-`INSERT ... ON CONFLICT DO NOTHING` в `backend/app/services/stories.py`.
+Хвосты закрыты 2026-10-25 веткой `feature/2026-10-25-next-tails`:
+`mark_viewed` — `INSERT ... ON CONFLICT DO NOTHING` по композитному PK;
+`unread_counts` — один SELECT (memberships + LEFT JOIN маркера + COUNT
+FILTER) вместо 3 запросов + COUNT на чат; дубль `GET /chats` — bootstrap
+`fetchChats` удалён из `src/main.ts` (CDM страницы чатов, LIVE-3, —
+единственный писатель на заходе). Пределы stories-push закрыты 2026-10-26 веткой
+`feature/2026-10-26-stories-push-limits`: фан-аут `story_created` уходит и
+владельцу (is_own/viewed правится на клиенте по owner_id — своя история
+вставляется в голову ленты), истёкшие по TTL кольца гасятся на рендере
+(`stories/ttl.ts`, 24ч-зеркало серверной ручки, невалидная дата кольцо не
+прячет). Третий предел — события вне страницы чата — оставлен осознанно:
+сокет живёт со страницей, каждый маунт рефетчит ленту, глобальный сокет
+держал бы постоянное соединение ради ленты, которую никто не смотрит.
 
 ## Окружение (воспроизводимо на новой машине)
 
@@ -49,6 +58,12 @@ docker compose --env-file <operator-env> up -d --build api
 # единый гейт фронта и архитектуры
 npm run verify && node .claude/hooks/scripts/guard-architecture.mjs --all --strict
 ```
+
+Windows-заметка: `npm run verify:backend` не резолвит `.sh` через cmd —
+запускайте скрипт напрямую: `PYTHON_BIN=~/.venvs/chatty-backend/Scripts/python.exe
+bash backend/verify.sh`; 4 теста `tests/unit/ingestion/test_converter.py`
+на Windows-хостах падают (subprocess с shell-скриптом, WinError 193) —
+environment-специфика, на Unix-машинах зелёные.
 
 Для нетривиальной фичи — полный ALK-цикл (см. `tasks/README.md` и текущий
 пример пакета `tasks/2026-10-21-avatars-stories/`); история работы —
