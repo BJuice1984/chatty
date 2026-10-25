@@ -30,6 +30,12 @@ export default class EventBus<
         })
     }
 
+    // Снимает ВСЕХ слушателей события разом: тестовая гигиена (утёкшие в
+    // глобальный стор подписки withStore) и полная пересборка слушателей
+    offAll<Event extends MapInterface<E>>(event: Event) {
+        delete this.listeners[event]
+    }
+
     emit<Event extends MapInterface<E>>(event: Event, ...args: Args[Event]) {
         const listeners = this.listeners[event]
 
