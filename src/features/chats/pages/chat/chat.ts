@@ -451,6 +451,9 @@ class ChatPageBase extends Block {
         void ChatsController.fetchChats()
         // лента историй — так же на каждом заходе (мок-стадия убрана)
         void StoriesController.fetchStories()
+        // живые кольца: глобальный stories-сокет открывается вместе с
+        // лентой; идемпотентен — повторные заходы переиспользуют соединение
+        StoriesController.connectStoriesSocket()
 
         // scroll не всплывает — слушаем контейнер сообщений напрямую; узел
         // умирает вместе с инстансом, утечки нет

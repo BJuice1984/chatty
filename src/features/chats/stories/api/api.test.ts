@@ -4,7 +4,7 @@
 
 import { expect } from 'chai'
 import { JSDOM } from 'jsdom'
-import { ownStoriesPort } from './own.ts'
+import { ownStoriesPort, toStoryDto } from './own.ts'
 
 interface CapturedCall {
     method: string
@@ -68,6 +68,26 @@ describe('stories api adapter (fake XHR)', () => {
         globalThis.XMLHttpRequest = originalXHR
         global.document = originalDocument
         dom.window.document.cookie = 'chatty_csrf=; expires=Thu, 01 Jan 1970 00:00:00 GMT'
+    })
+
+    it('toStoryDto maps the WS push shape: viewed/is_own false with absolute src and pool avatar', () => {
+        const dto = toStoryDto({
+            id: 50,
+            owner_id: 42,
+            owner_display_name: 'cyrano',
+            owner_avatar_url: null,
+            image_url: '50/download',
+            created_at: '2026-10-25T12:00:00Z',
+            viewed: false,
+            is_own: false,
+        })
+
+        expect(dto.id).to.eq(50)
+        expect(dto.viewed).to.be.false
+        expect(dto.isOwn).to.be.false
+        expect(dto.src).to.contain('/api/v1/files/50/download')
+        expect(dto.ownerAvatarUrl).to.eq('/images/avatars/3.svg') // pool: (42 % 8) + 1
+        expect(dto.alt).to.eq('История cyrano')
     })
 
     it('maps the feed: absolute src via fileUrl, alt from owner, viewed passthrough', async () => {

@@ -43,6 +43,20 @@ function callbacksOf(page: unknown): ChatPageCallbacks {
 }
 
 describe('chat page mobile pane switch', () => {
+    // CDM открывает глобальный stories-сокет; WebSocket-глобала в юнит-
+    // окружении нет (на Node ≥ 22 нативный клиент реально ходил бы в сеть)
+    // — стабим на каждый тест, как fetchChats; логика сокета покрыта
+    // своим модулем (stories/ws/own.test.ts)
+    let storiesSocket: sinon.SinonStub
+
+    beforeEach(() => {
+        storiesSocket = sinon.stub(StoriesController, 'connectStoriesSocket')
+    })
+
+    afterEach(() => {
+        storiesSocket.restore()
+    })
+
     it('starts with the pane closed', () => {
         const fetchChats = sinon.stub(ChatsController, 'fetchChats').resolves()
 
@@ -112,6 +126,16 @@ describe('chat page mobile pane switch', () => {
 })
 
 describe('chat page bootstrap', () => {
+    let storiesSocket: sinon.SinonStub
+
+    beforeEach(() => {
+        storiesSocket = sinon.stub(StoriesController, 'connectStoriesSocket')
+    })
+
+    afterEach(() => {
+        storiesSocket.restore()
+    })
+
     it('fetches chats on componentDidMount, not on construction (LIVE-3)', () => {
         const fetchChats = sinon.stub(ChatsController, 'fetchChats').resolves()
 
@@ -123,6 +147,25 @@ describe('chat page bootstrap', () => {
 
             page.dispatchComponentDidMount()
             expect(fetchChats.calledOnce).to.be.true
+
+            page.destroy()
+        } finally {
+            fetchChats.restore()
+        }
+    })
+
+    it('opens the stories socket on componentDidMount alongside the feed fetch', () => {
+        const fetchChats = sinon.stub(ChatsController, 'fetchChats').resolves()
+
+        try {
+            const page = new ChatPage({} as never)
+
+            // stories-ws-push: конструктор молчит — сокет открывается из CDM
+            expect(storiesSocket.called).to.be.false
+
+            page.dispatchComponentDidMount()
+
+            expect(storiesSocket.calledOnce).to.be.true
 
             page.destroy()
         } finally {
@@ -155,7 +198,14 @@ describe('chat page bootstrap', () => {
 // chats-social: chat_deleted сбрасывает selectedChat в сторе — панель чата
 // возвращается к списку без ручного onBack
 describe('chat page chat_deleted pane reset', () => {
+    let storiesSocket: sinon.SinonStub
+
+    beforeEach(() => {
+        storiesSocket = sinon.stub(StoriesController, 'connectStoriesSocket')
+    })
+
     afterEach(() => {
+        storiesSocket.restore()
         store.set('selectedChat', undefined)
     })
 
@@ -202,6 +252,16 @@ describe('chat page chat_deleted pane reset', () => {
 
 // chats-social: страница пробрасывает новые колбэки мессенджера в контроллер
 describe('chat page social callbacks', () => {
+    let storiesSocket: sinon.SinonStub
+
+    beforeEach(() => {
+        storiesSocket = sinon.stub(StoriesController, 'connectStoriesSocket')
+    })
+
+    afterEach(() => {
+        storiesSocket.restore()
+    })
+
     it('wires the typed user search through the controller', async () => {
         const searchUsers = sinon.stub(ChatsController, 'searchUsers').resolves([{ id: 9, login: 'b@example.com', display_name: 'b' }])
         const fetchChats = sinon.stub(ChatsController, 'fetchChats').resolves()
@@ -254,6 +314,7 @@ describe('chat page social callbacks', () => {
 // markViewed контроллера (синхронный стор-патч), что и проверяется стабами
 describe('chat page stories', () => {
     let clock: sinon.SinonFakeTimers
+    let storiesSocket: sinon.SinonStub
 
     const feed = [
         {
@@ -285,9 +346,11 @@ describe('chat page stories', () => {
     beforeEach(() => {
         clock = sinon.useFakeTimers()
         store.set('stories', feed)
+        storiesSocket = sinon.stub(StoriesController, 'connectStoriesSocket')
     })
 
     afterEach(() => {
+        storiesSocket.restore()
         clock.restore()
         store.set('chats', undefined)
         store.set('stories', undefined)
