@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 from sqlalchemy import and_, func, select
+from sqlalchemy.dialects.postgresql import insert as pg_insert
+from sqlalchemy.dialects.sqlite import insert as sqlite_insert
 from sqlalchemy.orm import Session
 
 from app.models.chat import Chat, ChatMember
@@ -81,21 +83,23 @@ class ChatRepository:
         return {chat_id: int(count) for chat_id, count in self.session.execute(statement).all()}
 
     def mark_read(self, chat_id: int, user_id: int, message_id: int) -> None:
-        """Upsert маркера чтения: двигаем только вперёд (старые страницы
-        истории не «прочитывают» новее уже увиденного)."""
-        existing = (
-            self.session.query(ChatLastRead)
-            .filter(ChatLastRead.user_id == user_id, ChatLastRead.chat_id == chat_id)
-            .one_or_none()
-        )
+        """Upsert маркера чтения одним атомарным INSERT ... ON CONFLICT:
+        двигаем только вперёд (старые страницы истории не «прочитывают»
+        новее уже увиденного); гонка двух конкурентных отметок гасится на
+        стороне БД, а не IntegrityError. Диалект — по bind-у сессии
+        (юниты — SQLite, прод — PostgreSQL), как в stories add_view."""
 
-        if existing is None:
-            self.session.add(
-                ChatLastRead(user_id=user_id, chat_id=chat_id, last_read_message_id=message_id)
+        insert = pg_insert if self.session.get_bind().dialect.name == 'postgresql' else sqlite_insert
+        statement = (
+            insert(ChatLastRead)
+            .values(user_id=user_id, chat_id=chat_id, last_read_message_id=message_id)
+            .on_conflict_do_update(
+                index_elements=['user_id', 'chat_id'],
+                set_={'last_read_message_id': message_id},
+                where=ChatLastRead.last_read_message_id < message_id,
             )
-        elif message_id > existing.last_read_message_id:
-            existing.last_read_message_id = message_id
-
+        )
+        self.session.execute(statement)
         self.session.commit()
 
     def list_members(self, chat_id: int) -> list[tuple[int, str, int | None]]:

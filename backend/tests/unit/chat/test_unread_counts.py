@@ -82,3 +82,31 @@ def test_unread_counts_semantics_and_single_query(session_factory):
             event.remove(session.bind, 'before_cursor_execute', record)
 
         assert len([s for s in statements if s.lstrip().upper().startswith('SELECT')]) == 1
+
+
+def test_mark_read_upsert_is_forward_only_and_race_safe(session_factory):
+    with session_factory() as session:
+        u1, u2 = make_user(session, 'u1@example.com'), make_user(session, 'u2@example.com')
+        chat = make_chat(session, u1, u2)
+        m1 = make_message(session, chat, u2, 'm1')
+        m2 = make_message(session, chat, u2, 'm2')
+
+        repo = ChatRepository(session)
+
+        def marker() -> int:
+            row = session.query(ChatLastRead).filter_by(user_id=u1.id, chat_id=chat.id).one()
+            return row.last_read_message_id
+
+        # строки ещё нет — маркер создаётся; конкурентный повтор (строка уже
+        # есть, гонка проиграна) гасится ON CONFLICT, а не IntegrityError
+        repo.mark_read(chat.id, u1.id, m1.id)
+        repo.mark_read(chat.id, u1.id, m1.id)
+        assert marker() == m1.id
+
+        # назад не двигается: старые страницы истории не перетирают маркер
+        repo.mark_read(chat.id, u1.id, m1.id - 1)
+        assert marker() == m1.id
+
+        # вперёд двигается
+        repo.mark_read(chat.id, u1.id, m2.id)
+        assert marker() == m2.id
