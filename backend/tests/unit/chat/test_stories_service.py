@@ -3,6 +3,7 @@ from __future__ import annotations
 from datetime import UTC, datetime, timedelta
 
 import pytest
+from fastapi import HTTPException
 from sqlalchemy import create_engine
 from sqlalchemy.orm import Session
 from sqlalchemy.pool import StaticPool
@@ -163,6 +164,25 @@ def test_feed_resolves_viewed_per_caller(session: Session):
     # кольцо не гасит (UX «You story»); чужим он остаётся просмотревшим
     assert service.list_feed(mine.id)[0].viewed is False
     assert service.list_feed(viewer.id)[0].viewed is True
+
+
+def test_mark_viewed_with_existing_row_and_missing_story(session: Session):
+    settings = Settings(environment='test', database_url='sqlite://', jwt_secret='test-secret-that-is-long-enough-for-jwt-signing')
+    mine, other = make_user(session, 'mine@example.com'), make_user(session, 'other@example.com')
+    story = make_story(session, other)
+
+    # строка уже вставлена — конкурентный просмотр выиграл гонку: конфликт
+    # композитного PK гасится на стороне БД, а не IntegrityError наружу
+    session.add(StoryView(story_id=story.id, user_id=mine.id))
+    session.commit()
+
+    service = StoryService(session, settings)
+    service.mark_viewed(story.id, mine.id)
+    assert session.query(StoryView).filter_by(user_id=mine.id).count() == 1
+
+    with pytest.raises(HTTPException) as error:
+        service.mark_viewed(9999, mine.id)
+    assert error.value.status_code == 404
 
 
 def test_feed_owner_fields(session: Session):
