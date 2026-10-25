@@ -1,0 +1,66 @@
+{
+    "schemaVersion": "agent-plan-review.v1",
+    "packageId": "2026-10-25-stories-ws-push",
+    "planRevision": 2,
+    "reviewId": "review-2026-10-25-stories-ws-push-freeze-r2",
+    "fullReview": true,
+    "verdict": "READY_TO_FREEZE",
+    "reviewedPlanHash": "282f0dbca2eebdf2dfb8ae6255044b69e3e98212fdbde6902b21c9fe3e0ec3d9",
+    "reviewer": {
+        "id": "claude-code-independent-subagent",
+        "independent": true,
+        "runId": "audit-run-20261025-stories-ws-push-plan",
+        "surface": "audit-agent-plan"
+    },
+    "findings": [],
+    "reviewVerdict": {
+        "schemaVersion": "agent-review-verdict.v1",
+        "overall": "ACCEPTED",
+        "dimensions": {
+            "requirementFit": {
+                "status": "PASS",
+                "reasonCode": "scope-matches-operator-decision",
+                "summary": "story_created + story_deleted matches the operator scope decision and docs/NEXT.md priority 1; the dedicated user-keyed channel rationale is correct (ChatHub is chat-keyed, hub.py:10-33; the only WS route today is per-chat, router.py:58); every requirement maps to one workstream, acceptance criterion and evidence id; both gates (EV-BE-1, EV-FE-1) now route to AC-PROCESS."
+            },
+            "implementationQuality": {
+                "status": "PASS",
+                "reasonCode": "write-sets-verified-against-code",
+                "summary": "Backend claims verified against the code: StoriesHub mirrors ChatHub.broadcast's snapshot+try/except+prune+empty-set-cleanup (hub.py:25-33); _user_from_websocket is sync and does not accept, accept-then-connect order and the exact pong frame come from router.py:33-55,74-75,111-112; post-commit emission from endpoints has the chat_deleted/reaction precedent (chats.py:84,149) and create_story/delete_story are async with committing services (endpoints/stories.py:21-75, services/stories.py:27-30,82-95); create's owner-view response is correctly NOT reused for the broadcast; to_broadcast_response(story, owner) over _common_fields(story, owner) is now a well-defined refactor of the list_feed closure (services/stories.py:46-64) with the owner supplied by the caller. Frontend claims verified: private toStoryDto (stories/api/own.ts:26-41), gateway anti-cycle pattern (chats/ws/gateway.ts:39-60), subscriptions-before-connect (chats/ws/own.ts:147-149), Close-nulls-reference mirror (own.ts:226), chat page CDM hook point (chat.ts:444-453) with the withStore stories mapping (475-483), WSTransport reused unmodified. Revision 2 closes the ownership gap: chat.test.ts is in WS-FE-STORIES-PUSH.writes with a plannedItem pinning the CDM stub convention (all 18 page tests) plus a CDM-call assertion, and plan.md step 3 requires a failed connect() to be swallowed/logged, so no unit test ever dials a real WebSocket."
+            },
+            "evidenceQuality": {
+                "status": "PASS",
+                "reasonCode": "claims-are-provable",
+                "summary": "Round 1 rejected the unexecutable 'to_response(story, foreign viewer, viewed_ids=set())' formula; revision 2 pins the executable invariant (to_broadcast_response(story, owner) equals the item list_feed(foreign_viewer_id) returns for that story, foreign viewer with no StoryView rows) in the requirement, AC-BE-WS and plan.md. The frame-order owner-exclusion proof is sound and deterministic (a sync TestClient POST returns only after the in-process broadcast, so a leaked story_created would queue before any later pong); HTTP-while-WS-open has the existing reaction precedent (test_social_api.py:255-263); the sync TestClient template citation (test_http_and_ws.py:115-154) is exact; the <=3-sockets cap respects TestClient portal capacity. The insert-position criterion reproduces the server order (own block is a prefix, others unviewed-before-viewed, newest-first within groups — services/stories.py:66-71, repositories/stories.py:37-45). Gates match the accepted repo evidence contract, including the documented Windows-only ingestion-converter caveat."
+            },
+            "residualRisk": {
+                "status": "PASS",
+                "reasonCode": "bounded-and-pinned",
+                "summary": "S1 tier justified: additive endpoint + hub, chat WS protocol untouched, cookie auth + Origin check copied verbatim, no migration. Non-goals honestly bound the tails: off-page events, owner's other tabs, TTL expiry vs a pushed ring, viewer-of-deleted-story, the refetch-vs-insert race (id-dedupe keeps it convergent), no logout close (closeAllChatSockets verified to have no production call site). One NIT-level residual does not block freeze: WS-BE-STORIES-PUSH plannedItems 3 and 6 still carry the pre-revision shorthand ('to_broadcast_response(story)' and '== to_response(story, foreign viewer, empty viewed)'), and plan.md's event-contract prose (line 29) likewise omits the owner parameter; the executable form is pinned unambiguously in the same manifest's requirement description and AC-BE-WS statement and in plan.md steps 3-5, which the worker packet also receives via contextRefs."
+            }
+        },
+        "routing": {
+            "target": "plan-freeze",
+            "nextAction": "accept"
+        }
+    },
+    "rounds": [
+        {
+            "round": 1,
+            "verdict": "CHANGES_REQUIRED",
+            "findings": 3,
+            "summary": "Full review of revision 1: 1 MAJOR (chat.test.ts missing from the FE write-set — the CDM hook makes 18 existing page tests drive the real stories WebSocket on Node's native globalThis.WebSocket unless they stub connectStoriesSocket, and AC-PROCESS forbids out-of-write-set edits), 1 MINOR (the to_broadcast_response == to_response(story, foreign viewer, viewed_ids=set()) formula references a closure signature that does not exist — services/stories.py:46 — and the owner source of to_broadcast_response was unspecified), 1 NIT (AC-PROCESS backend-gate clause routed only to EV-FE-1). All other claims verified against the code: hub/router patterns, pong frame, post-commit emission precedent, test templates, WSTransport semantics, insert-position proof, budgets and orchestration fields, base revision 1767edf = dev tip with the feature branch at it. Round-1 reviewedPlanHash was recorded as the raw-file sha256 of the revision-1 manifest (088a86f2...); round 2 uses the CLI's canonical-JSON planDigest."
+        },
+        {
+            "round": 2,
+            "verdict": "READY_TO_FREEZE",
+            "findings": 0,
+            "summary": "Confirm pass over revision 2 (canonical planDigest e690b12efda039fd517058bfb767c97b035de72ad4124b6024b4e535c008a9a9, independently recomputed and matching; planRevision 2; plan check --require-completeness PASS): all three findings closed across plan.md, acceptance-criteria.md and the manifest. F1 — src/features/chats/pages/chat/chat.test.ts added to WS-FE-STORIES-PUSH.writes with a plannedItem pinning the CDM stub convention for all 18 page tests plus a CDM-call assertion, plan.md Wave 2 step 6 added (old step 6 renumbered to 7) with the mochaSetup/Node>=22.12 rationale, step 3 now mandates swallowing/logging a failed connect() (never an unhandled rejection), and both REQ-FE-LIVE-FEED and AC-FE-LIVE carry the same obligations. F2 — to_broadcast_response(story, owner) over _common_fields(story, owner) with the owner passed by the caller (current_user) is spelled out in plan.md steps 3-5, the manifest requirement and AC-BE-WS, and the unit invariant is now the executable list_feed(foreign_viewer_id) comparison. F3 — EV-BE-1 added to AC-PROCESS evidenceIds in the manifest and the acceptance-criteria.md table. No new findings; the stale shorthand surviving in two WS-BE plannedItems and one plan.md prose line is NIT-level and dominated by the corrected normative text. Freeze authorized."
+        },
+        {
+            "round": 3,
+            "verdict": "READY_TO_FREEZE",
+            "findings": 0,
+            "summary": "Pre-lock verification of the freeze-state manifest: status DRAFT -> FROZEN and planReview gains exactly reviewedRevision=2 and verdict=READY_TO_FREEZE (the same 7-key planReview shape as the frozen chats-list-members package; implementationAuthorized stays false). Delta proof by digest reconstruction: reverting the status value and removing exactly those two keys from the current manifest reproduces the round-2 canonical planDigest e690b12e... — therefore no other byte of the reviewed content changed. Current canonical planDigest 282f0dbca2eebdf2dfb8ae6255044b69e3e98212fdbde6902b21c9fe3e0ec3d9, independently recomputed and recorded as reviewedPlanHash. READY_TO_FREEZE stands; lock-create may proceed."
+        }
+    ]
+}
