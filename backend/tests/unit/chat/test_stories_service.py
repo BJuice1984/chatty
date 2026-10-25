@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from datetime import UTC, datetime, timedelta
+from uuid import uuid4
 
 import pytest
 from fastapi import HTTPException
@@ -49,10 +50,13 @@ def make_story(session: Session, owner: User, *, hours_ago: float = 0) -> Story:
 
 
 def make_file(session: Session, owner: User) -> File:
+    # uuid, а не timestamp: гранулярность Windows-таймера склеивала два
+    # ключа подряд в unique-колонке — транзиентный IntegrityError (флейк
+    # полного сьюта, зелёный в изоляции)
     file = File(
         chat_id=None,
         owner_id=owner.id,
-        object_key=f'media/{owner.id}-{datetime.now(UTC).timestamp()}',
+        object_key=f'media/{owner.id}-{uuid4().hex}',
         original_name='s.png',
         content_type='image/png',
         size_bytes=1,
