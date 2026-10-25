@@ -81,8 +81,10 @@ class StoryService:
     def to_broadcast_response(self, story: Story, owner: User) -> StoryResponse:
         """Viewer-independent shape for the WS fan-out of a fresh story.
 
-        Получатели фан-аута — всегда не-владельцы (аплоадер исключён из
-        рассылки), поэтому viewed/is_own — константы False/False.
+        Форма не пересчитывается per-viewer: одним кадром уезжает всем,
+        включая автора (его другие вкладки получают кольцо сразу, а не
+        рефетчем) — viewed/is_own константы False/False, а владельца
+        опознаёт клиент по owner_id (StoriesController.applyStoryCreated).
         """
 
         return StoryResponse(

@@ -16,8 +16,8 @@ import { notifyStoriesSocketEvent } from './ws/gateway.ts'
 import { closeStoriesSocket } from './ws/own.ts'
 
 const feed: StoryDto[] = [
-    { id: 1, owner: 'ada', ownerAvatarUrl: '', src: 'http://x/1', alt: 'История ada', viewed: false, isOwn: false },
-    { id: 2, owner: 'bob', ownerAvatarUrl: '', src: 'http://x/2', alt: 'История bob', viewed: false, isOwn: false },
+    { id: 1, owner: 'ada', ownerAvatarUrl: '', src: 'http://x/1', alt: 'История ada', viewed: false, isOwn: false, createdAt: '2026-10-25T12:00:00Z' },
+    { id: 2, owner: 'bob', ownerAvatarUrl: '', src: 'http://x/2', alt: 'История bob', viewed: false, isOwn: false, createdAt: '2026-10-25T12:00:00Z' },
 ]
 
 // WS-форма ответа (server StoryResponse): фиксированные viewed/is_own=false
@@ -52,6 +52,7 @@ describe('stories controller', () => {
         uploadStory.restore()
         fetchStories.restore()
         store.set('stories', undefined)
+        store.set('user', undefined)
     })
 
     it('fetchStories writes the mapped slice into the store', async () => {
@@ -104,7 +105,7 @@ describe('stories controller', () => {
 
     it('uploadStory awaits the upload and refetches the feed', () => {
         const refetched: StoryDto[] = [
-            { id: 3, owner: 'ada', ownerAvatarUrl: '', src: 'http://x/3', alt: 'История ada', viewed: false, isOwn: false },
+            { id: 3, owner: 'ada', ownerAvatarUrl: '', src: 'http://x/3', alt: 'История ada', viewed: false, isOwn: false, createdAt: '2026-10-25T12:00:00Z' },
         ]
 
         fetchStories.resolves(refetched)
@@ -120,10 +121,10 @@ describe('stories controller', () => {
 
     describe('ws push events', () => {
         const ownFeed: StoryDto[] = [
-            { id: 10, owner: 'me', ownerAvatarUrl: '', src: 'http://x/10', alt: 'История me', viewed: false, isOwn: true },
-            { id: 11, owner: 'me', ownerAvatarUrl: '', src: 'http://x/11', alt: 'История me', viewed: false, isOwn: true },
-            { id: 12, owner: 'ada', ownerAvatarUrl: '', src: 'http://x/12', alt: 'История ada', viewed: false, isOwn: false },
-            { id: 13, owner: 'bob', ownerAvatarUrl: '', src: 'http://x/13', alt: 'История bob', viewed: true, isOwn: false },
+            { id: 10, owner: 'me', ownerAvatarUrl: '', src: 'http://x/10', alt: 'История me', viewed: false, isOwn: true, createdAt: '2026-10-25T11:00:00Z' },
+            { id: 11, owner: 'me', ownerAvatarUrl: '', src: 'http://x/11', alt: 'История me', viewed: false, isOwn: true, createdAt: '2026-10-25T10:00:00Z' },
+            { id: 12, owner: 'ada', ownerAvatarUrl: '', src: 'http://x/12', alt: 'История ada', viewed: false, isOwn: false, createdAt: '2026-10-25T09:00:00Z' },
+            { id: 13, owner: 'bob', ownerAvatarUrl: '', src: 'http://x/13', alt: 'История bob', viewed: true, isOwn: false, createdAt: '2026-10-25T08:00:00Z' },
         ]
 
         it('constructor wires socket events into slice patches', () => {
@@ -179,6 +180,22 @@ describe('stories controller', () => {
             notifyStoriesSocketEvent({ kind: 'story_created', content: pushedStory })
 
             expect(chatStoriesSlice.getStories().map(story => story.id)).to.deep.eq([10, 11, 50])
+        })
+
+        it("story_created to the owner's other tab lands in front as own (is_own fixed by owner_id)", () => {
+            // фан-аут фиксированной формы (is_own=false даже автору), но
+            // владелец опознаёт себя по owner_id: кольцо сразу своё,
+            // непросмотренное и в голову ленты — без ожидания рефетча
+            store.set('user', { id: 42, display_name: '', first_name: '', second_name: '', email: '', login: '', phone: '', avatar: '' })
+            chatStoriesSlice.setStories(ownFeed)
+
+            notifyStoriesSocketEvent({ kind: 'story_created', content: pushedStory })
+
+            const stories = chatStoriesSlice.getStories()
+
+            expect(stories.map(story => story.id)).to.deep.eq([50, 10, 11, 12, 13])
+            expect(stories[0]?.isOwn).to.be.true
+            expect(stories[0]?.viewed).to.be.false
         })
 
         it('story_deleted removes the id and is a no-op for absent ids', () => {

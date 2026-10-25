@@ -324,6 +324,7 @@ describe('chat page stories', () => {
             src: 'http://localhost:8000/api/v1/files/11/download',
             alt: 'История Midala Huininja',
             viewed: false,
+            createdAt: '2026-10-25T10:00:00Z',
         },
         {
             id: 42,
@@ -332,6 +333,7 @@ describe('chat page stories', () => {
             src: 'http://localhost:8000/api/v1/files/12/download',
             alt: 'История Athalia Putri',
             viewed: false,
+            createdAt: '2026-10-25T10:00:00Z',
         },
         {
             id: 43,
@@ -340,6 +342,7 @@ describe('chat page stories', () => {
             src: 'http://localhost:8000/api/v1/files/13/download',
             alt: 'История Erlan Sadewa',
             viewed: false,
+            createdAt: '2026-10-25T10:00:00Z',
         },
     ]
 
@@ -513,6 +516,7 @@ describe('chat page stories', () => {
                 alt: 'История me',
                 viewed: false,
                 isOwn: true,
+                createdAt: '2026-10-25T10:00:00Z',
             }])
 
             const page = new ChatPage({} as never)
@@ -534,6 +538,49 @@ describe('chat page stories', () => {
             page.destroy()
         } finally {
             deleteStory.restore()
+            markViewed.restore()
+            fetchStories.restore()
+            fetchChats.restore()
+        }
+    })
+
+    it('hides rings past the server TTL on render: a stale story does not open', () => {
+        const fetchChats = sinon.stub(ChatsController, 'fetchChats').resolves()
+        const fetchStories = sinon.stub(StoriesController, 'fetchStories').resolves()
+        const markViewed = sinon.stub(StoriesController, 'markViewed')
+
+        try {
+            // фейковые таймеры стартуют с «ноль»: двигаем системное время на
+            // фикс-точку, где feed (10:00 сегодня) жив, а история двухдневной
+            // давности — истекла по серверному TTL 24ч
+            clock.setSystemTime(Date.parse('2026-10-25T12:00:00Z'))
+            store.set('stories', [
+                ...feed,
+                {
+                    id: 99,
+                    owner: 'Stale Ring',
+                    ownerAvatarUrl: '',
+                    src: 'http://localhost:8000/api/v1/files/99/download',
+                    alt: 'История Stale Ring',
+                    viewed: false,
+                    createdAt: '2026-10-23T00:00:00Z',
+                },
+            ])
+
+            const page = new ChatPage({} as never)
+            const select = callbacksOf(page).onSelectStory
+
+            // истёкшее кольцо не открывается — рендер-фильтр убрал его
+            // из списка; свежее — открывается
+            select?.('99')
+            expect((callbacksOf(page) as { viewerStory?: unknown }).viewerStory).to.not.exist
+
+            select?.('41')
+            expect((callbacksOf(page) as { viewerStory?: unknown }).viewerStory).to.exist
+            expect(markViewed.called).to.be.false
+
+            page.destroy()
+        } finally {
             markViewed.restore()
             fetchStories.restore()
             fetchChats.restore()

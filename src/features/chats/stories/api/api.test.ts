@@ -85,6 +85,7 @@ describe('stories api adapter (fake XHR)', () => {
         expect(dto.id).to.eq(50)
         expect(dto.viewed).to.be.false
         expect(dto.isOwn).to.be.false
+        expect(dto.createdAt).to.eq('2026-10-25T12:00:00Z')
         expect(dto.src).to.contain('/api/v1/files/50/download')
         expect(dto.ownerAvatarUrl).to.eq('/images/avatars/3.svg') // pool: (42 % 8) + 1
         expect(dto.alt).to.eq('История cyrano')

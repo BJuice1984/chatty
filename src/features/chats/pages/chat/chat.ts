@@ -20,6 +20,7 @@ import { emptyValidator } from '../../../../utils/validators.ts'
 import ChatsController from '../../controller.ts'
 import StoriesController from '../../stories/controller.ts'
 import type { StoryDto } from '../../stories/ports.ts'
+import { isStoryAlive } from '../../stories/ttl.ts'
 import type { ViewerStory } from '../../../../components/story/storyViewer/storyViewer.ts'
 import template from './chat.hbs'
 
@@ -82,7 +83,7 @@ class ChatPageBase extends Block {
     // Рендер-список: add-плитка + серверные истории из пропсов стора
     // (числовые id строкифицируются — единый тип id через страницу)
     private get renderStories(): StoryItem[] {
-        const feed = this.pageProps.stories ?? []
+        const feed = (this.pageProps.stories ?? []).filter(story => isStoryAlive(story.createdAt))
 
         return [ChatPageBase.addStoryTile(), ...feed.map(story => ({
             id: String(story.id),

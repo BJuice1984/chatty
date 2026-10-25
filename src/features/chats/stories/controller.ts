@@ -9,6 +9,7 @@
 // всегда свежейшая — порядок ленты воспроизводится без рефетча) и удаление
 // по id; дедуп страхует гонку с ин-флайт рефетчем.
 
+import store from '../../../utils/Store.ts'
 import { type OwnStoryResponse, toStoryDto } from './api/own.ts'
 import { storiesPort } from './api/index.ts'
 import { chatStoriesSlice } from './store.ts'
@@ -46,9 +47,28 @@ export class StoriesController {
             return
         }
 
-        const story = toStoryDto(raw)
-        // свой блок — префикс среза: вставка перед первым не-своим (нет
-        // своих — индекс 0; все свои — в конец)
+        // фан-аут фиксированной формы (is_own=false всем, включая автора —
+        // так владелец в другой вкладке тоже получает кольцо), но кто автор,
+        // знает клиент: правим по owner_id против текущего пользователя
+        const meId = store.getState().user?.id
+        const isOwn = meId != null && raw.owner_id === meId
+        const story = toStoryDto({
+            ...raw,
+            is_own: isOwn,
+            // своя история владельцу всегда непросмотренная (UX «You story»)
+            viewed: isOwn ? false : raw.viewed,
+        })
+
+        if (isOwn) {
+            // новая своя — самая свежая: в голову ленты (свой блок уже
+            // отсортирован по свежести сервером и прошлыми вставками)
+            chatStoriesSlice.setStories([story, ...current])
+
+            return
+        }
+
+        // чужая — в голову группы чужих: свой блок — префикс среза,
+        // вставка перед первым не-своим (нет своих — индекс 0)
         const insertAt = current.findIndex(item => !item.isOwn)
 
         chatStoriesSlice.setStories(
