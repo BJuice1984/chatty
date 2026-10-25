@@ -34,3 +34,8 @@ dist-ssr
 # Agent lifecycle (ALK): локальные артефакты, не коммитятся
 .alk/
 work/
+
+# Python bytecode and build artifacts (backend)
+__pycache__/
+*.pyc
+*.egg-info/
