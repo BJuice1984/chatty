@@ -44,19 +44,8 @@ class StoryService:
         } if owner_ids else {}
 
         def to_response(story: Story) -> StoryResponse:
-            owner = owners[story.owner_id]
-            login = owner.email.lower()
             return StoryResponse(
-                id=story.id,
-                owner_id=story.owner_id,
-                owner_display_name=login.split('@', 1)[0] or login,
-                owner_avatar_url=(
-                    f'{owner.avatar_file_id}/download'
-                    if owner.avatar_file_id is not None
-                    else None
-                ),
-                image_url=f'{story.file_id}/download',
-                created_at=story.created_at,
+                **self._common_fields(story, owners[story.owner_id]),
                 # свои истории владельцу всегда непросмотренные: кольцо
                 # не гаснет от собственного просмотра (UX «You story»)
                 viewed=story.owner_id != user_id and story.id in viewed_ids,
@@ -69,6 +58,38 @@ class StoryService:
         # свои всегда первыми и всегда непросмотренные для владельца
         others.sort(key=lambda story: story.id in viewed_ids)
         return [to_response(story) for story in [*mine, *others]]
+
+    @staticmethod
+    def _common_fields(story: Story, owner: User) -> dict[str, object]:
+        """Владелец-зависимые поля ответа — единственное место сборки, чтобы
+        лента и WS-фан-аут не разъехались."""
+
+        login = owner.email.lower()
+        return {
+            'id': story.id,
+            'owner_id': story.owner_id,
+            'owner_display_name': login.split('@', 1)[0] or login,
+            'owner_avatar_url': (
+                f'{owner.avatar_file_id}/download'
+                if owner.avatar_file_id is not None
+                else None
+            ),
+            'image_url': f'{story.file_id}/download',
+            'created_at': story.created_at,
+        }
+
+    def to_broadcast_response(self, story: Story, owner: User) -> StoryResponse:
+        """Viewer-independent shape for the WS fan-out of a fresh story.
+
+        Получатели фан-аута — всегда не-владельцы (аплоадер исключён из
+        рассылки), поэтому viewed/is_own — константы False/False.
+        """
+
+        return StoryResponse(
+            **self._common_fields(story, owner),
+            viewed=False,
+            is_own=False,
+        )
 
     def mark_viewed(self, story_id: int, user_id: int) -> None:
         """Idempotent view record; expired stories stay viewable by design."""
