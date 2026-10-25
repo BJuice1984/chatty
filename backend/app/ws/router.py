@@ -16,7 +16,7 @@ from app.schemas.message import (
     WebSocketMessageContent,
 )
 from app.services.messages import MessageService
-from app.ws.hub import hub
+from app.ws.hub import hub, stories_hub
 
 
 router = APIRouter(tags=['websocket'])
@@ -124,3 +124,38 @@ async def chat_websocket(websocket: WebSocket, chat_id: int) -> None:
         pass
     finally:
         await hub.disconnect(chat_id, websocket)
+
+
+@router.websocket('/ws/stories')
+async def stories_socket(websocket: WebSocket) -> None:
+    """Global stories channel: cookie auth + Origin, no chat membership.
+
+    Лента историй общая для всех пользователей, поэтому канал не привязан
+    к чату; клиентский keepalive (WSTransport шлёт ping каждые 5 c)
+    отвечает точным pong-кадром чат-сокета, прочие события игнорируются.
+    """
+
+    settings = websocket.app.state.settings
+    origin = websocket.headers.get('origin')
+    if origin and origin not in settings.allowed_origins:
+        await _reject(websocket)
+        return
+    user = _user_from_websocket(websocket)
+    if user is None:
+        await _reject(websocket)
+        return
+
+    await websocket.accept()
+    await stories_hub.connect(user.id, websocket)
+    try:
+        while True:
+            try:
+                event = await websocket.receive_json()
+                if isinstance(event, dict) and event.get('type') == 'ping':
+                    await websocket.send_json({'type': 'pong', 'content': {}})
+            except WebSocketDisconnect:
+                raise
+    except WebSocketDisconnect:
+        pass
+    finally:
+        await stories_hub.disconnect(user.id, websocket)

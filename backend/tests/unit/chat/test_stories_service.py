@@ -180,3 +180,19 @@ def test_feed_owner_fields(session: Session):
     session.flush()
     item = StoryService(session, settings).list_feed(mine.id)[0]
     assert item.owner_avatar_url == f'{avatar.id}/download'
+
+
+def test_to_broadcast_response_equals_foreign_viewer_feed_item(session: Session):
+    settings = Settings(environment='test', database_url='sqlite://', jwt_secret='test-secret-that-is-long-enough-for-jwt-signing')
+    mine, viewer = make_user(session, 'mine@example.com'), make_user(session, 'viewer@example.com')
+    story = make_story(session, mine)
+
+    service = StoryService(session, settings)
+    broadcast = service.to_broadcast_response(story, mine)
+    assert broadcast.viewed is False
+    assert broadcast.is_own is False
+
+    # инвариант фиксированной формы: для любого не-владельца без просмотров
+    # она совпадает с per-viewer элементом ленты — формы не разъезжаются
+    feed_item = next(item for item in service.list_feed(viewer.id) if item.id == story.id)
+    assert broadcast.model_dump() == feed_item.model_dump()

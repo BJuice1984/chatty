@@ -48,3 +48,46 @@ class ChatHub:
 
 
 hub = ChatHub()
+
+
+class StoriesHub:
+    """User-keyed registry of /ws/stories sockets: the stories feed is global,
+    so fan-out goes by user (multi-tab friendly), not by chat."""
+
+    def __init__(self):
+        self._user_sockets: dict[int, set[WebSocket]] = {}
+
+    async def connect(self, user_id: int, websocket: WebSocket) -> None:
+        self._user_sockets.setdefault(user_id, set()).add(websocket)
+
+    async def disconnect(self, user_id: int, websocket: WebSocket) -> None:
+        sockets = self._user_sockets.get(user_id)
+        if sockets is None:
+            return
+        sockets.discard(websocket)
+        if not sockets:
+            self._user_sockets.pop(user_id, None)
+
+    async def broadcast(
+        self,
+        payload: dict[str, object],
+        *,
+        exclude_user_id: int | None = None,
+    ) -> None:
+        stale: list[tuple[int, WebSocket]] = []
+        # снимок: await ниже уступает потоку, параллельный disconnect
+        # не должен ронять итерацию (send_json падает на мёртвом сокете —
+        # собираем и вычищаем, как в ChatHub.broadcast)
+        for user_id, sockets in list(self._user_sockets.items()):
+            if user_id == exclude_user_id:
+                continue
+            for websocket in tuple(sockets):
+                try:
+                    await websocket.send_json(payload)
+                except Exception:
+                    stale.append((user_id, websocket))
+        for user_id, websocket in stale:
+            await self.disconnect(user_id, websocket)
+
+
+stories_hub = StoriesHub()

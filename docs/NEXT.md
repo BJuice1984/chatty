@@ -1,28 +1,27 @@
 # NEXT — точка входа для следующей сессии
 
-Обновлено: 2026-10-25 (после ALK-прогона `2026-10-25-chats-list-members` — N+1
-аватаров закрыт, ветка `feature/2026-10-25-chats-list-members`, PR в `dev`).
+Обновлено: 2026-10-25 (после ALK-прогона `2026-10-25-stories-ws-push` —
+WS-push историй, ветка `feature/2026-10-25-stories-ws-push`, PR в `dev`).
 
 ## Состояние
 
-N+1 аватаров списка чатов закрыт: `GET /chats` отдаёт краткие составы
-участников (`members: [{id, login, display_name, avatar_url}]`, один
-batch-IN-запрос, cap 10 по `joined_at`, диалоги не режутся; `POST /chats` и
-`GET /chats/{id}` — `members: []` через `default_factory`), фронт-адаптер
-`toChatInfo(response, meId)` собирает аватар диалога лестницей «свой
-avatar_url чата → реальный аватар собеседника → pool → пусто»,
-контроллер больше не делает per-chat members-запросов
-(`applyCompanionAvatar` удалён), а `changeChatAvatar` патчит ровно один чат
-в сторе из ответа загрузки — без рефетча списка. Гейты: фронт 322 mocha,
-бэкенд 179 pytest passed (+4 известные Windows-специфичные падения
-ingestion-конвертера — вне чатов, см. runbook-заметку ниже), guard strict 0.
+Истории стали живыми: глобальный канал `/api/v1/ws/stories` (cookie-auth
++ Origin-check, без membership, ping→pong) с user-keyed `StoriesHub`
+(мультивкладочность, prune-stale, `exclude_user_id`); `POST /stories`
+фан-аутит `story_created` фиксированной формы (`viewed/is_own=False` для
+всех не-владельцев по построению, общий `_common_fields` с лентой) всем,
+кроме аплоадера; `DELETE /stories/{id}` — `story_deleted {story_id}`
+всем. Фронт: ws-модуль `features/chats/stories/ws/` (синглтон поверх
+нетронутого `WSTransport`, открывается на CDM страницы чатов рядом с
+`fetchStories`, Close обнуляет ссылку) → gateway-листенер →
+`StoriesController` (единственный писатель `state.stories`): дедуп по id,
+вставка чужой непросмотренной сразу после блока своих, удаление по id —
+кольца обновляются без перезагрузки. Гейты: фронт 337 mocha, бэкенд 184
+pytest passed (+4 известных Windows-падения ingestion), guard strict 0.
 
-## Приоритеты следующей сессии (согласовано 2026-10-23, п.1 закрыт 2026-10-25)
+## Приоритеты следующей сессии (согласовано 2026-10-23, пп.1–2 закрыты 2026-10-25)
 
-1. **WS-push новых историй** — лента сейчас обновляется только при заходе на
-   страницу или после собственных действий; событие по WS сделает кольца
-   живыми.
-2. **RAG-эмбеддинги** — на OpenAI-совместимом инференс-сервере поднять
+1. **RAG-эмбеддинги** — на OpenAI-совместимом инференс-сервере поднять
    `/v1/embeddings` и закрыть пробел AI-ассистента (`src/features/ai-assistant/`).
 
 Хвосты: `mark_viewed` — check-then-insert гонка (теоретическая) →
@@ -33,7 +32,10 @@ chats-list-members); дубль `GET /chats` на холодной загруз�
 `src/main.ts:77` дублирует CDM-фетч страницы чатов (`pages/chat/chat.ts:451`,
 LIVE-3): убрать блок fetchChats из `main.ts` (он же делает бесполезный фетч
 на логине/регистрации); микроправка отдельной веткой — `main.ts` в
-forbiddenWrites пакета 2026-10-25-chats-list-members.
+forbiddenWrites пакета 2026-10-25-chats-list-members. Пределы stories-push
+(осознанные, см. план пакета): события вне страницы чата пропускаются,
+другие вкладки владельца не получают `story_created`, запушенное кольцо
+может пережить серверный TTL.
 
 ## Окружение (воспроизводимо на новой машине)
 
