@@ -39,6 +39,7 @@ export function toStoryDto(response: OwnStoryResponse): StoryDto {
         alt: `История ${owner}`,
         viewed: response.viewed,
         isOwn: response.is_own,
+        createdAt: response.created_at,
     }
 }
 

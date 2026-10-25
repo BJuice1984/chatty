@@ -73,7 +73,7 @@ def test_stories_socket_answers_keepalive_ping(app):
             assert websocket.receive_json() == {'type': 'pong', 'content': {}}
 
 
-def test_story_created_fans_out_excluding_owner_then_deleted_reaches_all(app):
+def test_story_created_fans_out_to_everyone_then_deleted_reaches_all(app):
     app.state.object_storage = MemoryStorage()
     with TestClient(app) as owner_client, \
             TestClient(app) as second_client, \
@@ -87,19 +87,21 @@ def test_story_created_fans_out_excluding_owner_then_deleted_reaches_all(app):
                 owner_client.websocket_connect('/api/v1/ws/stories', headers=ORIGIN) as owner_socket:
             story = upload_story(owner_client)
 
-            for recipient in (second, third):
+            # владелец тоже получает кадр (его другие вкладки не ждут
+            # рефетча); фиксированная форма остаётся — is_own=false даже
+            # автору, владелецская вкладка правит по owner_id на клиенте
+            for recipient in (second, third, owner_socket):
                 event = recipient.receive_json()
                 assert event['type'] == 'story_created'
                 content = event['content']
                 assert content['id'] == story['id']
                 assert content['owner_id'] == owner['id']
-                # фиксированная форма: новый чужой рассказ всегда непросмотрен
+                # фиксированная форма: новая история всем чужая и непросмотрена
                 assert content['viewed'] is False
                 assert content['is_own'] is False
                 assert content['image_url'].endswith('/download')
 
-            # владелец исключён: после загрузки следующий кадр на его сокете —
-            # pong, а не story_created (порядок кадров доказывает исключение)
+            # порядок кадров на сокете владельца: за story_created идёт pong
             owner_socket.send_json({'type': 'ping', 'content': {}})
             assert owner_socket.receive_json() == {'type': 'pong', 'content': {}}
 

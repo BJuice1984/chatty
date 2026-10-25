@@ -46,13 +46,14 @@ async def create_story(
     feed = story_service.list_feed(current_user.id)
     # фан-аут после коммита (прецедент chat_deleted/reaction): фиксированная
     # форма без пересчёта per-viewer — у всех не-владельцев новая история
-    # непросмотренная и чужая; аплоадер исключён: его клиент сходится рефетчем
+    # непросмотренная и чужая; владелец тоже получает кадр (его другие
+    # вкладки не ждали бы рефетча) — is_own/viewed для себя правит клиент
+    # по owner_id (StoriesController.applyStoryCreated)
     await stories_hub.broadcast(
         {
             'type': 'story_created',
             'content': story_service.to_broadcast_response(story, current_user).model_dump(mode='json'),
         },
-        exclude_user_id=current_user.id,
     )
     return next(item for item in feed if item.id == story.id)
 
