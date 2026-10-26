@@ -472,6 +472,31 @@ describe('own ws adapter social events', () => {
         store.set('user', undefined)
     })
 
+    it('patches the chat last_message in real time beside the unread badge', async () => {
+        store.set('chats', [
+            { id: 3, title: 'Project', unread_count: 0, last_message: { content: 'старое', time: '2026-10-01T00:00:00Z' } },
+            { id: 9, title: 'Other', unread_count: 0 },
+        ])
+
+        const { socket } = await connectedSocket()
+
+        // входящий текст: RAW-контент и время события в last_message списка
+        socket.triggerMessage(JSON.stringify({ type: 'message', content: { ...ownResponse, user_id: 42 } }))
+        expect((store.getState().chats ?? []).find(chat => (chat as { id: number }).id === 3))
+            .to.deep.include({ last_message: { content: 'hello', time: '2026-10-06T00:00:00Z' } })
+        expect((store.getState().chats ?? []).find(chat => (chat as { id: number }).id === 9))
+            .to.not.have.property('last_message')
+
+        // файловое сообщение (content null): плейсхолдер «Вложение» — toMessage
+        // схлопнул бы null в '', поэтому патч читает RAW-поле
+        socket.triggerMessage(JSON.stringify({ type: 'message', content: { ...ownFileResponse, id: 14, user_id: 42 } }))
+        expect((store.getState().chats ?? []).find(chat => (chat as { id: number }).id === 3))
+            .to.deep.include({ last_message: { content: 'Вложение', time: '2026-10-06T00:00:00Z' } })
+
+        await new OwnWsAdapter().closeChat(3)
+        store.set('chats', undefined)
+    })
+
     it('ignores reaction notifications while no listener is attached', async () => {
         // слушатель не регистрируется — notify не должен падать
         const { socket } = await connectedSocket()

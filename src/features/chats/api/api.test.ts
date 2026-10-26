@@ -93,6 +93,7 @@ describe('chats api adapter', () => {
             'getChatUsers',
             'changeChatAvatar',
             'searchUsers',
+            'searchChats',
             'setReaction',
         ] as const) {
             expect(chatsPort, `own ${method}`).to.have.property(method)
@@ -113,6 +114,33 @@ describe('chats api adapter', () => {
     it('should carry is_ai through toChatInfo both ways', () => {
         expect(toChatInfo(ownChat, 7).is_ai).to.be.false
         expect(toChatInfo({ ...ownChat, is_ai: true }, 7).is_ai).to.be.true
+    })
+
+    // 2026-10-26-chat-search: last_message из GET /chats маппится в
+    // ChatInfo.last_message; единая точка плейсхолдера «Вложение» для
+    // файловых вложений (content null) живёт здесь
+    it('maps the list last_message through toChatInfo', () => {
+        const normal = toChatInfo(
+            { ...ownChat, last_message: { content: 'привет', time: '2026-10-26T10:00:00Z' } },
+            7
+        )
+
+        expect(normal.last_message).to.deep.eq({ content: 'привет', time: '2026-10-26T10:00:00Z' })
+
+        // файловое вложение без текста: content null -> «Вложение»
+        const fileOnly = toChatInfo(
+            { ...ownChat, last_message: { content: null, time: '2026-10-26T10:00:00Z' } },
+            7
+        )
+
+        expect(fileOnly.last_message).to.deep.eq({ content: 'Вложение', time: '2026-10-26T10:00:00Z' })
+    })
+
+    it('maps absent and null last_message to undefined', () => {
+        // нет поля (старый ответ/POST /chats/GET /chats/{id}) и явный null
+        // (чат без сообщений) — чат без последнего сообщения
+        expect(toChatInfo(ownChat, 7).last_message).to.eq(undefined)
+        expect(toChatInfo({ ...ownChat, last_message: null }, 7).last_message).to.eq(undefined)
     })
 
     it('maps the chat avatar_url file path onto ChatInfo', () => {
@@ -218,6 +246,45 @@ describe('chats api social operations (fake XHR)', () => {
         expect(call.method).to.eq('GET')
         expect(call.url).to.contain('/users')
         expect(call.url).to.contain('login=bob')
+    })
+
+    it('searches chats over GET /chats/search with the q param', async () => {
+        // включаем ветку R-F2: matched_in 'message' с null-сниппетом обязан
+        // доехать до UI как есть (без подсветки), title-only — без окна и времени
+        FakeXHR.responses.push({
+            status: 200,
+            response: {
+                query: 'bo',
+                results: [
+                    {
+                        chat_id: 3,
+                        matched_in: 'both',
+                        snippet: { before: 'a', match: 'bo', after: 'c' },
+                        last_match_at: '2026-10-26T10:00:00Z',
+                    },
+                    { chat_id: 5, matched_in: 'message', snippet: null, last_match_at: null },
+                    { chat_id: 7, matched_in: 'title', snippet: null, last_match_at: null },
+                ],
+            },
+        })
+
+        const results = await ownChatsPort.searchChats('bo')
+
+        const call = FakeXHR.calls[0]
+
+        expect(call.method).to.eq('GET')
+        expect(call.url).to.contain('/chats/search')
+        expect(call.url).to.contain('q=bo')
+        expect(results).to.deep.eq([
+            {
+                chat_id: 3,
+                matched_in: 'both',
+                snippet: { before: 'a', match: 'bo', after: 'c' },
+                last_match_at: '2026-10-26T10:00:00Z',
+            },
+            { chat_id: 5, matched_in: 'message', snippet: null, last_match_at: null },
+            { chat_id: 7, matched_in: 'title', snippet: null, last_match_at: null },
+        ])
     })
 
     it('deletes a chat over DELETE /chats/{id} with the csrf header', async () => {

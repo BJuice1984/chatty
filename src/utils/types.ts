@@ -37,6 +37,18 @@ export interface ChatInfo {
     [key: string]: unknown
 }
 
+// Совпадение живого поиска по чатам (2026-10-26-chat-search): где нашли
+// (title/message/both) и окно подсветки. Сниппет опционален даже при
+// matched_in 'message'/'both' — у сервера есть защитная ветка без окна,
+// такой результат UI рисует без подсветки; title-only совпадениям сниппета
+// и времени нет по контракту. Тип UI-стороны: DTO-зеркало живёт в api.
+export interface ChatSearchMatch {
+    chat_id: number
+    matched_in: 'title' | 'message' | 'both'
+    snippet?: { before: string; match: string; after: string } | null
+    last_match_at?: string | null
+}
+
 export interface ChatUser {
     id: number
     first_name: string

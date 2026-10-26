@@ -1,8 +1,10 @@
 // Own-адаптер порта chats (stage 7; stage chats-social добавил поиск
 // пользователей, удаление чата и реакции; 2026-10-25-chats-list-members —
-// составы участников в списке): контракт собственного бэкенда —
+// составы участников в списке; 2026-10-26-chat-search — last_message в
+// списке и живой поиск): контракт собственного бэкенда —
 // POST /chats (создание), GET /chats (список с краткими составами
-// участников), POST /chats/{id}/members
+// участников и last_message), GET /chats/search?q= (живой поиск по чатам),
+// POST /chats/{id}/members
 // (добавление участника, по одному user_id на вызов), GET /users?login=
 // (префиксный поиск), DELETE /chats/{id} (owner-only, перед удалением бэкенд
 // рассылает WS chat_deleted и закрывает сокеты чата), POST
@@ -40,11 +42,28 @@ export interface OwnChatResponse {
     // краткие составы участников из GET /chats; на старом ответе их нет —
     // собеседник тогда не вычисляется
     members?: OwnChatMemberResponse[]
+    // последнее сообщение чата из GET /chats (сортировка списка по
+    // активности): content null — файловое вложение без текста; null/нет
+    // поля — чат без сообщений и ответы POST /chats, GET /chats/{id}
+    // (null-дефолт сервера)
+    last_message?: { content: string | null; time: string } | null
 }
 
 // Ответ GET /users?login= : id, полный (нижнерегистровый) email и выводимое
 // имя (локальная часть email) — выводит сервер
 export type OwnUserSearchResponse = ChatsUserSearchResult[]
+
+// Элемент ответа GET /chats/search — DTO-зеркало UI-типа ChatSearchMatch
+// (utils/types; реэкспорт вверх запрещён слоем). Сниппет может быть null
+// даже при matched_in 'message'/'both' — у сервера есть защитная ветка без
+// окна, клиент обязан рисовать такое без подсветки; title-only совпадениям
+// сниппета и времени нет по контракту
+interface OwnChatSearchResult {
+    chat_id: number
+    matched_in: 'title' | 'message' | 'both'
+    snippet: { before: string; match: string; after: string } | null
+    last_match_at: string | null
+}
 
 interface OwnReactionSummaryResponse {
     emoji: string
@@ -89,6 +108,15 @@ export function toChatInfo(response: OwnChatResponse, meId?: number): ChatInfo {
         unread_count: response.unread_count ?? 0,
         // ИИ-чат: бейдж и акцент в списке чатов
         is_ai: response.is_ai,
+        // Последнее сообщение (сортировка списка по активности): единая
+        // точка плейсхолдера «Вложение» для файловых (content null);
+        // отсутствующему/пустому last_message — undefined, чат тонет вниз
+        last_message: response.last_message == null
+            ? undefined
+            : {
+                content: response.last_message.content ?? 'Вложение',
+                time: response.last_message.time,
+            },
     }
 }
 
@@ -163,6 +191,13 @@ export const ownChatsPort: ChatsPort = {
         const users = await (usersHttp.get('', { data: { login: data.login } }) as unknown as Promise<OwnUserSearchResponse>)
 
         return users
+    },
+    async searchChats(query) {
+        const response = await (http.get('/search', { data: { q: query } }) as unknown as Promise<{ query: string; results: OwnChatSearchResult[] }>)
+
+        // порядок, cap и сниппеты уже серверные — отдаём как есть
+        // (структурно ChatSearchMatch)
+        return response.results
     },
     async setReaction(data) {
         const response = await (http.post(`/${data.chatId}/messages/${data.messageId}/reactions`, {

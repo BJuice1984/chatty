@@ -1,5 +1,6 @@
 // Реализация WS-шлюза собственного бэкенда (stage 7; stage 11 — история через
-// history-модуль; stage chats-social — реакции, реплаи, chat_deleted):
+// history-модуль; stage chats-social — реакции, реплаи, chat_deleted;
+// 2026-10-26-chat-search — подъём last_message в списке):
 // cookie-аутентификация (токен не нужен — URL /ws/chats/{chatId} от env.wsUrl),
 // события бэкенда:
 //   исходящие: {type:'message', content:{content, file_id?, client_message_id?, reply_to_id?}},
@@ -132,6 +133,22 @@ function incrementUnread(chatId: number, authorId: number): void {
     store.set('chats', chats)
 }
 
+// Подъём чата по активности (2026-10-26-chat-search): каждое сообщение,
+// пришедшее по WS, патчит last_message в списке — сортировку по нему делает
+// страница. Сервер рассылает broadcast всем сокетам чата, включая сокет
+// автора, поэтому одно место поднимает и входящие, и собственные отправки;
+// отдельного патча на пути отправки нет и быть не должно (двойная запись).
+// Читаем RAW-поле OwnMessageResponse: toMessage схлопывает файловый null
+// в '' и плейсхолдер «Вложение» был бы потерян
+function liftLastMessage(chatId: number, payload: OwnMessageResponse): void {
+    const chats = (store.getState().chats ?? []).map(chat =>
+        (chat as { id?: number }).id === chatId
+            ? { ...chat, last_message: { content: payload.content ?? 'Вложение', time: payload.created_at } }
+            : chat)
+
+    store.set('chats', chats)
+}
+
 export class OwnWsAdapter {
     private sockets: Map<number, WSTransport> = new Map()
 
@@ -162,13 +179,15 @@ export class OwnWsAdapter {
             const wsEvent = event as OwnWsEvent
 
             if (wsEvent.type === 'message' && wsEvent.content != null) {
-                const message = toMessage(wsEvent.content as OwnMessageResponse)
+                const raw = wsEvent.content as OwnMessageResponse
+                const message = toMessage(raw)
 
                 store.set(`messages.${id}`, appendMessages(
                     store.getState().messages?.[id] ?? [],
                     message
                 ))
                 incrementUnread(id, message.user_id)
+                liftLastMessage(id, raw)
 
                 return
             }

@@ -3,10 +3,11 @@ import sinon from 'sinon'
 import { JSDOM } from 'jsdom'
 import store from '../../utils/Store.ts'
 import { ChatsFeatureController, applyReactionDelta, toggleOwnReaction } from './controller.ts'
-import { chatsSlice } from './store.ts'
+import { chatSearchSlice, chatsSlice } from './store.ts'
 import { notifyChatDeleted, notifyReactionEvent } from './ws/gateway.ts'
+import { OwnWsAdapter } from './ws/own.ts'
 import type { ChatsPort } from './ports.ts'
-import type { Message, ReactionSummary } from '../../utils/types.ts'
+import type { ChatSearchMatch, Message, ReactionSummary } from '../../utils/types.ts'
 
 const dom = new JSDOM()
 global.document = dom.window.document
@@ -23,6 +24,7 @@ function makePort(overrides: Partial<ChatsPort> = {}): ChatsPort {
         getChatUsers: async () => [],
         changeChatAvatar: async () => ({ avatar: '' }),
         searchUsers: async () => [],
+        searchChats: async () => [],
         setReaction: async () => ({
             message_id: 0,
             active: true,
@@ -192,6 +194,84 @@ describe('chats feature boundary', () => {
         await controller.sendMessage(3, 'ответ', 21)
 
         expect(sendMessage.calledOnceWith(3, 'ответ', 21)).to.be.true
+    })
+})
+
+// Живой поиск по чатам (2026-10-26-chat-search): контроллер режет пробелы,
+// сбрасывает без запроса на пустом вводе, обесценивает устаревшие ответы
+// монотонным счётчиком и молчит на ошибке порта
+describe('chats controller search', () => {
+    afterEach(() => {
+        chatSearchSlice.resetSearch()
+    })
+
+    it('trims the query before the port call and stores it with results', async () => {
+        const results: ChatSearchMatch[] = [{ chat_id: 3, matched_in: 'title' }]
+        const searchChats = sinon.stub().resolves(results)
+        const controller = new ChatsFeatureController(makePort({ searchChats }), makeMessages())
+
+        await controller.searchChats('  боевой  ')
+
+        expect(searchChats.calledOnceWith('боевой')).to.be.true
+        expect(chatSearchSlice.getSearch()).to.deep.eq({ query: 'боевой', results })
+    })
+
+    it('resets without a port call on empty and whitespace input', async () => {
+        chatSearchSlice.setSearch('старый', [{ chat_id: 3, matched_in: 'title' }])
+        const searchChats = sinon.stub().resolves([])
+        const controller = new ChatsFeatureController(makePort({ searchChats }), makeMessages())
+
+        await controller.searchChats('')
+        await controller.searchChats('   ')
+
+        expect(searchChats.notCalled).to.be.true
+        expect(chatSearchSlice.getSearch()).to.eq(undefined)
+    })
+
+    it('drops a stale answer: the Store keeps the second result', async () => {
+        const stale: ChatSearchMatch[] = [{ chat_id: 1, matched_in: 'title' }]
+        const fresh: ChatSearchMatch[] = [{
+            chat_id: 2,
+            matched_in: 'message',
+            snippet: { before: 'a', match: 'b', after: 'c' },
+            last_match_at: '2026-10-26T10:00:00Z',
+        }]
+        let resolveFirst: (results: ChatSearchMatch[]) => void = () => {}
+        const searchChats = sinon.stub()
+
+        searchChats.onFirstCall().returns(new Promise<ChatSearchMatch[]>(resolve => {
+            resolveFirst = resolve
+        }))
+        searchChats.onSecondCall().resolves(fresh)
+
+        const controller = new ChatsFeatureController(makePort({ searchChats }), makeMessages())
+        const first = controller.searchChats('первый')
+        const second = controller.searchChats('второй')
+
+        await second
+
+        expect(chatSearchSlice.getSearch()?.query).to.eq('второй')
+        expect(chatSearchSlice.getSearch()?.results).to.deep.eq(fresh)
+
+        // медленный первый ответ разрешается последним — и не побеждает
+        resolveFirst(stale)
+        await first
+
+        expect(chatSearchSlice.getSearch()?.query).to.eq('второй')
+        expect(chatSearchSlice.getSearch()?.results).to.deep.eq(fresh)
+    })
+
+    it('keeps the Store untouched and silent when the port rejects', async () => {
+        chatSearchSlice.setSearch('было', [{ chat_id: 3, matched_in: 'title' }])
+        const searchChats = sinon.stub().rejects(new Error('сеть'))
+        const controller = new ChatsFeatureController(makePort({ searchChats }), makeMessages())
+
+        await controller.searchChats('новый')
+
+        expect(chatSearchSlice.getSearch()).to.deep.eq({
+            query: 'было',
+            results: [{ chat_id: 3, matched_in: 'title' }],
+        })
     })
 })
 
@@ -375,5 +455,155 @@ describe('chats controller chat_deleted', () => {
         expect(store.getState().selectedChat).to.eq(undefined)
         expect(closeChat.calledOnceWith(3)).to.be.true
         expect(fetchChats.calledOnce).to.be.true
+    })
+})
+
+// 2026-10-26-chat-search: подъём чата по активности. Сервер рассылает каждое
+// созданное сообщение ВСЕМ сокетам чата, включая сокет автора, — один патч
+// last_message в WS-обработчике поднимает и входящие, и собственные
+// отправки; пути отправки своего патча нет (иначе двойная запись).
+describe('chats ws last_message lift', () => {
+    type SocketListener = (event: { data?: string }) => void
+
+    const created: FakeWebSocket[] = []
+
+    class FakeWebSocket {
+        static readonly CONNECTING = 0
+        static readonly OPEN = 1
+        static readonly CLOSING = 2
+        static readonly CLOSED = 3
+
+        readyState = FakeWebSocket.CONNECTING
+        sent: string[] = []
+        listeners = new Map<string, SocketListener[]>()
+
+        constructor() {
+            created.push(this)
+        }
+
+        addEventListener(type: string, listener: SocketListener) {
+            this.listeners.set(type, [...(this.listeners.get(type) ?? []), listener])
+        }
+
+        removeEventListener() {}
+
+        send(data: string) {
+            this.sent.push(data)
+        }
+
+        close() {
+            this.readyState = FakeWebSocket.CLOSED
+        }
+
+        triggerOpen() {
+            this.readyState = FakeWebSocket.OPEN
+            for (const listener of [...(this.listeners.get('open') ?? [])]) {
+                listener({})
+            }
+        }
+
+        triggerMessage(data: string) {
+            for (const listener of [...(this.listeners.get('message') ?? [])]) {
+                listener({ data })
+            }
+        }
+    }
+
+    // RAW-поле OwnMessageResponse: файловые сообщения несут content null
+    const ownMessageResponse = {
+        id: 11,
+        chat_id: 3,
+        user_id: 7,
+        content: 'hello',
+        file_id: null,
+        client_message_id: null,
+        created_at: '2026-10-26T10:00:00Z',
+    }
+
+    let clock: sinon.SinonFakeTimers
+    let originalWebSocket: typeof WebSocket
+
+    beforeEach(() => {
+        clock = sinon.useFakeTimers()
+        created.length = 0
+        originalWebSocket = globalThis.WebSocket
+        globalThis.WebSocket = FakeWebSocket as unknown as typeof WebSocket
+        store.set('messages', { 3: [] })
+        store.set('chats', [
+            { id: 3, title: 'Project', unread_count: 0 },
+            { id: 9, title: 'Other', unread_count: 0 },
+        ])
+    })
+
+    afterEach(() => {
+        globalThis.WebSocket = originalWebSocket
+        clock.restore()
+        store.set('messages', { 3: [] })
+        store.set('chats', undefined)
+        store.set('user', undefined)
+        store.set('selectedChat', undefined)
+    })
+
+    function storedLastMessage(chatId: number): unknown {
+        return (store.getState().chats ?? [])
+            .find(chat => (chat as { id?: number }).id === chatId)?.last_message
+    }
+
+    async function connectedSocket(): Promise<{ adapter: OwnWsAdapter; socket: FakeWebSocket }> {
+        const adapter = new OwnWsAdapter()
+        const connected = adapter.connect(3)
+
+        created[0].triggerOpen()
+        await connected
+
+        return { adapter, socket: created[0] }
+    }
+
+    it('patches chats[chat_id].last_message with the raw content for incoming messages', async () => {
+        const { adapter, socket } = await connectedSocket()
+
+        socket.triggerMessage(JSON.stringify({ type: 'message', content: ownMessageResponse }))
+
+        expect(storedLastMessage(3)).to.deep.eq({ content: 'hello', time: '2026-10-26T10:00:00Z' })
+        // соседний чат не тронут
+        expect(storedLastMessage(9)).to.eq(undefined)
+
+        await adapter.closeChat(3)
+    })
+
+    it('uses the «Вложение» placeholder for file-only incoming messages', async () => {
+        const { adapter, socket } = await connectedSocket()
+
+        socket.triggerMessage(JSON.stringify({
+            type: 'message',
+            content: { ...ownMessageResponse, id: 12, content: null, file_id: 5 },
+        }))
+
+        expect(storedLastMessage(3)).to.deep.eq({ content: 'Вложение', time: '2026-10-26T10:00:00Z' })
+
+        await adapter.closeChat(3)
+    })
+
+    it('lifts own-sent messages through the same broadcast without a send-path patch', async () => {
+        const sendMessage = sinon.stub().resolves()
+        const controller = new ChatsFeatureController(makePort(), makeMessages({ sendMessage }))
+        const { adapter, socket } = await connectedSocket()
+
+        await controller.sendMessage(3, 'моё')
+
+        // путь отправки в стор не пишет: список ещё держит прежнее состояние
+        expect(sendMessage.calledOnceWith(3, 'моё')).to.be.true
+        expect(storedLastMessage(3)).to.eq(undefined)
+
+        // сервер вещает созданное сообщение всем сокетам чата, автору в том
+        // числе, — это эхо и поднимает чат (тот же механизм, что входящие)
+        socket.triggerMessage(JSON.stringify({
+            type: 'message',
+            content: { ...ownMessageResponse, id: 13, content: 'моё' },
+        }))
+
+        expect(storedLastMessage(3)).to.deep.eq({ content: 'моё', time: '2026-10-26T10:00:00Z' })
+
+        await adapter.closeChat(3)
     })
 })
