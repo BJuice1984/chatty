@@ -1,0 +1,84 @@
+{
+    "revision": 2,
+    "id": "SPEC-CHAT-SEARCH",
+    "title": "Live chat-list search over titles and messages with last-message ordering",
+    "intent": "The chat list becomes a live, searchable, activity-ordered list. GET /chats grows an additive last_message {content, time} field (one batched SELECT over all listed chats) that the frontend maps into ChatInfo.last_message to render a one-line snippet under the chat title and sort the list by last message time (newest first) on the client; a new GET /chats/search endpoint matches a case-insensitive substring against the user's chat titles and their message contents and returns per-chat match metadata (matched_in title|message|both, a {before, match, after} snippet around the first occurrence in the freshest matching message, last_match_at) already ordered title-matches-first; the frontend wires the existing decorative SearchBar to a debounced (300 ms) input that drives the controller search, hides chats without matches while a query is active, and highlights the matched fragment with <mark> both in the chat title and in the message snippet (escape-then-wrap rendering). Incoming and own-sent messages move the chat to the top by patching last_message through the existing WS message path (the server broadcasts every created message to all sockets of the chat, the author's included).",
+    "requirements": [
+        {
+            "id": "REQ-BE-LAST-MESSAGE",
+            "title": "GET /chats carries last_message batched as one SELECT",
+            "description": "ChatResponse gains last_message: ChatLastMessageBrief | None = None (new schema ChatLastMessageBrief {content: str | None, time: datetime}); the None default is load-bearing for the model_validate paths (POST /chats, GET /chats/{id}) which must keep working unchanged and return last_message: null. ChatRepository.last_messages_for_chats(chat_ids) -> dict[int, ChatLastMessageBrief] (or tuples assembled in the service) fetches the newest message of every listed chat in ONE SELECT statement using the (created_at DESC, id DESC) tie-break convention (window row_number() over (partition by chat_id) or an equivalent single-statement form; SQLite-compatible). content is None for file-only messages; a chat with no messages maps to no entry (assembled as None). list_chats attaches the field like unread/members today. The server-side ORDER BY of GET /chats is NOT changed (created_at asc, id asc stays; ordering is the client's job). A repo unit test pins the single-statement contract with the before_cursor_execute statement-count guard (the test_unread_counts.py precedent) and the (created_at, id) tie-break.",
+            "priority": "P1",
+            "source": "operator request 2026-10-26 (sort by last message, snippet in the card)",
+            "acceptanceIds": [
+                "AC-BE-LAST-MESSAGE"
+            ],
+            "evidenceIds": [
+                "EV-BE-1"
+            ],
+            "owner": "WS-BE-CHAT-SEARCH"
+        },
+        {
+            "id": "REQ-BE-SEARCH",
+            "title": "GET /chats/search: substring over titles and messages, snippet + ranking",
+            "description": "New endpoint GET /api/v1/chats/search?q= (Query q: min_length=1, max_length=200; CHATS_SEARCH_RESULTS_CAP = 50 module constant). Scope: only chats the caller is a member of (join ChatMember), matching a case-insensitive substring against Chat.title and against Message.content (content IS NOT NULL) of those chats. Matching uses lower() + LIKE '%q%' with %/_/backslash escaped exactly like repositories/users.py. Portability (review F-1): lower()+LIKE is correct for the PostgreSQL runtime where lower() folds full Unicode (Cyrillic included); the in-memory SQLite test environment folds ASCII ONLY, so case-insensitivity test samples must be ASCII (e.g. 'Chat'/'chat') — Cyrillic case-folding is PG-runtime behaviour, not test-asserted. Response ChatsSearchResponse {query, results: [ChatSearchResult]}; ChatSearchResult {chat_id, matched_in: 'title'|'message'|'both', snippet: {before: str, match: str, after: str} | None, last_match_at: datetime | None}. The snippet is built from the freshest matching message (created_at DESC, id DESC tie-break): a window around the FIRST case-insensitive occurrence of q in the original content, before/match/after are raw substrings (the client escapes; the server never pre-escapes), before and after capped at 32 chars each (the REPLY_SNIPPET_LENGTH=80 spirit). matched_in='both' when both the title and a message match; title-only matches return snippet=None, last_match_at=None. Server-side order: title-group first (title-only and both, by title ASC, chat_id ASC), then message-only by last_match_at DESC, chat_id DESC; the cap applies after ordering. Chats of other users never appear (membership-scoped by construction, integration test pins it). Schemas live in schemas/chat.py; endpoint in endpoints/chats.py (route /search BEFORE the /{chat_id} routes — FastAPI matches registration order and an int path param would 422 on 'search').",
+            "priority": "P1",
+            "source": "operator request 2026-10-26 (search by titles and messages, hide non-matching chats, highlight the match)",
+            "acceptanceIds": [
+                "AC-BE-SEARCH"
+            ],
+            "evidenceIds": [
+                "EV-BE-1"
+            ],
+            "owner": "WS-BE-CHAT-SEARCH"
+        },
+        {
+            "id": "REQ-FE-SEARCH-LOGIC",
+            "title": "Frontend logic: adapter mapping, port, Store slice, race-safe controller, live last_message patch",
+            "description": "Types: UI type ChatSearchMatch {chat_id: number, matched_in: 'title'|'message'|'both', snippet?: {before: string, match: string, after: string} | null, last_match_at?: string | null} in src/utils/types.ts (UI types never import from api/); the api DTO mirrors it inside api/own.ts. Port: ChatsPort gains searchChats(query: string): Promise<ChatSearchMatch[]> (GET /chats/search?q=). Adapter: OwnChatResponse gains last_message?: {content: string | null, time: string} | null; toChatInfo maps it into ChatInfo.last_message with the file-only placeholder: content === null -> 'Вложение' (single placeholder point in the adapter), absent/null last_message -> last_message: undefined. Store: new state key chatSearch: {query: string, results: ChatSearchMatch[]} | null in the loosely-typed AppState following the chats/history/store.ts idiom (ChatHistoryStoreState = AppState & {…} + in-slice cast — state.stories IS declared in AppState, so history is the true no-Store.ts-edit precedent) with setSearch/resetSearch in features/chats/store.ts; no utils/Store.ts edit. Controller: searchChats(query) trims; empty -> resetSearch, no request; otherwise port.searchChats -> setSearch; a monotonic private sequence counter discards stale responses (a slow earlier answer must not overwrite a later one); errors are logged and leave the previous state untouched. Live lift: the WS message handler in features/chats/ws/own.ts patches chats[chat_id].last_message = {content: content ?? 'Вложение', time: created_at} next to the existing incrementUnread patch, reading the RAW OwnMessageResponse payload (the mapped toMessage collapses file-only null content to '' and would defeat the placeholder). The own server broadcasts every created message to ALL sockets of the chat INCLUDING the author's (backend/app/ws/router.py:87, confirmed by plan review), so the WS patch alone lifts incoming AND own-sent messages — no send-path patch. fetchChats and its WS getToken->connect loop are untouched.",
+            "priority": "P1",
+            "source": "operator request 2026-10-26 (debounced input, resort on new/own messages)",
+            "acceptanceIds": [
+                "AC-FE-LOGIC"
+            ],
+            "evidenceIds": [
+                "EV-FE-1"
+            ],
+            "owner": "WS-FE-CHAT-SEARCH"
+        },
+        {
+            "id": "REQ-FE-SEARCH-UI",
+            "title": "Frontend UI: debounced SearchBar, derived order/filter, highlighted card",
+            "description": "SearchBar (src/components/searchBar/) becomes live: an input event debounced by exported CHAT_SEARCH_DEBOUNCE_MS = 300 (the USER_SEARCH_DEBOUNCE_MS precedent) fires onSearch(query: string); the submit handler is removed; the instance timer is cleared in destroy(). Typed-value memory (review F-2): the debounce gates ONLY the controller call — the bar keeps a module-static lastTypedValue (the usersScroll/scrollMemory precedent: chat.ts, messenger.ts) updated on EVERY input event, and every instantiation seeds value from it, so a Store-driven page re-render mid-typing (an incoming WS message) recreates the input with the CURRENT uncommitted text, never the last debounced snapshot. Value channel (review F-4): searchBar.hbs renders its own raw <input value=\"{{value}}\"> (double-braced, escaped by Handlebars; src/components/input/** stays untouched). Focus/caret restore (review F-3): hbs children get neither componentDidMount nor componentDidUpdate on a parent re-render, so the restore is PAGE-owned — chat.ts componentDidUpdate -> requestAnimationFrame -> querySelector('input[name=chat_search]').focus() + setSelectionRange(caret) when the bar's static focus memory says the input was focused (alongside the existing restoreUsersScroll machinery; the bar records focus/caret in its static memory on blur/input). Page (features/chats/pages/chat/): withStore mapping derives the list — active non-empty query -> only chats present in chatSearch.results, in the server order; otherwise ALL chats sorted by Date.parse(last_message.time) DESC with chats lacking last_message below them (tie-break id DESC), always producing a new array reference. Card (src/components/chatListUser/): new optional props titleParts/snippetParts ({before, match, after} | null); the title renders highlighted parts when titleParts is set; the line under the title renders the search snippet (marked) while a query is active, otherwise last_message.content (existing one-line ellipsis styling, a dedicated __snippet class replaces the duplicated __title h4); the right-column time shows last_match_at during a search, otherwise last_message.time. Highlight helpers live in src/utils/highlight.ts: buildHighlightParts(haystack, needle) -> {before, match, after} | null (case-insensitive first occurrence, empty needle -> null) and renderHighlighted(parts) -> string where EVERY part is Handlebars-escaped and only the match is wrapped in <mark> (escape-then-wrap, the modal-content precedent); templates use triple braces ONLY for this pre-escaped HTML, everything else stays double-braced. SCSS: <mark> styling and the snippet line in src/scss/components/chat-list-user.scss, searchBar adjustments in src/scss/components/chat.scss.",
+            "priority": "P1",
+            "source": "operator request 2026-10-26 (highlight in title and message snippet, hide non-matching)",
+            "acceptanceIds": [
+                "AC-FE-UI"
+            ],
+            "evidenceIds": [
+                "EV-FE-2"
+            ],
+            "owner": "WS-FE-CHAT-SEARCH-UI"
+        }
+    ],
+    "constraints": [
+        "Layers only downward (pages -> components -> controllers -> api -> utils -> core); guard-architecture --all --strict stays green; components never import features/controllers; UI types never import from api/.",
+        "No migration: alembic heads output must not change; the search is a LIKE scan over membership-scoped rows (documented as acceptable for study-scale data; FTS/pg_trgm is explicitly deferred).",
+        "The server-side ORDER BY of GET /chats stays created_at asc, id asc — client-side ordering only; the ai-assistant private chats DTO copy stays untouched (extra response fields are ignored by its explicit mapping).",
+        "All user-controlled text (titles, message content, the query echo) reaches HTML only through escape-then-wrap highlight rendering or double-brace escaping; no raw triple-brace injection anywhere else.",
+        "The WS getToken->connect loop of fetchChats stays untouched; chatSearch lives in a feature-owned Store slice with an in-slice cast following the chats/history/store.ts idiom (no utils/Store.ts AppState edit).",
+        "The search uses lower() + LIKE (PostgreSQL-correct full-Unicode folding at runtime); case-insensitivity TEST samples are ASCII-only because the in-memory SQLite test environment folds ASCII only — Cyrillic case-folding is PG-runtime behaviour, not test-asserted.",
+        "Existing suites stay green; test counts grow from the 337 mocha / 184 pytest baseline (docs/NEXT.md, 2026-10-26).",
+        "Debounce constant follows the USER_SEARCH_DEBOUNCE_MS precedent (300 ms, exported for tests, timer cleared in destroy()); the debounce gates only the controller call — the typed value never depends on it (module-static lastTypedValue)."
+    ],
+    "nonGoals": [
+        "Full-text search infrastructure (tsvector/pg_trgm indexes, ranking functions) — a LIKE scan is the deliberate study-scale choice",
+        "searching file attachments by name, or message metadata beyond content",
+        "highlighting every occurrence — only the first match is marked",
+        "search pagination beyond the 50-result cap; result counts/total",
+        "server-side reordering of GET /chats; chat-list pagination",
+        "searching chats the caller is not a member of; global (server-wide) search",
+        "persisting the query across sessions or a search history",
+        "WS push of refreshed search results while typing (re-query on debounce is sufficient)"
+    ]
+}

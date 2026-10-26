@@ -1,0 +1,545 @@
+{
+    "schemaVersion": "agent-plan-manifest.v1",
+    "status": "FROZEN",
+    "planRevision": 2,
+    "package": {
+        "id": "2026-10-26-chat-search",
+        "title": "Live chat-list search over titles and messages with last-message ordering",
+        "workspaceRoot": ".",
+        "artifactRoot": "work/2026-10-26-chat-search",
+        "planArtifactRoot": "tasks/2026-10-26-chat-search"
+    },
+    "packageIntegrity": {
+        "required": true,
+        "lockSchemaVersion": "agent-plan-lock.v2",
+        "inventorySource": "planFiles",
+        "undeclaredTopLevelFiles": "reject",
+        "allowedUnlistedFiles": [
+            "plan.lock.json",
+            "plan-review.json"
+        ]
+    },
+    "author": {
+        "id": "claude-code",
+        "surface": "agent-first-planning",
+        "runId": "2026-10-26-chat-search-draft"
+    },
+    "baseRevision": {
+        "ref": "dev",
+        "sha": "503f455a37a0147e09d93646fba33b3c035cf262"
+    },
+    "specification": {
+        "tier": "S2",
+        "intent": "The chat list becomes live and searchable. GET /chats grows an additive last_message {content, time} (one batched SELECT) that the frontend maps into ChatInfo.last_message to render a one-line snippet under the title and sort the list by last message time on the client; GET /chats/search matches a case-insensitive substring over the caller's chat titles and message contents and returns per-chat match metadata (matched_in title|message|both, raw-substring snippet {before, match, after} around the first occurrence in the freshest matching message, last_match_at) in a title-first order; the SearchBar becomes a debounced (300 ms) live input driving the controller search — with an active query only matching chats render in the server order with the matched fragment marked (<mark>) in the title and/or the message snippet, with an empty query all chats render ordered by last activity; incoming and own-sent messages lift the chat to the top via the existing WS message path patching last_message.",
+        "status": "DRAFT",
+        "requirements": [
+            {
+                "id": "REQ-BE-LAST-MESSAGE",
+                "title": "GET /chats carries last_message batched as one SELECT",
+                "description": "ChatResponse gains last_message: ChatLastMessageBrief | None = None (ChatLastMessageBrief {content: str | None, time: datetime}); the None default is load-bearing for the model_validate paths (POST /chats, GET /chats/{id} keep returning null). ChatRepository.last_messages_for_chats(chat_ids) fetches the newest message of every listed chat in ONE SELECT with the (created_at DESC, id DESC) tie-break (window row_number() over (partition by chat_id) or an equivalent single statement; SQLite-compatible); content None for file-only messages; message-less chats -> None; list_chats attaches the field like unread/members today; the server-side ORDER BY of GET /chats is unchanged; a repo unit test pins the single-statement contract with the before_cursor_execute statement-count guard (test_unread_counts.py precedent) and the tie-break.",
+                "priority": "P1",
+                "source": "operator request 2026-10-26 (sort by last message, snippet in the card)",
+                "acceptanceIds": [
+                    "AC-BE-LAST-MESSAGE"
+                ],
+                "evidenceIds": [
+                    "EV-BE-1"
+                ],
+                "owner": "WS-BE-CHAT-SEARCH"
+            },
+            {
+                "id": "REQ-BE-SEARCH",
+                "title": "GET /chats/search: substring over titles and messages, snippet + ranking",
+                "description": "New endpoint GET /api/v1/chats/search?q= (q: 1..200 chars; CHATS_SEARCH_RESULTS_CAP = 50) over the caller's member chats: matching uses lower() + LIKE '%q%' (PostgreSQL-correct full-Unicode folding at runtime; the in-memory SQLite test env folds ASCII only — case-insensitivity test samples are ASCII, Cyrillic folding is PG-runtime behaviour, not test-asserted) with %/_/\\ escaped like repositories/users.py, against Chat.title and Message.content (content IS NOT NULL). Response ChatsSearchResponse {query, results: [ChatSearchResult {chat_id, matched_in: 'title'|'message'|'both', snippet: {before, match, after} | None, last_match_at | None}]} — the snippet is the raw-substring window (before/after ≤ 32 chars) around the FIRST case-insensitive occurrence in the FRESHEST matching message; title-only matches return snippet None and last_match_at None; order: title-group first (title ASC, chat_id ASC), then message-only by last_match_at DESC, chat_id DESC; cap after ordering; membership isolation by construction; anonymous 401, invalid q 422; schemas in schemas/chat.py, endpoint in endpoints/chats.py (route order: /search before /{chat_id}).",
+                "priority": "P1",
+                "source": "operator request 2026-10-26 (search titles and messages, hide non-matching chats, highlight the match)",
+                "acceptanceIds": [
+                    "AC-BE-SEARCH"
+                ],
+                "evidenceIds": [
+                    "EV-BE-1"
+                ],
+                "owner": "WS-BE-CHAT-SEARCH"
+            },
+            {
+                "id": "REQ-FE-SEARCH-LOGIC",
+                "title": "Frontend logic: adapter mapping, port, Store slice, race-safe controller, live last_message patch",
+                "description": "UI type ChatSearchMatch in src/utils/types.ts (never imported from api/); ChatsPort gains searchChats(query: string): Promise<ChatSearchMatch[]> (GET /chats/search?q=). Own adapter: OwnChatResponse.last_message? DTO, toChatInfo maps it into ChatInfo.last_message with content === null -> 'Вложение' (single placeholder point) and absent -> undefined. Store: new state key chatSearch: {query, results} | null in the loosely-typed AppState following the chats/history/store.ts idiom (ChatHistoryStoreState = AppState & {…} + in-slice cast — state.stories IS declared in AppState, history is the true no-Store.ts-edit precedent), setSearch/resetSearch in features/chats/store.ts; no utils/Store.ts edit. Controller.searchChats(query): trim; empty -> resetSearch without a request; else port call -> setSearch guarded by a monotonic sequence counter (stale answers dropped); errors logged silently. Live lift: the WS message handler in features/chats/ws/own.ts patches chats[chat_id].last_message = {content: content ?? 'Вложение', time: created_at} next to the existing incrementUnread patch, reading the RAW OwnMessageResponse payload (the mapped toMessage collapses file-only null content to '' and would defeat the placeholder); the own server broadcasts every created message to ALL sockets of the chat INCLUDING the author's (backend/app/ws/router.py:87, confirmed by plan review), so the WS patch alone lifts incoming AND own-sent messages — no send-path patch. fetchChats and its WS getToken->connect loop untouched.",
+                "priority": "P1",
+                "source": "operator request 2026-10-26 (debounced input, resort on new/own messages)",
+                "acceptanceIds": [
+                    "AC-FE-LOGIC"
+                ],
+                "evidenceIds": [
+                    "EV-FE-1"
+                ],
+                "owner": "WS-FE-CHAT-SEARCH"
+            },
+            {
+                "id": "REQ-FE-SEARCH-UI",
+                "title": "Frontend UI: debounced SearchBar, derived order/filter, highlighted card",
+                "description": "SearchBar becomes live: input event debounced by exported CHAT_SEARCH_DEBOUNCE_MS = 300 (USER_SEARCH_DEBOUNCE_MS precedent), onSearch(query) prop, submit handler removed, instance timer cleared in destroy(). Typed-value memory: the debounce gates ONLY the controller call — the bar keeps a module-static lastTypedValue (the usersScroll/scrollMemory precedent) updated on EVERY input event and every instantiation seeds value from it, so a Store-driven page re-render mid-typing recreates the input with the CURRENT uncommitted text; the value channel is a raw double-braced <input value=\"{{value}}\"> in searchBar.hbs (src/components/input/** untouched). Focus/caret restore is PAGE-owned (hbs children get neither CDM nor CDU on a parent re-render): chat.ts componentDidUpdate -> requestAnimationFrame -> querySelector('input[name=chat_search]').focus() + setSelectionRange(caret) when the bar's static focus memory says it was focused (alongside restoreUsersScroll; the bar records focus/caret on blur/input). Page: withStore mapper derives the list — active query -> only chats of chatSearch.results in server order; else ALL chats by Date.parse(last_message.time) DESC with no-last_message chats below (tie-break id DESC), always a new array reference. Card: titleParts/snippetParts props; title renders highlighted parts when set; the line under the title renders the marked search snippet during a query, else last_message.content (dedicated __snippet class with the existing one-line ellipsis); right-column time = last_match_at during a search else last_message.time. Highlight helpers in src/utils/highlight.ts: buildHighlightParts (case-insensitive first occurrence, empty needle -> null) and renderHighlighted (every part escaped, only the match wrapped in <mark>); triple braces only for this pre-escaped HTML. SCSS: mark styling + snippet line in chat-list-user.scss, searchBar adjustments in chat.scss.",
+                "priority": "P1",
+                "source": "operator request 2026-10-26 (highlight in title and message snippet, hide non-matching)",
+                "acceptanceIds": [
+                    "AC-FE-UI"
+                ],
+                "evidenceIds": [
+                    "EV-FE-2"
+                ],
+                "owner": "WS-FE-CHAT-SEARCH-UI"
+            }
+        ],
+        "goal": "A chat list ordered by latest activity with a one-line last-message snippet, and a debounced search that narrows it to matching chats (title or message substring) with the matched fragment highlighted.",
+        "constraints": [
+            "Layers only downward (pages -> components -> controllers -> api -> utils -> core); guard-architecture --all --strict stays green; components never import features/controllers; UI types never import from api/.",
+            "No migration: alembic heads output must not change; the search is a LIKE scan over membership-scoped rows (study-scale choice; FTS/pg_trgm deferred).",
+            "The server-side ORDER BY of GET /chats stays created_at asc, id asc — client-side ordering only; the ai-assistant private chats DTO copy stays untouched.",
+            "All user-controlled text reaches HTML only through escape-then-wrap highlight rendering or double-brace escaping; no other triple-brace injection.",
+            "The WS getToken->connect loop of fetchChats stays untouched; chatSearch lives in a feature-owned Store slice with an in-slice cast following the chats/history/store.ts idiom (no utils/Store.ts AppState edit).",
+            "The search uses lower() + LIKE (PostgreSQL-correct full-Unicode folding at runtime); case-insensitivity TEST samples are ASCII-only because the in-memory SQLite test environment folds ASCII only — Cyrillic case-folding is PG-runtime behaviour, not test-asserted.",
+            "Existing suites stay green; test counts grow from the 337 mocha / 184 pytest baseline (docs/NEXT.md, 2026-10-26)."
+        ],
+        "nonGoals": [
+            "FTS/pg_trgm infrastructure and relevance scoring",
+            "searching attachment names or metadata beyond message content",
+            "highlighting every occurrence (first match only)",
+            "search pagination beyond the 50-result cap",
+            "server-side reordering of GET /chats; chat-list pagination",
+            "searching non-member chats; global server-wide search",
+            "persisting the query across sessions; search history",
+            "WS push of refreshed search results while typing"
+        ],
+        "scope": "backend chat schemas, repository, service and chats endpoints (last_message + search) with pytest; frontend chats feature (types, ports, adapter, store, controller, ws patch) and the search UI (searchBar, chatListUser, chat page, scss) with mocha; docs/NEXT.md and the progress log."
+    },
+    "readOnly": [
+        "AGENTS.md",
+        "tasks/README.md",
+        "docs/deployment/own-backend.md"
+    ],
+    "forbiddenWrites": [
+        "src/main.ts",
+        "src/features/index.ts",
+        "src/core",
+        "src/scss/libs",
+        "docs/project-principles.json",
+        ".github/workflows",
+        "netlify.toml",
+        "backend/alembic"
+    ],
+    "leadOwned": [
+        {
+            "path": "tasks/2026-10-26-chat-search",
+            "owner": "controller",
+            "reason": "Controller owns plan-package artifacts."
+        }
+    ],
+    "workstreams": [
+        {
+            "id": "WS-BE-CHAT-SEARCH",
+            "title": "Backend: last_message in GET /chats + GET /chats/search",
+            "owner": "worker-backend-chats",
+            "reviewer": "independent-release-reviewer",
+            "dependsOn": [],
+            "writes": [
+                "backend/app/api/v1/endpoints/chats.py",
+                "backend/app/repositories/chats.py",
+                "backend/app/schemas/chat.py",
+                "backend/app/services/chats.py",
+                "backend/tests/integration/chat/test_chat_search.py",
+                "backend/tests/integration/chat/test_media_api.py",
+                "backend/tests/unit/chat/test_last_messages.py"
+            ],
+            "readOnly": [
+                "AGENTS.md",
+                "backend/app/models/message.py",
+                "backend/app/repositories/users.py",
+                "backend/tests/conftest.py",
+                "backend/tests/unit/chat/test_unread_counts.py"
+            ],
+            "forbiddenWrites": [],
+            "launchGate": "feature/2026-10-26-chat-search branch created at 503f455; npm run verify:backend green at base (Unix host); npm run verify green at base.",
+            "capabilityHints": [
+                "fastapi",
+                "sqlalchemy",
+                "pytest",
+                "python"
+            ],
+            "requiredTools": [
+                "python",
+                "pytest"
+            ],
+            "contextRefs": [
+                "plan.md",
+                "acceptance-criteria.md",
+                "specification.json",
+                "developer-overview.md"
+            ],
+            "acceptanceIds": [
+                "AC-BE-LAST-MESSAGE",
+                "AC-BE-SEARCH"
+            ],
+            "evidenceIds": [
+                "EV-BE-1"
+            ],
+            "executionPolicy": {
+                "maxAttempts": 3,
+                "maxWallSeconds": 3600
+            },
+            "artifactPaths": {
+                "result": "work/2026-10-26-chat-search/evidence/WS-BE-CHAT-SEARCH/task-result-{attempt}.json",
+                "review": "work/2026-10-26-chat-search/evidence/WS-BE-CHAT-SEARCH/task-review-{attempt}.json"
+            },
+            "required": true,
+            "plannedItems": [
+                "schemas: ChatLastMessageBrief + ChatResponse.last_message (None default, guarantee comment); ChatSearchResult + ChatsSearchResponse",
+                "repository: last_messages_for_chats(chat_ids) — one SELECT, (created_at DESC, id DESC) newest-per-chat, SQLite-compatible window or equivalent",
+                "repository: search row queries (title-matching member chats; matching messages with chat scope) with lower()+LIKE and the users.py escaping rule",
+                "service: last-message assembly (file-only content None); search_chats — matched_in merge, freshest-match snippet builder (32/32 window, first occurrence, raw substrings), ordering (title ASC/id ASC then last_match_at DESC/id DESC), cap 50",
+                "endpoint: list_chats attaches last_message; new /chats/search endpoint (route before /{chat_id}), q validation 1..200, CHATS_SEARCH_RESULTS_CAP=50",
+                "pytest: integration test_chat_search.py (title/message/both, multi-chat order, case-insensitivity, %/_ escaping, file-only no-match, foreign-chat isolation, cap, empty q 422, anonymous 401); GET /chats last_message assertions in test_media_api.py (tie-break newest, file-only null, empty chat null, POST/GET /{id} default null); unit test_last_messages.py (statement-count guard + tie-break)"
+            ],
+            "qualityFloor": "npm run verify:backend green (pytest + alembic heads); alembic heads output unchanged; no frontend file touched."
+        },
+        {
+            "id": "WS-FE-CHAT-SEARCH",
+            "title": "Frontend logic: adapter, port, Store slice, race-safe controller, WS live patch",
+            "owner": "worker-frontend-chats",
+            "reviewer": "independent-release-reviewer",
+            "dependsOn": [
+                "WS-BE-CHAT-SEARCH"
+            ],
+            "writes": [
+                "src/utils/types.ts",
+                "src/features/chats/api/api.test.ts",
+                "src/features/chats/api/own.ts",
+                "src/features/chats/chats.test.ts",
+                "src/features/chats/controller.ts",
+                "src/features/chats/ports.ts",
+                "src/features/chats/store.ts",
+                "src/features/chats/ws/own.ts",
+                "src/features/chats/ws/ws.test.ts"
+            ],
+            "readOnly": [
+                "AGENTS.md",
+                "src/utils/Store.ts",
+                "src/features/chats/history/store.ts"
+            ],
+            "forbiddenWrites": [],
+            "launchGate": "WS-BE-CHAT-SEARCH accepted at the integration baseline; npm run verify green at base.",
+            "capabilityHints": [
+                "typescript",
+                "mocha",
+                "sinon",
+                "ALK"
+            ],
+            "requiredTools": [
+                "node",
+                "npm"
+            ],
+            "contextRefs": [
+                "plan.md",
+                "acceptance-criteria.md",
+                "specification.json",
+                "developer-overview.md"
+            ],
+            "acceptanceIds": [
+                "AC-FE-LOGIC"
+            ],
+            "evidenceIds": [
+                "EV-FE-1"
+            ],
+            "executionPolicy": {
+                "maxAttempts": 3,
+                "maxWallSeconds": 3600
+            },
+            "artifactPaths": {
+                "result": "work/2026-10-26-chat-search/evidence/WS-FE-CHAT-SEARCH/task-result-{attempt}.json",
+                "review": "work/2026-10-26-chat-search/evidence/WS-FE-CHAT-SEARCH/task-review-{attempt}.json"
+            },
+            "required": true,
+            "plannedItems": [
+                "types: ChatSearchMatch in src/utils/types.ts (UI-side, no api import)",
+                "ports: searchChats(query: string) additive contract",
+                "adapter: OwnChatResponse.last_message DTO; toChatInfo maps it (content null -> 'Вложение', absent -> undefined); searchChats GET /chats/search with q; api.test.ts mapper cases + placeholder + URL shape",
+                "store: chatSearch slice (setSearch/resetSearch, in-slice cast following the chats/history/store.ts idiom)",
+                "controller: searchChats — trim, empty reset without request, monotonic sequence counter drops stale answers, silent failure",
+                "ws: last_message patch next to incrementUnread in the message handler reading the RAW OwnMessageResponse payload; author echo confirmed by plan review (the hub broadcasts every created message to all sockets of the chat incl. the author) — no send-path patch",
+                "mocha: controller cases (trim/reset/stale/silent), WS incoming patch (own sends ride the same broadcast), adapter mapping"
+            ],
+            "qualityFloor": "npm run verify green end to end; guard-architecture --all --strict zero violations; no component/page/scss file touched."
+        },
+        {
+            "id": "WS-FE-CHAT-SEARCH-UI",
+            "title": "Frontend UI: debounced SearchBar, derived order/filter, highlighted card",
+            "owner": "worker-frontend-ui",
+            "reviewer": "independent-release-reviewer",
+            "dependsOn": [
+                "WS-FE-CHAT-SEARCH"
+            ],
+            "writes": [
+                "docs/NEXT.md",
+                "docs/progress/progress_log.md",
+                "src/components/chatListUser/chatListUser.hbs",
+                "src/components/chatListUser/chatListUser.test.ts",
+                "src/components/chatListUser/chatListUser.ts",
+                "src/components/searchBar/searchBar.hbs",
+                "src/components/searchBar/searchBar.test.ts",
+                "src/components/searchBar/searchBar.ts",
+                "src/features/chats/pages/chat/chat.hbs",
+                "src/features/chats/pages/chat/chat.test.ts",
+                "src/features/chats/pages/chat/chat.ts",
+                "src/scss/components/chat-list-user.scss",
+                "src/scss/components/chat.scss",
+                "src/utils/highlight.test.ts",
+                "src/utils/highlight.ts"
+            ],
+            "readOnly": [
+                "AGENTS.md",
+                "src/components/messenger/messenger.ts"
+            ],
+            "forbiddenWrites": [],
+            "launchGate": "WS-FE-CHAT-SEARCH accepted at the integration baseline; npm run verify green at base.",
+            "capabilityHints": [
+                "typescript",
+                "handlebars",
+                "scss",
+                "mocha",
+                "sinon"
+            ],
+            "requiredTools": [
+                "node",
+                "npm"
+            ],
+            "contextRefs": [
+                "plan.md",
+                "acceptance-criteria.md",
+                "specification.json",
+                "developer-overview.md"
+            ],
+            "acceptanceIds": [
+                "AC-FE-UI",
+                "AC-PROCESS"
+            ],
+            "evidenceIds": [
+                "EV-FE-2"
+            ],
+            "executionPolicy": {
+                "maxAttempts": 3,
+                "maxWallSeconds": 3600
+            },
+            "artifactPaths": {
+                "result": "work/2026-10-26-chat-search/evidence/WS-FE-CHAT-SEARCH-UI/task-result-{attempt}.json",
+                "review": "work/2026-10-26-chat-search/evidence/WS-FE-CHAT-SEARCH-UI/task-review-{attempt}.json"
+            },
+            "required": true,
+            "plannedItems": [
+                "utils/highlight.ts: buildHighlightParts (case-insensitive first occurrence, empty needle -> null) + renderHighlighted (escape-then-wrap, <mark> only around the match); tests incl. the <script> XSS case",
+                "searchBar: debounced input (CHAT_SEARCH_DEBOUNCE_MS=300 exported, timer cleared in destroy()), onSearch prop; module-static lastTypedValue updated on EVERY input event seeds each instantiation's value (debounce gates only the controller call — review F-2); raw double-braced <input value> in searchBar.hbs (input/** untouched — F-4); static focus/caret memory recorded on blur/input; submit handler removed; fake-timer tests (silent at 299 ms, fires at 300 ms, reset on empty, cleared on destroy, Store-driven re-instantiation mid-typing preserves the uncommitted text)",
+                "chatListUser: titleParts/snippetParts props, highlighted title, __snippet one-line class, time switch (last_match_at vs last_message.time); tests (mark in title, mark in snippet, plain snippet without query, XSS-escaped)",
+                "chat page: PAGE-owned focus/caret restore in componentDidUpdate -> rAF -> querySelector('input[name=chat_search]') driven by the bar's static focus memory (review F-3, alongside restoreUsersScroll); withStore derived list — query -> results order only; else Date.parse(last_message.time) DESC, no-last_message below, id DESC tie-break, new array reference; per-card titleParts/snippetParts wiring; chat.test.ts cases (ordering, sinking, search order + hiding, focus+text preserved across a Store-driven re-render)",
+                "scss: mark styling + snippet line in chat-list-user.scss; searchBar adjustments in chat.scss (no new design tokens)",
+                "docs: NEXT.md feature record with the FTS deferral note; progress-log entry on top"
+            ],
+            "qualityFloor": "npm run verify green end to end; guard-architecture --all --strict zero violations; visual checklist (snippet line, mark contrast, empty-query order) is a note, not a gate."
+        }
+    ],
+    "acceptance": {
+        "criteria": [
+            {
+                "id": "AC-BE-LAST-MESSAGE",
+                "title": "Batched last_message in GET /chats",
+                "requirementIds": [
+                    "REQ-BE-LAST-MESSAGE"
+                ],
+                "evidenceIds": [
+                    "EV-BE-1"
+                ],
+                "independentEvidenceIds": [],
+                "statement": "GET /chats returns last_message {content: str | None, time} | null on every chat, fetched for the whole list as ONE SELECT statement (before_cursor_execute statement-count guard, the test_unread_counts.py precedent) with the (created_at DESC, id DESC) newest-wins tie-break pinned by a unit test; file-only messages carry content null, message-less chats last_message null; POST /chats and GET /chats/{id} keep returning last_message null (default-field regression pinned); the server-side list ORDER BY is unchanged; alembic heads output unchanged; pytest covers integration + unit.",
+                "description": "Backend integration + repository unit tests.",
+                "source": "acceptance-criteria.md",
+                "priority": "P1"
+            },
+            {
+                "id": "AC-BE-SEARCH",
+                "title": "Substring search over titles and messages with snippet and ranking",
+                "requirementIds": [
+                    "REQ-BE-SEARCH"
+                ],
+                "evidenceIds": [
+                    "EV-BE-1"
+                ],
+                "independentEvidenceIds": [],
+                "statement": "GET /chats/search?q= matches a case-insensitive substring over the caller's member-chat titles and non-null message contents using lower() + LIKE (PG-runtime full-Unicode folding; test samples ASCII-only) with %/_/\\ escaped (the repositories/users.py rule); returns {query, results: [{chat_id, matched_in: title|message|both, snippet: {before, match, after} | None, last_match_at | None}]} with the snippet a raw-substring window (≤32 before, ≤32 after) around the first occurrence in the freshest matching message; order title-group first (title ASC, chat_id ASC) then message-only by last_match_at DESC, chat_id DESC, capped at 50 after ordering; foreign chats never appear; q validation 1..200; anonymous 401; case-insensitivity test samples are ASCII-only (the in-memory SQLite test env folds ASCII only; Cyrillic folding is PG-runtime behaviour, not test-asserted); pytest covers every branch.",
+                "description": "Backend integration tests.",
+                "source": "acceptance-criteria.md",
+                "priority": "P1"
+            },
+            {
+                "id": "AC-FE-LOGIC",
+                "title": "Adapter mapping, race-safe search controller, live last_message patch",
+                "requirementIds": [
+                    "REQ-FE-SEARCH-LOGIC"
+                ],
+                "evidenceIds": [
+                    "EV-FE-1"
+                ],
+                "independentEvidenceIds": [],
+                "statement": "toChatInfo maps last_message into ChatInfo.last_message with the single 'Вложение' placeholder for content null and undefined for absent; ChatsPort.searchChats hits GET /chats/search; the chatSearch Store slice lives behind an in-slice cast following the chats/history/store.ts idiom (no utils/Store.ts edit); controller.searchChats trims, resets without a request on empty, drops stale answers via a monotonic sequence counter (mocha-pinned) and fails silently; the WS message handler patches last_message next to incrementUnread reading the RAW OwnMessageResponse payload (the mapped toMessage collapses file-only null to '' and would defeat the placeholder), so an incoming message lifts the chat, and the author's own send lifts it through the SAME mechanism (the server broadcasts every created message to all sockets of the chat, author included — backend/app/ws/router.py:87); no send-path patch exists (mocha-pinned).",
+                "description": "Frontend unit tests.",
+                "source": "acceptance-criteria.md",
+                "priority": "P1"
+            },
+            {
+                "id": "AC-FE-UI",
+                "title": "Debounced live search UI with highlighted matches",
+                "requirementIds": [
+                    "REQ-FE-SEARCH-UI"
+                ],
+                "evidenceIds": [
+                    "EV-FE-2"
+                ],
+                "independentEvidenceIds": [],
+                "statement": "The SearchBar fires onSearch debounced at CHAT_SEARCH_DEBOUNCE_MS = 300 (fake timers: silent at 299 ms, fires at 300 ms, timer cleared in destroy()), the submit handler is gone, and the typed value survives Store-driven re-renders via the module-static lastTypedValue (the debounce gates only the controller call) with the raw double-braced <input value> channel and the PAGE-owned componentDidUpdate->rAF focus/caret restore — a Store update DURING typing (before the debounce fires) preserves the uncommitted text (mocha-pinned); empty query -> ALL chats by Date.parse(last_message.time) DESC with no-last_message chats below and id DESC ties (mocha-pinned); active query -> only matching chats in the server order (mocha-pinned); the card marks the matched fragment in the title (title/both) and/or renders the marked message snippet under the title (message matches), time column last_match_at during a search else last_message.time; every highlight piece is escape-then-wrap rendered — a <script> payload renders as text (XSS test); triple braces only for the pre-escaped highlight HTML.",
+                "description": "Frontend unit tests.",
+                "source": "acceptance-criteria.md",
+                "priority": "P1"
+            },
+            {
+                "id": "AC-PROCESS",
+                "title": "Gates and bookkeeping",
+                "requirementIds": [
+                    "REQ-BE-LAST-MESSAGE",
+                    "REQ-BE-SEARCH",
+                    "REQ-FE-SEARCH-LOGIC",
+                    "REQ-FE-SEARCH-UI"
+                ],
+                "evidenceIds": [
+                    "EV-FE-2"
+                ],
+                "independentEvidenceIds": [],
+                "statement": "npm run verify and npm run verify:backend pass with grown test counts (337 mocha / 184 pytest baseline); guard-architecture --all --strict zero violations; docs/progress/progress_log.md gets an entry and docs/NEXT.md records the feature (with the FTS deferral note); no file outside the manifest write-sets changes.",
+                "description": "Gate runs captured as evidence.",
+                "source": "acceptance-criteria.md",
+                "priority": "P1"
+            }
+        ]
+    },
+    "validation": {
+        "commands": [
+            "npm run verify",
+            "npm run verify:backend",
+            "node .claude/hooks/scripts/guard-architecture.mjs --all --strict"
+        ]
+    },
+    "orchestration": {
+        "startMode": "reviewed-plan",
+        "remediationMode": "ask",
+        "maxPlanReviewRounds": 2,
+        "maxTaskAttempts": 3,
+        "maxParallelTasks": 1,
+        "maxValidationRunsPerTask": 2,
+        "stateFile": "work/2026-10-26-chat-search/run.state.json",
+        "eventLog": "work/2026-10-26-chat-search/events.jsonl",
+        "stepReviewRequired": true,
+        "finalAuditRequired": true
+    },
+    "implementationAudit": {
+        "required": true,
+        "finalRequired": true
+    },
+    "developerOverview": "tasks/2026-10-26-chat-search/developer-overview.md",
+    "releaseTarget": {
+        "kind": "local-only",
+        "environment": "Vite own mode + compose own-backend",
+        "productionPromotionClaimed": false
+    },
+    "releaseImpact": "Additive GET /chats field (last_message), new GET /chats/search endpoint, chats feature adapter/store/controller/ws and the search UI (searchBar, chatListUser, chat page, scss); no router, auth, WS protocol or deployment changes.",
+    "nonGoals": [
+        "FTS/pg_trgm infrastructure and relevance scoring",
+        "searching attachment names or metadata beyond message content",
+        "highlighting every occurrence (first match only)",
+        "search pagination beyond the 50-result cap",
+        "server-side reordering of GET /chats; chat-list pagination",
+        "searching non-member chats; global server-wide search",
+        "persisting the query across sessions; search history",
+        "WS push of refreshed search results while typing"
+    ],
+    "finalAuditGates": [
+        "[AC-BE-LAST-MESSAGE|EV-BE-1] last_message batched as one SELECT with the (created_at, id) newest-wins tie-break; default-field regressions pinned; alembic heads unchanged",
+        "[AC-BE-SEARCH|EV-BE-1] search endpoint proven by pytest: substring over titles+messages, escaping, membership isolation, snippet/ranking/cap",
+        "[AC-FE-LOGIC|EV-FE-1] adapter mapping with the single 'Вложение' placeholder, race-safe controller, WS last_message lift (incoming + own send) proven by mocha",
+        "[AC-FE-UI|EV-FE-2] debounced live SearchBar, derived order/filter, escape-then-wrap <mark> highlighting (XSS-pinned) proven by mocha",
+        "[AC-PROCESS|EV-FE-2] npm run verify + verify:backend + guard strict green with grown test counts; progress log entry and NEXT.md record; no write outside the manifest write-sets"
+    ],
+    "securityGates": [
+        {
+            "id": "SEC-HIGHLIGHT-XSS",
+            "statement": "All user-controlled text (chat titles, message content, the query echo) reaches HTML exclusively through double-brace escaping or the escape-then-wrap highlight renderer; a <script> payload in a title or message renders as text (mocha XSS test); triple braces exist only for the pre-escaped highlight HTML.",
+            "evidenceIds": [
+                "EV-FE-2"
+            ]
+        },
+        {
+            "id": "SEC-SEARCH-SCOPE",
+            "statement": "The search endpoint is membership-scoped by construction (join over the caller's ChatMember rows); foreign chats never appear in results (integration-pinned); %/_ LIKE wildcards in the query are escaped so a crafted query cannot scan arbitrary patterns; q is bounded 1..200.",
+            "evidenceIds": [
+                "EV-BE-1"
+            ]
+        }
+    ],
+    "budgetPolicy": {
+        "units": "tokens-and-resources",
+        "reroute": "pause-and-review",
+        "maxTotalTokens": 80000,
+        "maxParallelWorkstreams": 1,
+        "maxRunWallSeconds": 14400,
+        "criticalPathWallSeconds": 10800,
+        "aggregateWorkstreamWallSeconds": 10800,
+        "retryReserveWallSeconds": 3600
+    },
+    "budgets": {
+        "defaultWorkstreamTokens": 40000,
+        "maxEvidenceBytesPerRun": 4194304
+    },
+    "contextLimits": {
+        "profile": "small-context-profile.v1",
+        "maxPlanContextBytes": 120000,
+        "maxRenderedPacketBytes": 40000,
+        "smallContextPacketBytes": 30000,
+        "maxReferenceFilesPerPacket": 12,
+        "includeOnlyOwnedWrites": true,
+        "excludeRuntimeWorkArtifacts": true
+    },
+    "tierResolution": {
+        "status": "RESOLVED",
+        "tier": "S2",
+        "requestedTier": "S2",
+        "reason": "multiple executable owners + browser-risk + security-risk resolved by agent-lifecycle tier resolve",
+        "independentReviewRequired": true,
+        "requestPath": "tasks/2026-10-26-chat-search/tier-request.json",
+        "resolutionPath": "tasks/2026-10-26-chat-search/tier-resolution.json",
+        "requestDigest": "beae9ad5aaec557bfb1d5cfe8c741e740d0a94e00096acdc4adbd081e2a31d0a"
+    },
+    "planReview": {
+        "required": true,
+        "reviewerClass": "independent-plan-reviewer",
+        "maxRounds": 2,
+        "implementationAuthorized": false,
+        "report": "tasks/2026-10-26-chat-search/plan-review.json",
+        "reviewedRevision": 2,
+        "verdict": "READY_TO_FREEZE"
+    },
+    "planFiles": [
+        "tasks/2026-10-26-chat-search/acceptance-criteria.md",
+        "tasks/2026-10-26-chat-search/developer-overview.md",
+        "tasks/2026-10-26-chat-search/plan-review-request.md",
+        "tasks/2026-10-26-chat-search/plan-review.json",
+        "tasks/2026-10-26-chat-search/plan.manifest.json",
+        "tasks/2026-10-26-chat-search/plan.md",
+        "tasks/2026-10-26-chat-search/specification.json",
+        "tasks/2026-10-26-chat-search/tier-request.json",
+        "tasks/2026-10-26-chat-search/tier-resolution.json"
+    ]
+}
