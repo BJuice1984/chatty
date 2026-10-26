@@ -1,3 +1,42 @@
+# 2026-10-26 — Fix(ui): экранирование заголовка чата в панели messenger (F-2 финального аудита)
+
+Закрыт F-2 независимого финального аудита рана 2026-10-26-chat-search: единственная
+вне-рановая тройная скобка `{{{ chatInfo.title }}}` (messenger.hbs:5, до-рановый долг)
+заменена на двойную — заголовок чата задаётся пользователем (POST /chats) и обязан
+рендериться экранированным; правило «тройные скобки только для пре-экранированного
+highlight-HTML и слотов registerComponent» теперь выполняется по всему src/. Проверено:
+npm run verify — 378 mocha, guard strict 0 (правка вне write-сетов рана, отдельным
+коммитом поверх финализированного прогона).
+
+# 2026-10-26 — Feat(chats): живой поиск по чатам и порядок списка по активности (feature/2026-10-26-chat-search, Wave-3 UI)
+
+Wave-3 поверх принятых Wave-1/2 контура 2026-10-26-chat-search. SearchBar стал
+живым дебаунс-вводом (CHAT_SEARCH_DEBOUNCE_MS=300; таймер модульный —
+перерисовка страницы сиротит старый инстанс без destroy(), указатель держим в
+модуле, — и гасится в destroy()): видимый текст и фокус/каретка живут в
+модульной памяти бара (lastTypedValue + wasFocused/caret, узор
+usersScroll/scrollMemory), дебаунс гейтит ТОЛЬКО вызов контроллера — стор-эмит
+посреди набора (WS-сообщение) пересоздаёт инпут с текущим текстом, а страница
+в componentDidUpdate восстанавливает фокус/каретку через rAF (reviews
+F-2/F-3/F-4; src/components/input/** не тронут, value идёт двойными скобками
+сырого <input>). Список при пустом запросе сортируется
+Date.parse(last_message.time) DESC (недатированные/битые тонут, ничья id
+DESC), при активном запросе — только совпадения в порядке сервера; chats в
+withStore-мэппере всегда новая ссылка, поэтому любой стор-эмит перерисовывает
+список, а WS-патч last_message поднимает чат наверх. Подсветка совпадения —
+новый чистый src/utils/highlight.ts (buildHighlightParts + renderHighlighted,
+escape-then-wrap: каждая часть экранируется ДО тройных скобок шаблона, XSS
+пин тестом с <script>), <mark> в заголовке и/или сниппете; строка под
+заголовком получила собственный класс __snippet (тот же однострочный
+эллипсис), matched_in message/both без сниппета рисуется без mark (R-F2),
+время правой колонки на время поиска — last_match_at. Верифицировано:
+npm run verify зелёный целиком (377 mocha против 354 базовых, +23 —
+highlight/searchBar/chatListUser/chat-страница),
+node .claude/hooks/scripts/guard-architecture.mjs --all --strict — 0
+нарушений; Wave-1/2-файлы (api/, controller, store, ws, types, backend) не
+тронуты. FTS/pg_trgm и релевантность сознательно отложены — сервер остаётся
+на lower()+LIKE-скане, запись в docs/NEXT.md.
+
 # 2026-10-25 — Fix(deps): октябрьский dependabot-батч — все 10 открытых алертов закрыты в рамках диапазонов (feature/2026-10-25-dependabot-fixes)
 
 Обновления только в lock-файле, package.json не тронут (прецедент 2026-10-24): express 5.2.1→5.3.0 — заодно перевёл точные пины `body-parser`/`proxy-addr` на диапазоны `^2.3.0`/`^2.0.8`, открыв дорогу фиксам; body-parser 2.3.0→2.4.0 (#156 high), proxy-addr 2.0.7→2.0.8 (#155 critical), undici 8.11.2→8.12.3 (#164 high, #163/#162 medium — транзитив jsdom), serialize-javascript 7.1.2→7.1.4 (#161 low, mocha), fast-uri 3.1.8→3.1.9 (#160/#158 medium, #159/#157 low, stylelint→table→ajv). Эксплуатируемой поверхности в проекте нет: express раздаёт локальную статику dist, остальное — dev-инструментарий тестов/линтеров; `npm audit` — 0. Проверено: `npm run verify` зелёный (337 mocha на новом serialize-javascript, stylelint на новом fast-uri), прод-сборка `npm run build` зелёная, смоук `node server/server.js` на express 5.3.0 — GET `/` и `/index.html` → 200. Алерты на GitHub закроются автоматически, когда обновлённый lock доедет до default branch (мерж dev → main).
