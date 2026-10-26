@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from datetime import datetime
+from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field, PositiveInt
 
@@ -25,6 +26,14 @@ class ChatMemberBrief(BaseModel):
     avatar_url: str | None = None
 
 
+class ChatLastMessageBrief(BaseModel):
+    """Последнее сообщение чата — краткая форма для сортировки списка по
+    активности; content is None значит файловое вложение без текста."""
+
+    content: str | None
+    time: datetime
+
+
 class ChatResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
@@ -43,6 +52,12 @@ class ChatResponse(BaseModel):
     # через model_validate по ORM-объекту без members и оставляют пустой
     # дефолт, без которого оба эндпоинта падали бы с ValidationError
     members: list[ChatMemberBrief] = Field(default_factory=list)
+    # последнее сообщение чата; наполняет только GET /chats (единый
+    # SELECT по всему списку) — POST /chats и GET /chats/{id} идут через
+    # model_validate по ORM-объекту без last_message и оставляют None
+    # дефолт, без которого оба эндпоинта падали бы с ValidationError
+    # (прецедент members default_factory)
+    last_message: ChatLastMessageBrief | None = None
 
 
 class ChatMemberResponse(BaseModel):
@@ -51,3 +66,28 @@ class ChatMemberResponse(BaseModel):
     chat_id: int
     user_id: int
     joined_at: datetime
+
+
+class ChatSearchSnippet(BaseModel):
+    """Окно вокруг первого case-insensitive совпадения в свежайшем
+    совпадающем сообщении; части — сырые подстроки оригинала,
+    сервер не экранирует (единственный XSS-шов — клиент)."""
+
+    before: str
+    match: str
+    after: str
+
+
+class ChatSearchResult(BaseModel):
+    """Один чат из GET /chats/search: где совпало и чем подсветить."""
+
+    chat_id: int
+    matched_in: Literal['title', 'message', 'both']
+    # title-only совпадениям подсвечивать нечего: сниппета и времени нет
+    snippet: ChatSearchSnippet | None = None
+    last_match_at: datetime | None = None
+
+
+class ChatsSearchResponse(BaseModel):
+    query: str
+    results: list[ChatSearchResult] = Field(default_factory=list)
