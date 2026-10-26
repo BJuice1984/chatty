@@ -1,0 +1,60 @@
+{
+    "schemaVersion": "agent-plan-review.v1",
+    "packageId": "2026-10-26-chat-search",
+    "planRevision": 2,
+    "reviewId": "review-2026-10-26-chat-search-freeze-r2",
+    "fullReview": true,
+    "verdict": "READY_TO_FREEZE",
+    "reviewedPlanHash": "51d407f596078afb2d202ae51c626f9f86b417cbde77e5c9b69f929a96272d36",
+    "reviewer": {
+        "id": "claude-code-independent-subagent",
+        "independent": true,
+        "runId": "audit-run-20261026-chat-search-plan-r2",
+        "surface": "audit-agent-plan"
+    },
+    "findings": [],
+    "reviewVerdict": {
+        "schemaVersion": "agent-review-verdict.v1",
+        "overall": "ACCEPTED",
+        "dimensions": {
+            "requirementFit": {
+                "status": "PASS",
+                "reasonCode": "requirements-traced-and-operator-asks-pinned",
+                "summary": "4 requirements traced to 5 criteria and EV-BE-1/EV-FE-1/EV-FE-2 with single-owner evidence; every operator ask is pinned: debounced input (fake-timer thresholds), hiding non-matching chats, title AND message highlighting, empty-query last-message ordering with sinks and id ties, live lift for incoming AND own-sent messages (round 1 verified hub.broadcast covers the author, round 2 pinned 'no send-path patch')."
+            },
+            "implementationQuality": {
+                "status": "PASS",
+                "reasonCode": "precedents-verified-against-code",
+                "summary": "Round 1 verified every precedent citation against source: batched enrichment shape in list_chats, unread statement-count guard, users.py escaping rule, list_before tie-break, FastAPI route-order trap (/search before /{chat_id}), WS payload availability in the message handler, withStore/shallowEqual new-array semantics, hbs child re-instantiation (no CDM/CDU). Revision 2 replaced the two unsound mechanisms (value round-trip via debounced prop; bar-owned focus restore) with module-static lastTypedValue, raw double-braced <input value>, and page-owned componentDidUpdate->rAF restore; chatSearch slice follows the chats/history idiom; the WS patch reads the RAW OwnMessageResponse (toMessage null->'' collapse called out)."
+            },
+            "evidenceQuality": {
+                "status": "PASS",
+                "reasonCode": "gates-match-reality",
+                "summary": "npm run verify / verify:backend / guard --all --strict are the evidence commands; baselines 337 mocha / 184 pytest match docs/NEXT.md; the SQLite-vs-PostgreSQL lower() divergence is honestly scoped (ASCII test samples, Cyrillic folding is PG-runtime behaviour, not test-asserted); manual visual checklist is an explicit note, not a gate."
+            },
+            "residualRisk": {
+                "status": "PASS",
+                "reasonCode": "xss-seam-single-and-pinned",
+                "summary": "The XSS surface is one seam: escape-then-wrap renderHighlighted with triple braces only for that pre-escaped HTML; the response query echo never reaches HTML (FE type excludes it); search is membership-scoped by construction with LIKE-wildcard escaping and a bounded q; the SQLite/PG folding difference and the LIKE-scan cost are documented deferrals (FTS/pg_trgm non-goal)."
+            }
+        },
+        "routing": {
+            "target": "plan-freeze",
+            "nextAction": "accept"
+        }
+    },
+    "rounds": [
+        {
+            "round": 1,
+            "verdict": "BLOCKED",
+            "findings": 7,
+            "summary": "Full independent review against source at dev@503f455. Two major findings blocked freeze: (F-1) the 'portable lower(), identical on SQLite and PostgreSQL' premise is false for non-ASCII (SQLite test env folds ASCII only, PG folds full Unicode — Cyrillic is the product norm), risking a wrong worker 'fix'; (F-2) the value-round-trip as specified loses uncommitted keystrokes because the only query channel was the debounced onSearch while Store emits re-render the page mid-typing. Five minors: (F-3) focus restore attributed to a lifecycle hook hbs children never get; (F-4) no stated DOM channel for the value prop with input/** outside write-sets; (F-5) wrong slice precedent (stories is declared in AppState; history/store.ts is the real idiom); (F-6) the WS patch must read the RAW payload (toMessage collapses null to ''); (F-7) NEXT.md has no search item to retire. Verified-correct alongside: route-order necessity, None-default load-bearing claim, WS author echo (hub.broadcast includes the author), single XSS seam, write-set completeness and disjointness, AC coverage of all operator asks, baseline counts."
+        },
+        {
+            "round": 2,
+            "verdict": "READY_TO_FREEZE",
+            "findings": 0,
+            "summary": "Confirm round on revision 2: all seven findings verified CLOSED in the operative documents (plan.md, specification.json rev 2, manifest requirements/AC statements/plannedItems, developer-overview) with the mechanisms cross-checked against the same source lines as round 1. Three stale revision-1 prose spots in acceptance-criteria.md (AC-FE-UI table row, two Details paragraphs) and two dead 'if the echo is absent' clauses were flagged with exact replacement wording and pasted in as the freeze edit per the reviewer's instruction — no re-review requested. Structural gates re-run green (completeness PASS, acceptance-check PASS) on revision 2."
+        }
+    ]
+}

@@ -7,6 +7,7 @@
 import type {
     AddChatUsersData,
     ChatInfo,
+    ChatSearchMatch,
     ChatUser,
     CreateChatData,
     DeleteChatData,
@@ -57,6 +58,11 @@ export interface ChatsPort {
     changeChatAvatar(data: FormData): Promise<{ avatar: string }>
     // eslint-disable-next-line no-unused-vars
     searchUsers(data: SearchUserData): Promise<ChatsUserSearchResult[]>
+    // Живой поиск по чатам (2026-10-26-chat-search): case-insensitive
+    // подстрока по title и содержимому сообщений чатов пользователя;
+    // порядок и cap (50) — серверные, клиент рендерит как приехало
+    // eslint-disable-next-line no-unused-vars
+    searchChats(query: string): Promise<ChatSearchMatch[]>
     // toggle-реакция: POST /chats/{cid}/messages/{mid}/reactions {emoji}
     // eslint-disable-next-line no-unused-vars
     setReaction(data: { chatId: number; messageId: number; emoji: string }): Promise<ReactionToggleResult>

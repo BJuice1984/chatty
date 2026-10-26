@@ -12,7 +12,7 @@ import store from '../../utils/Store.ts'
 import type { ChatInfo, Message, ReactionSummary } from '../../utils/types.ts'
 import { chatsPort } from './api/index.ts'
 import type { ChatMessagesPort, ChatReactionEvent, ChatsPort, ChatsUserSearchResult } from './ports.ts'
-import { chatsSlice } from './store.ts'
+import { chatSearchSlice, chatsSlice } from './store.ts'
 import { chatMessagesPort, setChatsEventListeners } from './ws/gateway.ts'
 
 // Применяет дельту события реакции к сводке одного сообщения (чистая функция):
@@ -94,6 +94,10 @@ export class ChatsFeatureController {
     // REST-ответ), иначе дельта применилась бы дважды
     private readonly inFlightReactions = new Map<string, number>()
     private readonly reactionEchoGrace = new Map<string, number>()
+    // Монотонный счётчик поисковых вызовов (2026-10-26-chat-search): debounce
+    // сужает, но не убирает окно гонки двух in-flight ответов — побеждает
+    // только ответ последнего вызова
+    private searchSequence = 0
 
     constructor(
         port: ChatsPort = chatsPort,
@@ -179,6 +183,34 @@ export class ChatsFeatureController {
             }
         } catch (e: unknown) {
             console.error('Ошибка при поиске и добавлении пользователя:', e)
+        }
+    }
+
+    // Живой поиск по чатам (2026-10-26-chat-search): пустой ввод сбрасывает
+    // слайс без запроса. Счётчик двигает КАЖДЫЙ вызов, включая сброс — иначе
+    // медленный ответ, висящий на момент очистки поля, воскресил бы поиск
+    // после сброса. Ошибка порта молчит: слайс остаётся как был.
+    async searchChats(query: string): Promise<void> {
+        const sequence = ++this.searchSequence
+        const trimmed = query.trim()
+
+        if (trimmed === '') {
+            chatSearchSlice.resetSearch()
+
+            return
+        }
+
+        try {
+            const results = await this.port.searchChats(trimmed)
+
+            // пришёл не последний вызов — ответ устарел, в стор не пишем
+            if (sequence !== this.searchSequence) {
+                return
+            }
+
+            chatSearchSlice.setSearch(trimmed, results)
+        } catch (e: unknown) {
+            console.error('Ошибка при поиске чатов:', e)
         }
     }
 

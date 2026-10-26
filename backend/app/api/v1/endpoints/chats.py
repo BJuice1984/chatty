@@ -13,6 +13,7 @@ from app.schemas.chat import (
     ChatMemberCreate,
     ChatMemberResponse,
     ChatResponse,
+    ChatsSearchResponse,
 )
 from app.schemas.message import MessageCreate, MessagePage, MessageResponse
 from app.schemas.reaction import ReactionSet, ReactionSummaryResponse
@@ -45,6 +46,9 @@ async def list_chats(
     # составы участников одним пакетным IN-запросом — ни одного
     # per-chat members-запроса из списка чатов
     members = service.members_for_chats([chat.id for chat in chats])
+    # последние сообщения одним пакетным SELECT (новейшее по created_at,
+    # тай-брейк id); content is None — файловое вложение без текста
+    last_messages = service.last_messages_for_chats([chat.id for chat in chats])
     return [
         ChatResponse(
             id=chat.id,
@@ -55,9 +59,24 @@ async def list_chats(
             unread_count=unread.get(chat.id, 0),
             avatar_url=chat.avatar_url,
             members=members.get(chat.id, []),
+            last_message=last_messages.get(chat.id),
         )
         for chat in chats
     ]
+
+
+@router.get('/search', response_model=ChatsSearchResponse)
+async def search_chats(
+    q: str = Query(min_length=1, max_length=200),
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> ChatsSearchResponse:
+    """Живой поиск по чатам: case-insensitive подстрока в title и
+    непустых content сообщений чатов пользователя; маршрут обязан стоять
+    ДО /{chat_id} — FastAPI матчит по порядку регистрации, иначе
+    литерал 'search' уйдёт в int-параметр и получит 422."""
+    results = ChatService(db).search_chats(current_user.id, q)
+    return ChatsSearchResponse(query=q, results=results)
 
 
 @router.get('/{chat_id}', response_model=ChatResponse)

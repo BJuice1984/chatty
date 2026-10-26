@@ -175,6 +175,50 @@ async def test_chats_list_members_cap_keeps_dialogs_and_full_members_endpoint(cl
     assert [member['id'] for member in full.json()] == sorted(joined_ids)
 
 
+async def test_chats_last_message_shapes_across_endpoints(client, app):
+    owner = await register(client, 'owner@example.com')
+    app.state.object_storage = MemoryStorage()
+
+    # POST /chats и GET /chats/{id} идут через model_validate по ORM-объекту
+    # без last_message — None-дефолт держит оба пути живыми (прецедент
+    # members default_factory)
+    created = await client.post('/api/v1/chats', json={'title': 'Brief'})
+    assert created.status_code == 201
+    assert created.json()['last_message'] is None
+    chat_id = created.json()['id']
+    single = await client.get(f'/api/v1/chats/{chat_id}')
+    assert single.status_code == 200
+    assert single.json()['last_message'] is None
+
+    # пустой чат в списке: last_message null
+    chats = await client.get('/api/v1/chats')
+    empty = next(item for item in chats.json() if item['id'] == chat_id)
+    assert empty['last_message'] is None
+
+    # новейшее сообщение выигрывает по created_at: «newer» отправлено позже
+    await client.post(f'/api/v1/chats/{chat_id}/messages', json={'content': 'older'})
+    newer = await client.post(f'/api/v1/chats/{chat_id}/messages', json={'content': 'newer wins'})
+    chats = await client.get('/api/v1/chats')
+    target = next(item for item in chats.json() if item['id'] == chat_id)
+    assert target['last_message'] == {'content': 'newer wins', 'time': newer.json()['created_at']}
+
+    # файловое вложение без текста — новейшее: content null, время его же
+    uploaded = await client.post(
+        '/api/v1/files',
+        data={'chat_id': str(chat_id)},
+        files={'uploaded': ('notes.txt', b'private notes', 'text/plain')},
+    )
+    assert uploaded.status_code == 201
+    file_only = await client.post(
+        f'/api/v1/chats/{chat_id}/messages',
+        json={'file_id': uploaded.json()['file_id']},
+    )
+    assert file_only.status_code == 201
+    chats = await client.get('/api/v1/chats')
+    target = next(item for item in chats.json() if item['id'] == chat_id)
+    assert target['last_message'] == {'content': None, 'time': file_only.json()['created_at']}
+
+
 async def test_avatar_upload_rejects_non_images(client, app):
     await register(client, 'owner@example.com')
     app.state.object_storage = MemoryStorage()

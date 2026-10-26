@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from datetime import datetime
 from fastapi import HTTPException, status
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
@@ -10,13 +11,26 @@ from app.models.chat import Chat, ChatMember
 from app.models.user import User
 from app.repositories.chats import ChatRepository
 from app.repositories.users import UserRepository
-from app.schemas.chat import ChatCreate, ChatMemberBrief
+from app.schemas.chat import (
+    ChatCreate,
+    ChatLastMessageBrief,
+    ChatMemberBrief,
+    ChatSearchResult,
+    ChatSearchSnippet,
+)
 from app.schemas.file import avatar_url as file_avatar_url
 
 # Cap кратких составов в GET /chats: гвард, не контракт пагинации
 # (прецедент FEED_CAP историй); диалоги (<= 2 участников) не режутся —
 # правило «единственный собеседник» нужно только им.
 MEMBERS_BRIEF_CAP = 10
+
+# Cap результатов GET /chats/search: применяется ПОСЛЕ сортировки,
+# гвард, не пагинация (прецедент MEMBERS_BRIEF_CAP)
+CHATS_SEARCH_RESULTS_CAP = 50
+
+# Сниппет поиска: окно до/после совпадения ≤ 32 символов с каждой стороны
+CHAT_SEARCH_SNIPPET_WINDOW = 32
 
 
 def to_member_brief(user_id: int, email: str, avatar_file_id: int | None) -> ChatMemberBrief:
@@ -28,6 +42,25 @@ def to_member_brief(user_id: int, email: str, avatar_file_id: int | None) -> Cha
         login=email,
         display_name=email.split('@')[0],
         avatar_url=file_avatar_url(avatar_file_id),
+    )
+
+
+def build_search_snippet(content: str, q: str) -> ChatSearchSnippet | None:
+    """Окно вокруг ПЕРВОГО case-insensitive вхождения q в content: до и
+    после ≤ CHAT_SEARCH_SNIPPET_WINDOW символов, части — сырые подстроки
+    оригинала (экранирует клиент — сервер остаётся transport-only).
+    None — защитный случай «БД совпала, а Python-фолдинг не нашёл»
+    (расхождение таблиц фолдинга SQLite/PG/Python на экзотике)."""
+    needle = q.lower()
+    index = content.lower().find(needle)
+    if index < 0:
+        return None
+    start = max(index - CHAT_SEARCH_SNIPPET_WINDOW, 0)
+    end = min(index + len(needle) + CHAT_SEARCH_SNIPPET_WINDOW, len(content))
+    return ChatSearchSnippet(
+        before=content[start:index],
+        match=content[index:index + len(needle)],
+        after=content[index + len(needle):end],
     )
 
 
@@ -67,6 +100,68 @@ class ChatService:
     def list_member_briefs(self, chat_id: int) -> list[ChatMemberBrief]:
         """Полный состав чата без cap (панель участников), user_id ASC."""
         return [to_member_brief(*row) for row in self.chats.list_members(chat_id)]
+
+    def last_messages_for_chats(self, chat_ids: list[int]) -> dict[int, ChatLastMessageBrief]:
+        """Последние сообщения для GET /chats: один SELECT по всему списку
+        (новейшее по created_at, тай-брейк id — в репозитории), форма
+        собирается в этой единой точке, чтобы list_chats не разъехался с
+        будущими потребителями; content is None — файловое вложение без
+        текста; чаты без сообщений в результате отсутствуют (у эндпоинта
+        это last_message: null)."""
+        return {
+            chat_id: ChatLastMessageBrief(content=content, time=created_at)
+            for chat_id, content, created_at in self.chats.last_messages_for_chats(chat_ids)
+        }
+
+    def search_chats(self, user_id: int, q: str) -> list[ChatSearchResult]:
+        """Поиск case-insensitive подстроки по чатам пользователя: title и
+        непустые content сообщений (lower()+LIKE с экранированием — в
+        репозитории); скоуп по участию, чужие чаты не появляются по
+        построению. matched_in 'both' мержит совпадения, сниппет — окно
+        вокруг первого вхождения в СВЕЖАЙШЕМ совпадающем сообщении.
+        Порядок: группа с совпадением в title (title ASC, chat_id ASC),
+        затем только-сообщения (свежее совпадение раньше, chat_id DESC);
+        cap CHATS_SEARCH_RESULTS_CAP применяется после сортировки."""
+        titles = dict(self.chats.search_title_matches(user_id, q))
+        messages: dict[int, tuple[str, datetime]] = {
+            chat_id: (content, created_at)
+            for chat_id, content, created_at in self.chats.search_message_matches(user_id, q)
+        }
+
+        results: list[ChatSearchResult] = []
+        # группа title (title-only + both): title ASC, chat_id ASC
+        for chat_id, title in sorted(titles.items(), key=lambda item: (item[1], item[0])):
+            freshest = messages.get(chat_id)
+            if freshest is None:
+                results.append(ChatSearchResult(chat_id=chat_id, matched_in='title'))
+                continue
+            content, created_at = freshest
+            results.append(
+                ChatSearchResult(
+                    chat_id=chat_id,
+                    matched_in='both',
+                    snippet=build_search_snippet(content, q),
+                    last_match_at=created_at,
+                )
+            )
+        # группа только-сообщения: (last_match_at, chat_id) DESC
+        message_only = [
+            (chat_id, content, created_at)
+            for chat_id, (content, created_at) in messages.items()
+            if chat_id not in titles
+        ]
+        for chat_id, content, created_at in sorted(
+            message_only, key=lambda row: (row[2], row[0]), reverse=True
+        ):
+            results.append(
+                ChatSearchResult(
+                    chat_id=chat_id,
+                    matched_in='message',
+                    snippet=build_search_snippet(content, q),
+                    last_match_at=created_at,
+                )
+            )
+        return results[:CHATS_SEARCH_RESULTS_CAP]
 
     def mark_read(self, chat_id: int, user_id: int, message_id: int) -> None:
         """Открытие истории читает чат до message_id включительно."""

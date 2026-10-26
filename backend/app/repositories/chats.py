@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from datetime import datetime
+
 from sqlalchemy import and_, func, select
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.dialects.sqlite import insert as sqlite_insert
@@ -11,6 +13,13 @@ from app.models.chat import Chat, ChatMember
 from app.models.chat_last_read import ChatLastRead
 from app.models.message import Message
 from app.models.user import User
+
+
+def escape_like(value: str) -> str:
+    """Экранирует LIKE-метасимволы, чтобы искомая подстрока трактовалась
+    буквально (правило repositories/users.py::search_by_login_prefix)."""
+
+    return value.replace('\\', '\\\\').replace('%', '\\%').replace('_', '\\_')
 
 
 class ChatRepository:
@@ -130,3 +139,88 @@ class ChatRepository:
             .all()
         )
         return [(row.chat_id, row.user_id, row.email, row.avatar_file_id) for row in rows]
+
+    def last_messages_for_chats(self, chat_ids: list[int]) -> list[tuple[int, str | None, datetime]]:
+        """Новейшее сообщение каждого чата из списка одним SELECT: окно
+        row_number() по (created_at DESC, id DESC) — тай-брейк по id
+        держит результат детерминированным при равных created_at; окно
+        поддерживается и SQLite (тесты), и PostgreSQL (прод), под ним
+        индекс ix_messages_chat_created_id. Возвращает (chat_id, content,
+        created_at); чаты без сообщений в результате отсутствуют."""
+        if not chat_ids:
+            return []
+        newest = (
+            select(
+                Message.chat_id,
+                Message.content,
+                Message.created_at,
+                func.row_number()
+                .over(
+                    partition_by=Message.chat_id,
+                    order_by=(Message.created_at.desc(), Message.id.desc()),
+                )
+                .label('rank'),
+            )
+            .where(Message.chat_id.in_(chat_ids))
+            .subquery()
+        )
+        statement = select(
+            newest.c.chat_id, newest.c.content, newest.c.created_at
+        ).where(newest.c.rank == 1)
+        return [
+            (chat_id, content, created_at)
+            for chat_id, content, created_at in self.session.execute(statement).all()
+        ]
+
+    def search_title_matches(self, user_id: int, q: str) -> list[tuple[int, str]]:
+        """Чаты пользователя (скоуп по участию), в чьём title есть
+        case-insensitive подстрока q: lower()+LIKE (на PostgreSQL сворачивает
+        весь Unicode; SQLite в тестах — только ASCII) с экранированием
+        %/_/\\ по правилу users.py. Возвращает (chat_id, title); итоговый
+        порядок собирает сервис."""
+        pattern = f'%{escape_like(q).lower()}%'
+        statement = (
+            select(Chat.id, Chat.title)
+            .join(ChatMember, ChatMember.chat_id == Chat.id)
+            .where(
+                ChatMember.user_id == user_id,
+                func.lower(Chat.title).like(pattern, escape='\\'),
+            )
+        )
+        return [(chat_id, title) for chat_id, title in self.session.execute(statement).all()]
+
+    def search_message_matches(self, user_id: int, q: str) -> list[tuple[int, str, datetime]]:
+        """Свежайшее совпадающее сообщение каждого чата пользователя одним
+        SELECT: участие задаёт скоуп, content IS NOT NULL (файловые
+        вложения не ищутся), lower()+LIKE с экранированием как в
+        search_title_matches; окно row_number() по (created_at DESC,
+        id DESC) даёт свежайшее с тем же тай-брейком, что и
+        last_messages_for_chats. Возвращает (chat_id, content, created_at)."""
+        pattern = f'%{escape_like(q).lower()}%'
+        matching = (
+            select(
+                Message.chat_id,
+                Message.content,
+                Message.created_at,
+                func.row_number()
+                .over(
+                    partition_by=Message.chat_id,
+                    order_by=(Message.created_at.desc(), Message.id.desc()),
+                )
+                .label('rank'),
+            )
+            .join(ChatMember, ChatMember.chat_id == Message.chat_id)
+            .where(
+                ChatMember.user_id == user_id,
+                Message.content.is_not(None),
+                func.lower(Message.content).like(pattern, escape='\\'),
+            )
+            .subquery()
+        )
+        statement = select(
+            matching.c.chat_id, matching.c.content, matching.c.created_at
+        ).where(matching.c.rank == 1)
+        return [
+            (chat_id, content, created_at)
+            for chat_id, content, created_at in self.session.execute(statement).all()
+        ]

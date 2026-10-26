@@ -1,9 +1,12 @@
+{{!-- Сырой инпут вместо LabeledInput: value идёт двойными скобками —
+  Handlebars сам экранирует его, а экосистема input/** не трогается --}}
 <form class="chat__search-bar-form">
-    {{{ LabeledInput
-          ref=this.name
-          label=this.label
-          name=this.name
-          validate=this.validate
-          validateMessage=this.validateMessage }}}
-    {{{ Button label=this.label classType=this.classType type=this.type onClick=this.onClick }}}
+    <input
+        class="input__element"
+        type="text"
+        name="{{name}}"
+        placeholder="{{label}}"
+        value="{{value}}"
+        autocomplete="off"
+    >
 </form>
