@@ -117,6 +117,35 @@
       text-align: left;
     }
 
+    /* Сниппет под заголовком (2026-10-26-chat-search): последняя реплика
+    или подсвеченное окно совпадения поиска — та же однострочная
+    эллипс-строка, что и заголовок, второстепенным тоном времени */
+
+    &__snippet {
+        @include reset;
+        @include text;
+        @include text-format(400, 10px, 16px);
+
+        color: $mainTextColor;
+        opacity: 0.65;
+        width: 100%;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+        text-align: left;
+    }
+
+    /* Подсветка совпадения поиска: акцент той же палитры, что выделение
+    активного чата (rgb(129 117 255) уже живёт в этом файле) — без
+    новых токенов дизайна */
+
+    mark {
+        background-color: rgb(129 117 255 / 35%);
+        color: inherit;
+        border-radius: 2px;
+        padding: 0 1px;
+    }
+
     /* Пилюля непрочитанных: компактная, не растягивает пункт; при нуле
        разметка её не рендерит вовсе */
 

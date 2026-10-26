@@ -14,7 +14,7 @@
 
 import Block from '../../../../core/Block.ts'
 import { AppState, withStore } from '../../../../utils/Store.ts'
-import type { ChatInfo } from '../../../../utils/types.ts'
+import type { ChatInfo, ChatSearchMatch } from '../../../../utils/types.ts'
 import { emptyValidationMessage } from '../../../../utils/constants.ts'
 import { emptyValidator } from '../../../../utils/validators.ts'
 import ChatsController from '../../controller.ts'
@@ -22,6 +22,9 @@ import StoriesController from '../../stories/controller.ts'
 import type { StoryDto } from '../../stories/ports.ts'
 import { isStoryAlive } from '../../stories/ttl.ts'
 import type { ViewerStory } from '../../../../components/story/storyViewer/storyViewer.ts'
+import { buildHighlightParts } from '../../../../utils/highlight.ts'
+import { getChatSearchBarMemory } from '../../../../components/searchBar/searchBar.ts'
+import type { ChatSearchState } from '../../store.ts'
 import template from './chat.hbs'
 
 // Длительность показа истории; дубль живёт в CSS-анимации прогресс-бара
@@ -57,6 +60,61 @@ interface ChatPageProps {
     // мобильное переключение (<768): true — показана панель чата, список
     // скрыт; false — список. Модификатор корня chat_pane-open в chat.hbs
     chatPaneOpen?: boolean
+}
+
+// Карточка списка чатов в пропсах страницы: ChatInfo + декорации
+// активного поиска (части подсветки и время последнего совпадения)
+interface OrderedChat extends ChatInfo {
+    titleParts?: { before: string, match: string, after: string } | null
+    snippetParts?: { before: string, match: string, after: string } | null
+    searchTime?: string
+}
+
+// Порядок пустого запроса — по активности: свежий last_message сверху,
+// отсутствующий/битый (NaN) тонет ниже всех дат, ничья — id DESC.
+// Всегда новый массив: мэппер withStore обязан давать свежую ссылку на
+// chats, иначе shallowEqual погасит перерисовку на любом стор-эмите
+function activityOrder(chats: ChatInfo[]): ChatInfo[] {
+    const timeOf = (chat: ChatInfo): number => {
+        const raw = chat.last_message?.time
+        const parsed = raw != null ? Date.parse(raw) : Number.NaN
+
+        return Number.isNaN(parsed) ? Number.NEGATIVE_INFINITY : parsed
+    }
+
+    return [...chats].sort((left, right) => {
+        const byTime = timeOf(right) - timeOf(left)
+
+        return byTime !== 0 ? byTime : right.id - left.id
+    })
+}
+
+// Порядок активного запроса: только чаты из результатов и строго в
+// порядке сервера; каждой карточке — части подсветки и время совпадения.
+// matched_in message/both без сниппета (R-F2) рисуется без mark
+function searchOrder(chats: ChatInfo[], query: string, results: ChatSearchMatch[]): OrderedChat[] {
+    const byId = new Map(chats.map(chat => [chat.id, chat]))
+    const ordered: OrderedChat[] = []
+
+    for (const result of results) {
+        const chat = byId.get(result.chat_id)
+
+        if (chat == null) {
+            continue
+        }
+
+        const wantsTitle = result.matched_in === 'title' || result.matched_in === 'both'
+        const wantsSnippet = result.matched_in !== 'title' && result.snippet != null
+
+        ordered.push({
+            ...chat,
+            titleParts: wantsTitle ? buildHighlightParts(chat.title, query) : undefined,
+            snippetParts: wantsSnippet ? result.snippet : undefined,
+            searchTime: result.last_match_at ?? undefined,
+        })
+    }
+
+    return ordered
 }
 
 class ChatPageBase extends Block {
@@ -296,6 +354,11 @@ class ChatPageBase extends Block {
                 // Кнопка «назад» в шапке messenger (<768): возврат к списку
                 this.setProps({ chatPaneOpen: false })
             },
+            // Живой поиск по чатам: бар дебаунсит ввод, страница только
+            // прокидывает запрос контроллеру (компонент фич не импортирует)
+            onSearchChats: (query: string) => {
+                void ChatsController.searchChats(query)
+            },
             onChatAvatar: (data: FormData) => {
                 void ChatsController.changeChatAvatar(data)
             },
@@ -390,12 +453,42 @@ class ChatPageBase extends Block {
         }
     }
 
+    // Фокус/каретка поиска: перерисовка страницы пересоздаёт инпут бара
+    // (hbs-дети не получают CDM/CDU), поэтому восстановление принадлежит
+    // странице — по статической памяти бара, в кадре после рендера
+    // (узор restoreUsersScroll; review F-3)
+    private restoreSearchFocus(): void {
+        const { wasFocused, caret } = getChatSearchBarMemory()
+
+        if (!wasFocused) {
+            return
+        }
+
+        const run = () => {
+            const input = this.element?.querySelector<HTMLInputElement>('input[name="chat_search"]')
+
+            if (input == null) {
+                return
+            }
+
+            input.focus()
+            input.setSelectionRange(caret, caret)
+        }
+
+        if (typeof requestAnimationFrame === 'function') {
+            requestAnimationFrame(run)
+        } else {
+            setTimeout(run, 0)
+        }
+    }
+
     // chat_deleted (WS): контроллер очистил selectedChat в сторе — withStore
     // принёс undefined в пропсы, панель возвращается к списку чатов.
     // Гвардия по переходу «был выбор → пропал»: панель не захлопывается,
     // пока чат ещё не выбирали (мобильный вход на страницу)
     protected componentDidUpdate(oldProps: unknown, newProps: { selectedChat?: number, messages?: unknown[] }) {
         this.restoreUsersScroll()
+        this.restoreSearchFocus()
 
         if (
             (oldProps as { selectedChat?: number }).selectedChat !== undefined &&
@@ -477,8 +570,19 @@ class ChatPageBase extends Block {
 }
 
 const withChats = withStore((state: AppState) => {
+    // chatSearch не объявлен в AppState — каст-идиом chatHistory
+    // (history/store.ts): чтение приведением, utils/Store.ts не трогаем
+    const search = (state as AppState & { chatSearch?: ChatSearchState }).chatSearch
+    const allChats = (state.chats as ChatInfo[] | undefined) ?? []
+    // активный запрос — только найденные чаты в порядке сервера; иначе
+    // полный список по активности; ссылка на chats всегда новая — любой
+    // стор-эмит (WS-патч, ответ поиска, сброс) перерисовывает список
+    const chats = search != null && search.query !== ''
+        ? searchOrder(allChats, search.query, search.results)
+        : activityOrder(allChats)
+
     return {
-        chats: state.chats,
+        chats,
         selectedChat: state.selectedChat,
         // лента историй (срез features/chats/stories) — рендер-список
         // (add-плитка + строковые id) страница строит в render()

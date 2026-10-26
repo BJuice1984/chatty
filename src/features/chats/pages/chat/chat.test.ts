@@ -15,12 +15,29 @@ import store from '../../../../utils/Store.ts'
 import ChatsController from '../../controller.ts'
 import StoriesController from '../../stories/controller.ts'
 import { ChatPage } from './chat.ts'
+import Handlebars from 'handlebars'
+import type Block from '../../../../core/Block.ts'
+import { registerComponent } from '../../../../core/registerComponent.ts'
+import * as Components from '../../../../components/components.ts'
+import { SearchBar } from '../../../../components/searchBar/searchBar.ts'
+
+// Живой поиск: юнит-рендер страницы требует настоящих хелперов SearchBar
+// и User (chat.hbs вызывает их компонент-хелпами). Регистрация — как в
+// прод-сборке main.ts через components.ts; гвард от повторной загрузки
+// модуля — прецедент login/messenger-тестов
+Object.entries(Components).forEach(([name, component]) => {
+    if (!(name in Handlebars.helpers)) {
+        registerComponent(name, component as typeof Block)
+    }
+})
 
 interface ChatPageCallbacks {
     onSelectChat: (id: number) => void
     onBack: () => void
     chatPaneOpen: boolean
     onSearchUsers?: (login: string) => Promise<unknown[]>
+    // живой поиск по чатам: страница прокидывает запрос контроллеру
+    onSearchChats?: (query: string) => void
     onAddUser?: (userId: number, chatId: number) => Promise<void>
     onSetReaction?: (chatId: number, messageId: number, emoji: string) => void
     onSendMessage?: (chatId: number, message: string, replyToId?: number) => void
@@ -692,5 +709,143 @@ describe('chat page stories', () => {
             fetchStories.restore()
             fetchChats.restore()
         }
+    })
+})
+
+
+// Живой поиск по чатам (2026-10-26-chat-search): пустой запрос — порядок
+// по активности (новые сверху, без last_message — вниз, ничья id DESC);
+// активный запрос — только найденные чаты в порядке сервера; фокус и
+// незакоммиченный текст поиска переживают стор-эмит посреди набора.
+describe('chat page search list', () => {
+    let storiesSocket: sinon.SinonStub
+    let fetchChats: sinon.SinonStub
+
+    beforeEach(() => {
+        storiesSocket = sinon.stub(StoriesController, 'connectStoriesSocket')
+        fetchChats = sinon.stub(ChatsController, 'fetchChats').resolves()
+    })
+
+    afterEach(() => {
+        store.set('chatSearch', undefined)
+        store.set('chats', undefined)
+        resetSearchBarMemory()
+        fetchChats.restore()
+        storiesSocket.restore()
+    })
+
+    const titlesOf = (page: { element?: Element | null }): string[] =>
+        Array.from(page.element?.querySelectorAll('.chat-list-user__title') ?? [])
+            .map(node => (node.textContent ?? '').trim())
+
+    // Модульная память бара глобальна: мид-тайпинг-тест пачкает её,
+    // возвращаем к чистому листу теми же событиями (идиома resetMemory
+    // в searchBar.test.ts — отдельного сеттера сознательно нет)
+    const resetSearchBarMemory = (): void => {
+        const bar = new SearchBar()
+        const input = bar.element?.querySelector<HTMLInputElement>('input[name="chat_search"]')
+
+        if (input == null) {
+            throw new Error('инпут поиска не отрендерился')
+        }
+
+        input.value = ''
+        input.dispatchEvent(new MouseEvent('input', { bubbles: true }))
+        input.dispatchEvent(new MouseEvent('focusout', { bubbles: true }))
+        bar.destroy()
+    }
+
+    it('orders the empty-query list by last message time, sinking undated chats', () => {
+        store.set('chats', [
+            { id: 1, title: 'старый', avatar: '', unread_count: 0, last_message: { time: '2026-01-01T00:00:00Z', content: 'a' } },
+            { id: 3, title: 'равный времени', avatar: '', unread_count: 0, last_message: { time: '2026-06-01T00:00:00Z', content: 'd' } },
+            { id: 5, title: 'новый', avatar: '', unread_count: 0, last_message: { time: '2026-06-01T00:00:00Z', content: 'b' } },
+            { id: 9, title: 'без сообщений', avatar: '', unread_count: 0 },
+            { id: 2, title: 'битая дата', avatar: '', unread_count: 0, last_message: { time: 'не-дата', content: 'c' } },
+        ])
+
+        const page = new ChatPage({} as never)
+
+        // датированные по убыванию (ничья 06-01 — id DESC: 5 раньше 3),
+        // недатированные тонут (id DESC: 9 раньше 2)
+        expect(titlesOf(page)).to.deep.equal(['новый', 'равный времени', 'старый', 'без сообщений', 'битая дата'])
+
+        page.destroy()
+    })
+
+    it('shows only the matching chats in the server order while searching', () => {
+        store.set('chats', [
+            { id: 1, title: 'Almond', avatar: '', unread_count: 0, last_message: { time: '2026-01-05T00:00:00Z', content: 'заголовок' } },
+            { id: 2, title: 'Beta', avatar: '', unread_count: 0, last_message: { time: '2026-02-05T00:00:00Z', content: 'мимо' } },
+            { id: 3, title: 'Gamma', avatar: '', unread_count: 0, last_message: { time: '2026-03-05T00:00:00Z', content: 'calm sea' } },
+        ])
+        store.set('chatSearch', {
+            query: 'lm',
+            results: [
+                { chat_id: 3, matched_in: 'message', snippet: { before: 'ca', match: 'lm', after: ' sea' }, last_match_at: '2026-10-20T10:00:00Z' },
+                { chat_id: 1, matched_in: 'title', snippet: null, last_match_at: null },
+            ],
+        })
+
+        const page = new ChatPage({} as never)
+
+        expect(titlesOf(page)).to.deep.equal(['Gamma', 'Almond'])
+
+        const rows = Array.from(page.element?.querySelectorAll('.chat-list-user') ?? [])
+        // Gamma: message-совпадение — mark в сниппете, время — last_match_at
+        expect(rows[0]?.querySelector('.chat-list-user__snippet mark')?.textContent).to.equal('lm')
+        expect(rows[0]?.querySelector('.chat-list-user__time')?.textContent).to.equal('2026-10-20T10:00:00Z')
+        // Almond: title-совпадение — mark в заголовке; сниппета нет (R-F2) —
+        // обычная реплика, время — last_message.time
+        expect(rows[1]?.querySelector('.chat-list-user__title mark')?.textContent).to.equal('lm')
+        expect(rows[1]?.querySelector('.chat-list-user__snippet')?.textContent?.trim()).to.equal('заголовок')
+        expect(rows[1]?.querySelector('.chat-list-user__time')?.textContent).to.equal('2026-01-05T00:00:00Z')
+
+        page.destroy()
+    })
+
+    it('wires the search bar query to the controller', () => {
+        const searchChats = sinon.stub(ChatsController, 'searchChats').resolves()
+
+        try {
+            const page = new ChatPage({} as never)
+            callbacksOf(page).onSearchChats?.('query')
+            expect(searchChats.calledOnceWith('query')).to.be.true
+            page.destroy()
+        } finally {
+            searchChats.restore()
+        }
+    })
+
+    it('preserves the typed text and focus across a store emit mid-typing', async () => {
+        const page = new ChatPage({} as never)
+
+        // фокус работает только у узлов в документе
+        document.body.appendChild(page.element as HTMLElement)
+
+        const input = page.element?.querySelector<HTMLInputElement>('input[name="chat_search"]')
+        expect(input).to.exist
+
+        input!.value = 'ab'
+        input!.setSelectionRange(1, 1)
+        input!.dispatchEvent(new MouseEvent('input', { bubbles: true }))
+
+        // стор-эмит посреди набора (например, WS-сообщение): hbs-дети
+        // пересоздаются, текст ещё не закоммичен дебаунсом
+        store.set('chats', [
+            { id: 1, title: 'Almond', avatar: '', unread_count: 0 },
+        ])
+
+        // восстановление — в кадре (rAF или setTimeout-фолбэк окружения)
+        await new Promise(resolve => setTimeout(resolve, 20))
+
+        const revived = page.element?.querySelector<HTMLInputElement>('input[name="chat_search"]')
+        expect(revived).to.exist
+        expect(revived!.value).to.equal('ab')
+        expect(revived).to.equal(document.activeElement)
+        expect(revived!.selectionStart).to.equal(1)
+        expect(revived!.selectionEnd).to.equal(1)
+
+        page.destroy()
     })
 })
