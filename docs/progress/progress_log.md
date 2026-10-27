@@ -1,3 +1,45 @@
+# 2026-10-27 — Feat(chats): pg_trgm-индексы для поиска по чатам и сообщениям (ALK 2026-10-27-chats-search-trgm)
+
+Поиск /chats/search остаётся lower()+LIKE-сканом (контракт сырой подстроки и
+подсветки `<mark>` не меняется), но получает индексную опору: миграция
+`008_pg_trgm_search_indexes` (down_revision 007_avatars_stories) выполняет
+CREATE EXTENSION IF NOT EXISTS pg_trgm и строит функциональные GIN-индексы
+`ix_chats_title_trgm`/`ix_messages_content_trgm` ровно над выражениями,
+которые фильтруют `search_title_matches`/`search_message_matches`
+(repositories/chats.py): lower(title) и lower(content) с gin_trgm_ops —
+PostgreSQL обслуживает LIKE '%q%' из индекса только при точном совпадении
+выражения, поэтому индексы функциональные, а не по колонкам; сцепление
+«запрос ↔ индекс» задокументировано в докстринге миграции — будущая правка
+запросов, меняющая фильтруемое выражение, обязана мигрировать индексы в
+ногу (комментарий в repositories/chats.py — вне write-сета рана, отложен).
+Downgrade снимает только индексы: pg_trgm — разделяемый объект кластера,
+расширение остаётся (задокументировано). PG-only — принятый прецедент 005:
+pytest строит схему через create_all и alembic не гоняет, verify:backend
+проверяет pytest + heads. Round-trip доказан на scratch-стеке (свой
+compose-проект chatty-trgm-scratch + volume, бинд 127.0.0.2:55432; живой
+стек оператора не тронут): чистый upgrade 001→008 — оба индекса существуют
+над ровно lower(title)/lower(content); downgrade -1 — версия 007, индексов
+нет, расширение живо; повторный upgrade идемпотентен. EXPLAIN на корпусе
+20029 сообщений в 5003 чатах (поисковый пользователь — участник всех чатов,
+селективная игла: 12 сообщений и 3 заголовка): standalone-EXPLAIN по каждой
+таблице дают Bitmap Index Scan по trgm-индексам (19 мс seqscan → 0.1 мс), и
+полная форма запросов репозитория (join chat_members + экранированный
+LIKE, escape '\\') дефолтным планером уже идёт через trgm bitmap +
+membership-проверку; форсинг-транскрипты (enable_seqscan/enable_indexscan/
+enable_nestloop off, каждый лейблен) записаны рядом —
+work/2026-10-27-chats-search-trgm/evidence/scratch/. Цена записи: каждый
+POST сообщения теперь поддерживает GIN-индекс триграмм (write
+amplification на горячем пути записи); fastupdate=on амортизирует вставки
+через pending list по умолчанию — тюнинг (fastupdate/gin_pending_list_limit)
+вне скоупа. Применение к живому стеку оператора — пост-мержевый шаг
+(`docker compose --env-file .env up -d --build api`, наблюдать применение
+008), в ран не входит. Проверено: PYTHON_BIN=~/.venvs/chatty-backend/bin/
+python npm run verify:backend — 204 pytest passed, alembic heads =
+008_pg_trgm_search_indexes; npm run verify — 378 mocha (фронт не тронут);
+node .claude/hooks/scripts/guard-architecture.mjs --all --strict — 0.
+FTS/tsvector и релевантность — осознанный non-goal (морфология/префиксность
+ломают контракт подстроки и подсветку), запись в docs/NEXT.md.
+
 # 2026-10-26 — Fix(ui): экранирование заголовка чата в панели messenger (F-2 финального аудита)
 
 Закрыт F-2 независимого финального аудита рана 2026-10-26-chat-search: единственная
