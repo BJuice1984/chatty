@@ -17,12 +17,16 @@ CONTEXT_CHUNK_CHARS = 2000
 
 
 def build_messages(source_content: str, context_chunks: list[str]) -> list[dict[str, str]]:
-    messages: list[dict[str, str]] = [{'role': 'system', 'content': SYSTEM_PROMPT}]
+    # один system-блок: chat-шаблон Qwen3.5 в llama.cpp падает 500 на двух
+    # подряд system-сообщениях (raise в jinja), контекст вливается в тот же блок
+    system = SYSTEM_PROMPT
     if context_chunks:
         numbered = '\n\n'.join(
             f'[{index}] {chunk[:CONTEXT_CHUNK_CHARS]}'
             for index, chunk in enumerate(context_chunks, start=1)
         )
-        messages.append({'role': 'system', 'content': f'Document context from this chat:\n\n{numbered}'})
-    messages.append({'role': 'user', 'content': source_content})
-    return messages
+        system += f'\n\nDocument context from this chat:\n\n{numbered}'
+    return [
+        {'role': 'system', 'content': system},
+        {'role': 'user', 'content': source_content},
+    ]
