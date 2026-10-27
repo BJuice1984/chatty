@@ -1,0 +1,337 @@
+{
+    "schemaVersion": "agent-plan-manifest.v1",
+    "status": "FROZEN",
+    "planRevision": 2,
+    "package": {
+        "id": "2026-10-27-chats-search-trgm",
+        "title": "pg_trgm index hardening for the chat-list search",
+        "workspaceRoot": ".",
+        "artifactRoot": "work/2026-10-27-chats-search-trgm",
+        "planArtifactRoot": "tasks/2026-10-27-chats-search-trgm"
+    },
+    "packageIntegrity": {
+        "required": true,
+        "lockSchemaVersion": "agent-plan-lock.v2",
+        "inventorySource": "planFiles",
+        "undeclaredTopLevelFiles": "reject",
+        "allowedUnlistedFiles": [
+            "plan.lock.json",
+            "plan-review.json"
+        ]
+    },
+    "author": {
+        "id": "claude-code",
+        "surface": "agent-first-planning",
+        "runId": "2026-10-27-chats-search-trgm-draft"
+    },
+    "baseRevision": {
+        "ref": "dev",
+        "sha": "5db03ac225150c8bdbc6843388ee31cffa6e333e"
+    },
+    "specification": {
+        "tier": "S2",
+        "intent": "The /chats/search endpoint scans membership-scoped rows with lower(title)/lower(content) LIKE '%q%'. Migration 008 adds the pg_trgm extension and two functional GIN indexes over exactly those expressions — lower(title) gin_trgm_ops on chats and lower(content) gin_trgm_ops on messages — so PostgreSQL serves the existing queries with a trigram bitmap index scan on non-trivial corpora. The query code does not change: search semantics stay byte-identical, the frontend is untouched, and the docs retire the FTS/pg_trgm deferral note keeping tsvector/relevance a deliberate non-goal (it would change the substring contract and break the first-occurrence highlight).",
+        "status": "DRAFT",
+        "requirements": [
+            {
+                "id": "REQ-BE-TRGM",
+                "title": "Migration 008: pg_trgm functional GIN indexes for the search expressions",
+                "description": "New alembic migration 008_pg_trgm_search_indexes (down_revision 007_avatars_stories): CREATE EXTENSION IF NOT EXISTS pg_trgm (trusted extension; the compose postgres user owns the database; the 005 precedent covers PG-only migrations — tests create_all and never run alembic) and two functional GIN indexes: ix_chats_title_trgm ON chats USING gin (lower(title) gin_trgm_ops) and ix_messages_content_trgm ON messages USING gin (lower(content) gin_trgm_ops) — exactly the expressions the repository search queries filter (repositories/chats.py search_title_matches / search_message_matches). Downgrade drops the two indexes and keeps the extension (shared object, documented). No application-code changes: the repository queries already filter lower(col) LIKE with escaped patterns, which PostgreSQL plans against the functional indexes. verify:backend stays green with alembic heads moving to exactly 008_pg_trgm_search_indexes.",
+                "priority": "P1",
+                "source": "docs/NEXT.md FTS/pg_trgm deferral note; operator request 2026-10-27",
+                "acceptanceIds": [
+                    "AC-BE-TRGM-INDEXES"
+                ],
+                "evidenceIds": [
+                    "EV-BE-1"
+                ],
+                "owner": "WS-BE-TRGM"
+            },
+            {
+                "id": "REQ-BE-SEARCH-PLAN",
+                "title": "Prove the index serves the real search query on PostgreSQL",
+                "description": "On a scratch compose-PostgreSQL (own project name + volumes + 127.0.0.2 bind, the 007 round-trip precedent): upgrade 001->008 on a clean base, verify both trgm indexes exist over exactly lower(title)/lower(content), downgrade to 007 (indexes gone), upgrade again (idempotent). Seed >= 1000 messages across >= 30 chats (searching user a member of all chats, selective needle), then prove index usability in two layers: per-table standalone EXPLAIN SELECT ... WHERE lower(col) LIKE '%needle%' showing a Bitmap/Index Scan over the trgm index, and EXPLAIN of the full repository query shape (membership join + escaped LIKE) with recorded transcripts — the trgm path demonstrated via forcing GUCs (enable_seqscan=off, plus enable_indexscan=off/enable_nestedloop=off when the planner legitimately prefers PK/nested-loop paths at small corpora; forcing labelled in the transcript); default-planner transcripts recorded either way (seqscan or nested-loop on small corpora is legitimate planner behaviour — documented, not a failure). Outputs captured under work/2026-10-27-chats-search-trgm/evidence/.",
+                "priority": "P1",
+                "source": "operator request 2026-10-27 (harden the LIKE scan)",
+                "acceptanceIds": [
+                    "AC-BE-SEARCH-PLAN"
+                ],
+                "evidenceIds": [
+                    "EV-BE-1"
+                ],
+                "owner": "WS-BE-TRGM"
+            },
+            {
+                "id": "REQ-DOCS-TRGM",
+                "title": "Docs: retire the deferral note, keep FTS a non-goal",
+                "description": "docs/NEXT.md: the FTS/pg_trgm deferral note from the search feature record is retired (pg_trgm shipped; FTS/tsvector and relevance ranking stay a deliberate non-goal — tsvector would change the substring contract and break the first-occurrence highlight). docs/progress/progress_log.md gets a new entry on top describing the migration, the scratch-PG round-trip, the EXPLAIN evidence and the insert-path tradeoff (message sends now maintain the GIN trigram index; fastupdate amortizes by default, tuning out of scope).",
+                "priority": "P2",
+                "source": "repo convention (AGENTS.md progress log)",
+                "acceptanceIds": [
+                    "AC-PROCESS"
+                ],
+                "evidenceIds": [
+                    "EV-BE-1"
+                ],
+                "owner": "WS-BE-TRGM"
+            }
+        ],
+        "goal": "PostgreSQL serves the unchanged /chats/search LIKE scans through functional pg_trgm GIN indexes; semantics byte-identical, proven by a scratch-PG round-trip and EXPLAIN transcripts.",
+        "constraints": [
+            "No search-semantics change: the endpoint contract (matched_in, snippet, ordering, cap, membership scope, escaping) stays byte-identical; zero frontend files change.",
+            "PG-only migration is accepted by precedent (005); tests use create_all and never run alembic; verify:backend checks pytest + alembic heads only.",
+            "The extension is created with IF NOT EXISTS and stays after downgrade (shared object); index names follow the ix_* convention.",
+            "No application-code changes: if the plan cannot be served by the functional indexes as written, escalate instead of rewriting the queries.",
+            "Existing suites stay green; alembic heads moves to exactly 008_pg_trgm_search_indexes; the operator's live stack is NOT touched (scratch project only)."
+        ],
+        "nonGoals": [
+            "tsvector/FTS and relevance ranking (changes the substring contract and the highlight semantics)",
+            "tsquery/websearch syntax, fuzzy/similarity thresholds, trigram similarity ordering",
+            "reindexing/GIN maintenance tuning (fastupdate, pendinglist), partial indexes",
+            "applying the migration to the operator's live compose stack (post-merge operator step)",
+            "any change to GET /chats, last_message, or the frontend"
+        ],
+        "scope": "backend/alembic/versions/008_pg_trgm_search_indexes.py with its scratch-PostgreSQL evidence; docs/NEXT.md and docs/progress/progress_log.md."
+    },
+    "readOnly": [
+        "AGENTS.md",
+        "tasks/README.md",
+        "docs/deployment/own-backend.md"
+    ],
+    "forbiddenWrites": [
+        "src/main.ts",
+        "src/features/index.ts",
+        "src/core",
+        "src/scss/libs",
+        "docs/project-principles.json",
+        ".github/workflows",
+        "netlify.toml",
+        "backend/app"
+    ],
+    "leadOwned": [
+        {
+            "path": "tasks/2026-10-27-chats-search-trgm",
+            "owner": "controller",
+            "reason": "Controller owns plan-package artifacts."
+        }
+    ],
+    "workstreams": [
+        {
+            "id": "WS-BE-TRGM",
+            "title": "Backend: pg_trgm migration + scratch-PG evidence + docs",
+            "owner": "worker-backend-chats",
+            "reviewer": "independent-release-reviewer",
+            "dependsOn": [],
+            "writes": [
+                "backend/alembic/versions/008_pg_trgm_search_indexes.py",
+                "docs/NEXT.md",
+                "docs/progress/progress_log.md"
+            ],
+            "readOnly": [
+                "AGENTS.md",
+                "backend/app/repositories/chats.py",
+                "backend/app/models/chat.py",
+                "backend/app/models/message.py",
+                "backend/alembic/versions/007_avatars_stories.py"
+            ],
+            "forbiddenWrites": [],
+            "launchGate": "feature/2026-10-27-chats-search-trgm branch created at 5db03ac; npm run verify:backend and npm run verify green at base; docker available for the scratch stack.",
+            "capabilityHints": [
+                "alembic",
+                "postgresql",
+                "sqlalchemy",
+                "pytest"
+            ],
+            "requiredTools": [
+                "python",
+                "docker"
+            ],
+            "contextRefs": [
+                "plan.md",
+                "acceptance-criteria.md",
+                "specification.json",
+                "developer-overview.md"
+            ],
+            "acceptanceIds": [
+                "AC-BE-TRGM-INDEXES",
+                "AC-BE-SEARCH-PLAN",
+                "AC-PROCESS"
+            ],
+            "evidenceIds": [
+                "EV-BE-1"
+            ],
+            "executionPolicy": {
+                "maxAttempts": 3,
+                "maxWallSeconds": 5400
+            },
+            "artifactPaths": {
+                "result": "work/2026-10-27-chats-search-trgm/evidence/WS-BE-TRGM/task-result-{attempt}.json",
+                "review": "work/2026-10-27-chats-search-trgm/evidence/WS-BE-TRGM/task-review-{attempt}.json"
+            },
+            "required": true,
+            "plannedItems": [
+                "migration 008_pg_trgm_search_indexes: CREATE EXTENSION IF NOT EXISTS pg_trgm; functional GIN ix_chats_title_trgm (lower(title) gin_trgm_ops), ix_messages_content_trgm (lower(content) gin_trgm_ops); downgrade drops the indexes, keeps the extension, docstring documents both decisions",
+                "scratch-PG round-trip (own compose project + volumes + 127.0.0.2 bind, 007 runbook): clean 001->008 (indexes present over exactly lower(title)/lower(content)), downgrade to 007 (gone, heads 007), re-upgrade idempotent",
+                "scratch-PG EXPLAIN evidence: seed >=1000 messages over >=30 chats (searching user member of all chats, selective needle); per-table standalone EXPLAIN proves the trgm indexes answer the exact filtered expressions; full-query transcripts recorded with labelled forcing GUCs (enable_seqscan=off; enable_indexscan/enable_nestedloop=off when the planner legitimately prefers PK/nested-loop paths); default-planner transcripts recorded either way",
+                "gates: PYTHON_BIN=~/.venvs/chatty-backend/bin/python npm run verify:backend green, alembic heads = 008_pg_trgm_search_indexes; npm run verify green (frontend untouched)",
+                "docs: NEXT.md retires the FTS/pg_trgm deferral note (FTS/tsvector stated non-goal); progress-log entry on top incl. the insert-path tradeoff (message sends now maintain the GIN trigram index; fastupdate amortizes by default, tuning out of scope)"
+            ],
+            "qualityFloor": "verify:backend green with heads exactly 008; verify green; guard strict zero; no application-code file touched; operator's live stack untouched."
+        }
+    ],
+    "acceptance": {
+        "criteria": [
+            {
+                "id": "AC-BE-TRGM-INDEXES",
+                "title": "Migration 008 functional trgm indexes with round-trip",
+                "requirementIds": [
+                    "REQ-BE-TRGM"
+                ],
+                "evidenceIds": [
+                    "EV-BE-1"
+                ],
+                "independentEvidenceIds": [],
+                "statement": "Migration 008_pg_trgm_search_indexes (down_revision 007_avatars_stories) creates the pg_trgm extension (IF NOT EXISTS) and functional GIN indexes ix_chats_title_trgm over lower(title) gin_trgm_ops and ix_messages_content_trgm over lower(content) gin_trgm_ops — verbatim the expressions the repository search queries filter; downgrade drops both indexes and keeps the extension (documented); scratch-PostgreSQL round-trip: clean 001->008 shows both indexes, downgrade -> heads 007 with indexes gone, re-upgrade idempotent; verify:backend green with alembic heads = exactly 008_pg_trgm_search_indexes; zero application-code changes (diff touches only the migration + docs).",
+                "description": "Migration + scratch-PG round-trip transcripts.",
+                "source": "acceptance-criteria.md",
+                "priority": "P1"
+            },
+            {
+                "id": "AC-BE-SEARCH-PLAN",
+                "title": "The index serves the real search query",
+                "requirementIds": [
+                    "REQ-BE-SEARCH-PLAN"
+                ],
+                "evidenceIds": [
+                    "EV-BE-1"
+                ],
+                "independentEvidenceIds": [],
+                "statement": "On the scratch PostgreSQL with >=1000 seeded messages across >=30 chats, index usability is proven honestly in two layers: (1) per-table standalone EXPLAIN SELECT ... WHERE lower(content) LIKE '%needle%' (and the title analogue) showing a Bitmap/Index Scan over ix_messages_content_trgm / ix_chats_title_trgm; (2) EXPLAIN of the full repository query shape (membership join + escaped LIKE) with recorded transcripts — the trgm index path demonstrated via forcing GUCs (enable_seqscan=off, plus enable_indexscan=off/enable_nestedloop=off when the planner legitimately prefers PK/nested-loop paths at small corpora; forcing labelled in the transcript); default-planner transcripts recorded either way (seqscan or nested-loop on small corpora is legitimate planner behaviour — noted, not failure); transcripts under work/2026-10-27-chats-search-trgm/evidence/.",
+                "description": "EXPLAIN transcripts on scratch PostgreSQL.",
+                "source": "acceptance-criteria.md",
+                "priority": "P1"
+            },
+            {
+                "id": "AC-PROCESS",
+                "title": "Gates and bookkeeping",
+                "requirementIds": [
+                    "REQ-BE-TRGM",
+                    "REQ-BE-SEARCH-PLAN",
+                    "REQ-DOCS-TRGM"
+                ],
+                "evidenceIds": [
+                    "EV-BE-1"
+                ],
+                "independentEvidenceIds": [],
+                "statement": "npm run verify and npm run verify:backend pass; guard-architecture --all --strict zero violations; docs/NEXT.md retires the FTS/pg_trgm deferral note keeping FTS/tsvector a stated non-goal; docs/progress/progress_log.md entry on top; no file outside the manifest write-sets changes; the operator's live compose stack untouched (scratch project only).",
+                "description": "Gate runs captured as evidence.",
+                "source": "acceptance-criteria.md",
+                "priority": "P1"
+            }
+        ]
+    },
+    "validation": {
+        "commands": [
+            "npm run verify",
+            "npm run verify:backend",
+            "node .claude/hooks/scripts/guard-architecture.mjs --all --strict"
+        ]
+    },
+    "orchestration": {
+        "startMode": "reviewed-plan",
+        "remediationMode": "ask",
+        "maxPlanReviewRounds": 2,
+        "maxTaskAttempts": 3,
+        "maxParallelTasks": 1,
+        "maxValidationRunsPerTask": 2,
+        "stateFile": "work/2026-10-27-chats-search-trgm/run.state.json",
+        "eventLog": "work/2026-10-27-chats-search-trgm/events.jsonl",
+        "stepReviewRequired": true,
+        "finalAuditRequired": true
+    },
+    "implementationAudit": {
+        "required": true,
+        "finalRequired": true
+    },
+    "developerOverview": "tasks/2026-10-27-chats-search-trgm/developer-overview.md",
+    "releaseTarget": {
+        "kind": "local-only",
+        "environment": "compose own-backend (scratch verification, operator applies post-merge)",
+        "productionPromotionClaimed": false
+    },
+    "releaseImpact": "One additive alembic migration (008: pg_trgm extension + two functional GIN indexes); no application-code, endpoint-contract or frontend changes.",
+    "nonGoals": [
+        "tsvector/FTS and relevance ranking (changes the substring contract and the highlight semantics)",
+        "tsquery/websearch syntax, fuzzy/similarity thresholds, trigram similarity ordering",
+        "reindexing/GIN maintenance tuning, partial indexes",
+        "applying the migration to the operator's live compose stack (post-merge operator step)",
+        "any change to GET /chats, last_message, or the frontend"
+    ],
+    "finalAuditGates": [
+        "[AC-BE-TRGM-INDEXES|EV-BE-1] migration 008 creates the extension + both functional trgm indexes; scratch-PG round-trip (upgrade/downgrade/re-upgrade) proven; verify:backend green with heads exactly 008",
+        "[AC-BE-SEARCH-PLAN|EV-BE-1] EXPLAIN proves the real search query shape uses the trgm indexes (enable_seqscan=off demonstration + default-planner transcripts)",
+        "[AC-PROCESS|EV-BE-1] verify + verify:backend + guard strict green; NEXT deferral retired with FTS non-goal stated; progress-log entry; no write outside the manifest write-sets; operator stack untouched"
+    ],
+    "securityGates": [
+        {
+            "id": "SEC-MIGRATION-BOUNDS",
+            "statement": "The migration only creates a trusted extension and two indexes; no data reads/writes, no privilege changes beyond the DB-owner extension install (documented deployment note for managed PG without CREATE privileges); downgrade is index-only and non-destructive.",
+            "evidenceIds": [
+                "EV-BE-1"
+            ]
+        }
+    ],
+    "budgetPolicy": {
+        "units": "tokens-and-resources",
+        "reroute": "pause-and-review",
+        "maxTotalTokens": 60000,
+        "maxParallelWorkstreams": 1,
+        "maxRunWallSeconds": 10800,
+        "criticalPathWallSeconds": 7200,
+        "aggregateWorkstreamWallSeconds": 7200,
+        "retryReserveWallSeconds": 3600
+    },
+    "budgets": {
+        "defaultWorkstreamTokens": 40000,
+        "maxEvidenceBytesPerRun": 4194304
+    },
+    "contextLimits": {
+        "profile": "small-context-profile.v1",
+        "maxPlanContextBytes": 120000,
+        "maxRenderedPacketBytes": 40000,
+        "smallContextPacketBytes": 30000,
+        "maxReferenceFilesPerPacket": 12,
+        "includeOnlyOwnedWrites": true,
+        "excludeRuntimeWorkArtifacts": true
+    },
+    "tierResolution": {
+        "status": "RESOLVED",
+        "tier": "S2",
+        "requestedTier": "S2",
+        "reason": "performance-risk (index/migration work on the search path) resolved by agent-lifecycle tier resolve",
+        "independentReviewRequired": true,
+        "requestPath": "tasks/2026-10-27-chats-search-trgm/tier-request.json",
+        "resolutionPath": "tasks/2026-10-27-chats-search-trgm/tier-resolution.json",
+        "requestDigest": "164c9304a2f27431cf437f13a9dfa757a3bd9aa8ae076580bbe942e8dbf8ac85"
+    },
+    "planFiles": [
+        "tasks/2026-10-27-chats-search-trgm/acceptance-criteria.md",
+        "tasks/2026-10-27-chats-search-trgm/developer-overview.md",
+        "tasks/2026-10-27-chats-search-trgm/plan-review-request.md",
+        "tasks/2026-10-27-chats-search-trgm/plan-review.json",
+        "tasks/2026-10-27-chats-search-trgm/plan.manifest.json",
+        "tasks/2026-10-27-chats-search-trgm/plan.md",
+        "tasks/2026-10-27-chats-search-trgm/specification.json",
+        "tasks/2026-10-27-chats-search-trgm/tier-request.json",
+        "tasks/2026-10-27-chats-search-trgm/tier-resolution.json"
+    ],
+    "planReview": {
+        "required": true,
+        "reviewerClass": "independent-plan-reviewer",
+        "maxRounds": 2,
+        "implementationAuthorized": false,
+        "report": "tasks/2026-10-27-chats-search-trgm/plan-review.json",
+        "reviewedRevision": 2,
+        "verdict": "READY_TO_FREEZE"
+    }
+}

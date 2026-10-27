@@ -1,0 +1,64 @@
+{
+    "revision": 2,
+    "id": "SPEC-CHATS-SEARCH-TRGM",
+    "title": "pg_trgm index hardening for the chat-list search",
+    "intent": "The /chats/search endpoint (run 2026-10-26-chat-search) scans membership-scoped rows with lower(title)/lower(content) LIKE '%q%'. Migration 008 adds the pg_trgm extension and two functional GIN indexes over exactly those expressions — lower(title) gin_trgm_ops on chats and lower(content) gin_trgm_ops on messages — so PostgreSQL serves the existing queries with a trigram bitmap index scan on non-trivial corpora. The query code does not change: the search semantics (substring, case-insensitive, snippet, ordering, cap) stay byte-identical, the frontend is untouched, and the deferred-FTS note in docs/NEXT.md is retired with the deliberate non-goal that tsvector/relevance search is out of scope (it would change the contract and break the first-occurrence highlight).",
+    "requirements": [
+        {
+            "id": "REQ-BE-TRGM",
+            "title": "Migration 008: pg_trgm functional GIN indexes for the search expressions",
+            "description": "New alembic migration 008_pg_trgm_search_indexes (down_revision 007_avatars_stories): op.execute('CREATE EXTENSION IF NOT EXISTS pg_trgm') (trusted extension; the compose postgres user owns the database — the 005 precedent covers PG-only migrations; SQLite tests never run alembic, they create_all) and two functional GIN indexes: ix_chats_title_trgm ON chats USING gin (lower(title) gin_trgm_ops) and ix_messages_content_trgm ON messages USING gin (lower(content) gin_trgm_ops) — exactly the expressions the repository search queries filter on (repositories/chats.py search_title_matches / search_message_matches). Downgrade drops the two indexes and keeps the extension (a shared object; documented in the migration docstring). No application code changes: the repository queries already filter lower(col) LIKE with escaped patterns, which PostgreSQL plans against the functional indexes. verify:backend must stay green with alembic heads moving to exactly 008_pg_trgm_search_indexes.",
+            "priority": "P1",
+            "source": "docs/NEXT.md FTS/pg_trgm deferral note (run 2026-10-26-chat-search closure); operator request 2026-10-27",
+            "acceptanceIds": [
+                "AC-BE-TRGM-INDEXES"
+            ],
+            "evidenceIds": [
+                "EV-BE-1"
+            ],
+            "owner": "WS-BE-TRGM"
+        },
+        {
+            "id": "REQ-BE-SEARCH-PLAN",
+            "title": "Prove the index serves the real search query on PostgreSQL",
+            "description": "On a scratch compose-PostgreSQL (own project name + volumes + 127.0.0.2 bind, the 007 round-trip precedent): upgrade 001->008 on a clean base, verify both trgm indexes exist over exactly lower(title)/lower(content), downgrade to 007 (indexes gone), upgrade again (idempotent). Seed >= 1000 messages across >= 30 chats (searching user a member of all chats, selective needle), then prove index usability in two layers: per-table standalone EXPLAIN SELECT ... WHERE lower(col) LIKE '%needle%' showing a Bitmap/Index Scan over the trgm index, and EXPLAIN of the full repository query shape (membership join + escaped LIKE) with recorded transcripts — the trgm path demonstrated via forcing GUCs (enable_seqscan=off, plus enable_indexscan=off/enable_nestedloop=off when the planner legitimately prefers PK/nested-loop paths at small corpora; forcing labelled in the transcript); default-planner transcripts recorded either way (seqscan or nested-loop on small corpora is legitimate planner behaviour — documented, not a failure). Outputs captured under work/2026-10-27-chats-search-trgm/evidence/.",
+            "priority": "P1",
+            "source": "operator request 2026-10-27 (harden the LIKE scan)",
+            "acceptanceIds": [
+                "AC-BE-SEARCH-PLAN"
+            ],
+            "evidenceIds": [
+                "EV-BE-1"
+            ],
+            "owner": "WS-BE-TRGM"
+        },
+        {
+            "id": "REQ-DOCS-TRGM",
+            "title": "Docs: retire the deferral note, keep FTS a non-goal",
+            "description": "docs/NEXT.md: the FTS/pg_trgm deferral note from the search feature record is retired (pg_trgm shipped; FTS/tsvector and relevance ranking stay a deliberate non-goal — tsvector would change the substring contract and break the first-occurrence highlight). docs/progress/progress_log.md gets a new entry on top describing the migration, the scratch-PG round-trip, the EXPLAIN evidence and the insert-path tradeoff (message sends now maintain the GIN trigram index; fastupdate amortizes by default, tuning out of scope).",
+            "priority": "P2",
+            "source": "repo convention (AGENTS.md progress log)",
+            "acceptanceIds": [
+                "AC-PROCESS"
+            ],
+            "evidenceIds": [
+                "EV-BE-1"
+            ],
+            "owner": "WS-BE-TRGM"
+        }
+    ],
+    "constraints": [
+        "No search-semantics change: the endpoint contract (matched_in, snippet, ordering, cap, membership scope, escaping) stays byte-identical; zero frontend files change.",
+        "PG-only migration is accepted by precedent (005 is historically SQLite-incompatible); tests use create_all and never run alembic; verify:backend checks pytest + alembic heads only.",
+        "The extension is created with IF NOT EXISTS and stays after downgrade (shared object); index names follow the existing ix_* convention.",
+        "No application-code changes in this run: if the plan cannot be served by the functional indexes as written, escalate instead of rewriting the queries (that would be a contract-adjacent change needing its own plan).",
+        "Existing suites stay green; alembic heads moves to exactly 008_pg_trgm_search_indexes; the production stack is NOT touched by this run (scratch project only) — applying to the operator stack is a post-merge operator step."
+    ],
+    "nonGoals": [
+        "tsvector/FTS and relevance ranking (changes the substring contract and the highlight semantics)",
+        "tsquery/websearch syntax, fuzzy/similarity thresholds, trigram similarity ordering",
+        "reindexing/GIN maintenance tuning (fastupdate, pendinglist), partial indexes",
+        "applying the migration to the operator's live compose stack (operator step after merge)",
+        "any change to GET /chats, last_message, or the frontend"
+    ]
+}
