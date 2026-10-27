@@ -16,8 +16,11 @@ def test_without_context_builds_system_and_user_only():
 def test_context_chunks_are_numbered_and_scoped():
     messages = build_messages('question', ['first chunk', 'second chunk'])
 
-    assert [message['role'] for message in messages] == ['system', 'system', 'user']
-    context = messages[1]['content']
+    # контекст в том же system-блоке: два подряд system-сообщения валят
+    # chat-шаблон Qwen3.5 в llama.cpp (500), см. комментарий в build_messages
+    assert [message['role'] for message in messages] == ['system', 'user']
+    context = messages[0]['content']
+    assert messages[0]['content'].startswith(SYSTEM_PROMPT)
     assert 'Document context from this chat' in context
     assert '[1] first chunk' in context
     assert '[2] second chunk' in context
@@ -27,7 +30,7 @@ def test_long_chunks_are_truncated():
     long_chunk = 'x' * (CONTEXT_CHUNK_CHARS + 50)
     messages = build_messages('q', [long_chunk])
 
-    context = messages[1]['content']
+    context = messages[0]['content']
     assert 'x' * CONTEXT_CHUNK_CHARS in context
     assert 'x' * (CONTEXT_CHUNK_CHARS + 1) not in context
 
