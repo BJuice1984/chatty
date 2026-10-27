@@ -83,6 +83,36 @@ Notes on what these checks mean:
   needed, and recreate the api service. Without this step the bot fails
   explicitly with a provider connectivity error — record it as `UNAVAILABLE`
   rather than reconfiguring ad hoc.
+
+### Operator inference host (LAN Mac mini, llama.cpp)
+
+The operator's inference host is a Mac mini on the LAN (`192.168.1.121`)
+running three llama.cpp servers, all OpenAI-compatible (`/v1/models`,
+`/v1/chat/completions`). The operator has PHYSICAL access to the host, so
+restarting servers with different flags is possible on-site (no remote
+access is configured). Layout as probed live on 2026-10-27 — ports 8080 and
+8081 are easy to confuse, verify with `/v1/models` before wiring anything:
+
+| Port | Model (gguf id) | Role |
+| --- | --- | --- |
+| `8082` | `Qwen3.5-9B-Q4_K_M` | the chat model — point `CHATTY_BOT_PROVIDER_URL` here; a thinking model (long `reasoning_content`), keep `CHATTY_BOT_TIMEOUT_SECONDS` generous (300) |
+| `8083` | `bge-m3-q8_0` | dedicated RAG embeddings (dim 1024, `--embeddings --pooling cls`, since 2026-10-27) — point `CHATTY_RAG_EMBEDDING_URL` here |
+| `8080` | `Qwen3-VL-4B-Instruct-Q4_K_M` | multimodal (VL); NOT a chat-model substitute for the bot |
+| `8081` | `Hy-MT2-1.8B-Q4_K_M` | weak translation model; not for the bot |
+
+Embeddings: RAG runs on the dedicated `bge-m3` instance `:8083` (`--embeddings --pooling cls`,
+dim 1024) since 2026-10-27; the chat instance `:8082` also serves `/v1/embeddings`
+(`--pooling mean`, dim 4096) as a stopgap, but vectors from different models/poolings are
+incompatible — never mix them in one corpus (a model change requires a full re-ingest).
+
+Known llama.cpp quirks found during the 2026-10-27 acceptance: the Qwen3.5 chat template
+answers 500 to two consecutive `system` messages (the bot prompt merges context into a
+single system block, `app/bot/prompts.py`); with a single busy slot the server may answer
+503 immediately.
+
+Historical note: before 2026-10-27 the chat model lived on `:8080` —
+operator env files older than that date point `CHATTY_BOT_PROVIDER_URL` at
+`:8080`, which now serves the VL model; move the bot to `:8082`.
 - Embeddings 501 policy: an OpenAI-compatible server without an embeddings
   endpoint typically answers `/v1/embeddings` with HTTP 501. The embedding
   seam turns that into an explicit failure (`embedding_provider_failed`
