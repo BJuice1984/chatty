@@ -1,0 +1,17 @@
+{
+    "capabilityHints": ["fastapi", "sqlalchemy", "alembic", "postgresql", "pytest", "ALK"],
+    "executableOwners": ["worker-backend-chats"],
+    "externalSpecification": false,
+    "requirementsBytes": 3200,
+    "riskFlags": {
+        "architecture": false,
+        "browser": false,
+        "data": false,
+        "external": false,
+        "migration": true,
+        "performance": true,
+        "release": false,
+        "security": false
+    },
+    "taskCount": 1
+}
