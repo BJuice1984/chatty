@@ -68,6 +68,7 @@ npm run cm           # интерактивный conventional-commit через
 ## Соглашения и ограничения
 
 - Стиль кода enforced линтерами: отступы 4 пробела, одинарные кавычки, без точек с запятой, trailing-запятые в многострочных литералах. Не спорьте с `@stylistic`-правилами — запускайте `eslint:fix`.
+- В стилях (`src/scss/**`) комментарии не пишем — конвенция оператора. Исторические комментарии не трогаем, новые не добавляем; rationale стилевых правок фиксируйте в `docs/progress/progress_log.md`.
 - Импорты пишутся с расширением `.ts` (`moduleResolution: bundler`, `allowImportingTsExtensions`).
 - Гейты по зонам: фронт — `npm run verify`, бэкенд — `npm run verify:backend`, итог контура — `npm run verify:all`. Локальный runbook собственного бэкенда (compose-preflight, health/ready, rollback) — `docs/deployment/own-backend.md`; `docs/deployment/internal-backend.md` остаётся как исторический справочник (superseded).
 - Тесты (`src/**/*.test.*`) исключены из eslint; `src/scss/libs/**` и `src/scss/utils/scrollbar.scss` — из stylelint.

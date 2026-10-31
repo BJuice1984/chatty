@@ -1,15 +1,5 @@
-@import './variable';
+@import './mixins';
 
-.messenger__container::-webkit-scrollbar {
-  width: 6px;
-}
-
-.messenger__container::-webkit-scrollbar-thumb {
-  background-color: $thirdTextColor;
-  border-radius: 6px;
-}
-
-.messenger__container::-webkit-scrollbar-track {
-  background-color: $secondColor;
-  border-radius: 8px;
+.messenger__container {
+  @include scrollbar-slim;
 }

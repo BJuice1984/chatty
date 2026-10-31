@@ -509,6 +509,7 @@
   &__composer {
     width: 100%;
     padding: 10px;
+    box-sizing: border-box;
 
     .login-form {
       display: flex;

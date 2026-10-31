@@ -22,7 +22,7 @@
         "ignoreKeywords": ["Helvetica", "Arial"]
       }
     ],
-    "scss/double-slash-comment-empty-line-before": ["always"],
+    "scss/double-slash-comment-empty-line-before": null,
     "scss/double-slash-comment-whitespace-inside": "never",
     "scss/at-else-closing-brace-newline-after": "always-last-in-chain",
     "scss/at-else-closing-brace-space-after": "always-intermediate",
