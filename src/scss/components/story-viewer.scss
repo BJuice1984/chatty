@@ -81,11 +81,24 @@
         white-space: nowrap;
     }
 
-    //кнопка удаления своей истории: тот же крестик, что у close,
+    &__delete {
+        @include reset;
+        @include text;
+        @include text-format(600, 12px, 16px);
 
-    //но с красным hover — иконка общая с close через запятую
+        border: none;
+        border-radius: 14px;
+        padding: 6px 12px;
+        background-color: rgb(255 255 255 / 15%);
+        color: $mainTextColor;
+        cursor: pointer;
+        flex-shrink: 0;
 
-    &__delete,
+        &:hover {
+            background-color: $spanErrorColor;
+        }
+    }
+
     &__close {
         @include reset;
         @include size(28px, 28px);

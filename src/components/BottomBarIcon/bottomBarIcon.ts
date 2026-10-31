@@ -4,6 +4,7 @@ import template from './bottomBarIcon.hbs'
 interface BottomBarIconProps {
     src: string
     alt: string
+    isActive?: boolean
     onClick: () => void
     [key: string]: unknown
 }

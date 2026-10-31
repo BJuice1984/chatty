@@ -15,6 +15,11 @@
     cursor: pointer;
     transition: $hoverTransition;
 
+    svg {
+        fill: currentcolor;
+        transition: fill $hoverTransition ease, filter $hoverTransition ease;
+    }
+
     &__primary {
         background-color: $thirdColor;
     }
@@ -24,12 +29,20 @@
     }
 
     &__secondary {
-        @include size(40, 280px);
         @include text-format(500, 11px, 11px);
 
+        width: 280px;
         background-color: transparent;
         box-shadow: none;
         color: $thirdTextColor;
+
+        &:hover {
+            color: $mainTextColor;
+
+            svg {
+                filter: drop-shadow(0 0 8px rgb(129 117 255 / 60%));
+            }
+        }
     }
 
     &__hidden {

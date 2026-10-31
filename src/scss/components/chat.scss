@@ -17,7 +17,7 @@
     background-color: $mainColor;
 
     &__container-users {
-        width: 375px;
+        width: 380px;
         height: 98%;
         align-self: center;
         border-right: $borderChat;
@@ -34,8 +34,9 @@
         display: flex;
         flex-direction: row;
         justify-content: space-between;
+        position: relative;
     }
-    
+
     &__header {
         @include reset;
         @include text;
@@ -47,13 +48,17 @@
     }
 
     &__container-header-icons {
+        position: absolute;
+        top: 50%;
+        right: 5px;
+        transform: translateY(-50%);
         display: flex;
         flex-direction: row;
-        gap: 5px;
+        gap: 15px;
     }
 
     &__header-icon {
-        @include size(20px, 20x);
+        @include size(32px, 32px);
         @include hover-opacity;
     }
 
@@ -73,24 +78,7 @@
 
         //много историй: ряд скроллится вбок, плитки не сжимаются;
 
-        //полоса — в фирменном стиле (как у списка сообщений)
-
-        &::-webkit-scrollbar {
-            height: 6px;
-        }
-
-        &::-webkit-scrollbar-thumb {
-            background-color: $thirdTextColor;
-            border-radius: 6px;
-        }
-
-        &::-webkit-scrollbar-track {
-            background-color: $secondColor;
-            border-radius: 8px;
-        }
-
-        scrollbar-width: thin;
-        scrollbar-color: $thirdTextColor $secondColor;
+        @include scrollbar-slim;
 
         .chat-story {
             flex-shrink: 0;
@@ -124,6 +112,7 @@
       margin-left: 8px;
         display: grid;
         row-gap: 16px;
+        align-content: start;
         list-style: none;
         width: 100%;
         box-sizing: border-box;
@@ -135,6 +124,8 @@
         min-height: 0;
         overflow: visible auto;
         padding: 10px 8px;
+
+        @include scrollbar-slim;
     }
 
     &__container-chats {
@@ -264,9 +255,13 @@
     &__container-profile-changing {
       @include reset;
       @include flex-center-center;
+      @include scrollbar-slim;
 
       flex-direction: column;
+      justify-content: safe center;
       margin-top: 24px;
+      min-height: 0;
+      overflow-y: auto;
     }
 
     &__container-botom-bar {
@@ -280,7 +275,7 @@
       display: flex;
       flex-direction: row;
       justify-content: space-between;
-      margin-top: 8px;
+      margin-top: auto;
       padding-bottom: 10px;
     }
 
@@ -333,6 +328,23 @@
 
         &_pane-open &__container-chats {
             display: block;
+        }
+    }
+}
+
+.chat-bottom-bar {
+
+    &__item {
+        display: flex;
+        border-radius: 50%;
+        border: 1px solid transparent;
+        padding: 4px;
+        cursor: pointer;
+        transition: box-shadow $hoverTransition ease, border-color $hoverTransition ease;
+
+        &_active {
+            border-color: $thirdColor;
+            box-shadow: 0 0 10px 2px rgb(129 117 255 / 60%), inset 0 0 6px rgb(129 117 255 / 45%);
         }
     }
 }
