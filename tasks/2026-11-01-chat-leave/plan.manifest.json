@@ -1,7 +1,7 @@
 {
     "schemaVersion": "agent-plan-manifest.v1",
     "status": "FROZEN",
-    "planRevision": 2,
+    "planRevision": 3,
     "package": {
         "id": "2026-11-01-chat-leave",
         "title": "Member context menus, owner kick, self-leave with archived membership",
@@ -152,6 +152,7 @@
                 "backend/app/ws/hub.py",
                 "backend/app/ws/router.py",
                 "backend/tests/integration/chat/test_leave_api.py",
+                "backend/tests/integration/test_migration_009_contacts_segment.py",
                 "backend/tests/integration/test_migration_010_chat_leave_segment.py"
             ],
             "readOnly": [
@@ -214,7 +215,7 @@
             "required": true,
             "plannedItems": [
                 "models: ChatMember.left_at (DateTime tz nullable) in models/chat.py",
-                "migration 010_chat_leave: add column (batch_alter for SQLite), downgrade reverses; heads -> 010_chat_leave; segment roundtrip test test_migration_010_chat_leave_segment.py (the 009 pattern: scratch SQLite, create_all -> stamp head -> downgrade -1 -> upgrade head, inspector-asserted both ways)",
+                "migration 010_chat_leave: add column (batch_alter for SQLite), downgrade reverses; heads -> 010_chat_leave; segment roundtrip test test_migration_010_chat_leave_segment.py (the 009 pattern: scratch SQLite, create_all -> stamp head -> downgrade one step -> upgrade head, inspector-asserted both ways). Amendment rev 3: the 009 segment test's downgrade target '-1' is HEAD-RELATIVE — the moment 010 exists, '-1' from head lands on 010's downgrade and the 009 assertions fail (empirically reproduced); WS-BE-CHAT-LEAVE therefore also owns backend/tests/integration/test_migration_009_contacts_segment.py, changing that ONE line to the explicit revision id '008_pg_trgm_search_indexes' (head-independent, preserves the test's documented intent) plus the explanatory comment — the only way this wave's exit-0 suite gate stays achievable",
                 "repositories/chats.py: active/archived-aware membership queries (is_member row-exists stays for READS; is_active_member for writes; list_for_user keeps ALL rows with left_at; active member ids per chat for the fan-out filter); remove_member hard delete",
                 "schemas/chat.py: ChatResponse.left_at: datetime | None = None additive (None-default keeps model_validate paths alive)",
                 "services/chats.py: require_active_member; kick_member (require_owned + member row check + hard delete); leave (idempotent left_at set); mark_read NO-OP for archived rows; add_member reactivation (existing row with left_at -> NULL, idempotent 201 + implicit contact capture unchanged, requester must be active)",
@@ -542,7 +543,7 @@
         "maxRounds": 2,
         "implementationAuthorized": false,
         "report": "tasks/2026-11-01-chat-leave/plan-review.json",
-        "reviewedRevision": 2,
+        "reviewedRevision": 3,
         "verdict": "READY_TO_FREEZE"
     },
     "planFiles": [

@@ -81,7 +81,12 @@ hard membership delete: the kicked user loses the chat entirely.
 1. `backend/app/models/chat.py` — `ChatMember.left_at` (DateTime
    timezone-aware, nullable). Migration `010_chat_leave` +
    `backend/tests/integration/test_migration_010_chat_leave_segment.py`
-   (the 009 segment pattern).
+   (the 009 segment pattern). Amendment (rev 3): the 009 segment
+   test's `downgrade '-1'` is head-relative and breaks the moment 010
+   exists — this wave also pins its downgrade target to the explicit
+   `'008_pg_trgm_search_indexes'` revision id (one functional line +
+   comment in test_migration_009_contacts_segment.py, now in the
+   write-set).
 2. `backend/app/repositories/chats.py` — active/archived-aware
    membership queries (`is_member` row-exists stays for READS;
    `is_active_member` for writes; `list_for_user` returns ALL rows
