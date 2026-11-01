@@ -17,6 +17,10 @@ class ChatMemberCreate(BaseModel):
     user_id: PositiveInt
 
 
+class ChatDmCreate(BaseModel):
+    user_id: PositiveInt
+
+
 class ChatMemberBrief(BaseModel):
     """Member summary in the chat list — the GET /chats/{id}/members shape."""
 
@@ -41,6 +45,10 @@ class ChatResponse(BaseModel):
     title: str
     owner_id: int
     is_ai: bool
+    # DM marker (additive, default False): the GET /chats field-by-field
+    # construction passes it explicitly, the model_validate paths fill it
+    # from the ORM attribute automatically
+    is_dm: bool = False
     created_at: datetime
     # непрочитанные для запрашивающего: чужие сообщения новее последнего
     # прочитанного (0, если всё прочитано)

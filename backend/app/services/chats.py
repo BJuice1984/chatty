@@ -10,6 +10,7 @@ from sqlalchemy.orm import Session
 from app.models.chat import Chat, ChatMember
 from app.models.user import User
 from app.repositories.chats import ChatRepository
+from app.repositories.contacts import ContactRepository
 from app.repositories.users import UserRepository
 from app.schemas.chat import (
     ChatCreate,
@@ -69,6 +70,9 @@ class ChatService:
         self.session = session
         self.chats = ChatRepository(session)
         self.users = UserRepository(session)
+        # the repository (not ContactService) is composed here to keep the
+        # implicit capture free of a service-to-service cycle
+        self.contacts = ContactRepository(session)
 
     def create(self, owner_id: int, payload: ChatCreate) -> Chat:
         chat = self.chats.add(Chat(title=payload.title.strip(), owner_id=owner_id, is_ai=payload.is_ai))
@@ -76,6 +80,35 @@ class ChatService:
         self.session.commit()
         self.session.refresh(chat)
         return chat
+
+    def create_dm(self, owner_id: int, target_id: int) -> tuple[Chat, bool]:
+        """Get-or-create the 1:1 chat with the user: the existing DM (found
+        by the is_dm flag plus both memberships, never by member counting)
+        returns (chat, False); otherwise the chat is created with the target
+        email local part as the denormalized title, owner = caller, is_ai
+        False, is_dm True, and exactly the two members -> (chat, True)."""
+        if target_id == owner_id:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail='dm_self_forbidden')
+        target = self.users.get_by_id(target_id)
+        if target is None:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail='user_not_found')
+        existing = self.chats.find_dm(owner_id, target_id)
+        if existing is not None:
+            return existing, False
+        login = target.email.lower()
+        chat = self.chats.add(
+            Chat(
+                title=login.split('@', 1)[0] or login,
+                owner_id=owner_id,
+                is_ai=False,
+                is_dm=True,
+            )
+        )
+        self.chats.add_member(ChatMember(chat_id=chat.id, user_id=owner_id))
+        self.chats.add_member(ChatMember(chat_id=chat.id, user_id=target_id))
+        self.session.commit()
+        self.session.refresh(chat)
+        return chat, True
 
     def list_for_user(self, user_id: int) -> list[Chat]:
         return self.chats.list_for_user(user_id)
@@ -194,15 +227,29 @@ class ChatService:
         self.session.commit()
 
     def add_member(self, chat_id: int, requester_id: int, user_id: int) -> ChatMember:
+        """Member addition plus the implicit contact capture: EVERY successful
+        resolution records the contact requester -> user (skipped for
+        self-add) via the idempotent get-then-insert upsert — the fresh
+        insert runs it inside the existing transaction, the
+        existing-membership early return commits it on its own (that
+        read-only path becomes a small write path). The upsert adds no error
+        path of its own, so a contact failure cannot break member addition,
+        and a crash between the two writes only delays capture to the next
+        idempotent add. The membership response shape stays unchanged."""
         self.require_member(chat_id, requester_id)
         if self.users.get_by_id(user_id) is None:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail='user_not_found')
         existing = self.chats.get_member(chat_id, user_id)
         if existing is not None:
+            if user_id != requester_id:
+                self.contacts.upsert(requester_id, user_id)
+                self.session.commit()
             return existing
         member = ChatMember(chat_id=chat_id, user_id=user_id)
         try:
             self.chats.add_member(member)
+            if user_id != requester_id:
+                self.contacts.upsert(requester_id, user_id)
             self.session.commit()
         except IntegrityError:
             self.session.rollback()

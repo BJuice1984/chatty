@@ -2,13 +2,14 @@
 
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends, Query, status
+from fastapi import APIRouter, Depends, Query, Response, status
 from sqlalchemy.orm import Session
 
 from app.core.deps import get_current_user, get_db
 from app.models.user import User
 from app.schemas.chat import (
     ChatCreate,
+    ChatDmCreate,
     ChatMemberBrief,
     ChatMemberCreate,
     ChatMemberResponse,
@@ -55,6 +56,7 @@ async def list_chats(
             title=chat.title,
             owner_id=chat.owner_id,
             is_ai=chat.is_ai,
+            is_dm=chat.is_dm,
             created_at=chat.created_at,
             unread_count=unread.get(chat.id, 0),
             avatar_url=chat.avatar_url,
@@ -77,6 +79,24 @@ async def search_chats(
     литерал 'search' уйдёт в int-параметр и получит 422."""
     results = ChatService(db).search_chats(current_user.id, q)
     return ChatsSearchResponse(query=q, results=results)
+
+
+@router.post('/dm', response_model=ChatResponse)
+async def create_dm(
+    payload: ChatDmCreate,
+    response: Response,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> ChatResponse:
+    """Get-or-create the 1:1 chat with the user: 201 when the DM is created,
+    200 with the SAME chat when it already exists. The route must sit
+    BEFORE the /{chat_id} ones — FastAPI matches by registration order, so
+    the literal 'dm' would otherwise fall into an int path parameter
+    (the /search precedent)."""
+    chat, created = ChatService(db).create_dm(current_user.id, payload.user_id)
+    if created:
+        response.status_code = status.HTTP_201_CREATED
+    return ChatResponse.model_validate(chat)
 
 
 @router.get('/{chat_id}', response_model=ChatResponse)

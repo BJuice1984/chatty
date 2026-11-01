@@ -48,6 +48,26 @@ class ChatRepository:
     def get_member(self, chat_id: int, user_id: int) -> ChatMember | None:
         return self.session.get(ChatMember, (chat_id, user_id))
 
+    def find_dm(self, user_a: int, user_b: int) -> Chat | None:
+        """Earliest is_dm chat whose membership covers BOTH users: each
+        membership is its own IN-subquery, so a DM is defined solely by the
+        is_dm flag plus the two memberships — member counting never promotes
+        a plain 2-member group. id asc, limit 1 keeps the get-or-create
+        deterministic; order of the pair does not matter."""
+        membership_a = select(ChatMember.chat_id).where(ChatMember.user_id == user_a).scalar_subquery()
+        membership_b = select(ChatMember.chat_id).where(ChatMember.user_id == user_b).scalar_subquery()
+        statement = (
+            select(Chat)
+            .where(
+                Chat.is_dm.is_(True),
+                Chat.id.in_(membership_a),
+                Chat.id.in_(membership_b),
+            )
+            .order_by(Chat.id.asc())
+            .limit(1)
+        )
+        return self.session.scalars(statement).first()
+
     def add(self, chat: Chat) -> Chat:
         self.session.add(chat)
         self.session.flush()
