@@ -1,3 +1,70 @@
+# 2026-11-01 — Feat(settings): UI шести секций /settings и доставка фоновых сообщений (WS-FE-SETTINGS-UI)
+
+Четвёртая волна ALK-прогона `2026-11-01-settings` (ветка
+feature/2026-11-01-contacts, после бэкенда 72e6be7, темы f9fc22c и логики
+716b22b): мёртвые пункты сайдбара /settings стали навигацией по правой
+панели. `ProfileSettingsItem` получил onClick (читает this.props на момент
+клика — LIVE-7) и модификатор `_active`; секция — состояние в пропсах
+страницы (`section: account|chats|appearance|notification|privacy|data`),
+рендер вычисляет флаги видимости и checked-состояния. **Account**:
+display_name/phone через существующую Form-идиому (валидаторы; phone
+опционален — обёртка empty-или-формат, NULL на бэкенде разрешён),
+email/login — read-only строки плоской разметкой в profile.hbs (контракт
+Form/Input read-value не рендерит), смена пароля — второй Form со
+старым/новым/повтором (12+ политика из passwordValidationMessage,
+совпадение повтора — фидбек «Новые пароли не совпадают» без вызова
+контроллера), «Sign out» остался кнопкой формы, «Sign out everywhere» —
+за модалкой-подтверждением (билдер renderLogoutAllModalContent по узору
+renderDeleteModalContent, логин экранируется escapeHtml; подтверждение →
+getProfileController().logoutAll()). **Chats**: архив = слайс chats с
+leftAt, «Вернуться» → getProfileController().rejoinChat(id) (шов
+композиции на ChatsController.rejoinChat) — карточка оживает рефетчем
+стора (страница перерисовывается из слайса, пин). **Appearance**: радио
+light/dark/system → setTheme (живьём в document.documentElement.dataset,
+персист chatty-theme). **Notification**: тумблеры звука и браузерных
+уведомлений на utils/preferences (включение уведомлений спрашивает
+Notification.requestPermission, отсутствие API — подсказка «не
+поддерживаются»). **Privacy**: send_read_receipts из стора → одно-полевой
+PUT changeUserInfo({send_read_receipts}). **Data Usage**: fetchUsage на
+ВХОДЕ в секцию (componentDidUpdate-переход, не на каждом рендере; ошибка —
+подсказка), формат КБ/МБ/ГБ (formatUsageSize, порог 1024) + тумблер
+autoDownload. Доставка: шов deliverBackgroundNotice в features/chats/ws/
+own.ts — чужое сообщение в невыбранном чате (предикаты инкремента
+непрочитанных) играет WebAudio-пинг (ленивый AudioContext, кеш привязан к
+конструктору — тестовые подмены естественно пересоздают; без ассета) и
+показывает Notification(title чата, body сниппет / «Вложение») только при
+тумблер+granted+document.hidden; мессенджер несёт autoDownload из
+preferences живой подпиской (destroy отписывает), message.hbs при
+выключенной автозагрузке рендерит ссылку «Скачать» (data-testid
+attachment-download) вместо превью «Вложение». Новый
+`src/scss/components/settings-sections.scss` — секции/тумблеры/радио/
+архив/usage только на var(--token), без комментариев; подключён в
+_all.scss. Тесты: +55 mocha (база 485 → 540): profile-страница 33
+(навигация шести секций, active-маркер, read-only+XSS, правка/валидация,
+пароль ок/несовпадение/12+/Sign out/модалка, архив+rejoin+оживание,
+тема живьём, тумблеры, usage+формат), ws-гейты 10 (звук вкл/выкл/свой/
+открытый, ленивость контекста, уведомление granted+hidden / visible /
+denied / выкл / свой, «Вложение» и фолбэк-заголовок), messenger 2 (живая
+перерисовка вложений тумблером), message 4 (обе ветки гейта + без файла),
+ProfileSettingsItem 6 (клик, живой колбэк, _active, XSS). Гейты: npm run
+verify — typecheck, 540 mocha, eslint, stylelint зелёные;
+guard-architecture --all --strict — 0 нарушений. Кумулятивный реестр
+открытых хвостов (наследован от предыдущих волн + находки этого прогона,
+к закрытию отдельными правками): 1) зачистка легаси-комментариев про
+«@-поиск» после 2026-11-01-email-search; 2) явный multi-row-тест порядка
+GET /contacts (created_at DESC); 3) негерметичный пин дефолтного
+noop-опенера в contacts.test.ts (порядок загрузки файлов); 4) мёртвый
+eslint-disable в src/features/contacts/controller.ts; 5) дормирующие
+catch-ветки, найденные ревью волн логики и бэкенда; 6) бэкенд-фикстура
+owner_id требует distinct-пользователей; 7) сегментный тест 011_settings
+при появлении 012 перепинить на явную ревизию; 8) остаточная проверка
+версии refresh-токена в WS-хендшейке (ver-клейм сравнивается только в
+REST get_current_user); 9) ai-assistant не проверен на светлую тему
+(жёсткие цвета вне токенов — прогон 2026-11-01-settings не трогал);
+10) устаревший комментарий у chat-list-user (описывает убранное поведение);
+11) одно-кадровая вспышка светлой темы при холодной загрузке с тёмным
+выбором — заявленный non-goal (инлайн-скрипт бутстрапа).
+
 # 2026-11-01 — Feat(chats): UI членства — меню участника, архивная карточка, скрытый композер (WS-FE-CHAT-LEAVE-UI)
 
 Третья волна ALK-прогона `2026-11-01-chat-leave` (ветка feature/2026-11-01-contacts,

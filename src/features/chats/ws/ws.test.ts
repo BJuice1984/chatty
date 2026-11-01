@@ -3,6 +3,7 @@ import sinon from 'sinon'
 import { JSDOM } from 'jsdom'
 import { env, joinUrl } from '../../../utils/env.ts'
 import store from '../../../utils/Store.ts'
+import { initPreferences, setPreference } from '../../../utils/preferences.ts'
 import {
     appendMessages,
     chatMessagesPort,
@@ -507,5 +508,307 @@ describe('own ws adapter social events', () => {
                 content: { chat_id: 3, message_id: 11, user_id: 42, emoji: '👍', active: false },
             }))
         ).to.not.throw()
+    })
+})
+
+// 2026-11-01-settings: шов доставки фоновых сообщений. WebAudio и Notification
+// в jsdom нет — гейты пинуются ЗАГЛУШКАМИ: звонок решают тумблер preferences и
+// предикаты «чат не открыт / сообщение чужое», уведомление — тройное условие
+// (тумблер + выданное разрешение + скрытая вкладка), заголовок — title чата,
+// тело — сниппет сообщения (файловое — «Вложение»).
+describe('own ws adapter delivery gates', () => {
+    type SocketListener = (event: { data?: string }) => void
+
+    const created: FakeWebSocket[] = []
+
+    class FakeWebSocket {
+        static readonly CONNECTING = 0
+        static readonly OPEN = 1
+        static readonly CLOSING = 2
+        static readonly CLOSED = 3
+
+        readyState = FakeWebSocket.CONNECTING
+        sent: string[] = []
+        listeners = new Map<string, SocketListener[]>()
+
+        constructor() {
+            created.push(this)
+        }
+
+        addEventListener(type: string, listener: SocketListener) {
+            this.listeners.set(type, [...(this.listeners.get(type) ?? []), listener])
+        }
+
+        removeEventListener() {}
+
+        send(data: string) {
+            this.sent.push(data)
+        }
+
+        close() {
+            this.readyState = FakeWebSocket.CLOSED
+        }
+
+        triggerOpen() {
+            this.readyState = FakeWebSocket.OPEN
+            for (const listener of [...(this.listeners.get('open') ?? [])]) {
+                listener({})
+            }
+        }
+
+        triggerMessage(data: string) {
+            for (const listener of [...(this.listeners.get('message') ?? [])]) {
+                listener({ data })
+            }
+        }
+    }
+
+    interface FakeOscillator {
+        startedAt: number[]
+        connect: () => void
+        start: (when: number) => void
+        stop: (when: number) => void
+        frequency: { value: number }
+    }
+
+    let audioContexts: { started: number[] }[]
+    let oscillators: FakeOscillator[]
+
+    function installAudioStub(): void {
+        audioContexts = []
+        oscillators = []
+
+        class FakeAudioContext {
+            currentTime = 0
+            destination = {}
+
+            constructor() {
+                audioContexts.push({ started: [] })
+            }
+
+            createOscillator(): FakeOscillator {
+                const owner = audioContexts[audioContexts.length - 1]
+                const oscillator: FakeOscillator = {
+                    startedAt: [],
+                    frequency: { value: 0 },
+                    connect: () => {},
+                    start: (when: number) => {
+                        oscillators.push(oscillator)
+                        owner.started.push(when)
+                    },
+                    stop: () => {},
+                }
+
+                return oscillator
+            }
+
+            createGain() {
+                return {
+                    connect: () => {},
+                    gain: {
+                        setValueAtTime: () => {},
+                        exponentialRampToValueAtTime: () => {},
+                    },
+                }
+            }
+        }
+
+        (globalThis as { AudioContext?: unknown }).AudioContext =
+            FakeAudioContext as unknown as typeof AudioContext
+    }
+
+    let notificationCalls: { title: string, body: string }[]
+    let permissionRequests: number
+
+    function installNotificationStub(permission: 'granted' | 'denied' | 'default'): void {
+        notificationCalls = []
+        permissionRequests = 0
+
+        class FakeNotification {
+            static permission = permission
+
+            static requestPermission(): Promise<NotificationPermission> {
+                permissionRequests += 1
+
+                return Promise.resolve(permission)
+            }
+
+            constructor(title: string, options: { body?: string }) {
+                notificationCalls.push({ title, body: options?.body ?? '' })
+            }
+        }
+
+        (globalThis as { Notification?: unknown }).Notification =
+            FakeNotification as unknown as typeof Notification
+    }
+
+    function setHidden(value: boolean): void {
+        Object.defineProperty(global.document, 'hidden', { value, configurable: true })
+    }
+
+    let clock: sinon.SinonFakeTimers
+    let originalWebSocket: typeof WebSocket
+    let originalNotification: typeof Notification | undefined
+    let originalAudioContext: typeof AudioContext | undefined
+
+    beforeEach(() => {
+        clock = sinon.useFakeTimers()
+        created.length = 0
+        originalWebSocket = globalThis.WebSocket
+        originalNotification = (globalThis as { Notification?: typeof Notification }).Notification
+        originalAudioContext = (globalThis as { AudioContext?: typeof AudioContext }).AudioContext
+        globalThis.WebSocket = FakeWebSocket as unknown as typeof WebSocket
+        window.localStorage.removeItem('chatty-preferences')
+        initPreferences()
+        installAudioStub()
+        installNotificationStub('granted')
+        setHidden(true)
+        store.set('user', { id: 7, display_name: '', first_name: '', second_name: '', email: '', login: '', phone: '', avatar: '', send_read_receipts: true })
+        store.set('chats', [{ id: 3, title: 'Project', unread_count: 0 }])
+        store.set('selectedChat', 9)
+        store.set('messages', { 3: [] })
+        chatHistorySlice.resetHistory(3)
+    })
+
+    afterEach(() => {
+        globalThis.WebSocket = originalWebSocket
+        if (originalNotification === undefined) {
+            delete (globalThis as { Notification?: unknown }).Notification
+        } else {
+            ;(globalThis as { Notification?: typeof Notification }).Notification = originalNotification
+        }
+        if (originalAudioContext === undefined) {
+            delete (globalThis as { AudioContext?: unknown }).AudioContext
+        } else {
+            ;(globalThis as { AudioContext?: typeof AudioContext }).AudioContext = originalAudioContext
+        }
+        delete (global.document as { hidden?: boolean }).hidden
+        window.localStorage.removeItem('chatty-preferences')
+        initPreferences()
+        clock.restore()
+        store.set('messages', { 3: [] })
+        chatHistorySlice.resetHistory(3)
+        store.set('chats', undefined)
+        store.set('selectedChat', undefined)
+        store.set('user', undefined)
+    })
+
+    async function connectedSocket(): Promise<FakeWebSocket> {
+        const adapter = new OwnWsAdapter()
+        const connected = adapter.connect(3)
+
+        created[0].triggerOpen()
+        await connected
+
+        return created[0]
+    }
+
+    const incomingMessage = (overrides: Record<string, unknown> = {}) =>
+        JSON.stringify({ type: 'message', content: { ...ownResponse, ...overrides } })
+
+    it('plays a short WebAudio ping for a foreign message in a background chat', async () => {
+        const socket = await connectedSocket()
+
+        socket.triggerMessage(incomingMessage({ user_id: 42 }))
+
+        expect(audioContexts).to.have.length(1)
+        expect(audioContexts[0]?.started).to.deep.eq([0])
+    })
+
+    it('creates the AudioContext lazily: further pings reuse the single context', async () => {
+        const socket = await connectedSocket()
+
+        socket.triggerMessage(incomingMessage({ id: 31, user_id: 42 }))
+        socket.triggerMessage(incomingMessage({ id: 32, user_id: 42 }))
+
+        expect(audioContexts).to.have.length(1)
+        expect(audioContexts[0]?.started).to.have.length(2)
+    })
+
+    it('stays silent when the sound preference is off', async () => {
+        setPreference('sound', false)
+
+        const socket = await connectedSocket()
+
+        socket.triggerMessage(incomingMessage({ user_id: 42 }))
+
+        expect(audioContexts).to.have.length(0)
+    })
+
+    it('stays silent for own messages and for the currently open chat', async () => {
+        const socket = await connectedSocket()
+
+        // собственное эхо-сообщение
+        socket.triggerMessage(incomingMessage({ user_id: 7 }))
+        expect(audioContexts).to.have.length(0)
+
+        // чат 3 открыт: фонового уведомления нет, даже если сообщение чужое
+        store.set('selectedChat', 3)
+        socket.triggerMessage(incomingMessage({ id: 33, user_id: 42 }))
+        expect(audioContexts).to.have.length(0)
+    })
+
+    it('notifies with the chat title and the message snippet when granted and hidden', async () => {
+        setPreference('browserNotifications', true)
+
+        const socket = await connectedSocket()
+
+        socket.triggerMessage(incomingMessage({ user_id: 42 }))
+
+        expect(notificationCalls).to.deep.eq([{ title: 'Project', body: 'hello' }])
+    })
+
+    it('uses the «Вложение» placeholder for file messages and a fallback title for unknown chats', async () => {
+        setPreference('browserNotifications', true)
+        store.set('chats', [])
+
+        const socket = await connectedSocket()
+
+        socket.triggerMessage(incomingMessage({ id: 34, user_id: 42, content: null, file_id: 5 }))
+
+        expect(notificationCalls).to.deep.eq([{ title: 'Новое сообщение', body: 'Вложение' }])
+    })
+
+    it('does not notify while the tab is visible', async () => {
+        setPreference('browserNotifications', true)
+        setHidden(false)
+
+        const socket = await connectedSocket()
+
+        socket.triggerMessage(incomingMessage({ user_id: 42 }))
+
+        expect(notificationCalls).to.deep.eq([])
+
+        // звук при этом работает — гейт уведомления независим от гейта звука
+        expect(audioContexts).to.have.length(1)
+    })
+
+    it('does not notify without the granted permission', async () => {
+        setPreference('browserNotifications', true)
+        installNotificationStub('denied')
+
+        const socket = await connectedSocket()
+
+        socket.triggerMessage(incomingMessage({ user_id: 42 }))
+
+        expect(notificationCalls).to.deep.eq([])
+    })
+
+    it('does not notify when the toggle is off (default)', async () => {
+        const socket = await connectedSocket()
+
+        socket.triggerMessage(incomingMessage({ user_id: 42 }))
+
+        expect(notificationCalls).to.deep.eq([])
+    })
+
+    it('does not notify for own messages even with everything enabled', async () => {
+        setPreference('browserNotifications', true)
+
+        const socket = await connectedSocket()
+
+        socket.triggerMessage(incomingMessage({ user_id: 7 }))
+
+        expect(notificationCalls).to.deep.eq([])
     })
 })

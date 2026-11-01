@@ -9,6 +9,8 @@
 // 2026-11-01-chat-leave: меню участника по клику аватара в шапке — матрица
 // видимости (владелец/контакт/свой аватар), архивный режим (нет меню,
 // кнопки «+» и композер скрыты), колбэки и XSS на display_name.
+// 2026-11-01-settings: проводка autoDownload — вложения открытого чата
+// перерисовываются живым тумблером preferences (подписка мессенджера).
 
 import { expect } from 'chai'
 import sinon from 'sinon'
@@ -19,6 +21,7 @@ import { registerComponent } from '../../core/registerComponent.ts'
 import * as Components from '../components.ts'
 import { mapTypedMessages, Messenger, USER_SEARCH_DEBOUNCE_MS } from './messenger.ts'
 import store from '../../utils/Store.ts'
+import { initPreferences, setPreference } from '../../utils/preferences.ts'
 import type { Message } from '../../utils/types.ts'
 
 // Регистрация компонентов-хелперов как в прод-сборке (main.ts): модалкам и
@@ -808,6 +811,67 @@ describe('messenger member menu', () => {
 
             expect(menuTitle?.textContent).to.contain('alert(1)')
             expect(menuTitle?.innerHTML).to.contain('&lt;script&gt;')
+        } finally {
+            messenger.destroy()
+        }
+    })
+})
+
+// Гейт автозагрузки вложений (2026-11-01-settings): мессенджер несёт
+// autoDownload из preferences и живо перерисовывает вложения открытого чата
+// при переключении тумблера (подписка, не только начальное значение).
+describe('messenger attachment auto-download wiring', () => {
+    beforeEach(() => {
+        store.set('chats', [{ id: 5, title: 'файлы', avatar: '', unread_count: 0 }])
+        store.set('messages', {
+            5: [{ chat_id: 5, time: 't1', type: 'message', user_id: 7, content: 'файл', file_url: '/api/v1/files/9/download', id: 21 }],
+        })
+        store.set('selectedChat', 5)
+        window.localStorage.removeItem('chatty-preferences')
+        initPreferences()
+    })
+
+    afterEach(() => {
+        store.set('messages', undefined)
+        store.set('selectedChat', undefined)
+        store.set('chats', undefined)
+        window.localStorage.removeItem('chatty-preferences')
+        initPreferences()
+    })
+
+    it('renders the inline attachment by default and re-renders on the live toggle', () => {
+        const messenger = new Messenger({} as never)
+
+        try {
+            expect(messenger.element?.querySelector('.messenger__message-attachment')?.textContent?.trim())
+                .to.equal('Вложение')
+
+            setPreference('autoDownload', false)
+
+            const download = messenger.element?.querySelector<HTMLAnchorElement>('[data-testid="attachment-download"]')
+
+            expect(download).to.exist
+            expect(download?.getAttribute('href')).to.equal('/api/v1/files/9/download')
+            expect(messenger.element?.querySelector('[data-testid="attachment-download"]')?.textContent?.trim())
+                .to.equal('Скачать')
+
+            setPreference('autoDownload', true)
+
+            expect(messenger.element?.querySelector('[data-testid="attachment-download"]')).to.not.exist
+            expect(messenger.element?.querySelector('.messenger__message-attachment')?.textContent?.trim())
+                .to.equal('Вложение')
+        } finally {
+            messenger.destroy()
+        }
+    })
+
+    it('starts with the preview suppressed when the preference is already off', () => {
+        setPreference('autoDownload', false)
+
+        const messenger = new Messenger({} as never)
+
+        try {
+            expect(messenger.element?.querySelector('[data-testid="attachment-download"]')).to.exist
         } finally {
             messenger.destroy()
         }

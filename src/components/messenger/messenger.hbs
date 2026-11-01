@@ -19,7 +19,7 @@
         <ul class="messenger__container">
           {{{ ChatHistory }}}
           {{#each messages}}
-            {{{ Message content=this.content user_id=this.user_id chat_id=this.chat_id id=this.id isMine=this.isMine isError=this.isError fileUrl=this.fileUrl time=this.time showDate=this.showDate replyTo=this.replyTo reactions=this.reactions onSetReaction=../this.onSetReaction onReply=../this.onReplyToMessage }}}
+            {{{ Message content=this.content user_id=this.user_id chat_id=this.chat_id id=this.id isMine=this.isMine isError=this.isError fileUrl=this.fileUrl autoDownload=../this.autoDownload time=this.time showDate=this.showDate replyTo=this.replyTo reactions=this.reactions onSetReaction=../this.onSetReaction onReply=../this.onReplyToMessage }}}
           {{/each}}
         </ul>
         {{#if replyDraft}}

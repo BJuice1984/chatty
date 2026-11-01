@@ -9,7 +9,11 @@
         <div class="messenger__message-bubble {{#if isMine}}messenger__message-bubble_mine{{else}}messenger__message-bubble_theirs{{/if}}{{#if isError}} messenger__message-bubble_error{{/if}}">
             <h4 class="messenger__message-content">{{content}}</h4>
             {{#if fileUrl}}
-                <a class="messenger__message-attachment" href="{{fileUrl}}" target="_blank" rel="noopener noreferrer">Вложение</a>
+                {{#if attachmentDownload}}
+                    <a class="messenger__message-attachment" href="{{fileUrl}}" target="_blank" rel="noopener noreferrer" data-testid="attachment-download">Скачать</a>
+                {{else}}
+                    <a class="messenger__message-attachment" href="{{fileUrl}}" target="_blank" rel="noopener noreferrer">Вложение</a>
+                {{/if}}
             {{/if}}
             {{#if formattedTime}}
                 <time class="messenger__message-time" datetime="{{time}}">{{formattedTime}}</time>

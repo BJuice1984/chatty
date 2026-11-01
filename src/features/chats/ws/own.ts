@@ -20,10 +20,15 @@
 // запросившего историю); id сохраняется — дедупликация истории (stage 11)
 // идёт по нему. История приходит убыванием (desc) — единственный reverse
 // делает merge истории (RV1: без второго разворота).
+// 2026-11-01-settings: шов доставки фоновых сообщений — звук (WebAudio-пинг
+// без ассета, контекст ленивый) и браузерное уведомление (только при
+// выданном разрешении и скрытой вкладке) для чужого сообщения в чате,
+// который сейчас не открыт (шлюз открытого чата — сам мессенджер).
 
 import WSTransport, { WSTransportEvents } from '../../../utils/WSTransport.ts'
 import { env, joinUrl } from '../../../utils/env.ts'
 import store from '../../../utils/Store.ts'
+import { getPreferences, notificationPermission } from '../../../utils/preferences.ts'
 import type { Message, MessageReplyTo, ReactionSummary } from '../../../utils/types.ts'
 import { chatHistoryController } from '../history/controller.ts'
 import type { HistoryMessage } from '../history/types.ts'
@@ -149,6 +154,80 @@ function liftLastMessage(chatId: number, payload: OwnMessageResponse): void {
     store.set('chats', chats)
 }
 
+// Короткий WebAudio-пинг без ассета: AudioContext создаётся лениво и только
+// при первом реально сыгранном звуке. Кеш привязан к конструктору: подмена
+// глобала (тестовые заглушки) естественно пересоздаёт контекст, в живом
+// приложении конструктор один — истинный ленивый синглтон
+interface LazyPingContext {
+    context: AudioContext
+    ctor: unknown
+}
+
+let pingContext: LazyPingContext | null = null
+
+function playIncomingPing(): void {
+    try {
+        const ctor = (globalThis as { AudioContext?: new () => AudioContext }).AudioContext
+
+        if (typeof ctor !== 'function') {
+            return
+        }
+
+        if (pingContext === null || pingContext.ctor !== ctor) {
+            pingContext = { context: new ctor(), ctor }
+        }
+
+        const context = pingContext.context
+        const oscillator = context.createOscillator()
+        const gain = context.createGain()
+        const now = context.currentTime
+
+        oscillator.frequency.value = 880
+        gain.gain.setValueAtTime(0.08, now)
+        gain.gain.exponentialRampToValueAtTime(0.001, now + 0.15)
+        oscillator.connect(gain)
+        gain.connect(context.destination)
+        oscillator.start(now)
+        oscillator.stop(now + 0.15)
+    } catch {
+        // звук не должен ронять доставку сообщения
+    }
+}
+
+// Шов доставки фоновых сообщений (2026-11-01-settings): чужое сообщение в
+// НЕоткрытом чате (предикаты инкремента непрочитанных) опционально звучит и
+// показывает браузерное уведомление — заголовок чата из стора, тело — текст
+// сообщения (файловое без текста — «Вложение»). Уведомление требует всех
+// трёх условий: тумблер включён, разрешение выдано, вкладка скрыта
+export function deliverBackgroundNotice(chatId: number, payload: OwnMessageResponse): void {
+    const state = store.getState()
+
+    if (state.selectedChat === chatId) {
+        return
+    }
+
+    if (state.user?.id === payload.user_id) {
+        return
+    }
+
+    const preferences = getPreferences()
+
+    if (preferences.sound) {
+        playIncomingPing()
+    }
+
+    if (preferences.browserNotifications
+        && notificationPermission() === 'granted'
+        && document.hidden) {
+        const chat = (state.chats ?? []).find(entry => (entry as { id?: number }).id === chatId)
+        const title = typeof (chat as { title?: unknown } | undefined)?.title === 'string'
+            ? (chat as { title: string }).title
+            : 'Новое сообщение'
+
+        new Notification(title, { body: payload.content ?? 'Вложение' })
+    }
+}
+
 export class OwnWsAdapter {
     private sockets: Map<number, WSTransport> = new Map()
 
@@ -188,6 +267,7 @@ export class OwnWsAdapter {
                 ))
                 incrementUnread(id, message.user_id)
                 liftLastMessage(id, raw)
+                deliverBackgroundNotice(id, raw)
 
                 return
             }

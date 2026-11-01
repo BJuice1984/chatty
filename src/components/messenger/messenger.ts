@@ -16,6 +16,7 @@ import Handlebars from 'handlebars'
 import { Button, Input, Message } from '../../utils/types.ts'
 import { AppState, withStore } from '../../utils/Store.ts'
 import { fileUrl } from '../../utils/env.ts'
+import { getPreferences, subscribePreferences } from '../../utils/preferences.ts'
 import { messageDayKey } from '../message/message.ts'
 import template from './messenger.hbs'
 
@@ -83,6 +84,9 @@ interface MessengerProps {
     replyDraft?: ReplyDraft | null
     // раскрыт ли набор эмодзи у сообщения (переключается самим message)
     reactionsOpen?: boolean
+    // Гейт автозагрузки вложений (2026-11-01-settings): начальное значение —
+    // из preferences, живые переключения подъезжают подпиской
+    autoDownload?: boolean
     [key: string]: unknown
 }
 
@@ -277,6 +281,9 @@ class MessengerBase extends Block {
 
     private scrollPlan: 'bottom' | 'preserve' | null = null
     private scrollPlanScheduled = false
+    // отписка от preferences: тумблер автозагрузки в настройках должен
+    // перерисовать вложения открытого чата, а утечка подписки — нет
+    private unsubscribePreferences: (() => void) | null = null
 
     private memoryKey(): number {
         const chatId = (this.props as MessengerProps).selectedChat
@@ -389,6 +396,9 @@ class MessengerBase extends Block {
     constructor(propsFromStore: MessengerProps) {
         super({
             ...propsFromStore,
+            // гейт автозагрузки вложений: стартует из preferences, дальше
+            // живёт подпиской (тумблер в настройках применяет сразу)
+            autoDownload: getPreferences().autoDownload,
             // controller-free UI-состояние модалок и черновика ответа
             addUserOpen: false,
             addUserQuery: '',
@@ -596,6 +606,11 @@ class MessengerBase extends Block {
                 },
             ],
         })
+
+        // живой тумблер автозагрузки: настройка применяется к открытому чату
+        this.unsubscribePreferences = subscribePreferences(preferences => {
+            this.setProps({ autoDownload: preferences.autoDownload })
+        })
     }
 
     // фокус в поле поиска после перерисовки по ответу поиска: DOM заменён,
@@ -616,6 +631,9 @@ class MessengerBase extends Block {
         if (this.userSearchDebounce != null) {
             clearTimeout(this.userSearchDebounce)
         }
+
+        this.unsubscribePreferences?.()
+        this.unsubscribePreferences = null
 
         super.destroy()
     }
