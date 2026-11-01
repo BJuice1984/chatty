@@ -1,7 +1,7 @@
 {
     "schemaVersion": "agent-plan-manifest.v1",
     "status": "FROZEN",
-    "planRevision": 4,
+    "planRevision": 5,
     "package": {
         "id": "2026-11-01-settings",
         "title": "Working /settings surface: account, chat archive, theme, notifications, privacy, data usage",
@@ -64,7 +64,7 @@
             {
                 "id": "REQ-FE-SETTINGS-LOGIC",
                 "title": "Frontend logic: profile port (update/password/logout-all/usage), rejoin, preferences module",
-                "description": "Profile port/adapter: changeProfile supported (PUT /auth/profile + csrf) with changePassword, logoutAll, fetchUsage (GET /files/usage own transport) additive; toAuthUser (auth/api/own.ts) maps the REAL display_name/phone (fallback local-part when null) plus send_read_receipts (AuthUser grows the flag — the old email-synthesis would revert Account edits); profile/password success refreshes the auth user and rejoinChat reaches the profile page via consumer-side setters wired in features/index.ts (the guard-exempt composition root, the logout-seam precedent); chats port/controller: rejoinChat(chatId) POST + csrf -> refetch; utils/preferences.ts: typed per-viewer prefs (sound default true, browserNotifications default false, autoDownload default true) with a subscriber bus, storage-failure tolerant; AppState.user carries display_name/phone.",
+                "description": "Profile port/adapter: changeProfile supported (PUT /auth/profile + csrf) with changePassword, logoutAll, fetchUsage (GET /files/usage own transport) additive; toAuthUser (auth/api/own.ts) maps the REAL display_name/phone (fallback local-part when null) plus send_read_receipts (AuthUser grows the flag; the auth test fixtures api.test.ts/controller.test.ts are rev-5 amendment additions to this wave — the mandated change invalidates their pinned literals — the old email-synthesis would revert Account edits); profile/password success refreshes the auth user and rejoinChat reaches the profile page via consumer-side setters wired in features/index.ts (the guard-exempt composition root, the logout-seam precedent); chats port/controller: rejoinChat(chatId) POST + csrf -> refetch; utils/preferences.ts: typed per-viewer prefs (sound default true, browserNotifications default false, autoDownload default true) with a subscriber bus, storage-failure tolerant; AppState.user carries display_name/phone.",
                 "priority": "P1",
                 "source": "operator request 2026-11-01 (logic underpinnings of all four groups)",
                 "acceptanceIds": [
@@ -311,7 +311,9 @@
                 "WS-BE-SETTINGS"
             ],
             "writes": [
+                "src/features/auth/api/api.test.ts",
                 "src/features/auth/api/own.ts",
+                "src/features/auth/controller.test.ts",
                 "src/features/auth/ports.ts",
                 "src/features/chats/api/own.ts",
                 "src/features/chats/chats.test.ts",
@@ -489,7 +491,7 @@
                     "EV-FE-1"
                 ],
                 "independentEvidenceIds": [],
-                "statement": "Profile port: changeProfile supported (PUT /auth/profile + csrf) with changePassword, logoutAll, fetchUsage additive — URL shapes + csrf mocha-pinned; toAuthUser maps REAL display_name/phone + send_read_receipts (no synthesized email-name — the old mapping would revert Account edits; AuthUser grows the flag, pinned); profile/password success refreshes the auth user through the composition-root seam (features/index.ts wiring — pinned); chats port/controller: rejoinChat(chatId) POST + csrf, refetches the list (pinned), reachable from the profile page via the wired seam; utils/preferences.ts exposes typed per-viewer preferences (sound, browserNotifications, autoDownload) with live subscriber notification — unit-pinned incl. localStorage failure tolerance.",
+                "statement": "Profile port: changeProfile supported (PUT /auth/profile + csrf) with changePassword, logoutAll, fetchUsage additive — URL shapes + csrf mocha-pinned; toAuthUser maps REAL display_name/phone + send_read_receipts (no synthesized email-name — the old mapping would revert Account edits; AuthUser grows the flag, pinned in auth/api/api.test.ts — a rev-5 amendment adding that fixture file to the write-set since the mandated change invalidates its pinned literal); profile/password success refreshes the auth user through the composition-root seam (features/index.ts wiring — pinned); chats port/controller: rejoinChat(chatId) POST + csrf, refetches the list (pinned), reachable from the profile page via the wired seam; utils/preferences.ts exposes typed per-viewer preferences (sound, browserNotifications, autoDownload) with live subscriber notification — unit-pinned incl. localStorage failure tolerance.",
                 "description": "Frontend unit tests.",
                 "source": "acceptance-criteria.md",
                 "priority": "P1"
@@ -626,7 +628,7 @@
         "maxRounds": 2,
         "implementationAuthorized": false,
         "report": "tasks/2026-11-01-settings/plan-review.json",
-        "reviewedRevision": 4,
+        "reviewedRevision": 5,
         "verdict": "READY_TO_FREEZE"
     },
     "planFiles": [
