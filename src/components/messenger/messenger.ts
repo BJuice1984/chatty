@@ -124,7 +124,7 @@ export function renderAddUserModalContent(props: {
         + '<div class="modal__search-flow">'
         + '<input class="modal__input" type="text" name="user-search" data-testid="user-search-input" '
         + `placeholder="Имя пользователя (email)" value="${escapeHtml(query)}" autocomplete="off" aria-label="Логин для поиска" />`
-        + `<p class="modal__hint">Начните вводить начало email — поиск сработает сам; «@» не нужен</p>${
+        + `<p class="modal__hint">Начните вводить начало или полный email — поиск сработает сам</p>${
             feedbackHtml
         }<ul class="modal__results" data-testid="user-search-results">${items}</ul>${
             emptyHint
@@ -418,8 +418,9 @@ class MessengerBase extends Block {
                         this.setProps({ deleteModalOpen: false })
                     }
                 },
-                // @-поиск: ввод с префиксом @ -> дебаунс -> onSearchUsers ->
-                // список находок; перерисовка только по ответу, фокус возвращаем
+                // поиск пользователя: ввод (начало или полный email) ->
+                // дебаунс -> onSearchUsers -> список находок; перерисовка
+                // только по ответу, фокус возвращаем
                 input: (event: Event) => {
                     const target = event.target as HTMLElement | null
 
@@ -427,17 +428,9 @@ class MessengerBase extends Block {
                         return
                     }
 
-                    const input = target as HTMLInputElement
-                    let raw = input.value
-
-                    // символ «@» — маркер поиска, в сам логин он входить не
-                    // может: не даём его ввести (вырезаем из значения)
-                    if (raw.includes('@')) {
-                        raw = raw.split('@').join('')
-                        input.value = raw
-                    }
-
-                    const query = raw
+                    // значение уходит в поиск как введено: логин — полный
+                    // email, «@» из него не вырезается
+                    const query = (target as HTMLInputElement).value
 
                     if (this.userSearchDebounce != null) {
                         clearTimeout(this.userSearchDebounce)

@@ -137,16 +137,19 @@ describe('contacts page', () => {
 
             const input = page.element?.querySelector<HTMLInputElement>('[data-testid="user-search-input"]')
 
-            input!.value = 'b@ob'
+            input!.value = 'bob@example.com'
             input!.dispatchEvent(new dom.window.MouseEvent('input', { bubbles: true }))
+
+            // значение не переписывается: полный email остаётся как введён
+            expect(input!.value).to.equal('bob@example.com')
 
             await clock.tickAsync(USER_SEARCH_DEBOUNCE_MS - 50)
             expect(searchUsers.called).to.be.false
 
             await clock.tickAsync(100)
 
-            // «@» вырезан из значения, поиск ушёл префиксом без него
-            expect(searchUsers.calledOnceWith('bob')).to.be.true
+            // полный email доходит до поиска дословно
+            expect(searchUsers.calledOnceWith('bob@example.com')).to.be.true
 
             const results = page.element?.querySelectorAll<HTMLButtonElement>('[data-testid="user-search-result"]')
 
@@ -158,8 +161,16 @@ describe('contacts page', () => {
             // перерисовка по ответу вернула фокус и коммит значения в инпут
             const revived = page.element?.querySelector<HTMLInputElement>('[data-testid="user-search-input"]')
 
-            expect(revived?.value).to.equal('bob')
+            expect(revived?.value).to.equal('bob@example.com')
             expect(revived).to.equal(document.activeElement)
+
+            // префикс без «@» по-прежнему ищет
+            revived!.value = 'ada'
+            revived!.dispatchEvent(new dom.window.MouseEvent('input', { bubbles: true }))
+
+            await clock.tickAsync(USER_SEARCH_DEBOUNCE_MS)
+
+            expect(searchUsers.secondCall.calledWith('ada')).to.be.true
 
             page.destroy()
         } finally {

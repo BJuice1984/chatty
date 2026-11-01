@@ -197,8 +197,8 @@ class ContactsPageBase extends Block {
                         this.setProps({ deleteTarget: null })
                     }
                 },
-                // дебаунс-поиск начала email (узор Messenger): «@» не входит
-                // в логин и вырезается из значения; пустой ввод гасит список
+                // дебаунс-поиск начала или полного email (узор Messenger):
+                // значение уходит в поиск как введено; пустой ввод гасит список
                 input: (event: Event) => {
                     const target = event.target as HTMLElement | null
 
@@ -206,15 +206,7 @@ class ContactsPageBase extends Block {
                         return
                     }
 
-                    const input = target as HTMLInputElement
-                    let raw = input.value
-
-                    if (raw.includes('@')) {
-                        raw = raw.split('@').join('')
-                        input.value = raw
-                    }
-
-                    const query = raw
+                    const query = (target as HTMLInputElement).value
 
                     if (this.searchDebounce != null) {
                         clearTimeout(this.searchDebounce)

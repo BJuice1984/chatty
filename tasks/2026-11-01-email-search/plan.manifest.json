@@ -1,6 +1,6 @@
 {
     "schemaVersion": "agent-plan-manifest.v1",
-    "status": "DRAFT",
+    "status": "FROZEN",
     "planRevision": 1,
     "package": {
         "id": "2026-11-01-email-search",
@@ -139,8 +139,8 @@
             "plannedItems": [
                 "messenger.ts: delete the @-strip block in the input handler; hint -> «Начните вводить начало или полный email — поиск сработает сам»; fix the stale comment",
                 "contacts.ts: delete the mirrored @-strip block; fix the copied comment",
-                "messenger.test.ts: replace @-strip expectations with verbatim-pass pins (full email unchanged, prefix still searches)",
-                "contacts.test.ts: same verbatim-pass pin for the page handler",
+                "messenger.test.ts: replace @-strip expectations with verbatim-pass pins (full email unchanged, prefix still searches), incl. the adjacent @-strip test titles/comments (suite comment :245, title :282) and the stale handler comments in messenger.ts:421-422/:433-434 (review F-1)",
+                "contacts.test.ts: same verbatim-pass pin for the page handler, incl. the inline comment at :148 («@» вырезан из значения)",
                 "progress_log.md: entry on top",
                 "gates: npm run verify + guard --all --strict green"
             ],
@@ -261,12 +261,13 @@
         "implementationAuthorized": false,
         "report": "tasks/2026-11-01-email-search/plan-review.json",
         "reviewedRevision": 1,
-        "verdict": "PENDING"
+        "verdict": "READY_TO_FREEZE"
     },
     "planFiles": [
         "tasks/2026-11-01-email-search/acceptance-criteria.md",
         "tasks/2026-11-01-email-search/developer-overview.md",
         "tasks/2026-11-01-email-search/plan-review-request.md",
+        "tasks/2026-11-01-email-search/plan-review.json",
         "tasks/2026-11-01-email-search/plan.manifest.json",
         "tasks/2026-11-01-email-search/plan.md",
         "tasks/2026-11-01-email-search/tier-request.json",

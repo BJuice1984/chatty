@@ -242,9 +242,10 @@ describe('messenger action dispatch', () => {
     })
 })
 
-// Модалка добавления пользователя (chats-social): @-поиск с дебаунсом через
-// onSearchUsers, клик по находке зовёт onAddUser(userId, chatId), фидбек
-// после добавления. Модальное состояние — controller-free UI-пропсы.
+// Модалка добавления пользователя (chats-social): поиск по началу или
+// полному email с дебаунсом через onSearchUsers, клик по находке зовёт
+// onAddUser(userId, chatId), фидбек после добавления. Модальное состояние —
+// controller-free UI-пропсы.
 describe('messenger add-user modal', () => {
     beforeEach(() => {
         store.set('messages', { 5: [] })
@@ -279,10 +280,10 @@ describe('messenger add-user modal', () => {
         }
     })
 
-    it('debounces the @-prefixed search and renders the typed results', async () => {
+    it('debounces the search and passes the full email verbatim', async () => {
         const clock = sinon.useFakeTimers()
         const onSearchUsers = sinon.stub().resolves([
-            { id: 101, login: 'bob@example.com', display_name: 'bob' },
+            { id: 101, login: 'alice@chatty.local', display_name: 'alice' },
         ])
         const messenger = new Messenger({ onSearchUsers } as never)
 
@@ -291,10 +292,13 @@ describe('messenger add-user modal', () => {
 
             const input = messenger.element?.querySelector<HTMLInputElement>('[data-testid="user-search-input"]')
 
-            input!.value = '@bob'
+            input!.value = 'alice@chatty.local'
             // mochaSetup даёт только MouseEvent-глобал: тип события 'input'
             // важнее интерфейса, слушатель смотрит на event.type и target
             input!.dispatchEvent(new MouseEvent('input', { bubbles: true }))
+
+            // значение не переписывается: полный email остаётся как введён
+            expect(input!.value).to.equal('alice@chatty.local')
 
             // до истечения дебаунса поиска нет
             await clock.tickAsync(USER_SEARCH_DEBOUNCE_MS - 50)
@@ -302,13 +306,40 @@ describe('messenger add-user modal', () => {
 
             await clock.tickAsync(100)
 
-            expect(onSearchUsers.calledOnceWith('bob')).to.be.true
+            expect(onSearchUsers.calledOnceWith('alice@chatty.local')).to.be.true
 
             const result = messenger.element?.querySelector<HTMLButtonElement>('[data-testid="user-search-result"]')
 
             expect(result?.dataset.userId).to.eq('101')
-            expect(result?.textContent).to.contain('bob')
-            expect(result?.textContent).to.contain('bob@example.com')
+            expect(result?.textContent).to.contain('alice')
+            expect(result?.textContent).to.contain('alice@chatty.local')
+
+            // перерисовка по ответу коммитит запрос в инпут дословно
+            const revived = messenger.element?.querySelector<HTMLInputElement>('[data-testid="user-search-input"]')
+
+            expect(revived?.value).to.equal('alice@chatty.local')
+        } finally {
+            messenger.destroy()
+            clock.restore()
+        }
+    })
+
+    it('still searches a bare prefix without the full email', async () => {
+        const clock = sinon.useFakeTimers()
+        const onSearchUsers = sinon.stub().resolves([])
+        const messenger = new Messenger({ onSearchUsers } as never)
+
+        try {
+            openAddUser(messenger)
+
+            const input = messenger.element?.querySelector<HTMLInputElement>('[data-testid="user-search-input"]')
+
+            input!.value = 'bob'
+            input!.dispatchEvent(new MouseEvent('input', { bubbles: true }))
+
+            await clock.tickAsync(USER_SEARCH_DEBOUNCE_MS)
+
+            expect(onSearchUsers.calledOnceWith('bob')).to.be.true
         } finally {
             messenger.destroy()
             clock.restore()
