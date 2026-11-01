@@ -1,0 +1,93 @@
+{
+    "schemaVersion": "agent-plan-review.v1",
+    "packageId": "2026-11-01-chat-leave",
+    "planRevision": 2,
+    "reviewId": "review-2026-11-01-chat-leave-freeze-r2",
+    "reviewedPlanHash": "a21eae53ab3093a53cdb296d5b84731b78d7d681d4b81d83eb16cfa63fe7e0ac",
+    "fullReview": true,
+    "verdict": "READY_TO_FREEZE",
+    "reviewer": {
+        "id": "claude-code-independent-subagent",
+        "independent": true,
+        "runId": "audit-run-20261101-chat-leave-plan-r2",
+        "surface": "audit-agent-plan"
+    },
+    "reviewedAt": "2026-11-01",
+    "verification": {
+        "completenessCheck": "PASS on the FROZEN revision 2 (agent-plan-completeness-validation.v1, 12 required checks, 0 blockers); reviewedPlanHash above is the canonical planDigest from the reviewer's own `agent_lifecycle plan completeness-check --manifest tasks/2026-11-01-chat-leave/plan.manifest.json` run AFTER freeze bookkeeping (post-acceptance re-hash)",
+        "postAcceptanceDelta": "Verified line-by-line against the pre-freeze revision-2 manifest: exactly six changes and nothing else — status DRAFT -> FROZEN; planReview.reviewedRevision 1 -> 2 and verdict PENDING -> READY_TO_FREEZE; planFiles grew by tasks/2026-11-01-chat-leave/plan-review.json; constraints[0], specification.scope and releaseImpact now say setContactsIntegration; constraints[4] reworded to slice-modules-untouched with the deliberate contacts-slice population noted; WS-BE-CHAT-LEAVE readOnly path corrected to backend/tests/integration/chat/test_stories_ws.py. Requirements, workstreams (writes/readOnly/forbiddenWrites/plannedItems), acceptance, gates, budgets, tierResolution are byte-identical to the reviewed revision 2. None of the changes touch reviewed semantics; the review outcome is unaffected.",
+        "round2Scope": "Every round-1 finding (F-1..F-11) re-verified against the on-disk revision 2 (plan.manifest.json planRevision 2, plan.md rev 2, acceptance-criteria.md, developer-overview.md) and against the unchanged source tree at 25f1868. Package inventory matches planFiles exactly (8 declared files, all present on disk). Write-sets re-checked: pairwise disjoint; contacts/controller.ts moved out of writes into readOnly; services/bot.py and services/files.py added to WS-BE-CHAT-LEAVE (12 writes); services/messages.py readOnly and explicitly designated the READ side; no write-set entry collides with forbiddenWrites or another stream's writes. Budgets: 3 x 30000 = 90000 <= maxTotalTokens 100000.",
+        "baseClaims": "mocha 423 passing verified by running npm test at 25f1868 (round 1); pytest 218 + 4 documented Windows ingestion failures matches docs/NEXT.md:32; alembic heads at base is 009_contacts (single chain 001..009); base sha matches the manifest baseRevision"
+    },
+    "findings": [
+        {
+            "id": "F-12",
+            "severity": "minor",
+            "status": "closed",
+            "title": "Non-normative rev-1 prose still named setContactAdder and claimed the contacts slice stays untouched — CLOSED in freeze bookkeeping",
+            "detail": "Round-2 finding (open at verdict time): plan.manifest.json specification.constraints[0], specification.scope and releaseImpact still said 'setContactAdder', developer-overview.md:36-39 described a contacts-side setter, and constraints[4] 'chatSearch/contacts/history slices untouched' read oddly against the pinned ChatPage-CDM refreshContacts. CLOSED post-acceptance: the freeze edit renamed all three manifest spots to setContactsIntegration (consumer-side), reworded constraints[4] to 'slice modules untouched (the contacts slice is deliberately POPULATED via the injected refreshContacts — no module edit)', and developer-overview.md dropped the stale prose; the normative texts (requirements, plannedItems, ACs, plan.md) were already consistent. Closure verified in the post-acceptance delta audit.",
+            "files": [
+                "tasks/2026-11-01-chat-leave/plan.manifest.json",
+                "tasks/2026-11-01-chat-leave/developer-overview.md"
+            ],
+            "requiredFix": "Closed — no further action; the fix is part of the frozen manifest this review hashes."
+        },
+        {
+            "id": "F-13",
+            "severity": "minor",
+            "status": "closed",
+            "title": "WS-BE-CHAT-LEAVE readOnly listed a non-existent path for the WS harness precedent — CLOSED in freeze bookkeeping",
+            "detail": "Round-2 finding (open at verdict time): readOnly pointed at backend/tests/integration/stories/test_stories_ws.py while the file lives at backend/tests/integration/chat/test_stories_ws.py. CLOSED post-acceptance: the freeze edit corrected the readOnly path to backend/tests/integration/chat/test_stories_ws.py; verified in the post-acceptance delta audit (plan.manifest.json workstreams[0].readOnly).",
+            "files": [
+                "tasks/2026-11-01-chat-leave/plan.manifest.json"
+            ],
+            "requiredFix": "Closed — no further action; the fix is part of the frozen manifest this review hashes."
+        }
+    ],
+    "reviewVerdict": {
+        "schemaVersion": "agent-review-verdict.v1",
+        "overall": "ACCEPTED",
+        "dimensions": {
+            "requirementFit": {
+                "status": "PASS",
+                "reasonCode": "operator-asks-covered",
+                "summary": "All seven operator asks are pinned and deliverable: menus on the header avatars, conditional «Добавить в контакты» backed by a CDM-refreshed contacts slice (F-5), owner-only kick via the now-mapped ChatInfo.owner_id (F-3), self-leave into a kept-for-history dimmed archive, messages stop arriving via the active-membership fan-out filter with an integration-level two-socket pin (F-9), and archived read-only enforced on every write path — WS send, REST message POST, reaction, add member, leave, bot run, chat-scoped file upload (F-1, F-4)."
+            },
+            "implementationQuality": {
+                "status": "PASS",
+                "reasonCode": "planned-items-executable",
+                "summary": "Every plannedItem matches the source. The guard split is enforced at entry points the write-set owns (require_active_member from endpoints/chats.py message-create + reaction-toggle, ws/router.py send, add_member, leave, bot.py, files.py) with services/messages.py explicitly the untouched READ side; the seam is consumer-side setContactsIntegration in features/chats/controller.ts wired in the guard-exempt features/index.ts (no cross-feature import anywhere); ChatInfo gains owner_id with the toChatInfo mapping; the hub plannedItem names per-socket identity, user-scoped close_user_chat and the active fan-out filter; the legacy onClick forEach removal is pinned in the wave that owns controller.ts; migration 010 chains 009_contacts with the verified 009 segment/batch_alter pattern; write-sets are pairwise disjoint and cover the work."
+            },
+            "evidenceQuality": {
+                "status": "PASS",
+                "reasonCode": "pins-match-contract",
+                "summary": "ACs pin exactly what the requirements promise, including the previously missing cases: archived REST message POST / bot-run / file-upload 403s, mark_read no-op, the two-socket fan-out pin (active receives, archived silent; kick/leave close only the affected user's socket), the wave-2 legacy-wiring-gone pin, the CDM refreshContacts pin, and the single-chat left_at null-by-design narrowing. Base counts remain real (mocha 423 verified by running the suite; pytest 218 + 4 documented ingestion failures). Evidence routes EV-BE-1/EV-FE-1/EV-FE-2 are coherent and unchanged."
+            },
+            "residualRisk": {
+                "status": "PASS",
+                "reasonCode": "no-open-findings",
+                "summary": "No open findings remain: the two round-2 minors (F-12 stale seam naming in non-normative prose, F-13 wrong readOnly path) were closed by the freeze bookkeeping edit and the closure verified line-by-line before the post-acceptance re-hash. Runtime risks (WS identity, broadcast DB access, kick-victim UI staleness until next fetch) are owned by pinned tests or explicit non-goals."
+            }
+        },
+        "routing": {
+            "nextAction": "accept",
+            "target": "controller: manifest is FROZEN with this review recorded — proceed to reviewed plan-lock creation (reviewedPlanHash matches the frozen manifest's canonical digest) and worker dispatch"
+        }
+    },
+    "rounds": [
+        {
+            "round": 1,
+            "reviewId": "review-2026-11-01-chat-leave-freeze-r1",
+            "reviewedPlanHash": "c4267b728878ace0035c0299f96fc6acc104d9bf8ff2c7a8e6f5f8746ff1a1e4",
+            "verdict": "CHANGES_REQUIRED",
+            "findingsCount": 11,
+            "summary": "Independent source-level audit of revision 1 at 25f1868 (reviewId review-2026-11-01-chat-leave-freeze-r1, runId audit-run-20261101-chat-leave-plan-r1). Architecture sound, most claims source-accurate, but 5 majors (guard-split call sites in services/messages.py outside the write-set + REST message POST omitted from WRITE paths; setContactAdder seam inverted vs the setChatOpener precedent and guard-blocking as written; ChatInfo.owner_id missing so the owner gate was dead; bot-run and file-upload write paths reachable by archived members and unfixable in-scope; contacts slice never fetched on /messenger) and 6 minors (single-chat left_at, mark_read side, wave-2 legacy-wiring pin, hub user identity, archived header affordances/re-add actor, budget arithmetic). Verdict CHANGES_REQUIRED -> revision 2."
+        },
+        {
+            "round": 2,
+            "verdict": "READY_TO_FREEZE",
+            "findingsCount": 2,
+            "summary": "Closure verification against the on-disk revision 2 (planRevision 2, digest c1f95e8e... at verdict time; completeness PASS). All eleven round-1 findings closed in the normative texts: F-1 guard split relocated to write-set-owned entry points with the REST message POST added to the WRITE list and services/messages.py designated readOnly READ side; F-2 seam inverted consumer-side to setContactsIntegration in features/chats/controller.ts with contacts/controller.ts out of the writes; F-3 ChatInfo.owner_id + toChatInfo mapping pinned; F-4 bot.py and files.py added to the write-set with archived bot-run/file-upload 403 pinned and SEC-MEMBERSHIP-AUTHZ enumerating every path; F-5 refreshContacts + ChatPage CDM call pinned; F-6 single-chat left_at null-by-design documented; F-7 mark_read no-op; F-8 legacy onClick forEach removal pinned in wave 2; F-9 hub per-socket identity, user-scoped close and the integration-level two-socket pin replacing the hedge; F-10 + button hidden for archived and the re-add actor specified active; F-11 budgets 30000/100000. Two non-blocking documentation minors were left open at verdict (F-12, F-13) and both were subsequently closed by the controller's freeze bookkeeping. READY_TO_FREEZE. Post-acceptance re-hash: after the verdict the controller edited the manifest with exactly the freeze bookkeeping (status FROZEN, planReview reviewedRevision 2 / READY_TO_FREEZE, plan-review.json added to planFiles) plus the F-12/F-13 fixes; the delta was verified line-by-line as semantics-free, completeness-check re-run PASS, and reviewedPlanHash was reset to the new canonical digest a21eae53ab3093a53cdb296d5b84731b78d7d681d4b81d83eb16cfa63fe7e0ac from the reviewer's own run."
+        }
+    ]
+}

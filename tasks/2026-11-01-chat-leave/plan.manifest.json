@@ -1,0 +1,558 @@
+{
+    "schemaVersion": "agent-plan-manifest.v1",
+    "status": "FROZEN",
+    "planRevision": 2,
+    "package": {
+        "id": "2026-11-01-chat-leave",
+        "title": "Member context menus, owner kick, self-leave with archived membership",
+        "workspaceRoot": ".",
+        "artifactRoot": "work/2026-11-01-chat-leave",
+        "planArtifactRoot": "tasks/2026-11-01-chat-leave"
+    },
+    "packageIntegrity": {
+        "required": true,
+        "lockSchemaVersion": "agent-plan-lock.v2",
+        "inventorySource": "planFiles",
+        "undeclaredTopLevelFiles": "reject",
+        "allowedUnlistedFiles": [
+            "plan.lock.json",
+            "plan-review.json"
+        ]
+    },
+    "author": {
+        "id": "claude-code",
+        "surface": "agent-first-planning",
+        "runId": "2026-11-01-chat-leave-draft"
+    },
+    "baseRevision": {
+        "ref": "feature/2026-11-01-contacts",
+        "sha": "25f1868f022566ae2bfdc55d20ab47f7b9e080fa"
+    },
+    "specification": {
+        "tier": "S2",
+        "intent": "Header member avatars get context menus: another user -> «Добавить в контакты» (only when not already a contact) + «Удалить из чата» (chat owner only, backend-enforced); the own avatar -> «Удалиться из чата» turning the chat into a READ-ONLY archive entry for the leaver (stays dimmed in the list, history readable, no live WS pushes, writes 403, re-add reactivates). Owner-kick is a hard membership delete (the kicked user loses the chat entirely). Migration 010 adds chat_members.left_at; WS broadcast fan-out filters archived members; the legacy instant-kick avatar click (currently erroring via unsupported removeUsers) is replaced.",
+        "status": "DRAFT",
+        "requirements": [
+            {
+                "id": "REQ-BE-LEAVE",
+                "title": "Archived membership: migration 010, leave/kick endpoints, left_at exposure, reactivation",
+                "description": "ChatMember.left_at (DateTime tz, nullable; NULL = active) + migration 010_chat_leave (segment roundtrip test backend/tests/integration/test_migration_010_chat_leave_segment.py per the 009 pattern: scratch SQLite, create_all -> stamp head -> downgrade -1 -> upgrade head, inspector-asserted; alembic heads == 010_chat_leave; full chain stays the compose-PostgreSQL path). POST /api/v1/chats/{chat_id}/leave: member row -> left_at=now, closes the caller's sockets for the chat (user-scoped close), 204; repeat on archived row -> idempotent 204; never-member -> 403 chat_membership_required; anonymous 401. DELETE /api/v1/chats/{chat_id}/members/{user_id}: owner-only (chat_owner_required 403; chat_not_found 404; member row absent 404), hard-deletes the row, closes the kicked user's sockets (user-scoped), 204; kicked user loses the chat (absent from GET /chats, WS connect refused by the existing membership guard); re-add after kick = fresh row; re-add after LEAVE reactivates (left_at -> NULL) keeping the idempotent 201 add semantics and the implicit contact capture on both resolution paths; the re-add actor must be an ACTIVE member. The GET /chats LIST carries caller-relative left_at: datetime | null per row (ChatResponse.left_at additive None-default; list_chats passes it explicitly in the field-by-field construction — the is_dm precedent; the single-chat GET /{id} keeps left_at null by design — no membership context, documented). Router order: both new routes placed safely against the int /{chat_id} routes.",
+                "priority": "P1",
+                "source": "operator request 2026-11-01 (leave keeps the chat for history, dimmed; kick removes entirely; owner-only kick, anyone may leave, archived = read-only)",
+                "acceptanceIds": [
+                    "AC-BE-LEAVE"
+                ],
+                "evidenceIds": [
+                    "EV-BE-1"
+                ],
+                "owner": "WS-BE-CHAT-LEAVE"
+            },
+            {
+                "id": "REQ-BE-WS-ARCHIVE",
+                "title": "Read/write guard split and archived-filtered WS broadcast",
+                "description": "Membership guards split by intent, enforced via a new ChatService.require_active_member called from the entry points the write-set owns: the WS send branch (ws/router.py), the REST message-create and reaction-toggle endpoints (endpoints/chats.py), add_member, leave, the bot-run membership check (services/bot.py require_member -> active variant) and the chat-scoped file-upload check (services/files.py) — guards only, no behaviour change for active members; services/messages.py stays untouched (its row-exists _require_member is the READ side). READ paths (GET chat, GET messages, GET members, WS connect incl. initial history and pagination) accept active OR archived; WRITE paths reject archived with 403 chat_membership_required (WS send: explicit error, no broadcast) — every rejection pinned. mark_read becomes a NO-OP for archived rows (a 403 would break archived history — the history path calls it inline). The WS hub gains per-socket user identity (the StoriesHub precedent), a user-scoped close (close_user_chat) for leave/kick, and an active-membership fan-out filter (message/reaction/chat_deleted events): pinned by an INTEGRATION-LEVEL TWO-SOCKET test (one active + one archived client in the same chat, the test_stories_ws.py multi-client precedent) — the active client receives, the archived one is silent; kick/leave close ONLY the affected user's socket. Delete chat stays owner-only by owner_id regardless of the owner's archived state (require_owned unchanged).",
+                "priority": "P1",
+                "source": "operator request 2026-11-01 (messages must stop arriving after leave; history stays readable)",
+                "acceptanceIds": [
+                    "AC-BE-WS-ARCHIVE"
+                ],
+                "evidenceIds": [
+                    "EV-BE-1"
+                ],
+                "owner": "WS-BE-CHAT-LEAVE"
+            },
+            {
+                "id": "REQ-FE-LEAVE-LOGIC",
+                "title": "Frontend logic: supported removeUsers, leaveChat, left_at mapping, injected contact-adder",
+                "description": "ChatInfo gains leftAt?: string | null AND owner_id?: number (src/utils/types.ts, no api import — the owner-only menu item needs owner_id, which toChatInfo currently drops). ChatsPort: removeUsers becomes supported (DELETE /${chatId}/members/${userId} + csrf per user id) and leaveChat(chatId) joins (POST /${chatId}/leave + csrf). toChatInfo maps left_at -> leftAt (absent/null -> undefined) AND owner_id -> owner_id. Controller: removeUsersFromChat(users, chatId) replaces the private deleteChatUsers error path AND removes the legacy user.onClick instant-kick wiring in getChatUsers (the forEach dies in this wave); leaveChat(chatId) -> port call, close the chat socket WITHOUT reconnect, clear selectedChat, refetch chats; addContact(userId) and refreshContacts() delegate to ONE injected integration object: module-level setContactsIntegration({addContact, refreshContacts}) with noop defaults in features/chats/controller.ts (the seam lives in the CONSUMER — a setter in contacts would force a cross-feature import and fail the guard); features/index.ts wires it with the real contacts controller beside setChatOpener — the ONLY cross-feature seam. refreshContacts exists because the contacts slice is only fetched by the contacts page today; the ChatPage CDM calls it so the conditional contact item works on cold /messenger entry.",
+                "priority": "P1",
+                "source": "operator request 2026-11-01 (menu actions need kick/leave/add-contact through controllers)",
+                "acceptanceIds": [
+                    "AC-FE-LOGIC"
+                ],
+                "evidenceIds": [
+                    "EV-FE-1"
+                ],
+                "owner": "WS-FE-CHAT-LEAVE-LOGIC"
+            },
+            {
+                "id": "REQ-FE-LEAVE-UI",
+                "title": "Frontend UI: header context menus, dimmed archived card, hidden composer",
+                "description": "Messenger header avatar click opens a Modal context menu (contacts-menu precedent; escapeHtml builder) — the legacy instant-kick onClick wiring is already gone after wave 2. Visibility matrix: another user's avatar -> «Добавить в контакты» only when the id is NOT in contactIds (client-side check against the contacts slice), «Удалить из чата» only when meId === ownerId; the viewer's OWN avatar (id === meId) -> «Удалиться из чата»; archived chats show NO menu AND hide the + add-user header button (messenger.hbs/messenger.ts wiring at :468-473); every menu has «Отмена». New Messenger props: contactIds, meId, ownerId, onAddContact, onKickUser, onLeaveChat (page-supplied; components stay controller-free). ChatPage CDM additionally calls ChatsController.refreshContacts() (the injected refresh populates the slice on cold /messenger entry) and the withStore mapper supplies contactIds (contacts cast idiom), meId, ownerId; callbacks wired to the controller. chatListUser renders the archived modifier (dimmed card) driven by leftAt (component + hbs + chat-list-user.scss, no comments in scss); the composer is hidden for archived chats while the history list stays scrollable (messenger.hbs conditional). Docs: NEXT.md record + progress_log entry on top incl. the still-open follow-up registry (legacy «@-поиск» comment sweep).",
+                "priority": "P1",
+                "source": "operator request 2026-11-01 (menus on messenger__chat-users-container icons; dimmed archive card)",
+                "acceptanceIds": [
+                    "AC-FE-UI",
+                    "AC-PROCESS"
+                ],
+                "evidenceIds": [
+                    "EV-FE-2"
+                ],
+                "owner": "WS-FE-CHAT-LEAVE-UI"
+            }
+        ],
+        "goal": "Member avatars become a management surface: add contacts, owner kicks, self-leave into a read-only dimmed archive — with WS semantics to match.",
+        "constraints": [
+            "Layers only downward; guard-architecture --all --strict stays green; components never import features/controllers; the ONLY cross-feature seam is src/features/index.ts (setChatOpener + setContactsIntegration wiring).",
+            "Migration 010 is additive (chat_members.left_at); alembic heads becomes 010_chat_leave (verify:backend pins); the segment roundtrip test proves both directions on scratch SQLite; never touch 001-009.",
+            "All new endpoints behind get_current_user; anonymous 401 pinned; kick is owner-only (403 pinned); leave is any-member; archived writes 403 pinned; kicked users lose access entirely.",
+            "Menu content HTML only through the escapeHtml builder; XSS test on display_name; double braces elsewhere.",
+            "slice modules untouched (the contacts slice is deliberately POPULATED via the injected refreshContacts — no module edit); utils/Store.ts NOT edited; existing suites green; counts grow from the real bases at the attempt line (mocha 423 / pytest 218 modulo the 4 documented Windows ingestion failures)."
+        ],
+        "nonGoals": [
+            "WS push of member-list changes (menus/avatars refresh on next fetch)",
+            "a rejoin button (re-add via the existing add-user modal reactivates)",
+            "ownership transfer when the owner leaves",
+            "deleting the chat on leave; bulk member operations",
+            "muting/notification distinctions beyond archived silence",
+            "changes to the contacts page menu (stays as built)"
+        ],
+        "scope": "backend membership model + migration 010 + kick/leave endpoints + WS guard/filter + pytest; chats feature ports/adapter/controller + the consumer-side setContactsIntegration seam + wiring; Messenger header menus + archived card/composer UI + docs; evidence under work/2026-11-01-chat-leave/."
+    },
+    "readOnly": [
+        "AGENTS.md",
+        "tasks/README.md",
+        "docs/deployment/own-backend.md"
+    ],
+    "forbiddenWrites": [
+        "src/core",
+        "src/scss/libs",
+        "src/utils/Store.ts",
+        "docs/project-principles.json",
+        ".github/workflows",
+        "netlify.toml",
+        "server/server.js",
+        ".env",
+        ".env.development",
+        ".env.own"
+    ],
+    "leadOwned": [
+        {
+            "path": "tasks/2026-11-01-chat-leave",
+            "owner": "controller",
+            "reason": "Controller owns plan-package artifacts."
+        }
+    ],
+    "workstreams": [
+        {
+            "id": "WS-BE-CHAT-LEAVE",
+            "title": "Backend: left_at migration, kick/leave endpoints, guard split, WS archive filter",
+            "owner": "worker-backend-chats",
+            "reviewer": "independent-release-reviewer",
+            "dependsOn": [],
+            "writes": [
+                "backend/alembic/versions/010_chat_leave.py",
+                "backend/app/api/v1/endpoints/chats.py",
+                "backend/app/models/chat.py",
+                "backend/app/repositories/chats.py",
+                "backend/app/schemas/chat.py",
+                "backend/app/services/bot.py",
+                "backend/app/services/chats.py",
+                "backend/app/services/files.py",
+                "backend/app/ws/hub.py",
+                "backend/app/ws/router.py",
+                "backend/tests/integration/chat/test_leave_api.py",
+                "backend/tests/integration/test_migration_010_chat_leave_segment.py"
+            ],
+            "readOnly": [
+                "AGENTS.md",
+                "backend/app/api/v1/endpoints/users.py",
+                "backend/app/repositories/users.py",
+                "backend/app/services/messages.py",
+                "backend/app/services/contacts.py",
+                "backend/app/repositories/contacts.py",
+                "backend/tests/conftest.py",
+                "backend/tests/integration/chat/test_chat_search.py",
+                "backend/tests/integration/chat/test_dm_api.py",
+                "backend/tests/integration/chat/test_stories_ws.py",
+                "backend/alembic/versions/009_contacts.py"
+            ],
+            "forbiddenWrites": [
+                "backend/alembic/versions/001_users.py",
+                "backend/alembic/versions/002_chat_messages_files.py",
+                "backend/alembic/versions/003_documents_chunks.py",
+                "backend/alembic/versions/004_bot_runs.py",
+                "backend/alembic/versions/005_reactions_replies.py",
+                "backend/alembic/versions/006_chat_last_reads.py",
+                "backend/alembic/versions/007_avatars_stories.py",
+                "backend/alembic/versions/008_pg_trgm_search_indexes.py",
+                "backend/alembic/versions/009_contacts.py",
+                "backend/app/api/v1/endpoints/contacts.py"
+            ],
+            "launchGate": "branch feature/2026-11-01-contacts at 25f1868; npm run verify green at base (mocha 423); verify:backend green at base modulo the 4 documented Windows ingestion failures (bash backend/verify.sh with PYTHON_BIN); heads 009_contacts at base.",
+            "capabilityHints": [
+                "fastapi",
+                "sqlalchemy",
+                "alembic",
+                "pytest",
+                "python"
+            ],
+            "requiredTools": [
+                "python",
+                "pytest"
+            ],
+            "contextRefs": [
+                "plan.md",
+                "acceptance-criteria.md",
+                "developer-overview.md"
+            ],
+            "acceptanceIds": [
+                "AC-BE-LEAVE",
+                "AC-BE-WS-ARCHIVE"
+            ],
+            "evidenceIds": [
+                "EV-BE-1"
+            ],
+            "executionPolicy": {
+                "maxAttempts": 3,
+                "maxWallSeconds": 3600
+            },
+            "artifactPaths": {
+                "result": "work/2026-11-01-chat-leave/evidence/WS-BE-CHAT-LEAVE/task-result-{attempt}.json",
+                "review": "work/2026-11-01-chat-leave/evidence/WS-BE-CHAT-LEAVE/task-review-{attempt}.json"
+            },
+            "required": true,
+            "plannedItems": [
+                "models: ChatMember.left_at (DateTime tz nullable) in models/chat.py",
+                "migration 010_chat_leave: add column (batch_alter for SQLite), downgrade reverses; heads -> 010_chat_leave; segment roundtrip test test_migration_010_chat_leave_segment.py (the 009 pattern: scratch SQLite, create_all -> stamp head -> downgrade -1 -> upgrade head, inspector-asserted both ways)",
+                "repositories/chats.py: active/archived-aware membership queries (is_member row-exists stays for READS; is_active_member for writes; list_for_user keeps ALL rows with left_at; active member ids per chat for the fan-out filter); remove_member hard delete",
+                "schemas/chat.py: ChatResponse.left_at: datetime | None = None additive (None-default keeps model_validate paths alive)",
+                "services/chats.py: require_active_member; kick_member (require_owned + member row check + hard delete); leave (idempotent left_at set); mark_read NO-OP for archived rows; add_member reactivation (existing row with left_at -> NULL, idempotent 201 + implicit contact capture unchanged, requester must be active)",
+                "endpoints/chats.py: DELETE /{chat_id}/members/{user_id} (owner-only) and POST /{chat_id}/leave — BOTH placed safely against the int /{chat_id} routes; message-create and reaction-toggle endpoints call require_active_member; list_chats passes left_at explicitly (field-by-field, the is_dm precedent)",
+                "ws/hub.py + ws/router.py: per-socket user identity (StoriesHub precedent); close_user_chat(chat_id, user_id) for leave/kick (NOT the whole-chat close); fan-out filter by ACTIVE membership; WS send guard for archived members (explicit error, no broadcast)",
+                "services/bot.py + services/files.py: the two remaining membership WRITE checks switch to the active variant (guards only, no behaviour change for active members) — review F-4",
+                "pytest test_leave_api.py: leave 204 + chat stays in GET /chats with left_at + repeat 204 + never-member 403 + anonymous 401; archived WS send rejected + archived REST message POST 403 + archived reaction 403 + archived bot-run 403 + archived file-upload 403; archived reads pass (GET chat/messages/members + WS initial history); mark_read no-op for archived; kick owner 204 / non-owner 403 / no-row 404 / unknown chat 404 / kicked loses chat (list + WS connect refused); re-add after kick = fresh row; re-add after leave reactivates; left_at null for active in the list; the TWO-SOCKET integration pin (active client receives, archived client silent; kick/leave close only the affected user's socket)",
+                "gates: bash backend/verify.sh green modulo the 4 known Windows ingestion failures; alembic heads == 010_chat_leave"
+            ],
+            "qualityFloor": "npm run verify:backend green (pytest incl. the 010 segment test + alembic heads == 010_chat_leave); the 4 ingestion failures remain the only failures; no frontend file touched."
+        },
+        {
+            "id": "WS-FE-CHAT-LEAVE-LOGIC",
+            "title": "Frontend logic: supported removeUsers, leaveChat, left_at mapping, contact-adder seam",
+            "owner": "worker-frontend-chats",
+            "reviewer": "independent-release-reviewer",
+            "dependsOn": [
+                "WS-BE-CHAT-LEAVE"
+            ],
+            "writes": [
+                "src/features/chats/api/api.test.ts",
+                "src/features/chats/api/own.ts",
+                "src/features/chats/chats.test.ts",
+                "src/features/chats/controller.ts",
+                "src/features/chats/ports.ts",
+                "src/features/index.ts",
+                "src/utils/types.ts"
+            ],
+            "readOnly": [
+                "AGENTS.md",
+                "src/features/chats/ws/gateway.ts",
+                "src/features/contacts/controller.ts",
+                "src/features/contacts/ports.ts",
+                "src/utils/Store.ts"
+            ],
+            "forbiddenWrites": [],
+            "launchGate": "WS-BE-CHAT-LEAVE accepted at the integration baseline; npm run verify green at base.",
+            "capabilityHints": [
+                "typescript",
+                "mocha",
+                "sinon",
+                "ALK"
+            ],
+            "requiredTools": [
+                "node",
+                "npm"
+            ],
+            "contextRefs": [
+                "plan.md",
+                "acceptance-criteria.md",
+                "developer-overview.md"
+            ],
+            "acceptanceIds": [
+                "AC-FE-LOGIC"
+            ],
+            "evidenceIds": [
+                "EV-FE-1"
+            ],
+            "executionPolicy": {
+                "maxAttempts": 3,
+                "maxWallSeconds": 3600
+            },
+            "artifactPaths": {
+                "result": "work/2026-11-01-chat-leave/evidence/WS-FE-CHAT-LEAVE-LOGIC/task-result-{attempt}.json",
+                "review": "work/2026-11-01-chat-leave/evidence/WS-FE-CHAT-LEAVE-LOGIC/task-review-{attempt}.json"
+            },
+            "required": true,
+            "plannedItems": [
+                "types: ChatInfo.leftAt?: string | null AND ChatInfo.owner_id?: number in src/utils/types.ts",
+                "ports: removeUsers supported (DELETE /${chatId}/members/${userId} per user) + leaveChat(chatId) additive",
+                "adapter own.ts: both calls with readCsrfToken(); toChatInfo maps left_at -> leftAt (absent/null -> undefined) AND owner_id -> owner_id (currently dropped at own.ts:103-121); api.test.ts URL shapes + csrf + both mappings",
+                "controller: removeUsersFromChat(users, chatId) replaces the private deleteChatUsers path AND removes the legacy user.onClick instant-kick wiring in getChatUsers (forEach at controller.ts:332-334 dies here — review F-8, pinned); leaveChat(chatId) -> port, closeChat WITHOUT reconnect, clear selectedChat, refetch",
+                "seam (consumer-side, review F-2): setContactsIntegration({addContact, refreshContacts}) module-level setter with noop defaults in features/chats/controller.ts; features/index.ts wires { addContact: userId -> contactsController.addContact(userId), refreshContacts: () -> contactsController.fetchContacts() } beside setChatOpener; chats.test.ts pins injection + noop defaults + leave/kick flows"
+            ],
+            "qualityFloor": "npm run verify green end to end; guard-architecture --all --strict zero violations; no component/page/scss file touched."
+        },
+        {
+            "id": "WS-FE-CHAT-LEAVE-UI",
+            "title": "Frontend UI: header context menus, dimmed archived card, hidden composer, docs",
+            "owner": "worker-frontend-ui",
+            "reviewer": "independent-release-reviewer",
+            "dependsOn": [
+                "WS-FE-CHAT-LEAVE-LOGIC"
+            ],
+            "writes": [
+                "docs/NEXT.md",
+                "docs/progress/progress_log.md",
+                "src/components/chatListUser/chatListUser.hbs",
+                "src/components/chatListUser/chatListUser.test.ts",
+                "src/components/chatListUser/chatListUser.ts",
+                "src/components/messenger/messenger.hbs",
+                "src/components/messenger/messenger.test.ts",
+                "src/components/messenger/messenger.ts",
+                "src/features/chats/pages/chat/chat.hbs",
+                "src/features/chats/pages/chat/chat.test.ts",
+                "src/features/chats/pages/chat/chat.ts",
+                "src/scss/components/chat-list-user.scss"
+            ],
+            "readOnly": [
+                "AGENTS.md",
+                "src/components/modal/modal.ts",
+                "src/features/contacts/pages/contacts/contacts.ts",
+                "src/scss/components/chat.scss"
+            ],
+            "forbiddenWrites": [],
+            "launchGate": "WS-FE-CHAT-LEAVE-LOGIC accepted at the integration baseline; npm run verify green at base.",
+            "capabilityHints": [
+                "typescript",
+                "handlebars",
+                "scss",
+                "mocha",
+                "sinon"
+            ],
+            "requiredTools": [
+                "node",
+                "npm"
+            ],
+            "contextRefs": [
+                "plan.md",
+                "acceptance-criteria.md",
+                "developer-overview.md"
+            ],
+            "acceptanceIds": [
+                "AC-FE-UI",
+                "AC-PROCESS"
+            ],
+            "evidenceIds": [
+                "EV-FE-2"
+            ],
+            "executionPolicy": {
+                "maxAttempts": 3,
+                "maxWallSeconds": 3600
+            },
+            "artifactPaths": {
+                "result": "work/2026-11-01-chat-leave/evidence/WS-FE-CHAT-LEAVE-UI/task-result-{attempt}.json",
+                "review": "work/2026-11-01-chat-leave/evidence/WS-FE-CHAT-LEAVE-UI/task-review-{attempt}.json"
+            },
+            "required": true,
+            "plannedItems": [
+                "messenger.ts/.hbs: header avatar click opens a Modal context menu (contacts-menu precedent, escapeHtml builder); menu content builder with the visibility matrix — other user: «Добавить в контакты» only if id not in contactIds, «Удалить из чата» only if meId === ownerId; own avatar (id === meId): «Удалиться из чата»; archived chats: NO menu AND the + add-user header button hidden (messenger.hbs/messenger.ts:468-473 — review F-10); «Отмена» always; new props contactIds/meId/ownerId/onAddContact/onKickUser/onLeaveChat; composer hidden when archived (history stays scrollable); messenger.test.ts: visibility matrix + archived suppressions + action callbacks + XSS on display_name",
+                "chat page: CDM additionally calls ChatsController.refreshContacts() (cold /messenger entry populates the contacts slice — review F-5, pinned); withStore mapper supplies contactIds (contacts slice cast idiom), meId, ownerId; wires onAddContact -> ChatsController.addContact, onKickUser -> removeUsersFromChat, onLeaveChat -> leaveChat (selection cleared by the controller; page renders the dimmed card); chat.test.ts pins",
+                "chatListUser.ts/.hbs + chat-list-user.scss: archived modifier driven by leftAt (dimmed card: reduced opacity, muted avatar — no comments in scss); chatListUser.test.ts pin",
+                "docs: NEXT.md feature record + progress_log entry on top incl. the open follow-up registry (legacy «@-поиск» comment sweep from email-search)",
+                "gates: npm run verify + guard --all --strict green"
+            ],
+            "qualityFloor": "npm run verify green end to end; guard-architecture --all --strict zero violations; no backend file touched."
+        }
+    ],
+    "acceptance": {
+        "criteria": [
+            {
+                "id": "AC-BE-LEAVE",
+                "title": "Leave/kick endpoints, left_at exposure, reactivation proven by pytest",
+                "requirementIds": [
+                    "REQ-BE-LEAVE"
+                ],
+                "evidenceIds": [
+                    "EV-BE-1"
+                ],
+                "independentEvidenceIds": [],
+                "statement": "Migration 010 adds chat_members.left_at (nullable, NULL = active), proven by the segment roundtrip test, heads == 010_chat_leave; POST /chats/{id}/leave: member 204, repeat 204 idempotent, never-member 403, anonymous 401, user-scoped socket close; DELETE /chats/{id}/members/{user_id}: owner 204, non-owner 403, no-row 404, unknown chat 404, kicked user loses the chat (GET /chats absent, WS connect refused); the GET /chats LIST carries caller-relative left_at (null for active) via explicit field-by-field pass (the single-chat GET keeps null by design — documented); re-add after kick = fresh row, re-add after leave reactivates (left_at NULL) with unchanged idempotent-201 + contact capture, re-add actor must be active; all pytest-pinned.",
+                "description": "Backend integration tests.",
+                "source": "acceptance-criteria.md",
+                "priority": "P1"
+            },
+            {
+                "id": "AC-BE-WS-ARCHIVE",
+                "title": "Read/write guard split + archived-filtered broadcast proven by pytest",
+                "requirementIds": [
+                    "REQ-BE-WS-ARCHIVE"
+                ],
+                "evidenceIds": [
+                    "EV-BE-1"
+                ],
+                "independentEvidenceIds": [],
+                "statement": "Guards split via ChatService.require_active_member enforced at the WS send branch, the REST message-create and reaction-toggle endpoints, add_member, leave, the bot-run check (services/bot.py) and the chat-scoped file-upload check (services/files.py): READ paths (GET chat/messages/members, WS connect + initial history + pagination) accept active OR archived; WRITE paths reject archived with 403 / WS error — every rejection pinned incl. archived bot-run and file-upload; mark_read is a NO-OP for archived (inline history call must not break); the hub gains per-socket identity, user-scoped close and an active-membership fan-out filter pinned by an INTEGRATION-LEVEL TWO-SOCKET test (active receives, archived silent; kick/leave close only the affected user's socket); delete-chat stays owner-only by owner_id regardless of archived state.",
+                "description": "Backend integration/unit tests.",
+                "source": "acceptance-criteria.md",
+                "priority": "P1"
+            },
+            {
+                "id": "AC-FE-LOGIC",
+                "title": "Ports, adapter, controller flows and the contact-adder seam proven by mocha",
+                "requirementIds": [
+                    "REQ-FE-LEAVE-LOGIC"
+                ],
+                "evidenceIds": [
+                    "EV-FE-1"
+                ],
+                "independentEvidenceIds": [],
+                "statement": "removeUsers supported (DELETE member URL + csrf per user) and leaveChat additive (POST + csrf) — URL shapes pinned; toChatInfo maps left_at -> leftAt (absent/null -> undefined) AND owner_id -> owner_id (both pinned); removeUsersFromChat refetches users+chats AND the legacy user.onClick instant-kick wiring in getChatUsers is removed in this wave (pinned); leaveChat closes the socket without reconnect + clears selectedChat + refetches (pinned); addContact/refreshContacts delegate to the injected integration object with noop defaults — setContactsIntegration lives in features/chats/controller.ts (consumer-side, review F-2) and is wired in features/index.ts beside setChatOpener as the only cross-feature seam (pinned).",
+                "description": "Frontend unit tests.",
+                "source": "acceptance-criteria.md",
+                "priority": "P1"
+            },
+            {
+                "id": "AC-FE-UI",
+                "title": "Header context menus, dimmed archived card, hidden composer proven by mocha",
+                "requirementIds": [
+                    "REQ-FE-LEAVE-UI"
+                ],
+                "evidenceIds": [
+                    "EV-FE-2"
+                ],
+                "independentEvidenceIds": [],
+                "statement": "Avatar click opens the Modal menu (the legacy instant-kick wiring is already gone after wave 2); the visibility matrix holds (owner x contact x own-avatar; archived chats show no menu AND hide the + add-user header button; «Отмена» always) and all three actions fire the right callbacks (pinned); ChatPage CDM calls the injected refreshContacts so the conditional contact item works on cold /messenger entry (pinned); leaving clears the selection and the card renders the dimmed archived modifier driven by leftAt (pinned); the composer is hidden for archived chats while history stays scrollable (pinned); menu content only via the escapeHtml builder (XSS on display_name pinned).",
+                "description": "Frontend unit tests.",
+                "source": "acceptance-criteria.md",
+                "priority": "P1"
+            },
+            {
+                "id": "AC-PROCESS",
+                "title": "Gates and bookkeeping",
+                "requirementIds": [
+                    "REQ-FE-LEAVE-UI"
+                ],
+                "evidenceIds": [
+                    "EV-FE-2"
+                ],
+                "independentEvidenceIds": [],
+                "statement": "npm run verify, npm run verify:backend (pytest incl. the 010 segment test; heads == 010_chat_leave) and guard strict pass with grown counts (real bases at the attempt line: mocha 423, pytest 218 modulo the 4 documented Windows ingestion failures); docs/NEXT.md records the feature and progress_log gets an entry on top carrying the open follow-up registry; no file outside the manifest write-sets changes; the run rides feature/2026-11-01-contacts off 25f1868.",
+                "description": "Gate runs captured as evidence.",
+                "source": "acceptance-criteria.md",
+                "priority": "P1"
+            }
+        ]
+    },
+    "validation": {
+        "commands": [
+            "npm run verify",
+            "npm run verify:backend",
+            "node .claude/hooks/scripts/guard-architecture.mjs --all --strict"
+        ]
+    },
+    "orchestration": {
+        "startMode": "reviewed-plan",
+        "remediationMode": "ask",
+        "maxPlanReviewRounds": 2,
+        "maxTaskAttempts": 3,
+        "maxParallelTasks": 1,
+        "maxValidationRunsPerTask": 2,
+        "stateFile": "work/2026-11-01-chat-leave/run.state.json",
+        "eventLog": "work/2026-11-01-chat-leave/events.jsonl",
+        "stepReviewRequired": true,
+        "finalAuditRequired": true
+    },
+    "implementationAudit": {
+        "required": true,
+        "finalRequired": true
+    },
+    "developerOverview": "tasks/2026-11-01-chat-leave/developer-overview.md",
+    "releaseTarget": {
+        "kind": "local-only",
+        "environment": "Vite own mode + compose own-backend",
+        "productionPromotionClaimed": false
+    },
+    "releaseImpact": "New backend membership semantics (migration 010 left_at, kick/leave endpoints, WS archive filter, write guards); chats feature grows supported removeUsers + leaveChat and the consumer-side setContactsIntegration seam; Messenger header menus replace the legacy kick click; archived card/composer UI; no auth, routing or deployment changes.",
+    "nonGoals": [
+        "WS push of member-list changes",
+        "a rejoin button (re-add reactivates)",
+        "ownership transfer when the owner leaves",
+        "deleting the chat on leave; bulk operations",
+        "muting/notification distinctions beyond archived silence",
+        "changes to the contacts page menu"
+    ],
+    "finalAuditGates": [
+        "[AC-BE-LEAVE|EV-BE-1] leave/kick endpoints with owner-only kick, idempotent leave, left_at exposure, reactivation, kicked-loses-access — pytest",
+        "[AC-BE-WS-ARCHIVE|EV-BE-1] read/write guard split + archived-filtered broadcast (left silent, active receives) — pytest; heads == 010_chat_leave with the segment test green",
+        "[AC-FE-LOGIC|EV-FE-1] supported removeUsers + leaveChat + left_at mapping + controller flows + the single cross-feature adder seam — mocha",
+        "[AC-FE-UI|EV-FE-2] menu visibility matrix + actions + XSS + dimmed archived card + hidden composer + legacy kick wiring gone — mocha; guard strict zero",
+        "[AC-PROCESS|EV-FE-2] verify + verify:backend + guard strict green with grown counts; NEXT.md + progress_log with the follow-up registry; no write outside the write-sets"
+    ],
+    "securityGates": [
+        {
+            "id": "SEC-MEMBERSHIP-AUTHZ",
+            "statement": "All new endpoints behind get_current_user (anonymous 401 pinned); kick is owner-only (chat_owner_required 403 pinned, non-owner cannot remove anyone); leave only self; archived members cannot write on ANY path — WS send, REST message POST, reaction toggle, add member, bot run, chat-scoped file upload all 403 (pinned) — though they read; kicked users lose WS access by the existing membership guard; the broadcast filter never leaks events to archived members (two-socket pin).",
+            "evidenceIds": [
+                "EV-BE-1"
+            ]
+        },
+        {
+            "id": "SEC-MENU-XSS",
+            "statement": "Menu content HTML built exclusively through the escapeHtml-based builder; a <script> display_name renders as text (XSS test); double braces everywhere else in new templates.",
+            "evidenceIds": [
+                "EV-FE-2"
+            ]
+        }
+    ],
+    "budgetPolicy": {
+        "units": "tokens-and-resources",
+        "reroute": "pause-and-review",
+        "maxTotalTokens": 100000,
+        "maxParallelWorkstreams": 1,
+        "maxRunWallSeconds": 14400,
+        "criticalPathWallSeconds": 10800,
+        "aggregateWorkstreamWallSeconds": 10800,
+        "retryReserveWallSeconds": 3600
+    },
+    "budgets": {
+        "defaultWorkstreamTokens": 30000,
+        "maxEvidenceBytesPerRun": 4194304
+    },
+    "contextLimits": {
+        "profile": "small-context-profile.v1",
+        "maxPlanContextBytes": 120000,
+        "maxRenderedPacketBytes": 40000,
+        "smallContextPacketBytes": 30000,
+        "maxReferenceFilesPerPacket": 12,
+        "includeOnlyOwnedWrites": true,
+        "excludeRuntimeWorkArtifacts": true
+    },
+    "tierResolution": {
+        "status": "RESOLVED",
+        "tier": "S2",
+        "requestedTier": "S2",
+        "reason": "multiple-executable-owners + browser-risk + security-risk resolved by agent-lifecycle tier resolve",
+        "independentReviewRequired": true,
+        "requestPath": "tasks/2026-11-01-chat-leave/tier-request.json",
+        "resolutionPath": "tasks/2026-11-01-chat-leave/tier-resolution.json",
+        "requestDigest": "01332a8ded06db14d3a45b5fadf33c75de89c6cc4e42e2bca6b2c148d20c0dc5"
+    },
+    "planReview": {
+        "required": true,
+        "reviewerClass": "independent-plan-reviewer",
+        "maxRounds": 2,
+        "implementationAuthorized": false,
+        "report": "tasks/2026-11-01-chat-leave/plan-review.json",
+        "reviewedRevision": 2,
+        "verdict": "READY_TO_FREEZE"
+    },
+    "planFiles": [
+        "tasks/2026-11-01-chat-leave/acceptance-criteria.md",
+        "tasks/2026-11-01-chat-leave/developer-overview.md",
+        "tasks/2026-11-01-chat-leave/plan-review-request.md",
+        "tasks/2026-11-01-chat-leave/plan-review.json",
+        "tasks/2026-11-01-chat-leave/plan.manifest.json",
+        "tasks/2026-11-01-chat-leave/plan.md",
+        "tasks/2026-11-01-chat-leave/tier-request.json",
+        "tasks/2026-11-01-chat-leave/tier-resolution.json"
+    ]
+}

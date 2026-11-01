@@ -1,0 +1,33 @@
+{
+    "capabilityHints": [
+        "fastapi",
+        "sqlalchemy",
+        "alembic",
+        "pytest",
+        "python",
+        "typescript",
+        "handlebars",
+        "scss",
+        "mocha",
+        "sinon",
+        "ALK"
+    ],
+    "executableOwners": [
+        "worker-backend-chats",
+        "worker-frontend-chats",
+        "worker-frontend-ui"
+    ],
+    "externalSpecification": false,
+    "requirementsBytes": 8200,
+    "riskFlags": {
+        "architecture": false,
+        "browser": true,
+        "data": true,
+        "external": false,
+        "migration": true,
+        "performance": false,
+        "release": false,
+        "security": true
+    },
+    "taskCount": 3
+}
