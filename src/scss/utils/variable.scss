@@ -1,44 +1,73 @@
-$mainColor: #342F66;
-$secondColor: #575194;
-$thirdColor: #8175FF;
-$fourthColor: rgb(247 247 252 / 50%);
-$mainTextColor: #F7F7FC;
-$secondTextColor: #ADB5BD;
-$borderYourStory: $secondTextColor; //Story
 $thirdTextColor: #8175FF;
-$spanErrorColor: #d96086;
-$warningColor: #ffc107; //системные предупреждения (ошибка провайдера бота)
-$borderGradientFirstColor: #D2D5F9; //Story
-$borderGradientSecondColor: #2615e0; //Story
 
 //Login
 $borderRadiusLoginButton: 30px;
 $boxShadowLoginButton: 0 4px 4px 0 rgb(0 0 0 / 25%);
-$hoverLoginButton: 0 0 8px 4px rgb(51 51 255 / 25%), 0 0 4px 4px rgb(51 51 255 / 25%);;
+$hoverLoginButton: 0 0 8px 4px rgb(51 51 255 / 25%), 0 0 4px 4px rgb(51 51 255 / 25%);
 $hoverTransition: 0.3s;
 $boxShadowLogin: 0 0 6px 0 rgb(0 0 0 / 14%) inset, 0 4px 4px 0 rgb(0 0 0 / 25%);
-
-//Story
-$borderStoryGradientBorder: linear-gradient(to right, $borderGradientFirstColor , $borderGradientSecondColor);
-$borderStoryGradientBorderHovered: linear-gradient(to bottom, red, orange);
-$borderOwnStoryGradientFirstColor: #C9F7D8; //Own story
-$borderOwnStoryGradientSecondColor: #0E9F6E; //Own story
-$borderOwnStoryGradientBorder: linear-gradient(to right, $borderOwnStoryGradientFirstColor, $borderOwnStoryGradientSecondColor);
-$borderStory: 3px solid $mainColor;
-$borderChat: 1px solid #8175FF;
-$borderChatBottom: 1px solid #1a182b;
-$borderTaskAttention: 1px solid rgb(167 0 0 / 20%);
-$borderTaskFail: 1px solid rgb(138 138 138 / 40%);
 
 //Брейкпоинты адаптива (chat-ui-polish): планшет от 768px, десктоп от 1024px
 $tablet: 768px;
 $desktop: 1024px;
 
 //Пузыри сообщений (chat-ui-polish): сторона и палитра
-$bubbleMineBackground: $thirdColor;
-$bubbleMineTextColor: $mainTextColor;
-$bubbleTheirsBackground: $secondColor;
-$bubbleTheirsTextColor: $mainTextColor;
-$bubbleTimeTextColor: rgb(247 247 252 / 60%);
 $bubbleRadius: 12px;
-$bubbleDayMarkerBackground: rgb(0 0 0 / 25%);
+
+@mixin theme-tokens {
+
+    :root {
+        --main-color: #342F66;
+        --second-color: #575194;
+        --third-color: #8175FF;
+        --fourth-color: rgb(247 247 252 / 50%);
+        --main-text-color: #F7F7FC;
+        --second-text-color: #ADB5BD;
+        --third-text-color: #8175FF;
+        --border-your-story: #ADB5BD;
+        --span-error-color: #d96086;
+        --warning-color: #ffc107;
+        --page-background: #F7F7FC;
+        --border-chat: 1px solid #8175FF;
+        --border-chat-bottom: 1px solid #1a182b;
+        --border-story: 3px solid #342F66;
+        --border-task-attention: 1px solid rgb(167 0 0 / 20%);
+        --border-task-fail: 1px solid rgb(138 138 138 / 40%);
+        --border-gradient-first-color: #D2D5F9;
+        --border-gradient-second-color: #2615e0;
+        --border-story-gradient-border: linear-gradient(to right, var(--border-gradient-first-color), var(--border-gradient-second-color));
+        --border-story-gradient-border-hovered: linear-gradient(to bottom, red, orange);
+        --border-own-story-gradient-first-color: #C9F7D8;
+        --border-own-story-gradient-second-color: #0E9F6E;
+        --border-own-story-gradient-border: linear-gradient(to right, var(--border-own-story-gradient-first-color), var(--border-own-story-gradient-second-color));
+        --bubble-mine-background: #8175FF;
+        --bubble-mine-text-color: #F7F7FC;
+        --bubble-theirs-background: #575194;
+        --bubble-theirs-text-color: #F7F7FC;
+        --bubble-time-text-color: rgb(247 247 252 / 60%);
+        --bubble-day-marker-background: rgb(0 0 0 / 25%);
+        --chat-active-background: rgb(129 117 255 / 16%);
+        --chat-active-outline: rgb(129 117 255 / 35%);
+        --chat-ai-accent: rgb(129 117 255 / 12%);
+        --search-mark-background: rgb(129 117 255 / 35%);
+        --add-button-hover-background: rgb(129 117 255 / 18%);
+        --add-button-hover-glow: rgb(129 117 255 / 35%);
+        --icon-accent-glow: rgb(129 117 255 / 60%);
+        --bottom-bar-active-glow: rgb(129 117 255 / 60%);
+        --bottom-bar-active-inset: rgb(129 117 255 / 45%);
+        --reaction-own-background: rgb(129 117 255 / 30%);
+        --send-button-hover: rgb(129 117 255 / 85%);
+        --result-badge-background: rgb(129 117 255 / 25%);
+        --overlay-background: rgb(255 255 255 / 8%);
+        --overlay-hover-background: rgb(255 255 255 / 18%);
+        --danger-hover-background: rgb(255 99 99 / 22%);
+        --bubble-error-background: rgb(255 193 7 / 12%);
+        --bubble-error-border: rgb(255 193 7 / 45%);
+        --composer-placeholder-color: rgb(247 247 252 / 45%);
+        --modal-backdrop-color: rgb(15 12 38 / 65%);
+        --story-viewer-backdrop-color: rgb(0 0 0 / 85%);
+        --story-viewer-progress-track: rgb(255 255 255 / 25%);
+        --story-viewer-foreground: #fff;
+        --story-viewer-control-background: rgb(255 255 255 / 15%);
+    }
+}

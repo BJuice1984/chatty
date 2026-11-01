@@ -30,7 +30,7 @@
     @include text;
     @include text-format(400, 18px, 30px);
 
-    color: $mainTextColor;
+    color: var(--main-text-color);
     width: 100%;
     overflow: hidden;
     text-overflow: ellipsis;
@@ -66,12 +66,12 @@
       cursor: pointer;
       border: none;
       border-radius: 50%;
-      background-color: rgb(255 255 255 / 8%);
+      background-color: var(--overlay-background);
       box-sizing: border-box;
       transition: background-color 0.15s ease-in-out, transform 0.15s ease-in-out;
 
       &:hover {
-        background-color: rgb(255 255 255 / 18%);
+        background-color: var(--overlay-hover-background);
         transform: scale(1.06);
       }
 
@@ -86,7 +86,7 @@
       &::after {
         content: '';
         position: absolute;
-        background-color: $mainTextColor;
+        background-color: var(--main-text-color);
         border-radius: 1px;
       }
 
@@ -118,7 +118,7 @@
         top: 50%;
         left: 50%;
         border-radius: 1px;
-        background-color: $mainTextColor;
+        background-color: var(--main-text-color);
       }
 
       &::before {
@@ -130,7 +130,7 @@
       }
 
       &:hover {
-        background-color: rgb(255 99 99 / 22%);
+        background-color: var(--danger-hover-background);
       }
     }
   }
@@ -150,8 +150,8 @@
     margin-bottom: 4px;
     padding: 2px 10px;
     border-radius: 8px;
-    color: $secondTextColor;
-    background-color: $bubbleDayMarkerBackground;
+    color: var(--second-text-color);
+    background-color: var(--bubble-day-marker-background);
     white-space: nowrap;
   }
 
@@ -169,15 +169,15 @@
     margin-bottom: 3px;
     padding: 4px 10px;
     border-radius: 8px;
-    border-left: 3px solid $thirdTextColor;
-    background-color: $bubbleDayMarkerBackground;
-    color: $bubbleTimeTextColor;
+    border-left: 3px solid var(--third-text-color);
+    background-color: var(--bubble-day-marker-background);
+    color: var(--bubble-time-text-color);
     overflow: hidden;
 
     &-label {
       @include text-format(500, 10px, 12px);
 
-      color: $thirdTextColor;
+      color: var(--third-text-color);
     }
 
     &-text {
@@ -231,8 +231,8 @@
       position: absolute;
       width: 8px;
       height: 8px;
-      border-left: 2px solid $secondTextColor;
-      border-bottom: 2px solid $secondTextColor;
+      border-left: 2px solid var(--second-text-color);
+      border-bottom: 2px solid var(--second-text-color);
       transform: rotate(45deg);
       top: 6px;
       left: 5px;
@@ -243,7 +243,7 @@
       position: absolute;
       width: 2px;
       height: 8px;
-      background-color: $secondTextColor;
+      background-color: var(--second-text-color);
       top: 4px;
       left: 5px;
       transform: rotate(45deg);
@@ -256,7 +256,7 @@
       &::before {
         width: 12px;
         height: 12px;
-        border: 2px solid $secondTextColor;
+        border: 2px solid var(--second-text-color);
         border-bottom-style: solid;
         border-radius: 50%;
         transform: rotate(-15deg);
@@ -267,7 +267,7 @@
       &::after {
         width: 2px;
         height: 2px;
-        background-color: $secondTextColor;
+        background-color: var(--second-text-color);
         border-radius: 50%;
         top: 14px;
         left: 9px;
@@ -289,8 +289,8 @@
     gap: 2px;
     padding: 4px;
     border-radius: 10px;
-    border: $borderChat;
-    background-color: $secondColor;
+    border: var(--border-chat);
+    background-color: var(--second-color);
     box-shadow: $boxShadowLogin;
   }
 
@@ -307,7 +307,7 @@
     cursor: pointer;
 
     &:hover {
-      background-color: $fourthColor;
+      background-color: var(--fourth-color);
     }
   }
 
@@ -333,22 +333,22 @@
     align-items: center;
     gap: 3px;
     padding: 1px 8px;
-    border: $borderChatBottom;
+    border: var(--border-chat-bottom);
     border-radius: 999px;
-    background-color: $bubbleDayMarkerBackground;
-    color: $mainTextColor;
+    background-color: var(--bubble-day-marker-background);
+    color: var(--main-text-color);
     cursor: pointer;
 
     &_mine {
-      border-color: $thirdTextColor;
-      background-color: rgb(129 117 255 / 30%);
+      border-color: var(--third-text-color);
+      background-color: var(--reaction-own-background);
     }
   }
 
   &__reaction-count {
     @include text-format(500, 10px, 12px);
 
-    color: $secondTextColor;
+    color: var(--second-text-color);
   }
 
   &__message-bubble {
@@ -361,16 +361,16 @@
     box-sizing: border-box;
 
     &_mine {
-      background-color: $bubbleMineBackground;
-      color: $bubbleMineTextColor;
+      background-color: var(--bubble-mine-background);
+      color: var(--bubble-mine-text-color);
 
       /* хвост своего пузыря — правый нижний угол */
       border-bottom-right-radius: 4px;
     }
 
     &_theirs {
-      background-color: $bubbleTheirsBackground;
-      color: $bubbleTheirsTextColor;
+      background-color: var(--bubble-theirs-background);
+      color: var(--bubble-theirs-text-color);
       border-bottom-left-radius: 4px;
     }
 
@@ -378,9 +378,9 @@
        поверх стороны пузыря; текст наследует color отсюда */
 
     &_error {
-      background-color: rgb(255 193 7 / 12%);
-      color: $warningColor;
-      border: 1px solid rgb(255 193 7 / 45%);
+      background-color: var(--bubble-error-background);
+      color: var(--warning-color);
+      border: 1px solid var(--bubble-error-border);
     }
   }
 
@@ -392,7 +392,7 @@
     /* время — в хвосте пузыря */
     align-self: flex-end;
     margin-top: 2px;
-    color: $bubbleTimeTextColor;
+    color: var(--bubble-time-text-color);
   }
 
   /* Сторона пузыря — align-self на самом пункте; контейнер списка не трогаем:
@@ -444,15 +444,15 @@
     margin: 4px 5px 0;
     padding: 5px 10px;
     border-radius: 8px;
-    border-left: 3px solid $thirdTextColor;
-    background-color: $bubbleDayMarkerBackground;
+    border-left: 3px solid var(--third-text-color);
+    background-color: var(--bubble-day-marker-background);
     box-sizing: border-box;
 
     &-text {
       @include text;
       @include text-format(400, 12px, 16px);
 
-      color: $bubbleTimeTextColor;
+      color: var(--bubble-time-text-color);
       overflow: hidden;
       text-overflow: ellipsis;
       white-space: nowrap;
@@ -478,7 +478,7 @@
         position: absolute;
         width: 2px;
         height: 100%;
-        background-color: $secondTextColor;
+        background-color: var(--second-text-color);
         top: 0;
         left: 50%;
         transform: translateX(-50%);
@@ -523,7 +523,7 @@
       width: 100%;
       padding: 6px 6px 6px 16px;
       border-radius: 22px;
-      background-color: rgb(255 255 255 / 8%);
+      background-color: var(--overlay-background);
       box-sizing: border-box;
 
       input[name='message'] {
@@ -531,14 +531,14 @@
         min-width: 0;
         border: none;
         background: transparent;
-        color: $mainTextColor;
+        color: var(--main-text-color);
         font-size: 14px;
         line-height: 20px;
         padding: 8px 0;
         outline: none;
 
         &::placeholder {
-          color: rgb(247 247 252 / 45%);
+          color: var(--composer-placeholder-color);
         }
       }
 
@@ -562,7 +562,7 @@
         padding: 0;
         border: none;
         border-radius: 50%;
-        background-color: $thirdTextColor;
+        background-color: var(--third-text-color);
         color: transparent;
         font-size: 0;
         cursor: pointer;
@@ -576,12 +576,12 @@
           margin: -1px 0 0 2px;
           border-top: 6px solid transparent;
           border-bottom: 6px solid transparent;
-          border-left: 9px solid $mainColor;
+          border-left: 9px solid var(--main-color);
           transform: rotate(-45deg);
         }
 
         &:hover {
-          background-color: rgb(129 117 255 / 85%);
+          background-color: var(--send-button-hover);
           transform: scale(1.05);
         }
 
@@ -637,8 +637,8 @@
         content: '';
         width: 10px;
         height: 10px;
-        border-left: 2px solid $mainTextColor;
-        border-bottom: 2px solid $mainTextColor;
+        border-left: 2px solid var(--main-text-color);
+        border-bottom: 2px solid var(--main-text-color);
         transform: rotate(45deg);
       }
     }

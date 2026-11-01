@@ -14,13 +14,13 @@
     //скролл вдобавок к внутренним
     grid-template-rows: 100%;
     overflow: hidden;
-    background-color: $mainColor;
+    background-color: var(--main-color);
 
     &__container-users {
         width: 380px;
         height: 98%;
         align-self: center;
-        border-right: $borderChat;
+        border-right: var(--border-chat);
         display: flex;
         flex-direction: column;
         align-items: center;
@@ -42,7 +42,7 @@
         @include text;
         @include text-format(500, 20px, 20px);
 
-        color: $mainTextColor;
+        color: var(--main-text-color);
         text-align: left;
         cursor: default;
     }
@@ -72,7 +72,7 @@
         box-sizing: border-box;
         gap: 16px;
         min-height: 108px;
-        border-bottom: $borderChatBottom;
+        border-bottom: var(--border-chat-bottom);
         list-style: none;
         overflow-x: auto;
 
@@ -89,7 +89,7 @@
       @include reset;
       @include size(36px, 90%);
 
-      background-color: $secondColor;
+      background-color: var(--second-color);
       border-radius: 4px;
       border: none;
       margin-top: 24px;
@@ -142,7 +142,7 @@
         @include text;
         @include text-format(500, 12px, 12px);
         
-        color: $secondTextColor;
+        color: var(--second-text-color);
         text-align: center;
     }
 
@@ -213,7 +213,7 @@
       &-info {
         @include reset;
 
-        color: $mainTextColor;
+        color: var(--main-text-color);
         padding-left: 20px;
 
         &-contact {
@@ -248,7 +248,7 @@
       align-self: center;
 
       &_type_last {
-        border-bottom: $borderChat;
+        border-bottom: var(--border-chat);
       }
     }
 
@@ -343,8 +343,8 @@
         transition: box-shadow $hoverTransition ease, border-color $hoverTransition ease;
 
         &_active {
-            border-color: $thirdColor;
-            box-shadow: 0 0 10px 2px rgb(129 117 255 / 60%), inset 0 0 6px rgb(129 117 255 / 45%);
+            border-color: var(--third-color);
+            box-shadow: 0 0 10px 2px var(--bottom-bar-active-glow), inset 0 0 6px var(--bottom-bar-active-inset);
         }
     }
 }

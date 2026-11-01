@@ -26,7 +26,7 @@
     &__backdrop {
         position: absolute;
         inset: 0;
-        background-color: rgb(15 12 38 / 65%);
+        background-color: var(--modal-backdrop-color);
     }
 
     &__dialog {
@@ -36,8 +36,8 @@
         max-height: calc(100vh - 32px);
         display: flex;
         flex-direction: column;
-        background-color: $secondColor;
-        border: $borderChat;
+        background-color: var(--second-color);
+        border: var(--border-chat);
         border-radius: 12px;
         box-shadow: $boxShadowLogin;
         box-sizing: border-box;
@@ -50,7 +50,7 @@
         justify-content: space-between;
         gap: 12px;
         padding: 14px 16px;
-        border-bottom: $borderChatBottom;
+        border-bottom: var(--border-chat-bottom);
     }
 
     &__title {
@@ -58,7 +58,7 @@
         @include text;
         @include text-format(500, 16px, 22px);
 
-        color: $mainTextColor;
+        color: var(--main-text-color);
         text-align: left;
         overflow: hidden;
         text-overflow: ellipsis;
@@ -85,7 +85,7 @@
             position: absolute;
             width: 2px;
             height: 100%;
-            background-color: $mainTextColor;
+            background-color: var(--main-text-color);
             top: 0;
             left: 50%;
             transform: translateX(-50%);
@@ -111,13 +111,13 @@
         @include text;
         @include text-format(400, 12px, 18px);
 
-        color: $secondTextColor;
+        color: var(--second-text-color);
         text-align: left;
         margin-bottom: 10px;
     }
 
     &__text {
-        color: $mainTextColor;
+        color: var(--main-text-color);
 
         @include text-format(400, 14px, 20px);
     }
@@ -127,7 +127,7 @@
         @include text;
         @include text-format(400, 12px, 18px);
 
-        color: $thirdTextColor;
+        color: var(--third-text-color);
         text-align: left;
         margin-bottom: 10px;
     }
@@ -142,22 +142,22 @@
         @include text;
         @include text-format(400, 14px, 20px);
 
-        color: $mainTextColor;
+        color: var(--main-text-color);
         width: 100%;
         padding: 9px 12px;
-        border: $borderChat;
+        border: var(--border-chat);
         border-radius: 8px;
-        background-color: $mainColor;
+        background-color: var(--main-color);
         box-sizing: border-box;
         margin-bottom: 8px;
         outline: none;
 
         &::placeholder {
-            color: $secondTextColor;
+            color: var(--second-text-color);
         }
 
         &:focus {
-            border-color: $thirdTextColor;
+            border-color: var(--third-text-color);
         }
     }
 
@@ -182,26 +182,26 @@
         gap: 2px;
         width: 100%;
         padding: 8px 10px;
-        border: $borderChatBottom;
+        border: var(--border-chat-bottom);
         border-radius: 8px;
         background-color: transparent;
         cursor: pointer;
         text-align: left;
 
         &:hover {
-            background-color: $fourthColor;
+            background-color: var(--fourth-color);
         }
 
         &-name {
             @include text-format(500, 13px, 18px);
 
-            color: $mainTextColor;
+            color: var(--main-text-color);
         }
 
         &-login {
             @include text-format(400, 11px, 16px);
 
-            color: $secondTextColor;
+            color: var(--second-text-color);
             overflow: hidden;
             text-overflow: ellipsis;
             white-space: nowrap;
@@ -220,20 +220,20 @@
         @include text;
         @include text-format(500, 13px, 18px);
 
-        color: $mainTextColor;
+        color: var(--main-text-color);
         padding: 9px 12px;
-        border: $borderChat;
+        border: var(--border-chat);
         border-radius: 8px;
         background-color: transparent;
         cursor: pointer;
 
         &:hover {
-            background-color: $fourthColor;
+            background-color: var(--fourth-color);
         }
 
         &_danger {
-            border-color: $spanErrorColor;
-            color: $spanErrorColor;
+            border-color: var(--span-error-color);
+            color: var(--span-error-color);
         }
     }
 
@@ -286,8 +286,8 @@
   margin-left: auto;
   padding: 2px 8px;
   border-radius: 999px;
-  background-color: rgb(129 117 255 / 25%);
-  color: $thirdTextColor;
+  background-color: var(--result-badge-background);
+  color: var(--third-text-color);
   font-size: 10px;
   line-height: 14px;
   white-space: nowrap;

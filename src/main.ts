@@ -19,6 +19,7 @@ import { NotFoundPage } from './pages/404/404.ts'
 import { ServerErrorPage } from './pages/500/500.ts'
 import Router from './utils/Router.ts'
 import authController from './features/auth/controller.ts'
+import { initTheme } from './utils/theme.ts'
 import { CONTACTS, MESSENGER, PROFILE, SIGNIN, SIGNUP } from './utils/constants.ts'
 
 export const Routes = {
@@ -31,6 +32,8 @@ export const Routes = {
     PageNotFound: '/404',
     ServerErrorPage: '/500',
 }
+
+initTheme()
 
 Object.entries(Components).forEach(([name, component]) => {
     registerComponent(name, component as typeof Block)

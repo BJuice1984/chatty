@@ -8,13 +8,13 @@
     grid-template-columns: min-content 1fr;
     grid-template-rows: 100%;
     overflow: hidden;
-    background-color: $mainColor;
+    background-color: var(--main-color);
 
     &__sidebar {
         width: 380px;
         height: 98%;
         align-self: center;
-        border-right: $borderChat;
+        border-right: var(--border-chat);
         display: flex;
         flex-direction: column;
         align-items: center;
@@ -37,7 +37,7 @@
         @include text;
         @include text-format(500, 20px, 20px);
 
-        color: $mainTextColor;
+        color: var(--main-text-color);
         text-align: left;
         cursor: default;
     }
@@ -47,17 +47,17 @@
         @include text;
         @include text-format(500, 13px, 18px);
 
-        color: $thirdTextColor;
+        color: var(--third-text-color);
         padding: 6px 14px;
-        border: 1px solid $thirdTextColor;
+        border: 1px solid var(--third-text-color);
         border-radius: 999px;
         background-color: transparent;
         cursor: pointer;
         transition: background-color $hoverTransition ease, box-shadow $hoverTransition ease;
 
         &:hover {
-            background-color: rgb(129 117 255 / 18%);
-            box-shadow: 0 0 8px 2px rgb(129 117 255 / 35%);
+            background-color: var(--add-button-hover-background);
+            box-shadow: 0 0 8px 2px var(--add-button-hover-glow);
         }
     }
 
@@ -92,7 +92,7 @@
         @include text;
         @include text-format(500, 14px, 20px);
 
-        color: $secondTextColor;
+        color: var(--second-text-color);
         text-align: center;
     }
 

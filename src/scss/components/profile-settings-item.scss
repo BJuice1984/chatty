@@ -19,7 +19,7 @@
     @include text-format(600, 14px, 24px);
 
     cursor: default;
-    color: $mainTextColor;
+    color: var(--main-text-color);
     padding-left: 6px;
   }
 }

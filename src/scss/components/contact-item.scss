@@ -42,7 +42,7 @@
         @include text;
         @include text-format(500, 13px, 18px);
 
-        color: $mainTextColor;
+        color: var(--main-text-color);
         width: 100%;
         overflow: hidden;
         text-overflow: ellipsis;
@@ -55,7 +55,7 @@
         @include text;
         @include text-format(400, 11px, 16px);
 
-        color: $secondTextColor;
+        color: var(--second-text-color);
         width: 100%;
         overflow: hidden;
         text-overflow: ellipsis;
@@ -81,7 +81,7 @@
             position: absolute;
             width: 2px;
             height: 12px;
-            background-color: $secondTextColor;
+            background-color: var(--second-text-color);
             top: 50%;
             left: 50%;
             border-radius: 1px;
@@ -96,11 +96,11 @@
         }
 
         &:hover {
-            background-color: rgb(255 99 99 / 22%);
+            background-color: var(--danger-hover-background);
 
             &::before,
             &::after {
-                background-color: $spanErrorColor;
+                background-color: var(--span-error-color);
             }
         }
     }
