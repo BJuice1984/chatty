@@ -605,24 +605,6 @@ describe('settings notification section', () => {
         initPreferences()
     })
 
-    beforeEach(() => {
-        setProfileController(controller)
-        store.set('user', { ...user })
-        window.localStorage.removeItem('chatty-preferences')
-        initPreferences()
-    })
-
-    afterEach(() => {
-        sinon.restore()
-        if (originalNotification === undefined) {
-            delete (globalThis as { Notification?: unknown }).Notification
-        }
-        store.set('user', undefined)
-        store.set('chats', undefined)
-        window.localStorage.removeItem('chatty-preferences')
-        initPreferences()
-    })
-
     it('toggles the sound preference off', () => {
         const page = new ProfilePage({} as never)
 

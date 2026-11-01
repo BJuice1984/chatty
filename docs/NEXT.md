@@ -29,7 +29,7 @@ rejoin через шов контроллера профиля, карточка
 «Скачать» вместо превью, живая подписка preferences в мессенджере).
 Новый scss `settings-sections.scss` — только на var(--token), без
 комментариев (конвенция). Гейты: фронт 540 mocha, guard strict 0; бэкенд
-контура — 230 pytest (+4 известных Windows-падения ingestion), alembic
+контура — 248 pytest (+4 известных Windows-падения ingestion), alembic
 heads == 011_settings.
 
 Членство в чате получило два выхода с разной семантикой
