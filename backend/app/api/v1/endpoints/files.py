@@ -9,17 +9,28 @@ from urllib.parse import quote
 
 from fastapi import APIRouter, Depends, File as UploadFileMarker, Form, HTTPException, Request, UploadFile, status
 from fastapi.responses import StreamingResponse
+from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
 from app.core.deps import get_current_user, get_db, get_settings
 from app.core.config import Settings
 from app.models.user import User
+from app.repositories.files import FileRepository
 from app.schemas.file import AvatarUploadResponse, FileResponse
 from app.services.chats import ChatService
 from app.services.files import FileService, get_object_storage
 
 
 router = APIRouter(prefix='/files', tags=['files'])
+
+
+class FileUsageResponse(BaseModel):
+    """GET /files/usage shape: the caller's stored-file footprint in one
+    aggregate query. Lives here (not in schemas/file.py) to keep the
+    settings-wave ownership surface minimal — a one-endpoint contract."""
+
+    total_bytes: int
+    file_count: int
 
 
 @router.post('', response_model=FileResponse, status_code=201)
@@ -93,6 +104,20 @@ async def upload_avatar(
         files.set_user_avatar(current_user, prepared.file)
 
     return files.avatar_response(prepared.file)
+
+
+@router.get('/usage', response_model=FileUsageResponse)
+async def files_usage(
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> FileUsageResponse:
+    """The caller's storage footprint: every file row they uploaded (chat
+    attachments and global media alike) in one SUM/COUNT. The literal
+    'usage' segment cannot collide with the int routes — the only GET
+    pattern is the two-segment /{file_id}/download, so no path parameter
+    ever sees the literal."""
+    total_bytes, file_count = FileRepository(db).user_usage(current_user.id)
+    return FileUsageResponse(total_bytes=total_bytes, file_count=file_count)
 
 
 @router.get('/{file_id}/download')

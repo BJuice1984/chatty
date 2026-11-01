@@ -7,13 +7,23 @@ from app.core.config import Settings
 from app.core.deps import get_current_user, get_db, get_settings, require_csrf, validate_origin
 from app.core.security import clear_auth_cookies, set_auth_cookies
 from app.models.user import User
-from app.schemas.auth import LoginRequest, MessageResponse, RegisterRequest, UserResponse
+from app.schemas.auth import (
+    LoginRequest,
+    MessageResponse,
+    PasswordChange,
+    ProfileUpdate,
+    RegisterRequest,
+    UserResponse,
+)
 from app.services.auth import (
     authenticate_user,
+    change_password,
     issue_tokens,
+    logout_everywhere,
     register_user,
     revoke_refresh_tokens,
     rotate_refresh_token,
+    update_profile,
 )
 
 
@@ -92,6 +102,59 @@ async def logout(
     revoke_refresh_tokens(db, request.cookies.get(settings.refresh_cookie_name), settings)
     clear_auth_cookies(response, settings)
     return MessageResponse(message='logged_out')
+
+
+@router.post('/logout-all', response_model=MessageResponse)
+async def logout_all(
+    request: Request,
+    response: Response,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+    settings: Settings = Depends(get_settings),
+) -> MessageResponse:
+    """Log out EVERY device: the token_version bump retires all previously
+    issued tokens (access ones die at the get_current_user comparison,
+    refresh ones at rotation), the current cookies are cleared on top. The
+    literal 'logout-all' cannot collide with '/logout' — no parameterized
+    route lives in this router."""
+    require_csrf(request, settings)
+    logout_everywhere(db, current_user)
+    clear_auth_cookies(response, settings)
+    return MessageResponse(message='logged_out_everywhere')
+
+
+@router.put('/profile', response_model=UserResponse)
+async def set_profile(
+    payload: ProfileUpdate,
+    request: Request,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+    settings: Settings = Depends(get_settings),
+) -> User:
+    """Edit the caller's profile (display_name/phone/send_read_receipts):
+    only the carried fields are applied, email/login stay immutable (email
+    IS the login — a separate security-heavy feature)."""
+    require_csrf(request, settings)
+    return update_profile(db, current_user, payload)
+
+
+@router.put('/password', response_model=UserResponse)
+async def set_password(
+    payload: PasswordChange,
+    request: Request,
+    response: Response,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+    settings: Settings = Depends(get_settings),
+) -> User:
+    """Change the password: the wrong old one is a 401; on success every
+    refresh token dies with the token_version bump and the SAME response
+    reissues fresh cookies for the current session (other devices log
+    out, this one stays signed in)."""
+    require_csrf(request, settings)
+    user = change_password(db, current_user, payload)
+    _set_session(response, user, settings)
+    return user
 
 
 @router.get('/me', response_model=UserResponse)

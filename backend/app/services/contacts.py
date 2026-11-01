@@ -34,7 +34,13 @@ class ContactService:
         contact = self.contacts.upsert(owner_id, user_id)
         self.session.commit()
         self.session.refresh(contact)
-        return ContactResponse.from_parts(user.id, user.email, user.avatar_file_id, contact.created_at)
+        return ContactResponse.from_parts(
+            user.id,
+            user.email,
+            user.avatar_file_id,
+            contact.created_at,
+            display_name=user.display_name,
+        )
 
     def remove(self, owner_id: int, user_id: int) -> None:
         """Delete the caller's row for the user; an absent row is a 404."""

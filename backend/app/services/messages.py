@@ -4,11 +4,13 @@ from __future__ import annotations
 
 from collections.abc import Sequence
 from fastapi import HTTPException, status
+from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.models.message import Message
 from app.models.reaction import Reaction
+from app.models.user import User
 from app.repositories.chats import ChatRepository
 from app.repositories.files import FileRepository
 from app.repositories.messages import MessageRepository
@@ -83,10 +85,18 @@ class MessageService:
         rows = self.messages.list_before(chat_id, before=before, limit=bounded_limit)
 
         # выдача истории читает чат: маркер двигаем к старшей странице выдачи
-        # (страница desc: первый элемент — новейший из выданных)
+        # (страница desc: первый элемент — новейший из выданных) — но только
+        # когда зритель не выключил отчёты о прочтении: chat_last_reads
+        # кормит исключительно СОБСТВЕННЫЙ значок непрочитанных зрителя
+        # (peer-поверхностей нет), поэтому флаг просто держит значок
+        # непрочитанным после чтения
         if rows:
             newest_read = max(row.id for row in rows[:bounded_limit])
-            ChatService(self.session).mark_read(chat_id, user_id, newest_read)
+            send_read_receipts = self.session.scalar(
+                select(User.send_read_receipts).where(User.id == user_id)
+            )
+            if send_read_receipts is None or send_read_receipts:
+                ChatService(self.session).mark_read(chat_id, user_id, newest_read)
 
         has_more = len(rows) > bounded_limit
         page = rows[:bounded_limit]

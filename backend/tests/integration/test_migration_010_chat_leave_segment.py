@@ -10,12 +10,12 @@ directions:
     create_all(current models) -> stamp head -> downgrade -1 ->
     upgrade head
 
-`downgrade -1` runs 010's own downgrade against the stamped state and
-yields the faithful 009 one (chat_members without left_at); `upgrade head`
-re-applies 010 to that state. The step is head-relative, so the test holds
-exactly while 010_chat_leave IS the head (the run gate pins
-`alembic heads == 010_chat_leave`; a newer head must repoint the step at
-the explicit 009_contacts revision — the note inside
+`downgrade '009_contacts'` runs 010's own downgrade against the stamped
+state and yields the faithful 009 one (chat_members without left_at);
+`upgrade head` re-applies 010 to that state. The step targets the
+EXPLICIT 009 revision: it was head-relative ('-1') while 010_chat_leave
+was the head, and the first newer head (011_settings) repointed it —
+a later head must never shift the step again (the note inside
 test_migration_009_contacts_segment.py explains the trap). The schema is
 asserted by an inspector after each step. Alembic runs through the real
 env wiring: env.py reads Settings() on every command, so the
@@ -72,8 +72,13 @@ def test_010_segment_downgrade_upgrade_roundtrip(tmp_path, monkeypatch):
     command.stamp(config, 'head')
 
     # 010's own downgrade yields the faithful 009 state: the row keeps
-    # living without the archive marker (and the 009 segment stays put)
-    command.downgrade(config, '-1')
+    # living without the archive marker (and the 009 segment stays put).
+    # The target is the explicit revision, not '-1': 011_settings is the
+    # head now, so the relative step would run 011's downgrade instead and
+    # land on 010 — the repoint this test's own docstring prescribed for
+    # the first newer head (the note in test_migration_009_contacts_segment.py
+    # explains the trap).
+    command.downgrade(config, '009_contacts')
     tables, member_columns = snapshot_schema(database_url)
     assert 'chat_members' in tables
     assert 'left_at' not in member_columns

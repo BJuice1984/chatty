@@ -178,6 +178,22 @@ async def leave_chat(
     await hub.close_user_chat(chat_id, current_user.id)
 
 
+@router.post('/{chat_id}/rejoin', status_code=status.HTTP_204_NO_CONTENT)
+async def rejoin_chat(
+    chat_id: int,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> None:
+    """The leave twin: reactivates the caller's OWN archived membership
+    (left_at -> NULL on the same row — writes and live pushes resume).
+    Kicked users have no row (403), an active membership is an idempotent
+    204, an unknown chat is the usual 404. The literal 'rejoin' segment
+    sits beside /{chat_id}/leave and /{chat_id}/members — a different
+    literal, so the int routes cannot shadow it (no single-segment POST
+    /{chat_id} exists; the /search, /dm precedents run the other way)."""
+    ChatService(db).rejoin(chat_id, current_user.id)
+
+
 @router.get('/{chat_id}/messages', response_model=MessagePage)
 async def list_messages(
     chat_id: int,

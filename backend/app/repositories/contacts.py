@@ -38,15 +38,21 @@ class ContactRepository:
         self.session.flush()
         return True
 
-    def list_for_owner(self, owner_id: int) -> list[tuple[int, str, int | None, datetime]]:
+    def list_for_owner(self, owner_id: int) -> list[tuple[int, str, int | None, datetime, str | None]]:
         """Owner's contacts as (contact_user_id, email handle, avatar_file_id,
-        created_at) — the user fields come from a JOIN, ordering is the
+        created_at, display_name) — the user fields come from a JOIN
+        (display_name feeds the ContactResponse fallback), ordering is the
         contract's created_at DESC, contact_user_id DESC."""
         rows = (
-            self.session.query(Contact.contact_user_id, User.email, User.avatar_file_id, Contact.created_at)
+            self.session.query(
+                Contact.contact_user_id, User.email, User.avatar_file_id, Contact.created_at, User.display_name
+            )
             .join(User, User.id == Contact.contact_user_id)
             .filter(Contact.owner_id == owner_id)
             .order_by(Contact.created_at.desc(), Contact.contact_user_id.desc())
             .all()
         )
-        return [(row.contact_user_id, row.email, row.avatar_file_id, row.created_at) for row in rows]
+        return [
+            (row.contact_user_id, row.email, row.avatar_file_id, row.created_at, row.display_name)
+            for row in rows
+        ]

@@ -34,14 +34,20 @@ CHATS_SEARCH_RESULTS_CAP = 50
 CHAT_SEARCH_SNIPPET_WINDOW = 32
 
 
-def to_member_brief(user_id: int, email: str, avatar_file_id: int | None) -> ChatMemberBrief:
+def to_member_brief(
+    user_id: int,
+    email: str,
+    avatar_file_id: int | None,
+    display_name: str | None = None,
+) -> ChatMemberBrief:
     """Единая точка сборки формы участника: и список чатов, и эндпоинт
     участников строят её здесь, чтобы формы не разъехались (login —
-    email-хэнл контракта, display_name — его локальная часть)."""
+    email-хэнл контракта, display_name — редактируемая колонка с fallback
+    на локальную часть email — правило UserSearchItem/ContactResponse)."""
     return ChatMemberBrief(
         id=user_id,
         login=email,
-        display_name=email.split('@')[0],
+        display_name=display_name or email.split('@')[0],
         avatar_url=file_avatar_url(avatar_file_id),
     )
 
@@ -84,9 +90,10 @@ class ChatService:
     def create_dm(self, owner_id: int, target_id: int) -> tuple[Chat, bool]:
         """Get-or-create the 1:1 chat with the user: the existing DM (found
         by the is_dm flag plus both memberships, never by member counting)
-        returns (chat, False); otherwise the chat is created with the target
-        email local part as the denormalized title, owner = caller, is_ai
-        False, is_dm True, and exactly the two members -> (chat, True)."""
+        returns (chat, False); otherwise the chat is created with the
+        target's display_name (email local part when unset) as the
+        denormalized title, owner = caller, is_ai False, is_dm True, and
+        exactly the two members -> (chat, True)."""
         if target_id == owner_id:
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail='dm_self_forbidden')
         target = self.users.get_by_id(target_id)
@@ -96,9 +103,11 @@ class ChatService:
         if existing is not None:
             return existing, False
         login = target.email.lower()
+        # NEW dms prefer the target's display_name; the stored title stays
+        # denormalized forever (existing dm titles keep their local part)
         chat = self.chats.add(
             Chat(
-                title=login.split('@', 1)[0] or login,
+                title=target.display_name or login.split('@', 1)[0] or login,
                 owner_id=owner_id,
                 is_ai=False,
                 is_dm=True,
@@ -131,10 +140,10 @@ class ChatService:
         участников не режутся). Только для списка чатов — эндпоинт
         /chats/{id}/members отдаёт полный состав без cap."""
         grouped: dict[int, list[ChatMemberBrief]] = {}
-        for chat_id, user_id, email, avatar_file_id in self.chats.list_members_for_chats(chat_ids):
+        for chat_id, user_id, email, avatar_file_id, display_name in self.chats.list_members_for_chats(chat_ids):
             briefs = grouped.setdefault(chat_id, [])
             if len(briefs) < MEMBERS_BRIEF_CAP:
-                briefs.append(to_member_brief(user_id, email, avatar_file_id))
+                briefs.append(to_member_brief(user_id, email, avatar_file_id, display_name))
         return grouped
 
     def list_member_briefs(self, chat_id: int) -> list[ChatMemberBrief]:
@@ -280,6 +289,21 @@ class ChatService:
         member.left_at = datetime.now(UTC)
         self.session.commit()
 
+    def rejoin(self, chat_id: int, user_id: int) -> None:
+        """Self-rejoin after a self-leave: reactivates the caller's OWN
+        archived membership row through the shared helper (left_at -> NULL
+        on the same row — writes and live pushes resume, joined_at kept).
+        A missing row (kicked or never-member) gets the membership 403,
+        an already-active row is an idempotent no-write, an unknown chat
+        the usual 404."""
+
+        self.require_chat(chat_id)
+        member = self.chats.get_member(chat_id, user_id)
+        if member is None:
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail='chat_membership_required')
+        if self.chats.reactivate_member(member):
+            self.session.commit()
+
     def add_member(self, chat_id: int, requester_id: int, user_id: int) -> ChatMember:
         """Member addition plus the implicit contact capture: EVERY successful
         resolution records the contact requester -> user (skipped for
@@ -298,9 +322,8 @@ class ChatService:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail='user_not_found')
         existing = self.chats.get_member(chat_id, user_id)
         if existing is not None:
-            reactivated = existing.left_at is not None
-            if reactivated:
-                existing.left_at = None
+            # the shared reactivation helper (the rejoin path's twin)
+            reactivated = self.chats.reactivate_member(existing)
             if user_id != requester_id:
                 self.contacts.upsert(requester_id, user_id)
             if reactivated or user_id != requester_id:
