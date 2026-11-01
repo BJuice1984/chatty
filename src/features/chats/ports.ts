@@ -54,6 +54,11 @@ export interface ChatsPort {
     // членство (left_at), повторный выход идемпотентен; любой участник
     // eslint-disable-next-line no-unused-vars
     leaveChat(chatId: number): Promise<void>
+    // Возврат в свой архивированный чат (2026-11-01-settings): реактивирует
+    // собственное членство (left_at -> NULL); активное членство —
+    // идемпотентный 204
+    // eslint-disable-next-line no-unused-vars
+    rejoinChat(chatId: number): Promise<void>
     // eslint-disable-next-line no-unused-vars
     getChatUsers(chatId: number): Promise<ChatUser[]>
     // Запуск ассистента по сообщению в is_ai-чате (для отображения ошибки)

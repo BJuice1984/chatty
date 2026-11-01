@@ -165,6 +165,12 @@ export const ownChatsPort: ChatsPort = {
         // идемпотентный 204; бэкенд закрывает наш сокет чата
         await http.post(`/${chatId}/leave`, { csrfToken: readCsrfToken() })
     },
+    async rejoinChat(chatId: number) {
+        // возврат в свой архивированный чат (2026-11-01-settings):
+        // реактивирует собственное членство (left_at -> NULL); активное
+        // членство — идемпотентный 204
+        await http.post(`/${chatId}/rejoin`, { csrfToken: readCsrfToken() })
+    },
     async getChatUsers(chatId: number) {
         const members = await (http.get(`/${chatId}/members`) as unknown as Promise<
             { id: number; login: string; display_name: string; avatar_url?: string | null }[]

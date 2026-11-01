@@ -458,6 +458,20 @@ export class ChatsFeatureController {
         }
     }
 
+    // Возврат в архивированный чат (2026-11-01-settings): реактивирует
+    // собственное членство, список рефетчится — карточка сама выходит из
+    // «покинутых» (leftAt гаснет в сторе); выбор чата не трогаем (остаётся
+    // ручным), сокет поднимает общий цикл fetchChats
+    async rejoinChat(chatId: number): Promise<void> {
+        try {
+            await this.port.rejoinChat(chatId)
+
+            void this.fetchChats()
+        } catch (e: unknown) {
+            console.error('Ошибка при возвращении в чат:', e)
+        }
+    }
+
     // «Добавить в контакты» из меню участника — делегируется contacts-фиче
     // через инъекцию (до связывания noop)
     addContact(userId: number): void {

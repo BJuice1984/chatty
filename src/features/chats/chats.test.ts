@@ -3,6 +3,7 @@ import sinon from 'sinon'
 import { JSDOM } from 'jsdom'
 import store from '../../utils/Store.ts'
 import { ChatsFeatureController, applyReactionDelta, setContactsIntegration, toggleOwnReaction } from './controller.ts'
+import { ownChatsPort } from './api/own.ts'
 import { chatSearchSlice, chatsSlice } from './store.ts'
 import { notifyChatDeleted, notifyReactionEvent } from './ws/gateway.ts'
 import { OwnWsAdapter } from './ws/own.ts'
@@ -22,6 +23,7 @@ function makePort(overrides: Partial<ChatsPort> = {}): ChatsPort {
         addUsers: async () => undefined,
         removeUsers: async () => undefined,
         leaveChat: async () => undefined,
+        rejoinChat: async () => undefined,
         getChatUsers: async () => [],
         changeChatAvatar: async () => ({ avatar: '' }),
         searchUsers: async () => [],
@@ -527,6 +529,120 @@ describe('chats controller chat leave', () => {
         expect(closeChat.calledOnceWith(3)).to.be.true
         expect(connect.notCalled).to.be.true
         expect(fetchChats.calledOnce).to.be.true
+    })
+})
+
+// 2026-11-01-settings: возврат в архивированный чат. Реактивация через порт,
+// затем рефетч списка — карточка сама выходит из «покинутых» (leftAt гаснет);
+// ошибка порта молчит, список не трогаем
+describe('chats controller chat rejoin', () => {
+    afterEach(() => {
+        chatsSlice.setChats([])
+    })
+
+    it('rejoins through the port and refetches the list', async () => {
+        const rejoinChat = sinon.stub().resolves()
+        const fetchChats = sinon.stub().resolves([])
+        const controller = new ChatsFeatureController(
+            makePort({ rejoinChat, fetchChats }),
+            makeMessages()
+        )
+
+        await controller.rejoinChat(3)
+
+        expect(rejoinChat.calledOnceWith(3)).to.be.true
+        expect(fetchChats.calledOnce).to.be.true
+    })
+
+    it('stays silent and keeps the list when the port rejects', async () => {
+        const errorSpy = sinon.stub(console, 'error')
+        const rejoinChat = sinon.stub().rejects(new Error('boom'))
+        const fetchChats = sinon.stub().resolves([])
+        const controller = new ChatsFeatureController(
+            makePort({ rejoinChat, fetchChats }),
+            makeMessages()
+        )
+
+        try {
+            await controller.rejoinChat(3)
+        } finally {
+            errorSpy.restore()
+        }
+
+        expect(fetchChats.notCalled).to.be.true
+    })
+})
+
+// Адаптер возврата (узор chats/api/api.test.ts): подмена XMLHttpRequest
+// закрепляет метод/адрес/CSRF — POST /chats/{id}/rejoin c double-submit
+describe('chats api rejoin (fake XHR)', () => {
+    interface CapturedCall {
+        method: string
+        url: string
+        headers: Record<string, string>
+    }
+
+    class FakeXHR {
+        static calls: CapturedCall[] = []
+
+        onload: (() => void) | null = null
+        withCredentials = false
+        responseType = ''
+        timeout = 0
+        status = 0
+        response: unknown = null
+
+        private method = ''
+        private url = ''
+        private headers: Record<string, string> = {}
+
+        open(method: string, url: string): void {
+            this.method = method
+            this.url = url
+        }
+
+        setRequestHeader(name: string, value: string): void {
+            this.headers[name] = value
+        }
+
+        send(): void {
+            FakeXHR.calls.push({ method: this.method, url: this.url, headers: { ...this.headers } })
+
+            this.status = 204
+            this.response = null
+            this.onload?.()
+        }
+    }
+
+    // URL обязателен: cookie на about:blank jsdom молча отбрасывается
+    const dom = new JSDOM('', { url: 'http://localhost/' })
+
+    let originalXHR: typeof XMLHttpRequest
+    let originalDocument: Document
+
+    beforeEach(() => {
+        originalXHR = globalThis.XMLHttpRequest
+        originalDocument = global.document
+        global.document = dom.window.document
+        FakeXHR.calls = []
+        globalThis.XMLHttpRequest = FakeXHR as unknown as typeof XMLHttpRequest
+        dom.window.document.cookie = 'chatty_csrf=token-1'
+    })
+
+    afterEach(() => {
+        globalThis.XMLHttpRequest = originalXHR
+        global.document = originalDocument
+        dom.window.document.cookie = 'chatty_csrf=; expires=Thu, 01 Jan 1970 00:00:00 GMT'
+    })
+
+    it('rejoins over POST /chats/{id}/rejoin with the csrf header', async () => {
+        await ownChatsPort.rejoinChat(7)
+
+        const call = FakeXHR.calls[0]
+
+        expect(call.method).to.eq('POST')
+        expect(call.url).to.contain('/chats/7/rejoin')
+        expect(call.headers['X-CSRF-Token']).to.eq('token-1')
     })
 })
 

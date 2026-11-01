@@ -7,7 +7,7 @@ import authController from './auth/controller.ts'
 import { authModule } from './auth/module.ts'
 import ChatsController, { setContactsIntegration } from './chats/controller.ts'
 import { chatsModule } from './chats/module.ts'
-import { ProfileFeatureController, setProfileController } from './profile/controller.ts'
+import { ProfileFeatureController, setProfileController, setProfileSeams } from './profile/controller.ts'
 import { profilePort } from './profile/api/index.ts'
 import { profileModule } from './profile/module.ts'
 import { aiAssistantModule } from './ai-assistant/module.ts'
@@ -17,11 +17,17 @@ import Router from '../utils/Router.ts'
 import { MESSENGER } from '../utils/constants.ts'
 import type { AppModule } from '../core/module/types.ts'
 
-// logout принадлежит auth-фиче — профиль получает его инъекцией через порт.
-setProfileController(new ProfileFeatureController(
-    profilePort,
-    () => authController.logout()
-))
+// Контроллер профиля зависит только от своего порта.
+setProfileController(new ProfileFeatureController(profilePort))
+
+// Межфичевые швы профиля (2026-11-01-settings): свежесть пользователя и выход
+// принадлежат auth-фиче, возврат в архивированный чат — chats-фиче; профиль
+// получает их consumer-side сеттером (до связывания — noop).
+setProfileSeams({
+    refreshUser: () => authController.fetchUser(),
+    logout: () => authController.logout(),
+    rejoinChat: chatId => ChatsController.rejoinChat(chatId),
+})
 
 // Открытие диалога принадлежит chats-фиче — contacts получает его той же
 // инъекцией: выбрать чат, подтянуть состав участников, уйти в мессенджер.

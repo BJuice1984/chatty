@@ -111,13 +111,19 @@ export interface SearchUserData {
     [key: string]: unknown
 }
 
+// Правка профиля (2026-11-01-settings): контракт ЧАСТИЧНЫЙ — собственный
+// бэкенд принимает только display_name/phone/send_read_receipts, own-адаптер
+// шлёт лишь определённые поля (тумблер приватности несёт один флаг, отсутствующее
+// поле колонку на сервере не затирает); legacy-поля форм (first_name/
+// second_name/login/email) в own-запрос не попадают.
 export interface ChangeUserData {
-    first_name: string
-    second_name: string
-    display_name: string
-    login: string
-    email: string
-    phone: string
+    first_name?: string
+    second_name?: string
+    display_name?: string
+    login?: string
+    email?: string
+    phone?: string
+    send_read_receipts?: boolean
     [key: string]: unknown
 }
 

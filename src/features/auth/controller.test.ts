@@ -22,9 +22,10 @@ const user: AuthUser = {
     email: 'ada@example.com',
     first_name: '',
     second_name: '',
-    display_name: 'ada@example.com',
+    display_name: 'ada',
     phone: '',
     avatar: '',
+    send_read_receipts: true,
 }
 
 function makePort(overrides: Partial<AuthPort> = {}): AuthPort {
