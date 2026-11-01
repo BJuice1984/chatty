@@ -14,17 +14,19 @@ import { ChatPage } from './features/chats/pages/chat/chat.ts'
 import { ProfilePage } from './features/profile/pages/profile/profile.ts'
 import { AssistantPage } from './features/ai-assistant/pages/assistant.ts'
 import './features/ai-assistant/styles/ai-assistant.scss'
+import { ContactsPage } from './features/contacts/pages/contacts/contacts.ts'
 import { NotFoundPage } from './pages/404/404.ts'
 import { ServerErrorPage } from './pages/500/500.ts'
 import Router from './utils/Router.ts'
 import authController from './features/auth/controller.ts'
-import { MESSENGER, PROFILE, SIGNIN, SIGNUP } from './utils/constants.ts'
+import { CONTACTS, MESSENGER, PROFILE, SIGNIN, SIGNUP } from './utils/constants.ts'
 
 export const Routes = {
     Chatty: MESSENGER,
     Login: SIGNIN,
     Register: SIGNUP,
     Profile: PROFILE,
+    Contacts: CONTACTS,
     Assistant: '/assistant',
     PageNotFound: '/404',
     ServerErrorPage: '/500',
@@ -42,6 +44,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         .use(Routes.Login, LoginPage as typeof Block)
         .use(Routes.Register, RegisterPage as typeof Block)
         .use(Routes.Profile, ProfilePage as typeof Block)
+        .use(Routes.Contacts, ContactsPage as typeof Block)
         .use(Routes.Assistant, AssistantPage as typeof Block)
         .use(Routes.PageNotFound, NotFoundPage as typeof Block)
         .use(Routes.ServerErrorPage, ServerErrorPage as typeof Block)

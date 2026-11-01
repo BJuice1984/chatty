@@ -310,7 +310,11 @@ class ChatPageBase extends Block {
     }
     constructor(propsFromStore: ChatPageProps) {
         super({
-            chatPaneOpen: false,
+            // 2026-11-01-contacts: страница, смонтированная с уже выбранным
+            // чатом (возврат на /messenger после openDm из /contacts),
+            // стартует с открытой панелью — раньше живой выбор игнорировался
+            // и мобильный вход всегда показывал список
+            chatPaneOpen: propsFromStore.selectedChat != null,
             // единая точка входа для плиток: add-плитка открывает пикер,
             // обычная — вьюер с автозакрытием
             onSelectStory: (id?: string) => {

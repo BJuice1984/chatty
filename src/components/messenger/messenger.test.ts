@@ -373,6 +373,29 @@ describe('messenger add-user modal', () => {
             messenger.destroy()
         }
     })
+
+    // 2026-11-01-contacts (review F-6): билдер модалки получил опциональный
+    // alreadyBadge — дефолт обязан остаться «уже в чате», мессенджер ничего
+    // не передаёт и его поведение бит-в-бит прежнее
+    it('badges an already-member with the default «уже в чате» and disables the result', () => {
+        store.set('chatUsers', [{ id: 101, avatar: '' }])
+        const messenger = new Messenger({} as never)
+
+        try {
+            messenger.setProps({
+                addUserOpen: true,
+                addUserResults: [{ id: 101, login: 'bob@example.com', display_name: 'bob' }],
+            })
+
+            const result = messenger.element?.querySelector<HTMLButtonElement>('[data-testid="user-search-result"]')
+
+            expect(result?.disabled).to.be.true
+            expect(result?.textContent).to.contain('уже в чате')
+        } finally {
+            messenger.destroy()
+            store.set('chatUsers', undefined)
+        }
+    })
 })
 
 // Модалка удаления: подтверждение кликом, отмена не трогает чат

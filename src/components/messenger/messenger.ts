@@ -85,21 +85,26 @@ const escapeHtml = (value: unknown): string => Handlebars.escapeExpression(
 
 // Контент модалки добавления пользователя: поле @-поиска, подсказка,
 // фидбек и список находок {display_name, login}. Данные экранируются —
-// modal рендерит слот без экранирования
+// modal рендерит слот без экранирования. alreadyBadge — текст метки уже
+// добавленного (мессенджер не передаёт: дефолт «уже в чате» хранит его
+// поведение бит-в-бит; страница контактов переиспользует билдер с
+// «уже в контактах», 2026-11-01-contacts)
 export function renderAddUserModalContent(props: {
     addUserQuery?: string
     addUserResults?: UserSearchEntry[]
     addUserFeedback?: string
     memberIds?: number[]
+    alreadyBadge?: string
 }): string {
     const query = props.addUserQuery ?? ''
     const results = props.addUserResults ?? []
     const feedback = props.addUserFeedback ?? ''
     const memberIds = new Set(props.memberIds ?? [])
+    const alreadyBadge = props.alreadyBadge ?? 'уже в чате'
     const items = results.map(user => {
         const already = memberIds.has(user.id)
         const disabled = already ? ' disabled' : ''
-        const badge = already ? '<span class="modal__result-badge">уже в чате</span>' : ''
+        const badge = already ? `<span class="modal__result-badge">${escapeHtml(alreadyBadge)}</span>` : ''
 
         return '<li class="modal__result-item">'
             + `<button type="button" class="modal__result" data-testid="user-search-result" data-user-id="${escapeHtml(user.id)}"${disabled}>`

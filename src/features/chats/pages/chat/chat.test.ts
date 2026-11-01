@@ -88,6 +88,25 @@ describe('chat page mobile pane switch', () => {
         }
     })
 
+    // 2026-11-01-contacts: вход на страницу с живым выбором (навигация из
+    // /contacts после openDm) открывает панель чата, а не список
+    it('starts with the pane open when a chat is already selected', () => {
+        const fetchChats = sinon.stub(ChatsController, 'fetchChats').resolves()
+
+        try {
+            store.set('selectedChat', 4)
+
+            const page = new ChatPage({} as never)
+
+            expect(callbacksOf(page).chatPaneOpen).to.be.true
+
+            page.destroy()
+        } finally {
+            fetchChats.restore()
+            store.set('selectedChat', undefined)
+        }
+    })
+
     it('opens the pane on chat selection and closes it on back', () => {
         const fetchChats = sinon.stub(ChatsController, 'fetchChats').resolves()
         const selectChat = sinon.stub(ChatsController, 'selectChat')
