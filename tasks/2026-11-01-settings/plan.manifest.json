@@ -1,7 +1,7 @@
 {
     "schemaVersion": "agent-plan-manifest.v1",
     "status": "FROZEN",
-    "planRevision": 3,
+    "planRevision": 4,
     "package": {
         "id": "2026-11-01-settings",
         "title": "Working /settings surface: account, chat archive, theme, notifications, privacy, data usage",
@@ -160,6 +160,7 @@
                 "backend/app/services/messages.py",
                 "backend/tests/integration/auth/test_settings_api.py",
                 "backend/tests/integration/chat/test_rejoin_api.py",
+                "backend/tests/integration/test_migration_010_chat_leave_segment.py",
                 "backend/tests/integration/test_migration_011_settings_segment.py"
             ],
             "readOnly": [
@@ -178,8 +179,7 @@
                 "backend/alembic/versions/007_avatars_stories.py",
                 "backend/alembic/versions/008_pg_trgm_search_indexes.py",
                 "backend/alembic/versions/009_contacts.py",
-                "backend/alembic/versions/010_chat_leave.py",
-                "backend/tests/integration/test_migration_010_chat_leave_segment.py"
+                "backend/alembic/versions/010_chat_leave.py"
             ],
             "launchGate": "branch feature/2026-11-01-contacts at d1ce06a; verify:backend green at base modulo the 4 documented Windows ingestion failures; heads 010_chat_leave at base; npm run verify green (mocha 450).",
             "capabilityHints": [
@@ -215,7 +215,7 @@
             "required": true,
             "plannedItems": [
                 "models: users.display_name String(120) NULLable, users.phone String(30) NULLable, users.send_read_receipts Boolean NOT NULL server_default '1'",
-                "migration 011_settings (batch_alter add columns, downgrade reverses) + segment roundtrip test with the EXPLICIT downgrade target '010_chat_leave'; heads -> 011_settings",
+                "migration 011_settings (batch_alter add columns, downgrade reverses) + segment roundtrip test with the EXPLICIT downgrade target '010_chat_leave'; heads -> 011_settings. Amendment rev 4: the 010 segment test's own docstring prescribes repointing its step to '009_contacts' at the first newer head — with 011 present the relative '-1' runs 011's downgrade and the test fails (empirically reproduced); this wave therefore also owns backend/tests/integration/test_migration_010_chat_leave_segment.py for that one-line repoint (the 009 precedent when 010 landed)",
                 "schemas/auth.py: UserResponse.display_name/phone/send_read_receipts additive; ProfileUpdate (display_name 0..120 trimmed empty->NULL, phone NULL or 3..30, send_read_receipts bool) + PasswordChange (old 1..256, new 12..256)",
                 "services/auth.py: update_profile (validate + update + return user), change_password (verify old 401 invalid_credentials, hash new, revoke ALL refresh tokens, reissue current-session cookies via the response), logout_everywhere (token_version += 1) AND BUILD the missing comparison in core/deps.py get_current_user (create_token embeds ver; core/security.py unchanged) — pin a real 401-after with a previously issued access token",
                 "endpoints/auth.py: PUT /profile, PUT /password, POST /logout-all (csrf require_csrf + validate_origin like the existing mutations); responses carry the extended UserResponse",
@@ -626,7 +626,7 @@
         "maxRounds": 2,
         "implementationAuthorized": false,
         "report": "tasks/2026-11-01-settings/plan-review.json",
-        "reviewedRevision": 3,
+        "reviewedRevision": 4,
         "verdict": "READY_TO_FREEZE"
     },
     "planFiles": [
