@@ -1,0 +1,13 @@
+{
+    "reasons": [
+        "browser-risk"
+    ],
+    "requestDigest": "a05be5ba97781eef24881299eb202439b1b152d9ee53ed1e4f58265b755b0eff",
+    "rules": {
+        "S0": "exactly one executable owner, exactly one task, bounded-mechanical, no elevated risk",
+        "S1": "single executable owner, embedded requirements at or below 32768 bytes, no elevated risk",
+        "S2": "multiple executable owners or architecture/security/performance/browser/external-environment risk"
+    },
+    "schemaVersion": "agent-sdd-tier-resolution.v1",
+    "tier": "S2"
+}
