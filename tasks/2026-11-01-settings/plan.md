@@ -16,8 +16,9 @@ against real backend state or an explicit client preference.
 - **Notification** — sound on incoming messages + browser
   notifications (permission-gated), both per-viewer toggles.
 - **Privacy** — «отправлять отчёты о прочтении» server-side per-user
-  flag: when off, history loads no longer mark chats read for the
-  recipient side (others keep seeing unread).
+  flag: when off, the viewer's own history loads stop advancing their
+  last-read marker — their own unread badge stays (sender-visible
+  receipts are a non-goal: no peer surface reads the marker).
 - **Data Usage** — storage used by the viewer's files (GET
   /files/usage) + an auto-download toggle gating attachment previews.
 
@@ -43,9 +44,11 @@ below; after plan review the full cycle runs autonomously.
    verifies old (401 invalid_credentials), enforces the password
    policy (12..256), rehashes, revokes ALL refresh tokens and reissues
    fresh cookies for the current session (other devices log out).
-4. `POST /api/v1/auth/logout-all` (csrf): bumps `token_version`
-   (invalidates every access token), revokes refresh tokens, clears
-   cookies.
+4. `POST /api/v1/auth/logout-all` (csrf): bumps `token_version` with
+   the comparison BUILT in `get_current_user` (core/deps.py:59-67
+   never checks the `ver` claim today — add it; core/security.py
+   unchanged), revokes refresh tokens, clears cookies. A previously
+   issued access token must 401 after (pinned).
 5. `GET /api/v1/auth/me` / login / register responses grow
    `display_name: str | None`, `phone: str | None`,
    `send_read_receipts: bool` (additive None/True defaults keep
@@ -58,41 +61,50 @@ below; after plan review the full cycle runs autonomously.
 7. `GET /api/v1/files/usage`: `{total_bytes: int, file_count: int}`
    for the caller's files (uploaded_by the user; single SUM/COUNT).
 8. History/read-receipt seam: `MessageService.history` skips
-   `mark_read` when the RECIPIENT's `send_read_receipts` is false (the
-   viewer's own flag governs their receipts; unread counts of others
-   stay).
+   `mark_read` when the VIEWER's `send_read_receipts` is false — the
+   only consumer of `chat_last_reads` is the viewer's OWN unread badge
+   (unread_counts -> GET /chats): the gate keeps the viewer's badge
+   unread after reading. Sender-visible receipts are a NON-GOAL (no
+   peer surface reads the marker).
 9. display_name fallback: `UserSearchItem.from_user`,
-   `ContactResponse`, `to_member_brief` return
-   `display_name or email-local-part` (contacts, member briefs, DM
-   titles, search results all improve without further changes).
+   `ContactResponse` (fed by repositories/services/contacts.py — owned
+   by this wave), `to_member_brief` return `display_name or
+   email-local-part`. DM titles stored at creation KEEP their
+   denormalized local-part; create_dm may prefer the target
+   display_name for NEW dms (one owned line in services/chats.py).
 
 ## Wave 1 — backend (WS-BE-SETTINGS)
 
 Migration 011 + the segment test; User model columns; schemas
 (UserResponse extension, ProfileUpdate, PasswordChange); services/auth
-(update_profile, change_password, logout_everywhere — token_version
-mechanics verified against the JWT identity path); endpoints/auth
+(update_profile, change_password, logout_everywhere); BUILD the
+users.token_version comparison in core/deps.py get_current_user (the
+`ver` claim is already embedded — core/security.py unchanged); endpoints/auth
 (PUT profile, PUT password, POST logout-all, csrf + origin); rejoin
 endpoint + service (repositories/chats reactivation helper —
-add_member's reactivation branch refactored to share it); files usage
+add_member's reactivation branch refactored to share it; contacts
+repository/service feed display_name into ContactResponse); files usage
 endpoint (repositories/files SUM/COUNT); MessageService.history
-receipt gate; display_name fallback in the three name builders; pytest:
+receipt gate (viewer-own badge semantics — sender receipts a non-goal);
+display_name fallback in the three name builders; pytest:
 profile update + validation, password flow (wrong old 401, other
 sessions revoked — refresh with an old token 401, current session
-alive), logout-all (old access 401), rejoin (archived -> active,
+alive), logout-all (a previously issued access token 401 AFTER the
+deps.py comparison is built), rejoin (archived -> active,
 kicked 403, active idempotent, unknown 404, anonymous 401), usage
-shape, receipts-off keeps unread for the peer (history load does not
-mark), display_name fallback cases, segment test.
+shape, receipts-off keeps the VIEWER's own unread badge after a
+history load, display_name fallback cases (incl. /contacts), segment
+test.
 
 ## Wave 2 — frontend theme + preferences (WS-FE-THEME)
 
-1. `src/scss/utils/variable.scss` — every color/metric token becomes a
-   CSS custom property declared on `:root` (compiled from the current
-   palette) with the SCSS `$var` kept as an alias `map` ONLY where
-   non-color math needs it; component files keep using `var(--token)`.
-   `src/scss/utils/theme-dark.scss` (new): the dark overrides under
-   `[data-theme='dark']` — a curated dark palette (backgrounds, text,
-   borders, accents inverted appropriately; images/svg unaffected).
+1. `src/scss/utils/variable.scss` — every COLOR token becomes a CSS
+   custom property declared on `:root` (compiled from the current
+   palette); METRICS ($tablet/$desktop etc.) stay SCSS variables —
+   @media arithmetic cannot use var(). `src/scss/utils/theme-dark.scss`
+   (new): the dark overrides under `[data-theme='dark']` — a curated
+   dark palette (backgrounds, text, borders, accents inverted
+   appropriately; images/svg unaffected).
 2. `src/utils/theme.ts` (new) — applyTheme/setTheme/getTheme;
    'light' | 'dark' | 'system'; persists the choice in localStorage
    (key chatty-theme), `matchMedia('(prefers-color-scheme: dark)')`
@@ -100,22 +112,35 @@ mark), display_name fallback cases, segment test.
    ('dark' or removes); bootstrapped from main.ts BEFORE first paint
    (inline in index.html? no — main.ts import; a one-frame flash is
    acceptable and noted).
-3. Component SCSS sweep: replace `$token` color references with
-   `var(--token)` across src/scss/** (mechanical; scrollbars/libs
-   excluded where stylelint ignores). Gates: verify + stylelint.
+3. Component SCSS sweep, COLOR tokens only: replace `$token` color
+   references with `var(--token)` AND extract raw hex/rgb() color
+   literals in component files to tokens (~27 across messenger/modal/
+   chat/story-viewer/button/contacts/contact-item/chat-list-user).
+   Exemptions (a stated PLAN CHOICE — mixins.scss IS stylelint-linted):
+   variable.scss (token source), utils/mixins.scss, utils/scrollbar.scss,
+   libs/**; the light-scrollbar-in-dark-mode artifact is documented as
+   accepted. Gates: verify + stylelint + the grep gate over BOTH
+   $color tokens and raw literals.
 4. Tests: theme module unit tests (persistence, system listener,
    dataset application in jsdom).
 
 ## Wave 3 — frontend settings logic (WS-FE-SETTINGS-LOGIC)
 
-1. `src/utils/types.ts` — AppState user grows display_name/phone;
+1. `src/utils/types.ts` — AppState user grows display_name/phone
+   semantics fixed (toAuthUser maps REAL fields, not synthesized);
    ProfileUser types updated.
-2. `src/features/profile/ports.ts` + `api/own.ts` — changeProfile
+2. `src/features/auth/api/own.ts` + `ports.ts` — toAuthUser maps the
+   REAL display_name/phone (fallback local-part when null) and the new
+   send_read_receipts flag (AuthUser grows it; the old synthesis of
+   display_name=email would REVERT Account edits).
+3. `src/features/profile/ports.ts` + `api/own.ts` — changeProfile
    becomes supported (PUT /auth/profile + csrf), changePassword,
    logoutAll, fetchUsage (GET /files/usage via its own transport)
-   additive; the auth store refresh after profile/password changes
-   (fetchUser).
-3. `src/features/chats/ports.ts` + `api/own.ts` + `controller.ts` —
+   additive; the auth user refresh after profile/password changes and
+   the profile page's access to rejoin go through consumer-side
+   setters WIRED IN features/index.ts (the guard-exempt composition
+   root; the logout-seam precedent).
+4. `src/features/chats/ports.ts` + `api/own.ts` + `controller.ts` —
    rejoinChat(chatId) (POST + csrf; refetch chats, reopen selection
    stays manual); tests.
 4. `src/utils/preferences.ts` (new) — typed localStorage-backed
@@ -130,8 +155,10 @@ mark), display_name fallback cases, segment test.
    pane (section state in page props); `ProfileSettingsItem` gains an
    onClick + active modifier. Sections:
    - Account: editable display_name + phone (validated), read-only
-     email/login rows, password change (old/new/repeat, 12+ policy
-     message), «Sign out», «Sign out everywhere» (confirm modal).
+     email/login rows as PLAIN MARKUP in profile.hbs (the Form/Input
+     contract cannot render read-only rows), password change
+     (old/new/repeat, 12+ policy message), «Sign out», «Sign out
+     everywhere» (confirm modal).
    - Chats: archived list (leftAt set) with «Вернуться» -> rejoin ->
      refetch (the card undims via the store).
    - Appearance: theme radio (light/dark/system) wired to theme.ts.
@@ -141,12 +168,14 @@ mark), display_name fallback cases, segment test.
      (server-side flag).
    - Data Usage: usage display (human-readable) + auto-download
      toggle (preferences).
-2. Messenger delivery: on WS message — sound (when enabled, WebAudio
-   short ping, no asset), browser notification (when enabled +
-   permission granted + document.hidden); attachment previews gated by
-   autoDownload (when off: placeholder with «Скачать» link using the
-   existing fileUrl). Read receipts need no client change (server
-   gate).
+2. Delivery: the BACKGROUND-chat seam lives in
+   features/chats/ws/own.ts (the message handler with the existing
+   not-open/not-own predicates) — sound (when enabled, WebAudio short
+   ping, no asset), browser notification (when enabled + permission
+   granted + document.hidden); messenger.ts covers the open-chat
+   surface; attachment previews gated by autoDownload (when off:
+   placeholder with «Скачать» link using the existing fileUrl). Read
+   receipts need no client change (server gate).
 3. Docs: NEXT.md + progress_log (carry the follow-up registry).
 
 ## Wave 5 — evidence and closure

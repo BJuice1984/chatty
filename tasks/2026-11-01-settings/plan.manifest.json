@@ -1,7 +1,7 @@
 {
     "schemaVersion": "agent-plan-manifest.v1",
     "status": "DRAFT",
-    "planRevision": 2,
+    "planRevision": 3,
     "package": {
         "id": "2026-11-01-settings",
         "title": "Working /settings surface: account, chat archive, theme, notifications, privacy, data usage",
@@ -96,7 +96,7 @@
             "Layers only downward; guard-architecture --all --strict stays green; components never import features/controllers; cross-feature seams only in features/index.ts.",
             "Migration 011 additive; segment test with the explicit downgrade target; heads == 011_settings; migrations 001-010 untouched.",
             "All new/changed auth endpoints behind get_current_user + csrf + origin checks; password change must not kill the current session (reissue) but must kill other sessions; logout-all kills old access tokens (pinned 401-after).",
-            "No comments in new/edited scss (stylelint); theme sweep complete — no raw color $tokens remain outside libs/scrollbar exemptions (grep gate).",
+            "No comments in new/edited scss (stylelint); theme sweep complete over BOTH $color tokens and raw hex/rgb literals outside the stated exemptions (variable.scss, mixins.scss, scrollbar.scss, libs) — grep gate.",
             "utils/Store.ts user shape may gain display_name/phone (this plan owns the edit); existing suites green; counts grow from the real bases (mocha 450 / pytest 230 +4 known Windows ingestion failures)."
         ],
         "nonGoals": [
@@ -104,7 +104,8 @@
             "per-chat notification settings; server push of profile changes",
             "eliminating the dark-mode first-frame flash (inline bootstrap script)",
             "WebAudio/Notification end-to-end tests (jsdom lacks the APIs — gate tests with stubs)",
-            "per-chat storage breakdown; deleting files from Data Usage"
+            "per-chat storage breakdown; deleting files from Data Usage",
+            "sender-visible read receipts (no peer surface reads chat_last_reads — the receipts gate is viewer-own-badge semantics only)"
         ],
         "scope": "backend user columns + auth/chats/files endpoints + receipts gate + pytest; theme infrastructure + sweep + theme module; profile/chats logic + preferences module; settings page sections + messenger delivery gates + docs; evidence under work/2026-11-01-settings/."
     },
@@ -216,13 +217,13 @@
                 "models: users.display_name String(120) NULLable, users.phone String(30) NULLable, users.send_read_receipts Boolean NOT NULL server_default '1'",
                 "migration 011_settings (batch_alter add columns, downgrade reverses) + segment roundtrip test with the EXPLICIT downgrade target '010_chat_leave'; heads -> 011_settings",
                 "schemas/auth.py: UserResponse.display_name/phone/send_read_receipts additive; ProfileUpdate (display_name 0..120 trimmed empty->NULL, phone NULL or 3..30, send_read_receipts bool) + PasswordChange (old 1..256, new 12..256)",
-                "services/auth.py: update_profile (validate + update + return user), change_password (verify old 401 invalid_credentials, hash new, revoke ALL refresh tokens, reissue current-session cookies via the response), logout_everywhere (token_version += 1 — VERIFY core/security.py + deps.py consume token_version in the access-token identity; pin a real 401-after with a previously issued token)",
+                "services/auth.py: update_profile (validate + update + return user), change_password (verify old 401 invalid_credentials, hash new, revoke ALL refresh tokens, reissue current-session cookies via the response), logout_everywhere (token_version += 1) AND BUILD the missing comparison in core/deps.py get_current_user (create_token embeds ver; core/security.py unchanged) — pin a real 401-after with a previously issued access token",
                 "endpoints/auth.py: PUT /profile, PUT /password, POST /logout-all (csrf require_csrf + validate_origin like the existing mutations); responses carry the extended UserResponse",
                 "name fallback: UserSearchItem.from_user, ContactResponse (schemas/contact.py), to_member_brief (services/chats.py) return display_name or email-local-part",
                 "rejoin: repositories/chats.py shared reactivation helper (refactor add_member's branch to use it); services/chats.py rejoin (own archived row -> left_at NULL; no-row 403; active idempotent; unknown 404); endpoint POST /{chat_id}/rejoin (route order vs int routes)",
                 "files usage: repositories/files.py user_usage (one SUM/COUNT by uploaded owner); endpoint GET /files/usage {total_bytes, file_count} behind get_current_user",
                 "receipts gate: MessageService.history skips mark_read when the recipient's send_read_receipts is false (the flag lives on the RECIPIENT; peer unread preserved)",
-                "pytest test_settings_api.py: profile update + validation branches + anonymous 401; password flow (wrong old 401; old refresh token 401 after; current session cookies still valid); logout-all (previously issued access token 401 after); auth responses carry the new fields; usage shape + isolation; test_rejoin_api.py: archived -> active (left_at null, writes resume), kicked 403, active idempotent 204, unknown 404, anonymous 401; receipts-off: history load does NOT clear the peer-facing unread (contrast with on); display_name fallback cases (user with/without display_name in /users search, /contacts, chat members)",
+                "pytest test_settings_api.py: profile update + validation branches + anonymous 401; password flow (wrong old 401; old refresh token 401 after; current session cookies still valid); logout-all (previously issued access token 401 after); auth responses carry the new fields; usage shape + isolation; test_rejoin_api.py: archived -> active (left_at null, writes resume), kicked 403, active idempotent 204, unknown 404, anonymous 401; receipts-off: the viewer's own unread badge stays after a history load (the marker does not advance; contrast with on) — chat_last_reads has no peer consumer; display_name fallback cases (user with/without display_name in /users search, /contacts, chat members)",
                 "gates: bash backend/verify.sh green modulo the 4 known failures; heads == 011_settings"
             ],
             "qualityFloor": "npm run verify:backend green; heads == 011_settings; the segment test green; no frontend file touched."
@@ -292,9 +293,9 @@
             },
             "required": true,
             "plannedItems": [
-                "variable.scss: the palette/metric tokens declared as :root CSS custom properties (--main-color, --second-color, text/border/accent tokens etc.) compiled from the current values; keep SCSS aliases ONLY where mixins need compile-time values",
+                "variable.scss: the COLOR tokens declared as :root CSS custom properties (metrics stay SCSS vars — @media arithmetic) (--main-color, --second-color, text/border/accent tokens etc.) compiled from the current values; keep SCSS aliases ONLY where mixins need compile-time values",
                 "theme-dark.scss (new): curated dark overrides under [data-theme='dark'] for every token; imported from index.scss; zero comments",
-                "sweep: every component scss references var(--token) instead of raw $color tokens (libs/normalize, utils/mixins, utils/scrollbar untouched); grep gate — no raw color $tokens remain in themed files",
+                "sweep: component scss references var(--token) for colors AND raw hex/rgb() literals are extracted to tokens (~27 across messenger/modal/chat/story-viewer/button/contacts/contact-item/chat-list-user); exemptions = variable.scss, utils/mixins.scss, utils/scrollbar.scss, libs/** (a stated plan choice — mixins.scss IS linted); grep gate covers BOTH $color tokens and raw literals",
                 "utils/theme.ts: 'light'|'dark'|'system'; localStorage chatty-theme (storage-failure tolerant); matchMedia('(prefers-color-scheme: dark)') listener in system mode; sets/clears document.documentElement.dataset.theme; exported for the settings UI",
                 "main.ts: bootstrap the theme before the router starts (import + apply)",
                 "theme.test.ts: persistence round-trip, system listener wiring, dataset application (jsdom matchMedia stub if needed)"
@@ -362,7 +363,7 @@
             "plannedItems": [
                 "types/Store: AppState.user grows display_name?: string and phone?: string (this plan owns the Store.ts edit); ProfileUser types updated",
                 "profile port/adapter: changeProfile supported (PUT /auth/profile + csrf; sends only defined fields), changePassword (PUT /auth/password + csrf), logoutAll (POST /auth/logout-all + csrf -> then the injected logout for redirect), fetchUsage (GET /files/usage own transport); api.test.ts URL shapes + csrf",
-                "profile controller: profile/password success triggers the auth user refresh (authController.fetchUser via injection like the logout seam — consumer-side setter, features/index.ts untouched here), logoutAll chains the existing logout",
+                "toAuthUser maps REAL display_name/phone + send_read_receipts (synthesis stopped); profile/password success refreshes the user and rejoin reaches the profile page via consumer-side setters WIRED in features/index.ts (the composition root; the logout-seam precedent); logoutAll chains the existing logout",
                 "chats: rejoinChat(chatId) in port (POST /{chatId}/rejoin + csrf) + controller (refetch chats); chats.test.ts pin",
                 "utils/preferences.ts: typed per-viewer prefs (sound default true, browserNotifications default false, autoDownload default true) on localStorage with a subscriber bus; storage-failure tolerant; preferences.test.ts (round-trip, defaults, subscribers notified, permission state helper)"
             ],
@@ -436,10 +437,10 @@
             "required": true,
             "plannedItems": [
                 "ProfileSettingsItem: onClick + active modifier (component + hbs + tests); ProfilePage: six-item section state navigating the right pane (chat__container-profile-settings groups)",
-                "Account section: editable display_name + phone (validators, existing form idioms), read-only email/login rows, password change sub-form (old/new/repeat + 12+ policy message), Sign out (existing), «Sign out everywhere» with a confirm modal (the renderDeleteModalContent pattern)",
+                "Account section: editable display_name + phone (validators, existing form idioms), read-only email/login rows as PLAIN MARKUP in profile.hbs (the Form/Input contract cannot render read-only), password change sub-form (old/new/repeat + 12+ policy message), Sign out (existing), «Sign out everywhere» with a confirm modal (the renderDeleteModalContent pattern)",
                 "Chats section: archived chats list (leftAt set) with «Вернуться» -> ChatsController.rejoinChat -> the card undims via the store (page reads chats slice)",
                 "Appearance section: light/dark/system radio wired to utils/theme.ts (applies live); Notification section: sound + browser-notification toggles (permission request on enable via Notification.requestPermission stub-safe); Privacy section: read-receipts toggle -> profile controller PUT; Data Usage section: fetched usage human-readable + auto-download toggle (preferences)",
-                "messenger delivery gates: on WS message — sound only when preferences.sound (WebAudio short ping, no asset, stubbed in tests), browser notification only when on + granted + document.hidden (stubbed); message attachment previews gated by autoDownload (off -> «Скачать» link on the existing fileUrl; on -> current rendering) — message.ts/.hbs + tests",
+                "delivery gates: the BACKGROUND-chat seam lives in features/chats/ws/own.ts (message handler; sound only when preferences.sound (WebAudio short ping, no asset, stubbed in tests), browser notification only when on + granted + document.hidden (stubbed); message attachment previews gated by autoDownload (off -> «Скачать» link on the existing fileUrl; on -> current rendering) — message.ts/.hbs + tests",
                 "docs: NEXT.md settings record + progress_log entry with the cumulative follow-up registry",
                 "gates: npm run verify + guard strict green"
             ],
@@ -488,7 +489,7 @@
                     "EV-FE-1"
                 ],
                 "independentEvidenceIds": [],
-                "statement": "changeProfile supported (PUT + csrf) with changePassword/logoutAll/fetchUsage additive — URL shapes pinned; profile/password success refreshes the auth user (pinned); rejoinChat POST + csrf + refetch (pinned); preferences module: typed defaults, persistence round-trip, subscriber notification, storage-failure tolerance (pinned); AppState.user carries display_name/phone.",
+                "statement": "Profile port: changeProfile supported (PUT /auth/profile + csrf) with changePassword, logoutAll, fetchUsage additive — URL shapes + csrf mocha-pinned; toAuthUser maps REAL display_name/phone + send_read_receipts (no synthesized email-name — the old mapping would revert Account edits; AuthUser grows the flag, pinned); profile/password success refreshes the auth user through the composition-root seam (features/index.ts wiring — pinned); chats port/controller: rejoinChat(chatId) POST + csrf, refetches the list (pinned), reachable from the profile page via the wired seam; utils/preferences.ts exposes typed per-viewer preferences (sound, browserNotifications, autoDownload) with live subscriber notification — unit-pinned incl. localStorage failure tolerance.",
                 "description": "Frontend unit tests.",
                 "source": "acceptance-criteria.md",
                 "priority": "P1"
@@ -560,7 +561,8 @@
         "per-chat notification settings; server push of profile changes",
         "dark-mode first-frame flash elimination",
         "WebAudio/Notification end-to-end tests (gate tests with stubs)",
-        "per-chat storage breakdown; file deletion from Data Usage"
+        "per-chat storage breakdown; file deletion from Data Usage",
+        "sender-visible read receipts (no peer surface reads chat_last_reads — the receipts gate is viewer-own-badge semantics only)"
     ],
     "finalAuditGates": [
         "[AC-BE-SETTINGS|EV-BE-1] migration 011 + profile/password/logout-all (token_version comparison BUILT in deps.py, 401-after pinned) + rejoin + usage + receipts gate (viewer-own badge semantics) + name fallback — pytest; heads == 011_settings",

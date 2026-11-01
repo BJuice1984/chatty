@@ -5,9 +5,10 @@
 /settings stops being a mock: the six sidebar items (Account, Chats,
 Appearance, Notification, Privacy, Data Usage) navigate a working
 right pane. The profile form edits real fields (display_name — which
-immediately improves names across contacts, member briefs, DM titles
-and search — plus phone), passwords can change, all devices can be
-logged out, left chats can be rejoined, the app has a dark theme, and
+immediately improves names across contacts, member briefs and search;
+DM titles keep their denormalized creation-time local-part — plus
+phone), passwords can change, all devices can be logged out, left
+chats can be rejoined, the app has a dark theme, and
 notifications/privacy/media behavior are togglable.
 
 ## Architecture map
@@ -19,8 +20,10 @@ Backend (wave 1):
 - schemas/auth.py: UserResponse extension + ProfileUpdate +
   PasswordChange; services/auth.py: update_profile, change_password
   (revoke-all-refresh + reissue current), logout_everywhere
-  (token_version bump — verify how the JWT identity path consumes
-  token_version in core/security.py + deps.py before wiring).
+  (token_version bump) — and the comparison is BUILT in
+  core/deps.py get_current_user (create_token embeds `ver`;
+  the check is missing today — core/security.py unchanged; the
+  401-after pin proves it).
 - endpoints/auth.py: PUT profile, PUT password, POST logout-all
   (csrf + origin like the existing mutations).
 - chats: rejoin endpoint + shared reactivation helper (refactor
@@ -30,31 +33,38 @@ Backend (wave 1):
 
 Frontend:
 
-- Theme (wave 2): variable.scss -> :root custom properties +
-  theme-dark.scss [data-theme='dark'] overrides; the component sweep
-  ($token -> var(--token)); utils/theme.ts (light/dark/system,
-  localStorage chatty-theme, matchMedia, dataset.theme) bootstrapped
-  in main.ts.
-- Logic (wave 3): profile port (changeProfile supported, password,
-  logoutAll, usage), user refresh after changes; chats rejoinChat;
-  utils/preferences.ts (sound/browserNotifications/autoDownload +
-  tiny subscriber bus).
+- Theme (wave 2): variable.scss -> :root custom properties (COLOR
+  tokens only — metrics stay SCSS vars) + theme-dark.scss
+  [data-theme='dark'] overrides; the component sweep covers $color
+  tokens AND raw hex/rgb literals (exemptions: variable.scss,
+  mixins.scss, scrollbar.scss, libs — a stated plan choice; mixins
+  IS linted); utils/theme.ts (light/dark/system, localStorage
+  chatty-theme, matchMedia, dataset.theme) bootstrapped in main.ts.
+- Logic (wave 3): toAuthUser maps REAL display_name/phone +
+  send_read_receipts; profile port (changeProfile supported,
+  password, logoutAll, usage); user refresh + rejoin reach the page
+  through composition-root seams in features/index.ts; chats
+  rejoinChat; utils/preferences.ts (sound/browserNotifications/
+  autoDownload + tiny subscriber bus).
 - UI (wave 4): ProfilePage sections + ProfileSettingsItem onClick;
-  messenger delivery gates (sound/WebAudio, Notification when hidden,
-  autoDownload attachment gating).
+  read-only email/login rows are plain markup; delivery gates — the
+  background-chat seam in features/chats/ws/own.ts (sound/WebAudio,
+  Notification when hidden, autoDownload attachment gating),
+  messenger.ts for the open chat.
 
 ## Key risks
 
-- token_version: confirm the access-token validation actually
-  compares the claim against the column (else logout-all does not
-  kill old access tokens) — pin with a real 401-after test.
-- The theme sweep is wide and mechanical — a missed file leaves a
-  hardcoded color in dark mode; stylelint cannot catch it. Mitigate:
-  grep the themed tree for the old $color tokens as the wave gate.
+- token_version: the access-token validation does NOT compare the
+  claim today — the wave BUILDS it in core/deps.py and pins a real
+  401-after test.
+- The theme sweep is wide and mechanical — a missed token OR raw
+  hex/rgb literal leaves a hardcoded color in dark mode; stylelint
+  cannot catch it. Mitigate: the grep gate covers BOTH classes.
 - Password change revoking refresh tokens must not kill the CURRENT
   session's cookies — reissue in the same response (pinned).
-- Receipts: the gate is on the RECIPIENT's flag (their outgoing
-  receipts), not the viewer's — test from both sides.
+- Receipts: chat_last_reads feeds only the viewer's OWN unread badge —
+  the gate keeps the viewer's badge unread; sender-visible receipts
+  are a non-goal (test the viewer side, there is no peer surface).
 - jsdom lacks WebAudio/Notification/matchMedia — stub them in tests;
   matchMedia exists in jsdom but confirm before relying on it.
 - Windows host: verify:backend via bash + PYTHON_BIN; the 4 ingestion

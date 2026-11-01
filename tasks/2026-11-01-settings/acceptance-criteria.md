@@ -19,9 +19,11 @@ npm run verify (theme wave); `EV-FE-1` = npm run verify (logic wave);
 
 SCSS variables compile away — a runtime theme switch needs CSS custom
 properties resolved by the browser. The sweep is mechanical
-($token -> var(--token)) but wide; scrollbars/libs stay untouched
-(stylelint-excluded). A one-frame light flash on cold load with a dark
-choice is a documented non-goal (inline bootstrap script).
+($token -> var(--token)) but wide and covers raw hex/rgb literals too;
+the exemption set (variable.scss, mixins.scss, scrollbar.scss, libs)
+is a stated plan choice — mixins.scss IS stylelint-linted. A one-frame
+light flash on cold load with a dark choice is a documented non-goal
+(inline bootstrap script).
 
 ### AC-FE-SETTINGS-UI — delivery gates in jsdom
 
@@ -35,4 +37,5 @@ coverage of what jsdom can prove.
 Real bases at the attempt line: mocha 450, pytest 230 (+4 known
 Windows ingestion failures excluded). The manual smoke (toggle theme,
 leave+rejoin a chat, change password from a second device and watch it
-log out, receipts-off keeps a peer's unread) is an operator NOTE.
+log out, receipts-off keeps your OWN unread badge after reading) is an
+operator NOTE.
