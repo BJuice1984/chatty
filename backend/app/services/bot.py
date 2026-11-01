@@ -72,7 +72,9 @@ class BotService:
         return service.search(chat_id=chat_id, user_id=user_id, query=query, top_k=top_k)
 
     def run(self, *, chat_id: int, user_id: int, message_id: int) -> BotRun:
-        chat = self.chats.require_member(chat_id, user_id)
+        # write guard: a bot run posts an answer into the chat, so an
+        # archived membership (read-only) is rejected like a missing one
+        chat = self.chats.require_active_member(chat_id, user_id)
         if not chat.is_ai:
             raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail='bot_not_enabled_for_chat')
         message = self._source_message(chat_id, message_id)

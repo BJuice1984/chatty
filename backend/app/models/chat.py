@@ -50,3 +50,7 @@ class ChatMember(Base):
         server_default=func.now(),
         nullable=False,
     )
+    # Self-leave timestamp: NULL = active member, set = archived membership
+    # (history stays readable, writes and live pushes stop). A kick removes
+    # the row entirely; re-adding a left member resets this to NULL.
+    left_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)

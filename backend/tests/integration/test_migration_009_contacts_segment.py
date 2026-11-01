@@ -12,7 +12,9 @@ directions:
 
 `downgrade -1` runs 009's own downgrade against the stamped state and
 yields the faithful 008 one (no contacts table, chats without is_dm);
-`upgrade head` re-applies 009 to that state. The schema is asserted by an
+`upgrade head` re-applies 009 to that state (the downgrade step targets the
+explicit 008 revision so a newer head cannot shift it — see the note at the
+command). The schema is asserted by an
 inspector after each step. Alembic runs through the real env wiring: env.py
 reads Settings() on every command, so the CHATTY_DATABASE_URL override
 routes every command to the scratch file (app/core/config.py env_prefix).
@@ -66,8 +68,11 @@ def test_009_segment_downgrade_upgrade_roundtrip(tmp_path, monkeypatch):
     config = Config(str(BACKEND_DIR / 'alembic.ini'))
     command.stamp(config, 'head')
 
-    # 009's own downgrade yields the faithful 008 state
-    command.downgrade(config, '-1')
+    # 009's own downgrade yields the faithful 008 state. The target is the
+    # explicit revision, not '-1': a newer head (010_chat_leave) makes the
+    # relative step land on 009 instead of 008 — every segment test below
+    # the head needs this once its own revision stops being the head.
+    command.downgrade(config, '008_pg_trgm_search_indexes')
     tables, chats_columns = snapshot_schema(database_url)
     assert 'contacts' not in tables
     assert 'is_dm' not in chats_columns

@@ -15,6 +15,7 @@ from app.schemas.message import (
     WebSocketHistoryContent,
     WebSocketMessageContent,
 )
+from app.services.chats import ChatService
 from app.services.messages import MessageService
 from app.ws.hub import hub, stories_hub
 
@@ -72,7 +73,7 @@ async def chat_websocket(websocket: WebSocket, chat_id: int) -> None:
             return
 
     await websocket.accept()
-    await hub.connect(chat_id, websocket)
+    await hub.connect(chat_id, websocket, user.id)
     try:
         while True:
             try:
@@ -81,10 +82,19 @@ async def chat_websocket(websocket: WebSocket, chat_id: int) -> None:
                     content = event.content if isinstance(event.content, dict) else {'content': event.content}
                     payload = MessageCreate.model_validate(WebSocketMessageContent.model_validate(content).model_dump())
                     with websocket.app.state.session_factory() as session:
+                        chats_service = ChatService(session)
+                        # write guard: archived membership is read-only — the
+                        # explicit error reaches the sender, nothing broadcasts
+                        chats_service.require_active_member(chat_id, user.id)
                         service = MessageService(session)
                         message = service.create(chat_id, user.id, payload)
                         response = service.present_one(message, user.id).model_dump(mode='json')
-                    await hub.broadcast(chat_id, {'type': 'message', 'content': response})
+                        active_user_ids = chats_service.active_member_ids(chat_id)
+                    await hub.broadcast(
+                        chat_id,
+                        {'type': 'message', 'content': response},
+                        active_user_ids=active_user_ids,
+                    )
                 elif event.type == 'history':
                     content = event.content if isinstance(event.content, dict) else {}
                     history = WebSocketHistoryContent.model_validate(content)

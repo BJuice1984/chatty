@@ -46,10 +46,10 @@ async def list_chats(
     unread = service.unread_counts(current_user.id)
     # составы участников одним пакетным IN-запросом — ни одного
     # per-chat members-запроса из списка чатов
-    members = service.members_for_chats([chat.id for chat in chats])
+    members = service.members_for_chats([chat.id for chat, _left_at in chats])
     # последние сообщения одним пакетным SELECT (новейшее по created_at,
     # тай-брейк id); content is None — файловое вложение без текста
-    last_messages = service.last_messages_for_chats([chat.id for chat in chats])
+    last_messages = service.last_messages_for_chats([chat.id for chat, _left_at in chats])
     return [
         ChatResponse(
             id=chat.id,
@@ -62,8 +62,11 @@ async def list_chats(
             avatar_url=chat.avatar_url,
             members=members.get(chat.id, []),
             last_message=last_messages.get(chat.id),
+            # caller-relative архивный статус участия (прецедент is_dm:
+            # поле за полем), None = активный
+            left_at=left_at,
         )
-        for chat in chats
+        for chat, left_at in chats
     ]
 
 
@@ -119,8 +122,13 @@ async def delete_chat(
     chat = service.require_owned(chat_id, current_user.id)
     # порядок критичен: сначала событие по живым сокетам (строка ещё существует),
     # затем удаление строки (каскады БД снимают messages/members/files/documents/
-    # chunks/bot_runs/reactions), затем закрытие сокетов чата
-    await hub.broadcast(chat_id, {'type': 'chat_deleted', 'content': {'chat_id': chat_id}})
+    # chunks/bot_runs/reactions), затем закрытие сокетов чата; fan-out — только
+    # АКТИВНЫМ участникам (архивным чат уже «молчит»)
+    await hub.broadcast(
+        chat_id,
+        {'type': 'chat_deleted', 'content': {'chat_id': chat_id}},
+        active_user_ids=service.active_member_ids(chat_id),
+    )
     service.delete(chat)
     await hub.close_chat(chat_id)
 
@@ -134,6 +142,40 @@ async def add_chat_member(
 ) -> ChatMemberResponse:
     member = ChatService(db).add_member(chat_id, current_user.id, payload.user_id)
     return ChatMemberResponse.model_validate(member)
+
+
+@router.delete('/{chat_id}/members/{user_id}', status_code=status.HTTP_204_NO_CONTENT)
+async def remove_chat_member(
+    chat_id: int,
+    user_id: int,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> None:
+    """Owner-only kick: hard-deletes the membership row — the kicked user
+    loses the chat entirely (GET /chats and WS connect refuse them), a
+    later re-add starts a fresh row. The literal 'members'/'{user_id}'
+    segments cannot collide with the int routes: single-segment /{chat_id}
+    patterns never match this three-segment path (the /search, /dm
+    precedents run the other way — literals must come first)."""
+    ChatService(db).kick_member(chat_id, current_user.id, user_id)
+    # только сокеты исключённого пользователя (close_chat убил бы чат у всех)
+    await hub.close_user_chat(chat_id, user_id)
+
+
+@router.post('/{chat_id}/leave', status_code=status.HTTP_204_NO_CONTENT)
+async def leave_chat(
+    chat_id: int,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> None:
+    """Self-leave archives the caller's membership (left_at = now,
+    idempotent): the chat stays in their list with history readable, live
+    pushes and writes stop. The literal 'leave' segment sits beside
+    /{chat_id}/members and /{chat_id}/messages — a different literal, so
+    the int routes cannot shadow it (no single-segment POST /{chat_id}
+    exists)."""
+    ChatService(db).leave(chat_id, current_user.id)
+    await hub.close_user_chat(chat_id, current_user.id)
 
 
 @router.get('/{chat_id}/messages', response_model=MessagePage)
@@ -166,6 +208,8 @@ async def create_message(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ) -> MessageResponse:
+    # write guard (сервисный _require_member — READ-сторона: строка участия)
+    ChatService(db).require_active_member(chat_id, current_user.id)
     service = MessageService(db)
     message = service.create(chat_id, current_user.id, payload)
     return service.present_one(message, current_user.id)
@@ -179,6 +223,9 @@ async def set_reaction(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ) -> ReactionSummaryResponse:
+    # write guard: архивное участие не реагирует (прецедент create_message)
+    chats_service = ChatService(db)
+    chats_service.require_active_member(chat_id, current_user.id)
     active, reactions = MessageService(db).set_reaction(
         chat_id,
         message_id,
@@ -197,6 +244,7 @@ async def set_reaction(
                 'active': active,
             },
         },
+        active_user_ids=chats_service.active_member_ids(chat_id),
     )
     return ReactionSummaryResponse(message_id=message_id, active=active, reactions=reactions)
 

@@ -66,6 +66,12 @@ class ChatResponse(BaseModel):
     # дефолт, без которого оба эндпоинта падали бы с ValidationError
     # (прецедент members default_factory)
     last_message: ChatLastMessageBrief | None = None
+    # caller-relative архивный статус участия: None = активный, метка =
+    # само-leave. Наполняет только GET /chats (поле за полем из строки
+    # chat_members) — POST /chats и GET /chats/{id} идут через
+    # model_validate по ORM-объекту Chat без контекста участия и оставляют
+    # None по дизайну (список — источник правды для UI)
+    left_at: datetime | None = None
 
 
 class ChatMemberResponse(BaseModel):
