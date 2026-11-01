@@ -39,8 +39,12 @@
                 "description": "Migration 011_settings: users.display_name String(120) NULLable (NULL falls back to the email local-part in UserSearchItem.from_user, ContactResponse and to_member_brief), users.phone String(30) NULLable, users.send_read_receipts Boolean NOT NULL server_default '1'; segment roundtrip test with the EXPLICIT downgrade target '010_chat_leave'. PUT /auth/profile {display_name?, phone?, send_read_receipts?} (csrf, validate_origin; display_name trimmed 0..120 empty->NULL, phone NULL or 3..30). PUT /auth/password {old_password, new_password} (csrf): old verified 401 invalid_credentials, new 12..256, rehash, revoke ALL refresh tokens + reissue current-session cookies. POST /auth/logout-all (csrf): bump token_version (VERIFY the access-token validation consumes it — pin a real 401-after with a previously issued token), revoke refresh, clear cookies. Auth responses (login/register/me/refresh) grow display_name/phone/send_read_receipts additive. POST /chats/{chat_id}/rejoin: reactivate the caller's own archived row (left_at -> NULL; share the reactivation helper with add_member), kicked/no-row 403 chat_membership_required, active idempotent 204, unknown 404, anonymous 401. GET /files/usage: caller's {total_bytes, file_count} one SUM/COUNT. MessageService.history skips mark_read when the recipient's send_read_receipts is false (peer unread preserved).",
                 "priority": "P1",
                 "source": "operator request 2026-11-01 (Account + Chats archive scope groups)",
-                "acceptanceIds": ["AC-BE-SETTINGS"],
-                "evidenceIds": ["EV-BE-1"],
+                "acceptanceIds": [
+                    "AC-BE-SETTINGS"
+                ],
+                "evidenceIds": [
+                    "EV-BE-1"
+                ],
                 "owner": "WS-BE-SETTINGS"
             },
             {
@@ -49,8 +53,12 @@
                 "description": "variable.scss declares the palette as :root CSS custom properties; theme-dark.scss (new, imported from index.scss) overrides them under [data-theme='dark'] (curated dark palette; no comments in scss). Mechanical sweep: component scss files reference var(--token) instead of $color tokens (libs/normalize, utils/mixins, utils/scrollbar stay untouched — stylelint-excluded zones). utils/theme.ts: 'light'|'dark'|'system', localStorage key chatty-theme, matchMedia('(prefers-color-scheme: dark)') listener in system mode, sets document.documentElement.dataset.theme ('dark' set / removed); bootstrapped from main.ts import; unit tests (persistence, listener, dataset).",
                 "priority": "P1",
                 "source": "operator request 2026-11-01 (Appearance group)",
-                "acceptanceIds": ["AC-FE-THEME"],
-                "evidenceIds": ["EV-FE-1"],
+                "acceptanceIds": [
+                    "AC-FE-THEME"
+                ],
+                "evidenceIds": [
+                    "EV-FE-THEME"
+                ],
                 "owner": "WS-FE-THEME"
             },
             {
@@ -59,8 +67,12 @@
                 "description": "Profile port/adapter: changeProfile supported (PUT /auth/profile + csrf) with changePassword, logoutAll, fetchUsage (GET /files/usage own transport) additive; profile/password success triggers the auth user refresh (fetchUser). Chats port/controller: rejoinChat(chatId) POST + csrf -> refetch chats. utils/preferences.ts: typed per-viewer preferences (sound default true, browserNotifications default false, autoDownload default true) on localStorage with a tiny subscriber bus for live UI toggles; tolerant of storage failures. AppState user type grows display_name/phone (utils/types.ts; utils/Store.ts user shape extended — allowed in THIS plan).",
                 "priority": "P1",
                 "source": "operator request 2026-11-01 (logic underpinnings of all four groups)",
-                "acceptanceIds": ["AC-FE-SETTINGS-LOGIC"],
-                "evidenceIds": ["EV-FE-1"],
+                "acceptanceIds": [
+                    "AC-FE-SETTINGS-LOGIC"
+                ],
+                "evidenceIds": [
+                    "EV-FE-1"
+                ],
                 "owner": "WS-FE-SETTINGS-LOGIC"
             },
             {
@@ -69,8 +81,13 @@
                 "description": "ProfilePage: the six sidebar items navigate the right pane (ProfileSettingsItem onClick + active modifier; section state in page props). Account: editable display_name/phone (validated), read-only email/login rows, password change (old/new/repeat, 12+ policy), Sign out, Sign out everywhere (confirm modal). Chats: archived list (leftAt) with «Вернуться» -> controller rejoin -> card undims via store. Appearance: light/dark/system radio live via theme.ts. Notification: sound + browser-notification toggles (permission request on enable). Privacy: read-receipts toggle -> PUT profile. Data Usage: fetched usage human-readable + auto-download toggle. Messenger delivery: WS message -> sound only when preference on; browser notification only when on + granted + document.hidden; attachment previews gated by autoDownload («Скачать» fallback, existing fileUrl). Docs: NEXT.md + progress_log with the cumulative follow-up registry. All new user text double-braced/escapeHtml.",
                 "priority": "P1",
                 "source": "operator request 2026-11-01 (Notification+Privacy+Data groups; section navigation)",
-                "acceptanceIds": ["AC-FE-SETTINGS-UI", "AC-PROCESS"],
-                "evidenceIds": ["EV-FE-2"],
+                "acceptanceIds": [
+                    "AC-FE-SETTINGS-UI",
+                    "AC-PROCESS"
+                ],
+                "evidenceIds": [
+                    "EV-FE-2"
+                ],
                 "owner": "WS-FE-SETTINGS-UI"
             }
         ],
@@ -142,13 +159,11 @@
                 "backend/tests/integration/test_migration_011_settings_segment.py"
             ],
             "readOnly": [
-                "AGENTS.md",
                 "backend/app/core/security.py",
                 "backend/app/core/deps.py",
                 "backend/tests/conftest.py",
                 "backend/tests/integration/chat/test_leave_api.py",
-                "backend/tests/integration/chat/test_dm_api.py",
-                "backend/alembic/versions/010_chat_leave.py"
+                "backend/tests/integration/chat/test_dm_api.py"
             ],
             "forbiddenWrites": [
                 "backend/alembic/versions/001_users.py",
@@ -164,12 +179,32 @@
                 "backend/tests/integration/test_migration_010_chat_leave_segment.py"
             ],
             "launchGate": "branch feature/2026-11-01-contacts at d1ce06a; verify:backend green at base modulo the 4 documented Windows ingestion failures; heads 010_chat_leave at base; npm run verify green (mocha 450).",
-            "capabilityHints": ["fastapi", "sqlalchemy", "alembic", "pytest", "python"],
-            "requiredTools": ["python", "pytest"],
-            "contextRefs": ["plan.md", "acceptance-criteria.md", "developer-overview.md"],
-            "acceptanceIds": ["AC-BE-SETTINGS"],
-            "evidenceIds": ["EV-BE-1"],
-            "executionPolicy": {"maxAttempts": 3, "maxWallSeconds": 3600},
+            "capabilityHints": [
+                "fastapi",
+                "sqlalchemy",
+                "alembic",
+                "pytest",
+                "python"
+            ],
+            "requiredTools": [
+                "python",
+                "pytest"
+            ],
+            "contextRefs": [
+                "plan.md",
+                "acceptance-criteria.md",
+                "developer-overview.md"
+            ],
+            "acceptanceIds": [
+                "AC-BE-SETTINGS"
+            ],
+            "evidenceIds": [
+                "EV-BE-1"
+            ],
+            "executionPolicy": {
+                "maxAttempts": 3,
+                "maxWallSeconds": 3600
+            },
             "artifactPaths": {
                 "result": "work/2026-11-01-settings/evidence/WS-BE-SETTINGS/task-result-{attempt}.json",
                 "review": "work/2026-11-01-settings/evidence/WS-BE-SETTINGS/task-review-{attempt}.json"
@@ -198,7 +233,6 @@
             "dependsOn": [],
             "writes": [
                 "src/main.ts",
-                "src/scss/components/_all.scss",
                 "src/scss/components/app.scss",
                 "src/scss/components/button.scss",
                 "src/scss/components/chat-bottom-bar.scss",
@@ -222,19 +256,34 @@
                 "src/utils/theme.test.ts",
                 "src/utils/theme.ts"
             ],
-            "readOnly": [
-                "AGENTS.md",
-                "src/scss/utils/mixins.scss",
-                "src/scss/utils/scrollbar.scss"
-            ],
+            "readOnly": [],
             "forbiddenWrites": [],
             "launchGate": "branch at the settings base (or after WS-BE-SETTINGS acceptance); npm run verify green at base.",
-            "capabilityHints": ["scss", "typescript", "mocha", "sinon"],
-            "requiredTools": ["node", "npm"],
-            "contextRefs": ["plan.md", "acceptance-criteria.md", "developer-overview.md"],
-            "acceptanceIds": ["AC-FE-THEME"],
-            "evidenceIds": ["EV-FE-1"],
-            "executionPolicy": {"maxAttempts": 3, "maxWallSeconds": 3600},
+            "capabilityHints": [
+                "scss",
+                "typescript",
+                "mocha",
+                "sinon"
+            ],
+            "requiredTools": [
+                "node",
+                "npm"
+            ],
+            "contextRefs": [
+                "plan.md",
+                "acceptance-criteria.md",
+                "developer-overview.md"
+            ],
+            "acceptanceIds": [
+                "AC-FE-THEME"
+            ],
+            "evidenceIds": [
+                "EV-FE-THEME"
+            ],
+            "executionPolicy": {
+                "maxAttempts": 3,
+                "maxWallSeconds": 3600
+            },
             "artifactPaths": {
                 "result": "work/2026-11-01-settings/evidence/WS-FE-THEME/task-result-{attempt}.json",
                 "review": "work/2026-11-01-settings/evidence/WS-FE-THEME/task-review-{attempt}.json"
@@ -255,7 +304,9 @@
             "title": "Settings logic: profile port, rejoin, preferences module, user shape",
             "owner": "worker-frontend-logic",
             "reviewer": "independent-release-reviewer",
-            "dependsOn": ["WS-BE-SETTINGS"],
+            "dependsOn": [
+                "WS-BE-SETTINGS"
+            ],
             "writes": [
                 "src/features/chats/api/own.ts",
                 "src/features/chats/chats.test.ts",
@@ -272,17 +323,34 @@
                 "src/utils/types.ts"
             ],
             "readOnly": [
-                "AGENTS.md",
                 "src/features/auth/controller.ts"
             ],
             "forbiddenWrites": [],
             "launchGate": "WS-BE-SETTINGS accepted; npm run verify green at base.",
-            "capabilityHints": ["typescript", "mocha", "sinon"],
-            "requiredTools": ["node", "npm"],
-            "contextRefs": ["plan.md", "acceptance-criteria.md", "developer-overview.md"],
-            "acceptanceIds": ["AC-FE-SETTINGS-LOGIC"],
-            "evidenceIds": ["EV-FE-1"],
-            "executionPolicy": {"maxAttempts": 3, "maxWallSeconds": 3600},
+            "capabilityHints": [
+                "typescript",
+                "mocha",
+                "sinon"
+            ],
+            "requiredTools": [
+                "node",
+                "npm"
+            ],
+            "contextRefs": [
+                "plan.md",
+                "acceptance-criteria.md",
+                "developer-overview.md"
+            ],
+            "acceptanceIds": [
+                "AC-FE-SETTINGS-LOGIC"
+            ],
+            "evidenceIds": [
+                "EV-FE-1"
+            ],
+            "executionPolicy": {
+                "maxAttempts": 3,
+                "maxWallSeconds": 3600
+            },
             "artifactPaths": {
                 "result": "work/2026-11-01-settings/evidence/WS-FE-SETTINGS-LOGIC/task-result-{attempt}.json",
                 "review": "work/2026-11-01-settings/evidence/WS-FE-SETTINGS-LOGIC/task-review-{attempt}.json"
@@ -302,7 +370,10 @@
             "title": "Settings UI: navigable sections, account/archive/theme/toggles, delivery gates, docs",
             "owner": "worker-frontend-ui",
             "reviewer": "independent-release-reviewer",
-            "dependsOn": ["WS-FE-THEME", "WS-FE-SETTINGS-LOGIC"],
+            "dependsOn": [
+                "WS-FE-THEME",
+                "WS-FE-SETTINGS-LOGIC"
+            ],
             "writes": [
                 "docs/NEXT.md",
                 "docs/progress/progress_log.md",
@@ -318,21 +389,41 @@
                 "src/features/profile/pages/profile/profile.hbs",
                 "src/features/profile/pages/profile/profile.test.ts",
                 "src/features/profile/pages/profile/profile.ts",
-                "src/scss/components/profile-settings-item.scss",
-                "src/scss/components/login.scss"
+                "src/scss/components/_all.scss",
+                "src/scss/components/settings-sections.scss"
             ],
             "readOnly": [
-                "AGENTS.md",
                 "src/components/modal/modal.ts"
             ],
             "forbiddenWrites": [],
             "launchGate": "WS-FE-THEME and WS-FE-SETTINGS-LOGIC accepted; npm run verify green at base.",
-            "capabilityHints": ["typescript", "handlebars", "scss", "mocha", "sinon"],
-            "requiredTools": ["node", "npm"],
-            "contextRefs": ["plan.md", "acceptance-criteria.md", "developer-overview.md"],
-            "acceptanceIds": ["AC-FE-SETTINGS-UI", "AC-PROCESS"],
-            "evidenceIds": ["EV-FE-2"],
-            "executionPolicy": {"maxAttempts": 3, "maxWallSeconds": 5400},
+            "capabilityHints": [
+                "typescript",
+                "handlebars",
+                "scss",
+                "mocha",
+                "sinon"
+            ],
+            "requiredTools": [
+                "node",
+                "npm"
+            ],
+            "contextRefs": [
+                "plan.md",
+                "acceptance-criteria.md",
+                "developer-overview.md"
+            ],
+            "acceptanceIds": [
+                "AC-FE-SETTINGS-UI",
+                "AC-PROCESS"
+            ],
+            "evidenceIds": [
+                "EV-FE-2"
+            ],
+            "executionPolicy": {
+                "maxAttempts": 3,
+                "maxWallSeconds": 5400
+            },
             "artifactPaths": {
                 "result": "work/2026-11-01-settings/evidence/WS-FE-SETTINGS-UI/task-result-{attempt}.json",
                 "review": "work/2026-11-01-settings/evidence/WS-FE-SETTINGS-UI/task-review-{attempt}.json"
@@ -355,8 +446,12 @@
             {
                 "id": "AC-BE-SETTINGS",
                 "title": "Backend settings surface proven by pytest",
-                "requirementIds": ["REQ-BE-SETTINGS"],
-                "evidenceIds": ["EV-BE-1"],
+                "requirementIds": [
+                    "REQ-BE-SETTINGS"
+                ],
+                "evidenceIds": [
+                    "EV-BE-1"
+                ],
                 "independentEvidenceIds": [],
                 "statement": "Migration 011 (display_name/phone/send_read_receipts) proven by the segment test with the explicit downgrade target; heads == 011_settings; PUT /auth/profile validation + updates pinned (401 anonymous); PUT /auth/password wrong-old 401 / success rehashes / old refresh 401 after / current session alive; POST /auth/logout-all kills previously issued access tokens (401-after pinned); auth responses carry the new additive fields; POST /chats/{id}/rejoin reactivates own archived rows (kicked 403, active idempotent, unknown 404, anonymous 401); GET /files/usage shape + isolation; receipts-off preserves the peer-facing unread on history load; display_name falls back to the email local-part in /users search, /contacts and chat members.",
                 "description": "Backend integration tests.",
@@ -366,8 +461,12 @@
             {
                 "id": "AC-FE-THEME",
                 "title": "Theme infrastructure proven by tests + grep gate",
-                "requirementIds": ["REQ-FE-THEME"],
-                "evidenceIds": ["EV-FE-1"],
+                "requirementIds": [
+                    "REQ-FE-THEME"
+                ],
+                "evidenceIds": [
+                    "EV-FE-THEME"
+                ],
                 "independentEvidenceIds": [],
                 "statement": "Palette tokens are :root custom properties with [data-theme='dark'] overrides; the component sweep leaves no raw color $tokens outside the exempted files (grep gate documented); utils/theme.ts applies/persists light/dark/system with the matchMedia listener and dataset mutation (unit-pinned); bootstrapped from main.ts; verify + stylelint green; no comments in new/edited scss.",
                 "description": "Frontend unit tests + grep gate.",
@@ -377,8 +476,12 @@
             {
                 "id": "AC-FE-SETTINGS-LOGIC",
                 "title": "Settings logic proven by mocha",
-                "requirementIds": ["REQ-FE-SETTINGS-LOGIC"],
-                "evidenceIds": ["EV-FE-1"],
+                "requirementIds": [
+                    "REQ-FE-SETTINGS-LOGIC"
+                ],
+                "evidenceIds": [
+                    "EV-FE-1"
+                ],
                 "independentEvidenceIds": [],
                 "statement": "changeProfile supported (PUT + csrf) with changePassword/logoutAll/fetchUsage additive — URL shapes pinned; profile/password success refreshes the auth user (pinned); rejoinChat POST + csrf + refetch (pinned); preferences module: typed defaults, persistence round-trip, subscriber notification, storage-failure tolerance (pinned); AppState.user carries display_name/phone.",
                 "description": "Frontend unit tests.",
@@ -388,8 +491,12 @@
             {
                 "id": "AC-FE-SETTINGS-UI",
                 "title": "Navigable settings sections + delivery gates proven by mocha",
-                "requirementIds": ["REQ-FE-SETTINGS-UI"],
-                "evidenceIds": ["EV-FE-2"],
+                "requirementIds": [
+                    "REQ-FE-SETTINGS-UI"
+                ],
+                "evidenceIds": [
+                    "EV-FE-2"
+                ],
                 "independentEvidenceIds": [],
                 "statement": "The six items navigate the right pane (active modifier pinned); Account edits display_name/phone with validation and read-only email/login, password change with the 12+ message, sign-out-everywhere behind a confirm modal; Chats lists archived chats and «Вернуться» undims the card via the store; Appearance switches theme live; Notification/Privacy/Data toggles drive preferences / PUT profile / usage display; delivery gates pinned with stubs (sound only when on; notification only on+granted+hidden; autoDownload gates attachment previews with a «Скачать» fallback); all user text double-braced/escapeHtml.",
                 "description": "Frontend unit tests.",
@@ -399,8 +506,12 @@
             {
                 "id": "AC-PROCESS",
                 "title": "Gates and bookkeeping",
-                "requirementIds": ["REQ-FE-SETTINGS-UI"],
-                "evidenceIds": ["EV-FE-2"],
+                "requirementIds": [
+                    "REQ-FE-SETTINGS-UI"
+                ],
+                "evidenceIds": [
+                    "EV-FE-2"
+                ],
                 "independentEvidenceIds": [],
                 "statement": "npm run verify, verify:backend (heads == 011_settings; suite green modulo the 4 documented Windows ingestion failures) and guard strict pass with grown counts (mocha 450 / pytest 230 bases); NEXT.md + progress_log with the cumulative registry; no file outside the manifest write-sets changes; rides feature/2026-11-01-contacts.",
                 "description": "Gate runs captured as evidence.",
@@ -448,21 +559,25 @@
     ],
     "finalAuditGates": [
         "[AC-BE-SETTINGS|EV-BE-1] migration 011 + profile/password/logout-all + rejoin + usage + receipts gate + name fallback — pytest; heads == 011_settings",
-        "[AC-FE-THEME|EV-FE-1] custom-property palette + dark overrides + complete sweep (grep gate) + theme module — verify/stylelint/tests",
+        "[AC-FE-THEME|EV-FE-THEME] custom-property palette + dark overrides + complete sweep (grep gate) + theme module — verify/stylelint/tests",
         "[AC-FE-SETTINGS-LOGIC|EV-FE-1] profile port + rejoin + preferences module — mocha",
-        "[AC-FE-SETTINGS-EV-FE-2] navigable sections + account/archive/theme/toggles + delivery gates — mocha; guard strict zero",
+        "[AC-FE-SETTINGS-UI|EV-FE-2] navigable sections + account/archive/theme/toggles + delivery gates — mocha; guard strict zero",
         "[AC-PROCESS|EV-FE-2] all gates green with grown counts; docs with the registry; no write outside the write-sets"
     ],
     "securityGates": [
         {
             "id": "SEC-AUTH-MUTATIONS",
             "statement": "PUT /auth/profile, PUT /auth/password, POST /auth/logout-all behind get_current_user + require_csrf + validate_origin (anonymous 401 / csrf-reject pinned); password change never weakens the current session while killing others (pinned); logout-all invalidates previously issued access tokens (401-after pinned); rejoin touches only the caller's own membership row.",
-            "evidenceIds": ["EV-BE-1"]
+            "evidenceIds": [
+                "EV-BE-1"
+            ]
         },
         {
             "id": "SEC-SETTINGS-XSS",
             "statement": "All new user-visible strings (display_name, phone, usage numbers, section labels) render through double braces or escapeHtml builders; no raw triple-brace injection outside pre-escaped builders.",
-            "evidenceIds": ["EV-FE-2"]
+            "evidenceIds": [
+                "EV-FE-2"
+            ]
         }
     ],
     "budgetPolicy": {
