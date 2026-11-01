@@ -1,6 +1,6 @@
 {
     "schemaVersion": "agent-plan-manifest.v1",
-    "status": "DRAFT",
+    "status": "FROZEN",
     "planRevision": 3,
     "package": {
         "id": "2026-11-01-settings",
@@ -64,7 +64,7 @@
             {
                 "id": "REQ-FE-SETTINGS-LOGIC",
                 "title": "Frontend logic: profile port (update/password/logout-all/usage), rejoin, preferences module",
-                "description": "Profile port/adapter: changeProfile supported (PUT /auth/profile + csrf) with changePassword, logoutAll, fetchUsage (GET /files/usage own transport) additive; profile/password success triggers the auth user refresh (fetchUser). Chats port/controller: rejoinChat(chatId) POST + csrf -> refetch chats. utils/preferences.ts: typed per-viewer preferences (sound default true, browserNotifications default false, autoDownload default true) on localStorage with a tiny subscriber bus for live UI toggles; tolerant of storage failures. AppState user type grows display_name/phone (utils/types.ts; utils/Store.ts user shape extended — allowed in THIS plan).",
+                "description": "Profile port/adapter: changeProfile supported (PUT /auth/profile + csrf) with changePassword, logoutAll, fetchUsage (GET /files/usage own transport) additive; toAuthUser (auth/api/own.ts) maps the REAL display_name/phone (fallback local-part when null) plus send_read_receipts (AuthUser grows the flag — the old email-synthesis would revert Account edits); profile/password success refreshes the auth user and rejoinChat reaches the profile page via consumer-side setters wired in features/index.ts (the guard-exempt composition root, the logout-seam precedent); chats port/controller: rejoinChat(chatId) POST + csrf -> refetch; utils/preferences.ts: typed per-viewer prefs (sound default true, browserNotifications default false, autoDownload default true) with a subscriber bus, storage-failure tolerant; AppState.user carries display_name/phone.",
                 "priority": "P1",
                 "source": "operator request 2026-11-01 (logic underpinnings of all four groups)",
                 "acceptanceIds": [
@@ -222,7 +222,7 @@
                 "name fallback: UserSearchItem.from_user, ContactResponse (schemas/contact.py), to_member_brief (services/chats.py) return display_name or email-local-part",
                 "rejoin: repositories/chats.py shared reactivation helper (refactor add_member's branch to use it); services/chats.py rejoin (own archived row -> left_at NULL; no-row 403; active idempotent; unknown 404); endpoint POST /{chat_id}/rejoin (route order vs int routes)",
                 "files usage: repositories/files.py user_usage (one SUM/COUNT by uploaded owner); endpoint GET /files/usage {total_bytes, file_count} behind get_current_user",
-                "receipts gate: MessageService.history skips mark_read when the recipient's send_read_receipts is false (the flag lives on the RECIPIENT; peer unread preserved)",
+                "receipts gate: MessageService.history skips mark_read when the recipient's send_read_receipts is false (the flag is the VIEWER's own; chat_last_reads has no peer consumer)",
                 "pytest test_settings_api.py: profile update + validation branches + anonymous 401; password flow (wrong old 401; old refresh token 401 after; current session cookies still valid); logout-all (previously issued access token 401 after); auth responses carry the new fields; usage shape + isolation; test_rejoin_api.py: archived -> active (left_at null, writes resume), kicked 403, active idempotent 204, unknown 404, anonymous 401; receipts-off: the viewer's own unread badge stays after a history load (the marker does not advance; contrast with on) — chat_last_reads has no peer consumer; display_name fallback cases (user with/without display_name in /users search, /contacts, chat members)",
                 "gates: bash backend/verify.sh green modulo the 4 known failures; heads == 011_settings"
             ],
@@ -474,7 +474,7 @@
                     "EV-FE-THEME"
                 ],
                 "independentEvidenceIds": [],
-                "statement": "Palette tokens are :root custom properties with [data-theme='dark'] overrides; the component sweep leaves no raw color $tokens outside the exempted files (grep gate documented); utils/theme.ts applies/persists light/dark/system with the matchMedia listener and dataset mutation (unit-pinned); bootstrapped from main.ts; verify + stylelint green; no comments in new/edited scss.",
+                "statement": "Palette COLOR tokens are :root custom properties with [data-theme=dark] overrides (metrics stay SCSS vars); the sweep covers $color tokens AND raw hex/rgb literals (~27) outside the stated exemptions (variable.scss, mixins.scss, scrollbar.scss, libs — a plan choice; mixins IS linted; light-scrollbar artifact documented); utils/theme.ts applies/persists light/dark/system with the matchMedia listener and dataset mutation (unit-pinned); bootstrapped from main.ts; verify + stylelint green; no comments in new scss.",
                 "description": "Frontend unit tests + grep gate.",
                 "source": "acceptance-criteria.md",
                 "priority": "P1"
@@ -626,13 +626,14 @@
         "maxRounds": 2,
         "implementationAuthorized": false,
         "report": "tasks/2026-11-01-settings/plan-review.json",
-        "reviewedRevision": 1,
-        "verdict": "PENDING"
+        "reviewedRevision": 3,
+        "verdict": "READY_TO_FREEZE"
     },
     "planFiles": [
         "tasks/2026-11-01-settings/acceptance-criteria.md",
         "tasks/2026-11-01-settings/developer-overview.md",
         "tasks/2026-11-01-settings/plan-review-request.md",
+        "tasks/2026-11-01-settings/plan-review.json",
         "tasks/2026-11-01-settings/plan.manifest.json",
         "tasks/2026-11-01-settings/plan.md",
         "tasks/2026-11-01-settings/tier-request.json",
