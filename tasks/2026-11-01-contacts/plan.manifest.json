@@ -1,0 +1,616 @@
+{
+    "schemaVersion": "agent-plan-manifest.v1",
+    "status": "FROZEN",
+    "planRevision": 3,
+    "package": {
+        "id": "2026-11-01-contacts",
+        "title": "User contacts: persistent address book, /contacts route, DM get-or-create",
+        "workspaceRoot": ".",
+        "artifactRoot": "work/2026-11-01-contacts",
+        "planArtifactRoot": "tasks/2026-11-01-contacts"
+    },
+    "packageIntegrity": {
+        "required": true,
+        "lockSchemaVersion": "agent-plan-lock.v2",
+        "inventorySource": "planFiles",
+        "undeclaredTopLevelFiles": "reject",
+        "allowedUnlistedFiles": [
+            "plan.lock.json",
+            "plan-review.json"
+        ]
+    },
+    "author": {
+        "id": "claude-code",
+        "surface": "agent-first-planning",
+        "runId": "2026-11-01-contacts-draft"
+    },
+    "baseRevision": {
+        "ref": "dev",
+        "sha": "238ec533bd08839f1696d24a7e6bc347f7fb8048"
+    },
+    "specification": {
+        "tier": "S2",
+        "intent": "The user gets a persistent contact list backed by the own backend (contacts table, one-directional: implicit capture when the owner adds a user to any chat, explicit add through the new /contacts route). The route reuses the messenger sidebar skeleton with the chat list replaced by contacts and a top «Добавить» button reusing the debounced user-search modal (existing contacts badged «уже в контактах»). Clicking a contact opens a menu: «Создать» (get-or-create 1:1 chat via POST /chats/dm on a new Chat.is_dm flag, then navigate to the open chat) and «Найти все чаты» (disabled stub, documented not-done). A hover cross removes a contact after confirmation (DELETE /contacts/{user_id}). Styles mirror the messenger breakpoints: 380px sidebar, 280px tablet, single column <768.",
+        "status": "DRAFT",
+        "requirements": [
+            {
+                "id": "REQ-BE-CONTACTS",
+                "title": "Contacts persistence: model, migration, repository, service, endpoints, implicit capture",
+                "description": "Contact model (owner_id, contact_user_id composite PK, both FK users.id CASCADE, created_at server_default now) registered in models/__init__.py; migration 009_contacts creates the table and adds chats.is_dm; ContactRepository get/upsert (get-then-insert, the add_member idiom)/remove/list_for_owner (JOIN users, created_at DESC, contact_user_id DESC); ContactService list/add/remove with guards (self 400 contact_self_forbidden, unknown 404 user_not_found, missing row 404 contact_not_found) assembling ContactResponse {id = contact user id, login = lower email, display_name = local part (UserSearchItem rule), avatar_url, created_at}; endpoints/contacts.py (GET '' list, POST '' idempotent 201, DELETE '/{user_id}' 204/404) registered through the register_domain seam from endpoints/__init__.py; ChatService.add_member records the implicit contact (requester -> added user, skipped on self) on EVERY successful resolution — the fresh-insert path inside its existing transaction AND the existing-membership early return (its own commit; idempotent upsert) — with no members-endpoint response change; anonymous 401 on all routes; owner isolation.",
+                "priority": "P1",
+                "source": "operator request 2026-11-01 (contacts from users found and added to chats; explicit add via search)",
+                "acceptanceIds": [
+                    "AC-BE-CONTACTS",
+                    "AC-BE-MIGRATION"
+                ],
+                "evidenceIds": [
+                    "EV-BE-1"
+                ],
+                "owner": "WS-BE-CONTACTS"
+            },
+            {
+                "id": "REQ-BE-DM",
+                "title": "DM get-or-create: Chat.is_dm flag and POST /chats/dm",
+                "description": "Chat.is_dm boolean (default False, server_default '0') via migration 009; ChatResponse gains additive is_dm: bool = False (model_validate fills it); ChatRepository.find_dm(a, b) = earliest is_dm chat containing both memberships (two IN-subqueries, id asc, limit 1); POST /api/v1/chats/dm body {user_id} registered BEFORE /{chat_id} (the /search precedent): existing DM 200, none -> create (title = target email local part, owner = caller, is_ai False, is_dm True, members caller+target) 201, self 400 dm_self_forbidden, unknown 404 user_not_found, anonymous 401; plain 2-member groups are never reused (find_dm filters is_dm, integration-pinned); list_chats passes is_dm=chat.is_dm explicitly in its field-by-field ChatResponse construction (POST /chats and GET /chats/{id} fill it via model_validate); documented edge: members endpoint can later grow a DM beyond two members (accepted); accepted race: two concurrent first DM calls can create two rows (no pair uniqueness, review F-7).",
+                "priority": "P1",
+                "source": "operator request 2026-11-01 (contact menu 'Создать' opens/creates the 1:1 chat)",
+                "acceptanceIds": [
+                    "AC-BE-DM",
+                    "AC-BE-MIGRATION"
+                ],
+                "evidenceIds": [
+                    "EV-BE-1"
+                ],
+                "owner": "WS-BE-CONTACTS"
+            },
+            {
+                "id": "REQ-FE-CONTACTS-LOGIC",
+                "title": "Frontend logic: contacts feature module (ports, own adapter, store slice, controller, wiring)",
+                "description": "ContactInfo UI type in utils/types.ts (no api import); CONTACTS = '/contacts' in utils/constants.ts; new self-sufficient src/features/contacts/ (features never import each other): ports.ts (ContactsPort: fetchContacts, addContact(userId), removeContact(userId), searchUsers(SearchUserData), createDm(userId) -> {chatId} — chat id ONLY: HTTPTransport resolves xhr.response alone (src/utils/HTTPTransport.ts:124-126), a created: 201-vs-200 flag is unimplementable within the write-sets and nothing consumes it (review F-1); local ContactSearchResult/DmChatResult types); api/own.ts (HTTPTransport('/contacts') GET/POST+csrf/DELETE+csrf, GET /users?login= on its own transport, POST /chats/dm +csrf mapping to {chatId: id}; avatar resolved avatar_url ?? avatarPoolUrl(id) at the single mapping point) + api/index.ts; store.ts contacts slice behind the in-slice cast idiom (chatSearch precedent, no utils/Store.ts edit); controller.ts singleton (fetch -> slice; add/remove -> refetch; searchUsers error -> []; openDm -> injected chatOpener(chatId)) + module-level setChatOpener (default noop); module.ts {name 'contacts', deps ['auth']}; features/index.ts registers the module and wires setChatOpener((chatId) => { ChatsController.selectChat(chatId); void ChatsController.getChatUsers(chatId); Router.go(MESSENGER) }) — the ONLY cross-feature seam (setProfileController precedent); /contacts protected by the existing allowlist guard, zero guard edits.",
+                "priority": "P1",
+                "source": "operator request 2026-11-01 (route with contacts instead of chats, reuse user search)",
+                "acceptanceIds": [
+                    "AC-FE-LOGIC"
+                ],
+                "evidenceIds": [
+                    "EV-FE-1"
+                ],
+                "owner": "WS-FE-CONTACTS-LOGIC"
+            },
+            {
+                "id": "REQ-FE-CONTACTS-UI",
+                "title": "Frontend UI: /contacts route, sidebar skeleton, add-modal reuse, contact menu, responsive styles",
+                "description": "main.ts registers Routes.Contacts + Router.use(ContactsPage); bottomBar «Контакты» icon navigates Router.go(CONTACTS) with active state (Чаты unchanged); ContactItem component (components/contactItem/, double braces only, hover delete cross, registered in components.ts); renderAddUserModalContent gains optional alreadyBadge (default 'уже в чате', messenger unchanged) — the page passes 'уже в контактах' with memberIds = contact ids; ContactsPage (features/contacts/pages/contacts/): withStore slice, CDM fetchContacts, simplified sidebar (header «Контакты» + «Добавить», list, BottomBar; no stories row, no chat search bar), controller-free modal state in props, root-delegated input/click events, 300 ms debounce reusing USER_SEARCH_DEBOUNCE_MS, page-owned refocus; contact menu Modal («Создать» -> openDm + close; «Найти все чаты» disabled with 'пока не реализовано' title; «Отмена»); delete-confirm Modal -> removeContact; ChatPage chatPaneOpen initial = selectedChat != null (documented behaviour change, mocha-pinned); SCSS contacts.scss + contact-item.scss mirroring chat.scss breakpoints (380 / 280 tablet / single column <768, placeholder hidden); docs: NEXT.md feature record WITH the not-done note for «Найти все чаты», progress_log entry on top.",
+                "priority": "P1",
+                "source": "operator request 2026-11-01 (contacts route, top «Добавить», menu Создать/Найти все чаты, delete with confirm, all resolutions)",
+                "acceptanceIds": [
+                    "AC-FE-UI",
+                    "AC-PROCESS"
+                ],
+                "evidenceIds": [
+                    "EV-FE-2"
+                ],
+                "owner": "WS-FE-CONTACTS-UI"
+            }
+        ],
+        "goal": "A working contacts address book: implicit capture on chat-member adds, explicit add via the reused user-search modal, a menu that opens or creates the 1:1 chat, confirmed deletion, and a responsive /contacts route wired to the bottom bar.",
+        "constraints": [
+            "Layers only downward (pages -> components -> controllers -> api -> utils -> core); guard-architecture --all --strict stays green; components never import features/controllers; UI types never import from api/; features never import each other — the only cross-feature seam is src/features/index.ts.",
+            "Migration 009_contacts is additive (new contacts table + chats.is_dm); alembic heads becomes 009_contacts (pinned by verify:backend = pytest + alembic heads only); the 009 upgrade and downgrade paths are proven INSIDE pytest by the segment roundtrip test backend/tests/integration/test_migration_009_contacts_segment.py (scratch SQLite file -> Base.metadata.create_all -> alembic stamp head -> downgrade -1 -> upgrade head, inspector-asserted both ways; a full-chain SQLite run is impossible by design — 008 CREATE EXTENSION pg_trgm and 005 ALTER-based create_foreign_key are PG-only, the full chain is exercised operationally on the compose PostgreSQL — review F-8).",
+            "All contacts/DM endpoints behind get_current_user; anonymous 401 pinned; owner-scoped isolation pinned; mutating frontend calls carry readCsrfToken().",
+            "Modal content HTML only through the escapeHtml builder; ContactItem double braces only; <script> payload renders as text (XSS test).",
+            "The contacts Store slice uses the in-slice cast idiom; utils/Store.ts AppState is NOT edited; the auth guard stays allowlist-based with zero changes.",
+            "Existing suites stay green; test counts grow from the 337 mocha / 184 pytest baseline (docs/NEXT.md, 2026-10-27).",
+            "The messenger add-user modal behaviour is bit-identical (alreadyBadge defaults to 'уже в чате').",
+            "chats.is_dm never reuses plain 2-member groups; POST /chats/dm is idempotent (200 same id on repeat)."
+        ],
+        "nonGoals": [
+            "implementing «Найти все чаты» — disabled stub, recorded as not-done in docs/NEXT.md (the chat-search work from the other machine is not merged)",
+            "two-way (symmetric) contacts — capture is one-directional (the adder gets the contact)",
+            "WS push of contact-list changes; live cross-tab contact sync (page CDM refetch is the refresh point)",
+            "contact import/export, favorites, editing, contact profile pages",
+            "server-side pagination of GET /contacts (full list, study scale)",
+            "DM member-count enforcement (a DM can later grow via the members endpoint; documented edge)",
+            "pair-uniqueness for concurrent POST /chats/dm — two simultaneous first calls can create two DM rows (accepted study-scale race)",
+            "unread badges / last-message snippets / any chat-list features on contact cards",
+            "deleting a contact deleting the DM chat or membership"
+        ],
+        "scope": "backend contacts domain (model, migration 009, repository, service, endpoints, implicit capture in add_member, POST /chats/dm, pytest); frontend contacts feature module (types, constants, ports, adapter, store, controller, module, features/index wiring); frontend UI (route, bottom bar, ContactItem, page + modals, chatPaneOpen init, scss, docs) with mocha; evidence receipts under work/2026-11-01-contacts/."
+    },
+    "readOnly": [
+        "AGENTS.md",
+        "tasks/README.md",
+        "docs/deployment/own-backend.md"
+    ],
+    "forbiddenWrites": [
+        "src/core",
+        "src/scss/libs",
+        "src/utils/Store.ts",
+        "docs/project-principles.json",
+        ".github/workflows",
+        "netlify.toml",
+        "server/server.js",
+        ".env",
+        ".env.development",
+        ".env.own"
+    ],
+    "leadOwned": [
+        {
+            "path": "tasks/2026-11-01-contacts",
+            "owner": "controller",
+            "reason": "Controller owns plan-package artifacts."
+        }
+    ],
+    "workstreams": [
+        {
+            "id": "WS-BE-CONTACTS",
+            "title": "Backend: contacts table + endpoints + DM get-or-create + implicit capture",
+            "owner": "worker-backend-contacts",
+            "reviewer": "independent-release-reviewer",
+            "dependsOn": [],
+            "writes": [
+                "backend/alembic/versions/009_contacts.py",
+                "backend/app/api/v1/endpoints/__init__.py",
+                "backend/app/api/v1/endpoints/chats.py",
+                "backend/app/api/v1/endpoints/contacts.py",
+                "backend/app/models/__init__.py",
+                "backend/app/models/chat.py",
+                "backend/app/models/contact.py",
+                "backend/app/repositories/chats.py",
+                "backend/app/repositories/contacts.py",
+                "backend/app/schemas/chat.py",
+                "backend/app/schemas/contact.py",
+                "backend/app/services/chats.py",
+                "backend/app/services/contacts.py",
+                "backend/tests/integration/chat/test_dm_api.py",
+                "backend/tests/integration/contacts/test_contacts_api.py",
+                "backend/tests/integration/test_migration_009_contacts_segment.py"
+            ],
+            "readOnly": [
+                "AGENTS.md",
+                "backend/app/api/v1/endpoints/users.py",
+                "backend/app/api/v1/router.py",
+                "backend/app/models/user.py",
+                "backend/app/repositories/users.py",
+                "backend/app/schemas/user.py",
+                "backend/tests/conftest.py",
+                "backend/tests/integration/chat/test_chat_search.py",
+                "backend/alembic/versions/007_avatars_stories.py"
+            ],
+            "forbiddenWrites": [
+                "backend/alembic/versions/001_users.py",
+                "backend/alembic/versions/002_chat_messages_files.py",
+                "backend/alembic/versions/003_documents_chunks.py",
+                "backend/alembic/versions/004_bot_runs.py",
+                "backend/alembic/versions/005_reactions_replies.py",
+                "backend/alembic/versions/006_chat_last_reads.py",
+                "backend/alembic/versions/007_avatars_stories.py",
+                "backend/alembic/versions/008_pg_trgm_search_indexes.py"
+            ],
+            "launchGate": "feature/2026-11-01-contacts branch created at 238ec533bd08839f1696d24a7e6bc347f7fb8048; npm run verify:backend green at base (Windows host: bash backend/verify.sh with PYTHON_BIN; 4 ingestion subprocess failures are pre-existing noise); npm run verify green at base.",
+            "capabilityHints": [
+                "fastapi",
+                "sqlalchemy",
+                "alembic",
+                "pytest",
+                "python"
+            ],
+            "requiredTools": [
+                "python",
+                "pytest"
+            ],
+            "contextRefs": [
+                "plan.md",
+                "acceptance-criteria.md",
+                "specification.json",
+                "developer-overview.md"
+            ],
+            "acceptanceIds": [
+                "AC-BE-CONTACTS",
+                "AC-BE-DM",
+                "AC-BE-MIGRATION"
+            ],
+            "evidenceIds": [
+                "EV-BE-1"
+            ],
+            "executionPolicy": {
+                "maxAttempts": 3,
+                "maxWallSeconds": 3600
+            },
+            "artifactPaths": {
+                "result": "work/2026-11-01-contacts/evidence/WS-BE-CONTACTS/task-result-{attempt}.json",
+                "review": "work/2026-11-01-contacts/evidence/WS-BE-CONTACTS/task-review-{attempt}.json"
+            },
+            "required": true,
+            "plannedItems": [
+                "models: Contact (contacts table, composite PK owner_id+contact_user_id, FK users.id CASCADE both, created_at server_default now) in models/contact.py + models/__init__.py; Chat.is_dm (Boolean, default False, server_default '0') in models/chat.py",
+                "migration 009_contacts: create_table contacts + batch_alter_table('chats') add is_dm; downgrade reverses both; alembic heads -> 009_contacts (review F-2: verify.sh runs pytest + alembic heads only)",
+                "migration segment test backend/tests/integration/test_migration_009_contacts_segment.py (review F-8): scratch SQLite file via tmp_path, Base.metadata.create_all with current models, alembic stamp head, downgrade -1 (009's own downgrade yields the faithful 008 state), upgrade head (re-applies 009 to it), inspector assertions both ways (contacts table + chats.is_dm absent after downgrade, present after upgrade); alembic command API driven through the real CHATTY_DATABASE_URL override (env wiring verified against backend/alembic/env.py); no full-chain SQLite attempt — 008/005 are PG-only by design",
+                "repositories/contacts.py: get, upsert (get-then-insert idiom), remove -> bool, list_for_owner (JOIN users, ORDER BY created_at DESC, contact_user_id DESC)",
+                "repositories/chats.py: find_dm(user_a, user_b) — earliest is_dm chat with both memberships (two IN-subqueries, id asc, limit 1)",
+                "schemas/contact.py: ContactCreate {user_id}, ContactResponse {id, login, display_name, avatar_url, created_at} (login = lower email, display_name = local part — the UserSearchItem.from_user rule; avatar via schemas/file.avatar_url)",
+                "schemas/chat.py: ChatDmCreate {user_id}; ChatResponse.is_dm: bool = False (additive; model_validate fills it)",
+                "services/contacts.py: list_for_owner assembly; add (self 400 contact_self_forbidden, unknown 404 user_not_found, idempotent upsert); remove (missing 404 contact_not_found)",
+                "services/chats.py: create_dm (find_dm -> (chat, False) | create Chat(title=target email local part, owner_id=caller, is_ai=False, is_dm=True) + members caller+target -> (chat, True)); add_member records the implicit contact requester->user (skip self) via ContactRepository.upsert on EVERY successful resolution — the fresh insert inside the existing transaction AND the existing-membership early return with its own commit (review F-4), response unchanged",
+                "endpoints/contacts.py: GET '' (list), POST '' (201 idempotent), DELETE '/{user_id}' (204/404), all behind get_current_user; register_domain() called from endpoints/__init__.py (stage-17 composition comment style)",
+                "endpoints/chats.py: POST /dm BEFORE /{chat_id} routes — 200 existing / 201 created ChatResponse; list_chats passes is_dm=chat.is_dm explicitly in its field-by-field ChatResponse construction (review F-3)",
+                "pytest test_contacts_api.py: empty list, add+list, idempotent re-add single row, self 400, unknown 404, delete 204 + repeat 404, anonymous 401, owner isolation, implicit capture (A adds B -> A has B, B lacks A)",
+                "pytest test_dm_api.py: create 201 (is_dm, title local part, both members), repeat 200 same id, self 400, unknown 404, anonymous 401, 2-member group non-collision (new chat id), GET /chats carries is_dm"
+            ],
+            "qualityFloor": "npm run verify:backend green (pytest incl. the 009 segment roundtrip test + alembic heads); alembic heads == 009_contacts; no frontend file touched."
+        },
+        {
+            "id": "WS-FE-CONTACTS-LOGIC",
+            "title": "Frontend logic: contacts feature module (ports, adapter, store, controller, wiring)",
+            "owner": "worker-frontend-contacts",
+            "reviewer": "independent-release-reviewer",
+            "dependsOn": [
+                "WS-BE-CONTACTS"
+            ],
+            "writes": [
+                "src/features/contacts/api/api.test.ts",
+                "src/features/contacts/api/index.ts",
+                "src/features/contacts/api/own.ts",
+                "src/features/contacts/contacts.test.ts",
+                "src/features/contacts/controller.ts",
+                "src/features/contacts/module.ts",
+                "src/features/contacts/ports.ts",
+                "src/features/contacts/store.ts",
+                "src/features/index.ts",
+                "src/utils/constants.ts",
+                "src/utils/types.ts"
+            ],
+            "readOnly": [
+                "AGENTS.md",
+                "src/utils/Store.ts",
+                "src/utils/avatarPool.ts",
+                "src/utils/csrf.ts",
+                "src/features/chats/api/own.ts",
+                "src/features/chats/controller.ts",
+                "src/features/chats/store.ts",
+                "src/features/profile/controller.ts"
+            ],
+            "forbiddenWrites": [],
+            "launchGate": "WS-BE-CONTACTS accepted at the integration baseline; npm run verify green at base.",
+            "capabilityHints": [
+                "typescript",
+                "mocha",
+                "sinon",
+                "ALK"
+            ],
+            "requiredTools": [
+                "node",
+                "npm"
+            ],
+            "contextRefs": [
+                "plan.md",
+                "acceptance-criteria.md",
+                "specification.json",
+                "developer-overview.md"
+            ],
+            "acceptanceIds": [
+                "AC-FE-LOGIC"
+            ],
+            "evidenceIds": [
+                "EV-FE-1"
+            ],
+            "executionPolicy": {
+                "maxAttempts": 3,
+                "maxWallSeconds": 3600
+            },
+            "artifactPaths": {
+                "result": "work/2026-11-01-contacts/evidence/WS-FE-CONTACTS-LOGIC/task-result-{attempt}.json",
+                "review": "work/2026-11-01-contacts/evidence/WS-FE-CONTACTS-LOGIC/task-review-{attempt}.json"
+            },
+            "required": true,
+            "plannedItems": [
+                "types: ContactInfo {id, login, display_name, avatar} in src/utils/types.ts; CONTACTS = '/contacts' in src/utils/constants.ts",
+                "ports.ts: ContactsPort (fetchContacts, addContact, removeContact, searchUsers, createDm -> {chatId}) + local ContactSearchResult/DmChatResult — no cross-feature imports",
+                "api/own.ts: /contacts GET/POST+csrf/DELETE+csrf; GET /users?login= on its own HTTPTransport; POST /chats/dm +csrf -> {chatId: id} (the success status is not observable through HTTPTransport and is not part of the contract — review F-1); ContactInfo mapping avatar_url ?? avatarPoolUrl(id); api/index.ts exports contactsPort",
+                "store.ts: contacts slice, in-slice cast (ContactStoreState = AppState & {contacts?: ContactInfo[]}), setContacts/getContacts — utils/Store.ts untouched",
+                "controller.ts: ContactsFeatureController singleton (fetch -> slice; add/remove -> refetch; searchUsers error -> []; openDm -> chatOpener(chatId)) + setChatOpener module setter with noop default",
+                "module.ts: contactsModule {name: 'contacts', deps: ['auth']}; features/index.ts: module registered + setChatOpener((chatId) => { ChatsController.selectChat(chatId); void ChatsController.getChatUsers(chatId); Router.go(MESSENGER) })",
+                "mocha api.test.ts: URL shapes, DTO mapping, avatar fallback, csrf on mutations; contacts.test.ts: controller flows (slice writes, refetch after add/remove, searchUsers [] on error, openDm -> opener chatId, default noop opener)"
+            ],
+            "qualityFloor": "npm run verify green end to end; guard-architecture --all --strict zero violations; no component/page/scss file touched."
+        },
+        {
+            "id": "WS-FE-CONTACTS-UI",
+            "title": "Frontend UI: /contacts route, sidebar, modals, menu, responsive styles, docs",
+            "owner": "worker-frontend-ui",
+            "reviewer": "independent-release-reviewer",
+            "dependsOn": [
+                "WS-FE-CONTACTS-LOGIC"
+            ],
+            "writes": [
+                "docs/NEXT.md",
+                "docs/progress/progress_log.md",
+                "src/components/bottomBar/bottomBar.test.ts",
+                "src/components/bottomBar/bottomBar.ts",
+                "src/components/components.ts",
+                "src/components/contactItem/contactItem.hbs",
+                "src/components/contactItem/contactItem.test.ts",
+                "src/components/contactItem/contactItem.ts",
+                "src/components/messenger/messenger.ts",
+                "src/components/messenger/messenger.test.ts",
+                "src/features/chats/pages/chat/chat.test.ts",
+                "src/features/chats/pages/chat/chat.ts",
+                "src/features/contacts/pages/contacts/contacts.hbs",
+                "src/features/contacts/pages/contacts/contacts.test.ts",
+                "src/features/contacts/pages/contacts/contacts.ts",
+                "src/main.ts",
+                "src/scss/components/_all.scss",
+                "src/scss/components/contact-item.scss",
+                "src/scss/components/contacts.scss"
+            ],
+            "readOnly": [
+                "AGENTS.md",
+                "src/components/modal/modal.ts",
+                "src/components/bottomBar/bottomBar.hbs",
+                "src/components/chatListUser/chatListUser.hbs",
+                "src/features/chats/pages/chat/chat.hbs",
+                "src/scss/components/chat.scss",
+                "src/scss/components/modal.scss"
+            ],
+            "forbiddenWrites": [],
+            "launchGate": "WS-FE-CONTACTS-LOGIC accepted at the integration baseline; npm run verify green at base.",
+            "capabilityHints": [
+                "typescript",
+                "handlebars",
+                "scss",
+                "mocha",
+                "sinon"
+            ],
+            "requiredTools": [
+                "node",
+                "npm"
+            ],
+            "contextRefs": [
+                "plan.md",
+                "acceptance-criteria.md",
+                "specification.json",
+                "developer-overview.md"
+            ],
+            "acceptanceIds": [
+                "AC-FE-UI",
+                "AC-PROCESS"
+            ],
+            "evidenceIds": [
+                "EV-FE-2"
+            ],
+            "executionPolicy": {
+                "maxAttempts": 3,
+                "maxWallSeconds": 3600
+            },
+            "artifactPaths": {
+                "result": "work/2026-11-01-contacts/evidence/WS-FE-CONTACTS-UI/task-result-{attempt}.json",
+                "review": "work/2026-11-01-contacts/evidence/WS-FE-CONTACTS-UI/task-review-{attempt}.json"
+            },
+            "required": true,
+            "plannedItems": [
+                "contactItem component: Block + hbs card (avatar, title, subtitle, hover delete cross), onClick/onDelete props, double braces only, registered in components/components.ts; XSS test (<script> login renders as text)",
+                "bottomBar: «Контакты» icon -> Router.go(CONTACTS), isActive currentPath === CONTACTS; «Чаты» unchanged; bottomBar.test.ts (navigation + active states)",
+                "messenger.ts: renderAddUserModalContent optional alreadyBadge (default 'уже в чате') — additive, messenger behaviour bit-identical; the default badge pinned by a case in messenger.test.ts (review F-6)",
+                "ContactsPage: withStore contacts slice; CDM fetchContacts; simplified sidebar (header «Контакты» + «Добавить», list, BottomBar — no stories row, no chat search bar); right placeholder pane; modal state in props; add-modal reuses renderAddUserModalContent (alreadyBadge 'уже в контактах', memberIds = contact ids); USER_SEARCH_DEBOUNCE_MS debounce with root-delegated input/click events and page-owned refocus; contact menu Modal («Создать» -> openDm + close, «Найти все чаты» disabled + title 'пока не реализовано', «Отмена»); delete-confirm Modal -> removeContact; contacts.test.ts (render from store, debounce->search, badge, menu actions, delete flow, XSS)",
+                "chat page: chatPaneOpen initial = selectedChat != null (arriving from /contacts opens the pane on mobile; documented behaviour change) + chat.test.ts pin",
+                "main.ts: Routes.Contacts + Router.use(Routes.Contacts, ContactsPage); /contacts protected by the existing allowlist guard (zero guard edits)",
+                "scss: contacts.scss (grid min-content 1fr; 380px sidebar, border-right, header row, own-scroll list with scrollbar-slim, placeholder pane) + contact-item.scss; _all.scss imports; tablet 768–1023 -> 280px sidebar with the chat.scss paddings; mobile <768 -> single column, placeholder hidden, no pane switching",
+                "docs: NEXT.md feature record WITH the not-done note for «Найти все чаты» (pending the search implementation merge from the other machine); progress_log.md entry on top"
+            ],
+            "qualityFloor": "npm run verify green end to end; guard-architecture --all --strict zero violations; responsive checklist (380/280/single column) noted in evidence, not a gate."
+        }
+    ],
+    "acceptance": {
+        "criteria": [
+            {
+                "id": "AC-BE-CONTACTS",
+                "title": "Contacts CRUD + implicit capture proven by pytest",
+                "requirementIds": [
+                    "REQ-BE-CONTACTS"
+                ],
+                "evidenceIds": [
+                    "EV-BE-1"
+                ],
+                "independentEvidenceIds": [],
+                "statement": "GET /contacts returns the caller's ordered contacts (created_at DESC, contact_user_id DESC; empty list for a fresh user; id = contact user id); POST /contacts is idempotent (201 on create AND on existing; never duplicates), 400 contact_self_forbidden on self, 404 user_not_found on unknown; DELETE /contacts/{user_id} 204 then 404 contact_not_found; anonymous 401 everywhere; owner isolation (B never sees A's contacts); implicit capture — after A adds B to a chat A's list contains B and B's does not contain A, members endpoint response unchanged.",
+                "description": "Backend integration tests.",
+                "source": "acceptance-criteria.md",
+                "priority": "P1"
+            },
+            {
+                "id": "AC-BE-DM",
+                "title": "DM get-or-create proven by pytest",
+                "requirementIds": [
+                    "REQ-BE-DM"
+                ],
+                "evidenceIds": [
+                    "EV-BE-1"
+                ],
+                "independentEvidenceIds": [],
+                "statement": "POST /chats/dm: first call 201 (is_dm true, title = target email local part, owner = caller, exactly two members); repeat 200 with the SAME id; self 400 dm_self_forbidden; unknown 404 user_not_found; anonymous 401; a plain 2-member group is never reused (test creates one, then asserts a new chat id); GET /chats carries the additive is_dm field.",
+                "description": "Backend integration tests.",
+                "source": "acceptance-criteria.md",
+                "priority": "P1"
+            },
+            {
+                "id": "AC-BE-MIGRATION",
+                "title": "Additive migration 009_contacts",
+                "requirementIds": [
+                    "REQ-BE-CONTACTS",
+                    "REQ-BE-DM"
+                ],
+                "evidenceIds": [
+                    "EV-BE-1"
+                ],
+                "independentEvidenceIds": [],
+                "statement": "009_contacts creates the contacts table (composite PK, both FKs CASCADE, created_at server_default now) and adds chats.is_dm (NOT NULL, server_default '0') via batch_alter_table; alembic heads prints exactly 009_contacts (pinned by verify:backend, which runs pytest + alembic heads only — review F-2); the 009 upgrade AND downgrade paths are proven inside pytest by backend/tests/integration/test_migration_009_contacts_segment.py (scratch SQLite: create_all -> stamp head -> downgrade -1 -> upgrade head, inspector-asserted both ways — review F-8; a full-chain SQLite run is impossible because 008/005 are PG-only, the full chain is the compose-PostgreSQL operational path, not this gate); the existing pytest suite stays green with counts grown from the 184 baseline.",
+                "description": "Gate run captured as evidence.",
+                "source": "acceptance-criteria.md",
+                "priority": "P1"
+            },
+            {
+                "id": "AC-FE-LOGIC",
+                "title": "Contacts feature module proven by mocha",
+                "requirementIds": [
+                    "REQ-FE-CONTACTS-LOGIC"
+                ],
+                "evidenceIds": [
+                    "EV-FE-1"
+                ],
+                "independentEvidenceIds": [],
+                "statement": "The own adapter hits exactly GET /contacts, POST /contacts (+csrf), DELETE /contacts/{id} (+csrf), GET /users?login=, POST /chats/dm (+csrf) with URL shapes and DTO mapping mocha-pinned including the single avatar fallback point (avatar_url ?? avatarPoolUrl(id)); the contacts slice follows the in-slice cast idiom with no utils/Store.ts edit; the controller writes the slice on fetch, refetches after add/remove, returns [] on searchUsers port error, and passes the returned chatId to the injected opener (default noop pinned); features/index.ts wires the opener through ChatsController + Router.go(MESSENGER) as the only cross-feature seam; no component/page/scss file touched by this wave.",
+                "description": "Frontend unit tests.",
+                "source": "acceptance-criteria.md",
+                "priority": "P1"
+            },
+            {
+                "id": "AC-FE-UI",
+                "title": "Route, sidebar, modals, responsive styles",
+                "requirementIds": [
+                    "REQ-FE-CONTACTS-UI"
+                ],
+                "evidenceIds": [
+                    "EV-FE-2"
+                ],
+                "independentEvidenceIds": [],
+                "statement": "/contacts mounts ContactsPage protected by the existing allowlist guard (zero guard edits); the «Контакты» bottom-bar icon navigates to /contacts and renders active there while «Чаты» stays on /messenger (pinned); the sidebar shows header «Контакты» + «Добавить» + list + BottomBar without the stories row and chat search bar; CDM fetches contacts; the add-modal reuses renderAddUserModalContent with badge «уже в контактах» for existing contacts (messenger default «уже в чате» unchanged — pinned) with the 300 ms debounce and page-owned refocus; the contact menu's «Создать» calls openDm(id) and closes, «Найти все чаты» renders disabled with a 'пока не реализовано' title, «Отмена» closes (pinned); the delete-confirm «Удалить» calls removeContact(id) (pinned); ContactItem renders through double braces only — a <script> login renders as text (XSS test); chatPaneOpen initializes to selectedChat != null (pinned); SCSS mirrors the chat.scss breakpoints (380 / 280 / single column <768, placeholder hidden) — verified by the task review and the manual smoke note, NOT by mocha (review F-5).",
+                "description": "Frontend unit tests.",
+                "source": "acceptance-criteria.md",
+                "priority": "P1"
+            },
+            {
+                "id": "AC-PROCESS",
+                "title": "Gates and bookkeeping",
+                "requirementIds": [
+                    "REQ-FE-CONTACTS-UI"
+                ],
+                "evidenceIds": [
+                    "EV-FE-2"
+                ],
+                "independentEvidenceIds": [],
+                "statement": "npm run verify, npm run verify:backend and guard-architecture --all --strict pass with grown test counts (337 mocha / 184 pytest baseline); docs/progress/progress_log.md gets an entry and docs/NEXT.md records the feature INCLUDING the explicit not-done note for «Найти все чаты»; no file outside the manifest write-sets changes; the run lives on feature/2026-11-01-contacts off dev @ 238ec53.",
+                "description": "Gate runs captured as evidence.",
+                "source": "acceptance-criteria.md",
+                "priority": "P1"
+            }
+        ]
+    },
+    "validation": {
+        "commands": [
+            "npm run verify",
+            "npm run verify:backend",
+            "node .claude/hooks/scripts/guard-architecture.mjs --all --strict"
+        ]
+    },
+    "orchestration": {
+        "startMode": "reviewed-plan",
+        "remediationMode": "ask",
+        "maxPlanReviewRounds": 2,
+        "maxTaskAttempts": 3,
+        "maxParallelTasks": 1,
+        "maxValidationRunsPerTask": 2,
+        "stateFile": "work/2026-11-01-contacts/run.state.json",
+        "eventLog": "work/2026-11-01-contacts/events.jsonl",
+        "stepReviewRequired": true,
+        "finalAuditRequired": true
+    },
+    "implementationAudit": {
+        "required": true,
+        "finalRequired": true
+    },
+    "developerOverview": "tasks/2026-11-01-contacts/developer-overview.md",
+    "releaseTarget": {
+        "kind": "local-only",
+        "environment": "Vite own mode + compose own-backend",
+        "productionPromotionClaimed": false
+    },
+    "releaseImpact": "New backend contacts domain (table + GET/POST/DELETE /contacts, POST /chats/dm, additive chats.is_dm, implicit capture in add_member); new frontend feature module src/features/contacts/ with the /contacts route wired to the bottom bar; messenger modal builder gains an additive optional prop; ChatPage pane-open initialization changes for arrivals with a live selection; no auth, WS protocol or deployment changes.",
+    "nonGoals": [
+        "implementing «Найти все чаты» — disabled stub, recorded as not-done in docs/NEXT.md",
+        "two-way (symmetric) contacts — capture is one-directional",
+        "WS push of contact-list changes; live cross-tab contact sync",
+        "contact import/export, favorites, editing, contact profile pages",
+        "server-side pagination of GET /contacts",
+        "DM member-count enforcement (documented edge)",
+        "pair-uniqueness for concurrent POST /chats/dm — two simultaneous first calls can create two DM rows (accepted study-scale race)",
+        "unread badges / last-message snippets on contact cards",
+        "deleting a contact deleting the DM chat or membership"
+    ],
+    "finalAuditGates": [
+        "[AC-BE-CONTACTS|EV-BE-1] contacts CRUD + idempotency + guards + owner isolation + implicit capture proven by pytest",
+        "[AC-BE-DM|EV-BE-1] DM get-or-create (is_dm, idempotent 200/201, self/unknown/anonymous guards, 2-member group non-collision) proven by pytest",
+        "[AC-BE-MIGRATION|EV-BE-1] alembic heads == 009_contacts; the 009 segment roundtrip (stamp head -> downgrade -1 -> upgrade head, inspector-asserted) green inside verify:backend; suite green, counts grown from 184",
+        "[AC-FE-LOGIC|EV-FE-1] adapter URL shapes + avatar fallback, cast-idiom slice, controller flows incl. opener injection proven by mocha; no UI file touched by the logic wave",
+        "[AC-FE-UI|EV-FE-2] /contacts route + bottom-bar wiring + simplified sidebar + reused add-modal (badge switch) + menu (Создать/Найти все чаты stub/Отмена) + delete confirm + XSS + chatPaneOpen pin proven by mocha; guard strict zero",
+        "[AC-PROCESS|EV-FE-2] verify + verify:backend + guard strict green with grown counts; progress-log entry and NEXT.md record WITH the not-done note; no write outside the manifest write-sets"
+    ],
+    "securityGates": [
+        {
+            "id": "SEC-CONTACTS-AUTHZ",
+            "statement": "All contacts/DM endpoints sit behind get_current_user (cookie JWT): anonymous 401 integration-pinned; contact rows are scoped strictly by owner_id — another user's contacts never appear (isolation-pinned); the DM endpoint never leaks chats the caller is not a member of (both memberships required by construction); mutating frontend calls carry readCsrfToken().",
+            "evidenceIds": [
+                "EV-BE-1"
+            ]
+        },
+        {
+            "id": "SEC-CONTACTS-XSS",
+            "statement": "Modal slot HTML is built exclusively through the escapeHtml-based builder (renderAddUserModalContent precedent); ContactItem and page templates render user data through double braces only; a <script> payload in a login or display_name renders as text (mocha XSS test); triple braces exist only for the pre-escaped modal slot HTML.",
+            "evidenceIds": [
+                "EV-FE-2"
+            ]
+        }
+    ],
+    "budgetPolicy": {
+        "units": "tokens-and-resources",
+        "reroute": "pause-and-review",
+        "maxTotalTokens": 90000,
+        "maxParallelWorkstreams": 1,
+        "maxRunWallSeconds": 14400,
+        "criticalPathWallSeconds": 10800,
+        "aggregateWorkstreamWallSeconds": 10800,
+        "retryReserveWallSeconds": 3600
+    },
+    "budgets": {
+        "defaultWorkstreamTokens": 40000,
+        "maxEvidenceBytesPerRun": 4194304
+    },
+    "contextLimits": {
+        "profile": "small-context-profile.v1",
+        "maxPlanContextBytes": 120000,
+        "maxRenderedPacketBytes": 40000,
+        "smallContextPacketBytes": 30000,
+        "maxReferenceFilesPerPacket": 12,
+        "includeOnlyOwnedWrites": true,
+        "excludeRuntimeWorkArtifacts": true
+    },
+    "tierResolution": {
+        "status": "RESOLVED",
+        "tier": "S2",
+        "requestedTier": "S2",
+        "reason": "multiple-executable-owners + architecture-risk + browser-risk + security-risk resolved by agent-lifecycle tier resolve",
+        "independentReviewRequired": true,
+        "requestPath": "tasks/2026-11-01-contacts/tier-request.json",
+        "resolutionPath": "tasks/2026-11-01-contacts/tier-resolution.json",
+        "requestDigest": "0701a4037a0105508086d1bbecf39135964efe5ec25798cb43c07941d27bebbf"
+    },
+    "planReview": {
+        "required": true,
+        "reviewerClass": "independent-plan-reviewer",
+        "maxRounds": 2,
+        "implementationAuthorized": false,
+        "report": "tasks/2026-11-01-contacts/plan-review.json",
+        "reviewedRevision": 3,
+        "verdict": "READY_TO_FREEZE"
+    },
+    "planFiles": [
+        "tasks/2026-11-01-contacts/acceptance-criteria.md",
+        "tasks/2026-11-01-contacts/developer-overview.md",
+        "tasks/2026-11-01-contacts/plan-review-request.md",
+        "tasks/2026-11-01-contacts/plan-review.json",
+        "tasks/2026-11-01-contacts/plan.manifest.json",
+        "tasks/2026-11-01-contacts/plan.md",
+        "tasks/2026-11-01-contacts/specification.json",
+        "tasks/2026-11-01-contacts/tier-request.json",
+        "tasks/2026-11-01-contacts/tier-resolution.json"
+    ]
+}
