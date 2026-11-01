@@ -1,0 +1,191 @@
+{
+    "schemaVersion": "agent-plan-review.v1",
+    "packageId": "2026-11-01-settings",
+    "planRevision": 1,
+    "reviewId": "review-2026-11-01-settings-freeze-r1",
+    "fullReview": true,
+    "verdict": "CHANGES_REQUIRED",
+    "reviewedPlanHash": "053d539776d811467a77065c32caafaf688f67fbff26d58625309dbba58c0b61",
+    "reviewer": {
+        "id": "claude-code-independent-subagent",
+        "independent": true,
+        "runId": "audit-run-20261101-settings-plan-r1",
+        "surface": "audit-agent-plan"
+    },
+    "findings": [
+        {
+            "id": "F-1",
+            "severity": "major",
+            "title": "token_version VERIFY resolves to BUILD, but core/deps.py is readOnly: the pinned 401-after for old access tokens is unachievable within ownership",
+            "detail": "The 'ver' claim IS embedded at issue time (backend/app/core/security.py:46 in create_token; services/auth.py:48 and 55 in issue_tokens) and the refresh path DOES compare it (services/auth.py:70, rotate_refresh_token: user.token_version != token_version -> 401). But get_current_user (backend/app/core/deps.py:59-67) decodes the access token, loads the user and checks only is_active — it NEVER compares payload['ver'] against user.token_version. The plan's open 'VERIFY' (manifest REQ-BE-SETTINGS plannedItems 'VERIFY core/security.py + deps.py consume token_version in the access-token identity; pin a real 401-after'; developer-overview.md:21-23,47-50) is determinable NOW and the answer is NO. AC-BE-SETTINGS pins 'POST /auth/logout-all bumps token_version (a previously issued access token 401 after — pinned)' and SEC-AUTH-MUTATIONS pins the same — unachievable without editing core/deps.py, which the manifest lists in WS-BE-SETTINGS readOnly (plan.manifest.json:161-167) and no workstream writes. The same comparison is what makes change_password actually kill other sessions' access tokens rather than only their refresh tokens.",
+            "files": [
+                "backend/app/core/deps.py",
+                "backend/app/core/security.py",
+                "backend/app/services/auth.py",
+                "tasks/2026-11-01-settings/plan.manifest.json",
+                "tasks/2026-11-01-settings/plan.md",
+                "tasks/2026-11-01-settings/developer-overview.md"
+            ],
+            "requiredFix": "Reword the planned item from VERIFY to BUILD: get_current_user compares the access token's 'ver' claim against users.token_version and raises 401 on mismatch (security.py needs no change — the claim is already embedded; decode_token already returns the payload). Add backend/app/core/deps.py to WS-BE-SETTINGS writes (remove it from readOnly). Keep the pinned 401-after test with a previously issued token."
+        },
+        {
+            "id": "F-2",
+            "severity": "major",
+            "title": "Frontend user data path unowned: toAuthUser synthesizes/drops the new fields, and every new cross-feature seam (fetchUser refresh, rejoinChat from the profile page) requires the unowned composition file features/index.ts",
+            "detail": "toAuthUser (src/features/auth/api/own.ts:30-42) is the single mapping of the backend UserResponse into the app user: display_name: response.email, phone: '' (OwnUserResponse at own.ts:18-26 carries nothing else). The plan's OWN flows route through it: boot/login fetchUser (features/auth/controller.ts:84-97 -> port.me) and the planned 'profile/password success triggers the auth user refresh (fetchUser)' would OVERWRITE an edited display_name/phone with the synthesized values, making the flagship Account flow visibly revert. send_read_receipts (the Privacy toggle's initial state) never reaches the frontend at all: AuthUser (features/auth/ports.ts:6-15) has no such field, AppState.user (src/utils/Store.ts:22-31) has no such field, and the logic wave's planned Store edit names only display_name/phone (plan.manifest.json:360). Note also 'AppState.user GROWS display_name/phone' is stale — both fields already exist as required strings (Store.ts:22-31, ChatUser in utils/types.ts:70-80); the real change is nullability + real values + send_read_receipts. Composition: 'authController.fetchUser via injection like the logout seam — consumer-side setter, features/index.ts untouched here' (plan.manifest.json:362) is not implementable — the logout seam WAS wired in features/index.ts:21-24 (setProfileController(new ProfileFeatureController(profilePort, () => authController.logout()))), and guard-architecture.mjs blocks direct features/profile -> features/auth imports (cross-feature blocker, script lines 12 and 170), so any new injected dependency must be wired in the composition root. The same applies to the UI wave's 'Chats section «Вернуться» -> ChatsController.rejoinChat' from features/profile/pages/profile (plan.manifest.json:435): a features/profile -> features/chats call is guard-blocked; the precedents (setChatOpener, setContactsIntegration, features/index.ts:28-40) are all composition-file injections. None of src/features/auth/api/own.ts, src/features/auth/ports.ts, src/features/index.ts is in any write-set.",
+            "files": [
+                "src/features/auth/api/own.ts",
+                "src/features/auth/ports.ts",
+                "src/features/index.ts",
+                "src/features/auth/controller.ts",
+                "src/utils/Store.ts",
+                "src/utils/types.ts",
+                "tasks/2026-11-01-settings/plan.manifest.json"
+            ],
+            "requiredFix": "Add src/features/auth/api/own.ts, src/features/auth/ports.ts and src/features/index.ts to WS-FE-SETTINGS-LOGIC (or index.ts to WS-FE-SETTINGS-UI if the rejoin seam is wired there). Specify: OwnUserResponse/AuthUser/AppState.user grow display_name (nullable), phone (nullable) and send_read_receipts; toAuthUser passes them through instead of synthesizing; the fetchUser and rejoinChat seams are injected in features/index.ts following the setProfileController/setChatOpener pattern; correct 'grows' to 'extends/nulls the already-present fields'."
+        },
+        {
+            "id": "F-3",
+            "severity": "major",
+            "title": "WS-message delivery seam unowned: sound/notifications for background chats are only observable in features/chats/ws/own.ts (or the chat page), not in the owned messenger component",
+            "detail": "The UI wave plans 'on WS message — sound ... browser notification ... document.hidden' with messenger.ts/.hbs and message.ts/.hbs in its write-set. WS messages land in the message branch of the own adapter (src/features/chats/ws/own.ts:181-193); the exact delivery predicates already exist there as incrementUnread (own.ts:117-134: state.selectedChat !== chatId && state.user?.id !== authorId — not the open chat, not my own echo). The Messenger component cannot see background-chat messages: its withStore selector reads only state.messages[selectedChatId] and the selected chat's info (src/components/messenger/messenger.ts:659-683), and its componentDidUpdate length-diff (messenger.ts:298-315) therefore covers only the OPEN chat. So the owned seam delivers sound/notifications for the chat the user is looking at, while the background-chat case — the entire point of a notification and of the document.hidden gate — has no owned file. src/features/chats/ws/own.ts, its ws.test.ts, and the composing page (src/features/chats/pages/chat/chat.ts) are in no write-set.",
+            "files": [
+                "src/features/chats/ws/own.ts",
+                "src/features/chats/ws/ws.test.ts",
+                "src/components/messenger/messenger.ts",
+                "tasks/2026-11-01-settings/plan.manifest.json"
+            ],
+            "requiredFix": "Name the delivery-hook seam explicitly and own it: add src/features/chats/ws/own.ts (+ ws.test.ts) to WS-FE-SETTINGS-UI (or LOGIC) writes, hooking a small delivery helper (reading utils/preferences, WebAudio ping + Notification gated by on/granted/document.hidden) next to incrementUnread where the not-open/not-own predicates already live. Alternatively rescope the AC honestly to open-chat-only delivery — but as written 'WS message' implies all chats."
+        },
+        {
+            "id": "F-4",
+            "severity": "major",
+            "title": "Receipts-gate semantics overstated: the read marker is self-facing only — no peer ever sees it, so 'others keep seeing unread' / 'peer unread preserved' is not deliverable by the planned mechanism",
+            "detail": "The gate itself is sound and single-lever: MessageService.history's inline mark_read (backend/app/services/messages.py:85-89, via ChatService.mark_read, services/chats.py:206-213, which already no-ops archived rows) is the ONLY mark_read caller. But chat_last_reads has exactly one consumer: the viewer's OWN unread_counts (backend/app/repositories/chats.py:124-149 — 'чужие сообщения новее последнего прочитанного маркера' of the requesting user), surfaced as the CALLER's unread_count in GET /chats (backend/app/api/v1/endpoints/chats.py:46,61). No endpoint, schema or WS payload exposes a member's last_read to peers (verified by grep across backend: chat_last_reads is referenced only by the repository/model/migration). So skipping mark_read when the viewer's send_read_receipts is false keeps THE VIEWER'S OWN badge unread; the sender's view never changes either way. plan.md:18-20 ('others keep seeing unread'), the requirement ('peer unread preserved', plan.manifest.json:39), plannedItems:222, AC-BE-SETTINGS ('peer unread stays — pinned', plan.manifest.json:456) and developer-overview.md:56-57 ('their outgoing receipts ... test from both sides') all describe an effect the current surfaces cannot produce, and a 'test from both sides' instruction is vacuous on the sender side.",
+            "files": [
+                "backend/app/services/messages.py",
+                "backend/app/services/chats.py",
+                "backend/app/repositories/chats.py",
+                "backend/app/api/v1/endpoints/chats.py",
+                "tasks/2026-11-01-settings/plan.md",
+                "tasks/2026-11-01-settings/plan.manifest.json",
+                "tasks/2026-11-01-settings/developer-overview.md"
+            ],
+            "requiredFix": "Reword the requirement, AC and overview to the actual semantics: with receipts off, the viewer's own history loads no longer clear their own unread badge (pin: receipts-off -> history load -> GET /chats unread_count unchanged; receipts-on -> 0). State explicitly that sender-visible read receipts (peer-exposed last_read or WS read events) do not exist and are a non-goal of this plan — or scope them as new work if the operator wants true receipts."
+        },
+        {
+            "id": "F-5",
+            "severity": "major",
+            "title": "display_name fallback write-set gap: /contacts needs repositories/contacts.py and services/contacts.py, both unowned",
+            "detail": "ContactResponse.from_parts derives display_name from the email (backend/app/schemas/contact.py:26-43) and takes no display_name parameter. Its callers feed it from repository rows: services/contacts.py:23 (list_for_owner) and services/contacts.py:37 (add), sourced from ContactRepository.list_for_owner (backend/app/repositories/contacts.py:41-52) which selects only Contact.contact_user_id, User.email, User.avatar_file_id, Contact.created_at — not User.display_name. Delivering the pinned '/contacts' fallback (AC-BE-SETTINGS: 'display_name falls back to the email local-part in /users search, /contacts and chat members', plan.manifest.json:456) requires editing the repository query, the from_parts signature and both call sites. The manifest's WS-BE-SETTINGS writes list only schemas/contact.py for this (plan.manifest.json:152); repositories/contacts.py and services/contacts.py are in no write-set. (The other two builders are fine: UserSearchItem.from_user receives the full User (schemas/user.py:16-25, endpoints/users.py:49); to_member_brief's feed queries list_members/list_members_for_chats (repositories/chats.py:171-198) live in the owned repositories/chats.py.)",
+            "files": [
+                "backend/app/schemas/contact.py",
+                "backend/app/services/contacts.py",
+                "backend/app/repositories/contacts.py",
+                "tasks/2026-11-01-settings/plan.manifest.json"
+            ],
+            "requiredFix": "Add backend/app/repositories/contacts.py and backend/app/services/contacts.py to WS-BE-SETTINGS writes and extend the planned item: list_for_owner selects User.display_name; from_parts takes the display_name; both call sites pass it. (Same class of check: the /files/usage response model has no owned home — either inline it in the owned endpoints/files.py or add schemas/file.py to writes.)"
+        },
+        {
+            "id": "F-6",
+            "severity": "major",
+            "title": "Theme sweep gate blind spots: ~27 raw color literals escape the '$token' grep, utils/mixins.scss is wrongly called stylelint-excluded, and the dark-mode scrollbar artifact is unstated",
+            "detail": "The AC/constraint gate is worded over '$color tokens' only ('no raw color $tokens remain in themed files outside libs/scrollbar exemptions', plan.manifest.json:99,471). But the component files also carry raw literals that are equally theme-breaking and invisible to that grep: button.scss:43, chat.scss:347, chat-list-user.scss:25-26,31,151 (plus a comment at :147), contact-item.scss:99, contacts.scss:59-60, messenger.scss:69,74,133,344,381,383,526,541,584, modal.scss:29,289, story-viewer.scss:34,55,62,92,109,122 — ~27 occurrences of rgb()/hex that would stay hardcoded in dark mode while AC-FE-THEME 'sweep complete' passes. The exemption rationale is also factually off: REQ-FE-THEME calls 'libs/normalize, utils/mixins, utils/scrollbar' stylelint-excluded zones, but .stylelintignore excludes only dist/**, src/scss/libs/** and src/scss/utils/scrollbar.scss — utils/mixins.scss IS linted (its own /* stylelint-disable */ at mixins.scss:56 is a suppression, not an exclusion). The precise grep exemption set is: variable.scss (definitions/aliases remain by design), utils/mixins.scss (the scrollbar-slim $thumb default $thirdTextColor, mixins.scss:3), libs/**, utils/scrollbar.scss. Finally, scrollbar-slim's default compiles the light accent into every @include consumer (utils/scrollbar.scss:3-5 -> .messenger__container), so dark mode keeps light-colored scrollbars — a deliberate but unstated artifact.",
+            "files": [
+                "src/scss/components/messenger.scss",
+                "src/scss/components/modal.scss",
+                "src/scss/utils/mixins.scss",
+                "src/scss/utils/scrollbar.scss",
+                ".stylelintignore",
+                "tasks/2026-11-01-settings/plan.manifest.json",
+                "tasks/2026-11-01-settings/acceptance-criteria.md"
+            ],
+            "requiredFix": "Rewrite the gate to cover BOTH '$color token references' AND raw color literals (hex/rgb()/hsl()) in the themed component files, with the explicit exemption list above and a documented allowlist for intentional constants (e.g. story-viewer black/white overlays); correct the 'stylelint-excluded' claim for mixins.scss; add one line stating scrollbars keep the light thumb in dark mode (accepted artifact, or consumers pass var() as the $thumb argument)."
+        },
+        {
+            "id": "F-7",
+            "severity": "minor",
+            "title": "'palette/metric tokens' as custom properties is wrong for metrics: $tablet/$desktop are used inside @media arithmetic where var() is invalid",
+            "detail": "variable.scss metrics are $borderRadiusLoginButton/$hoverTransition/$bubbleRadius (variable.scss:15,18,43) and the breakpoints $tablet/$desktop (variable.scss:34-35). The breakpoints are used in @media with arithmetic in seven owned files: chat-list-create.scss:37,46; chat.scss:284,311; contacts.scss:99,114; messenger.scss:617; modal.scss:241,254; story-viewer.scss:154 — CSS custom properties cannot appear in media queries and var() arithmetic is not compile-time, so 'the palette/metric tokens declared as :root CSS custom properties' (plan.manifest.json:293; plan.md:89-92 'every color/metric token') is a trap if taken literally. plan.md's escape hatch ('SCSS $var kept as an alias ONLY where non-color math needs it') covers it only loosely and the manifest planned item does not. Composite color-bearing tokens (gradients/shadows/borders: variable.scss:16-17,19,22-31,38-44) also need a stated strategy — whole-value custom properties or decomposition into color-part tokens.",
+            "files": [
+                "src/scss/utils/variable.scss",
+                "tasks/2026-11-01-settings/plan.manifest.json",
+                "tasks/2026-11-01-settings/plan.md"
+            ],
+            "requiredFix": "Scope the custom-property conversion to COLOR tokens (including whole-value overrides for the composite gradient/shadow/border tokens); state that metrics ($tablet, $desktop, radii, transition) stay compile-time SCSS only with no duplicate :root vars."
+        },
+        {
+            "id": "F-8",
+            "severity": "minor",
+            "title": "DM titles do NOT improve via the builders: create_dm denormalizes the email local part at creation and nothing in the plan touches it",
+            "detail": "create_dm stores the title at creation from the target email local part (backend/app/services/chats.py:98-101, 'the target email local part as the denormalized title'), and the chat list renders the stored chat.title (endpoints/chats.py:56). The three builders (UserSearchItem, ContactResponse, to_member_brief) never feed the DM title, so plan.md contract item 9 ('contacts, member briefs, DM titles, search results all improve without further changes') and developer-overview.md:7-9 ('immediately improves names across contacts, member briefs, DM titles and search') are false for DM titles — both for rows created before the change and for new ones (create_dm is not in scope). The AC correctly pins only /users search, /contacts and chat members.",
+            "files": [
+                "backend/app/services/chats.py",
+                "tasks/2026-11-01-settings/plan.md",
+                "tasks/2026-11-01-settings/developer-overview.md"
+            ],
+            "requiredFix": "Strike 'DM titles' from the improvement claims and state explicitly: DM titles are denormalized at creation from the email local part and do not change in this plan (accepted inconsistency; renaming existing DMs or display_name-based titles would be separate work with its own staleness semantics)."
+        },
+        {
+            "id": "F-9",
+            "severity": "minor",
+            "title": "Form/Input contract cannot render read-only rows — the Account section needs the plain-markup nuance (or component ownership)",
+            "detail": "Form renders exactly one LabeledInput per inputs[] entry plus buttons (src/components/form/form.hbs:1-13, form.ts:37-116); every input is validated on submit (form.ts:81-100) and serialized (form.ts:102-116); Input emits a bare <input> with no readonly/disabled/value support (src/components/input/input/input.hbs) and LabeledInput requires a validate function. So 'read-only email/login rows' (plan.manifest.json:434) is not expressible through the existing Form idiom, and components/form|input are in no write-set. The owned route exists: render the read-only rows as plain markup in the owned profile.hbs (styled by the owned settings-sections.scss) and keep the Form for the editable display_name/phone pair.",
+            "files": [
+                "src/components/form/form.ts",
+                "src/components/form/form.hbs",
+                "src/components/input/labeledInput/labeledInput.ts",
+                "tasks/2026-11-01-settings/plan.manifest.json"
+            ],
+            "requiredFix": "Add the nuance to the UI planned item: email/login render as plain read-only rows in profile.hbs (settings-sections.scss styling), the Form component stays untouched; or, if the Form must render them, add the form/input component files to WS-FE-SETTINGS-UI writes."
+        },
+        {
+            "id": "F-10",
+            "severity": "minor",
+            "title": "Wall-clock budget arithmetic inconsistent: workstream walls sum to 16200s against declared aggregate/critical path 14400s, and worst case exceeds maxRunWallSeconds",
+            "detail": "executionPolicy.maxWallSeconds: WS-BE-SETTINGS 3600 + WS-FE-THEME 3600 + WS-FE-SETTINGS-LOGIC 3600 + WS-FE-SETTINGS-UI 5400 = 16200s (plan.manifest.json:206,286,354,427), but budgetPolicy declares criticalPathWallSeconds 14400 and aggregateWorkstreamWallSeconds 14400 (plan.manifest.json:589-590) — an 1800s mismatch; with maxParallelWorkstreams/maxParallelTasks 1 the run is serial, so 16200 + retryReserveWallSeconds 3600 = 19800s > maxRunWallSeconds 18000. Token budget is fine: 4 x defaultWorkstreamTokens 32000 = 128000 <= maxTotalTokens 130000; DAG and sequential waves are consistent with maxParallelTasks 1.",
+            "files": [
+                "tasks/2026-11-01-settings/plan.manifest.json"
+            ],
+            "requiredFix": "Reconcile the numbers: either raise aggregate/criticalPath to 16200 and maxRunWallSeconds to >= 19800, or trim the per-workstream walls (e.g. UI 5400 -> 3600) so the serial sum plus reserve fits the declared caps."
+        }
+    ],
+    "reviewVerdict": {
+        "schemaVersion": "agent-review-verdict.v1",
+        "overall": "CHANGES_REQUIRED",
+        "dimensions": {
+            "requirementFit": {
+                "status": "PASS",
+                "reasonCode": "operator-asks-covered",
+                "summary": "All four operator scope groups from 2026-11-01 are covered by requirements -> workstreams -> ACs -> evidence with correct priorities; the six /settings items map one-to-one onto the existing sidebar markup (profile.hbs:16-25, Account/Chats + Appearance/Notification/Privacy/Data Usage); non-goals are sane (email-as-login immutability, jsdom-absent APIs stubbed, flash elimination deferred). Caveat carried by F-4: the Privacy requirement's user-visible promise is misdescribed relative to what the mechanism delivers."
+            },
+            "implementationQuality": {
+                "status": "FAIL",
+                "reasonCode": "ownership-gaps-block-pinned-items",
+                "summary": "Verified sound against source: auth cookie/csrf/origin idioms (require_csrf includes validate_origin, deps.py:33-38; endpoints/auth.py:42,56,69,91), the revoke-all+reissue pattern to copy (rotate_refresh_token bump+issue, services/auth.py:62-75; _set_session, endpoints/auth.py:23-31; one token_version bump kills all stateless refresh tokens), rejoin route order (literal second segment beside /{chat_id}/leave, endpoints/chats.py:165-178; no single-segment GET route can swallow /files/usage), add_member's reactivation branch refactorable to a shared helper (services/chats.py:299-308), the 010 segment-test pattern and explicit-downgrade-target trap (test_migration_010_chat_leave_segment.py docstring), to_member_brief fed by owned repository queries, files owner_id/size_bytes ready for SUM/COUNT (models/file.py:19,23), the theme write-set covering every component scss file and disjoint from the UI wave's new files, and existing write-set disjointness holding after the ownership fix. But five pinned items are not implementable within the declared ownership: F-1 (deps.py readOnly yet the 401-after pin requires building the ver comparison there), F-2 (auth adapter synthesizes/drops the new fields; the fetchUser refresh the plan itself mandates would revert edits; send_read_receipts never reaches the UI; both new cross-feature seams need the unowned composition file features/index.ts per the guard's cross-feature blocker), F-3 (WS delivery gates observable only in the unowned ws/own.ts for background chats), F-5 (contacts fallback needs two unowned backend files), F-9 (read-only rows inexpressible in the Form contract without a stated plain-markup route)."
+            },
+            "evidenceQuality": {
+                "status": "FAIL",
+                "reasonCode": "acceptance-proves-less-than-claimed",
+                "summary": "Evidence routes themselves are coherent (EV-BE-1 verify:backend, EV-FE-THEME/EV-FE-1/EV-FE-2 verify + guard strict; runnable, scoped commands in validation.commands; heads == 011_settings checkable; structural completeness-check PASS with zero blockers and canonical planDigest 053d5397...). Two frozen ACs as worded prove less than they claim: F-4 — 'peer unread stays — pinned' has no peer-facing observable (chat_last_reads feeds only the caller's own unread_counts, repositories/chats.py:124-149 -> endpoints/chats.py:46,61), so the pinned test must be re-anchored to the viewer's own badge; F-6 — the '$token' grep gate passes while ~27 raw rgb()/hex literals (messenger.scss, modal.scss, chat.scss, story-viewer.scss et al.) stay hardcoded in dark mode, and the stated stylelint exemptions are factually wrong for utils/mixins.scss (.stylelintignore covers libs/** and scrollbar.scss only)."
+            },
+            "residualRisk": {
+                "status": "FAIL",
+                "reasonCode": "security-gate-unbacked-and-budget-mismatch",
+                "summary": "SEC-AUTH-MUTATIONS promises 'logout-all invalidates previously issued access tokens (401-after pinned)' — as planned this security claim rests on a verification whose answer is already knowable and negative (F-1: no ver comparison in get_current_user, deps.py:59-67), and change_password's 'kills other sessions' is similarly only refresh-level until that comparison exists. XSS posture is sound (double braces in profile.hbs; escapeHtml builders in messenger.ts:99-101 precedent). Migration risk is well-handled (additive 011, explicit downgrade target, 001-010 in forbiddenWrites, segment test owned). F-10: the wall-clock arithmetic does not reconcile (16200s serial worst case + 3600s reserve vs maxRunWallSeconds 18000; aggregate declared 14400) — retry reserve cannot cover a maximally unlucky run. All defects are correctable within the current intent; no BLOCKED-level ambiguity."
+            }
+        },
+        "routing": {
+            "target": "plan-revision",
+            "nextAction": "revise"
+        }
+    },
+    "rounds": [
+        {
+            "round": 1,
+            "verdict": "CHANGES_REQUIRED",
+            "findings": 10,
+            "summary": "Structural completeness-check PASS (planDigest 053d5397..., zero blockers) and the previously-fixed write-set disjointness verified clean (no path in two roles; THEME owns all pre-existing scss, UI only the new settings-sections.scss + _all.scss), but six majors block freeze. F-1: the access-token path never compares the 'ver' claim to users.token_version (core/deps.py:59-67; comparison exists only in rotate_refresh_token, services/auth.py:70) — the plan's 'VERIFY' resolves to BUILD yet core/deps.py sits in WS-BE-SETTINGS readOnly, making the pinned logout-all 401-after unachievable within ownership. F-2: toAuthUser (features/auth/api/own.ts:30-42) synthesizes display_name=email/phone='' and drops send_read_receipts, so the plan's own fetchUser-refresh would revert Account edits and the Privacy toggle has no initial state; the fetchUser and rejoinChat cross-feature seams both require the unowned composition root features/index.ts (guard blocks features/profile -> features/auth|chats). F-3: 'on WS message' sound/notifications are only observable in the unowned features/chats/ws/own.ts:181-193 for background chats (Messenger's selector reads just the open chat, messenger.ts:659-683). F-4: the read marker is self-facing only (chat_last_reads feeds solely the caller's unread_counts, repositories/chats.py:124-149) — 'others keep seeing unread'/'peer unread preserved' is undeliverable; reword to the viewer's own badge and non-goal sender-visible receipts. F-5: the /contacts fallback needs unowned repositories/contacts.py + services/contacts.py (list_for_owner:41-52 selects no display_name). F-6: the theme grep gate covers $tokens only while ~27 raw rgb()/hex literals persist in component files, utils/mixins.scss is wrongly called stylelint-excluded, and the light-scrollbar-in-dark-mode artifact is unstated. Minors: F-7 metrics (esp. $tablet/$desktop in @media arithmetic) must stay compile-time; F-8 'DM titles improve' is false (create_dm denormalizes at creation, services/chats.py:98-101); F-9 Form cannot render read-only rows — specify plain-markup rows in the owned profile.hbs; F-10 wall-clock budgets do not reconcile (16200+3600 vs maxRunWallSeconds 18000). All correctable within intent; round 2 available within maxRounds 2."
+        }
+    ]
+}

@@ -1,7 +1,7 @@
 {
     "schemaVersion": "agent-plan-manifest.v1",
     "status": "DRAFT",
-    "planRevision": 1,
+    "planRevision": 2,
     "package": {
         "id": "2026-11-01-settings",
         "title": "Working /settings surface: account, chat archive, theme, notifications, privacy, data usage",
@@ -36,7 +36,7 @@
             {
                 "id": "REQ-BE-SETTINGS",
                 "title": "Backend: user columns 011, profile/password/logout-all, rejoin, usage, receipts gate, name fallback",
-                "description": "Migration 011_settings: users.display_name String(120) NULLable (NULL falls back to the email local-part in UserSearchItem.from_user, ContactResponse and to_member_brief), users.phone String(30) NULLable, users.send_read_receipts Boolean NOT NULL server_default '1'; segment roundtrip test with the EXPLICIT downgrade target '010_chat_leave'. PUT /auth/profile {display_name?, phone?, send_read_receipts?} (csrf, validate_origin; display_name trimmed 0..120 empty->NULL, phone NULL or 3..30). PUT /auth/password {old_password, new_password} (csrf): old verified 401 invalid_credentials, new 12..256, rehash, revoke ALL refresh tokens + reissue current-session cookies. POST /auth/logout-all (csrf): bump token_version (VERIFY the access-token validation consumes it — pin a real 401-after with a previously issued token), revoke refresh, clear cookies. Auth responses (login/register/me/refresh) grow display_name/phone/send_read_receipts additive. POST /chats/{chat_id}/rejoin: reactivate the caller's own archived row (left_at -> NULL; share the reactivation helper with add_member), kicked/no-row 403 chat_membership_required, active idempotent 204, unknown 404, anonymous 401. GET /files/usage: caller's {total_bytes, file_count} one SUM/COUNT. MessageService.history skips mark_read when the recipient's send_read_receipts is false (peer unread preserved).",
+                "description": "Migration 011_settings: users.display_name String(120) NULLable (NULL falls back to the email local-part in UserSearchItem.from_user, ContactResponse and to_member_brief; DM titles stored at creation keep their denormalized local-part — create_dm MAY prefer the target display_name for NEW dms, one owned line in services/chats.py), users.phone String(30) NULLable, users.send_read_receipts Boolean NOT NULL server_default '1'; segment roundtrip test with the EXPLICIT downgrade target '010_chat_leave'. PUT /auth/profile {display_name?, phone?, send_read_receipts?} (csrf, validate_origin; display_name trimmed 0..120 empty->NULL, phone NULL or 3..30). PUT /auth/password {old_password, new_password} (csrf): old verified 401 invalid_credentials, new 12..256, rehash, revoke ALL refresh tokens + reissue current-session cookies. POST /auth/logout-all (csrf): bump token_version AND BUILD the missing comparison: create_token already embeds a ver claim (core/security.py:46) and rotate_refresh_token compares it for refresh tokens, but get_current_user (core/deps.py:59-67) never checks it — add the users.token_version comparison there (core/security.py unchanged), then pin a real 401-after with a previously issued access token, revoke refresh, clear cookies. Auth responses (login/register/me/refresh) grow display_name/phone/send_read_receipts additive. POST /chats/{chat_id}/rejoin: reactivate the caller's own archived row (left_at -> NULL; share the reactivation helper with add_member), kicked/no-row 403 chat_membership_required, active idempotent 204, unknown 404, anonymous 401. GET /files/usage: caller's {total_bytes, file_count} one SUM/COUNT. MessageService.history skips mark_read when the VIEWER's send_read_receipts is false: the only consumer of chat_last_reads is the viewer's OWN unread badge (repositories/chats.py unread_counts -> GET /chats unread_count) — the gate keeps the VIEWER's own badge unread after reading; sender-visible read receipts are an explicit non-goal (no peer surface reads the marker today).",
                 "priority": "P1",
                 "source": "operator request 2026-11-01 (Account + Chats archive scope groups)",
                 "acceptanceIds": [
@@ -50,7 +50,7 @@
             {
                 "id": "REQ-FE-THEME",
                 "title": "Theme: SCSS palette to CSS custom properties, dark overrides, theme module",
-                "description": "variable.scss declares the palette as :root CSS custom properties; theme-dark.scss (new, imported from index.scss) overrides them under [data-theme='dark'] (curated dark palette; no comments in scss). Mechanical sweep: component scss files reference var(--token) instead of $color tokens (libs/normalize, utils/mixins, utils/scrollbar stay untouched — stylelint-excluded zones). utils/theme.ts: 'light'|'dark'|'system', localStorage key chatty-theme, matchMedia('(prefers-color-scheme: dark)') listener in system mode, sets document.documentElement.dataset.theme ('dark' set / removed); bootstrapped from main.ts import; unit tests (persistence, listener, dataset).",
+                "description": "variable.scss declares the palette as :root CSS custom properties; theme-dark.scss (new, imported from index.scss) overrides them under [data-theme='dark'] (curated dark palette; no comments in scss). Mechanical sweep scoped to COLOR tokens only (metrics like $tablet/$desktop stay SCSS variables — @media arithmetic cannot use var()): component scss files reference var(--token) instead of color tokens AND raw hex/rgb() color literals in component files are extracted to tokens (messenger/modal/chat/story-viewer/button/contacts/contact-item/chat-list-user carry ~27 such literals); exemption set = variable.scss (the token source), utils/mixins.scss, utils/scrollbar.scss, libs/** (mixins.scss IS stylelint-linted — the stated exemption is a plan choice, not a lint fact); the light-scrollbar-in-dark-mode artifact is documented as accepted unless trivially fixable via CSS scrollbar-color with vars. utils/theme.ts: 'light'|'dark'|'system', localStorage key chatty-theme, matchMedia('(prefers-color-scheme: dark)') listener in system mode, sets document.documentElement.dataset.theme ('dark' set / removed); bootstrapped from main.ts import; unit tests (persistence, listener, dataset).",
                 "priority": "P1",
                 "source": "operator request 2026-11-01 (Appearance group)",
                 "acceptanceIds": [
@@ -145,14 +145,17 @@
                 "backend/app/api/v1/endpoints/auth.py",
                 "backend/app/api/v1/endpoints/chats.py",
                 "backend/app/api/v1/endpoints/files.py",
+                "backend/app/core/deps.py",
                 "backend/app/models/user.py",
                 "backend/app/repositories/chats.py",
+                "backend/app/repositories/contacts.py",
                 "backend/app/repositories/files.py",
                 "backend/app/schemas/auth.py",
                 "backend/app/schemas/contact.py",
                 "backend/app/schemas/user.py",
                 "backend/app/services/auth.py",
                 "backend/app/services/chats.py",
+                "backend/app/services/contacts.py",
                 "backend/app/services/messages.py",
                 "backend/tests/integration/auth/test_settings_api.py",
                 "backend/tests/integration/chat/test_rejoin_api.py",
@@ -160,7 +163,6 @@
             ],
             "readOnly": [
                 "backend/app/core/security.py",
-                "backend/app/core/deps.py",
                 "backend/tests/conftest.py",
                 "backend/tests/integration/chat/test_leave_api.py",
                 "backend/tests/integration/chat/test_dm_api.py"
@@ -308,10 +310,13 @@
                 "WS-BE-SETTINGS"
             ],
             "writes": [
+                "src/features/auth/api/own.ts",
+                "src/features/auth/ports.ts",
                 "src/features/chats/api/own.ts",
                 "src/features/chats/chats.test.ts",
                 "src/features/chats/controller.ts",
                 "src/features/chats/ports.ts",
+                "src/features/index.ts",
                 "src/features/profile/api/api.test.ts",
                 "src/features/profile/api/own.ts",
                 "src/features/profile/controller.ts",
@@ -322,9 +327,7 @@
                 "src/utils/preferences.ts",
                 "src/utils/types.ts"
             ],
-            "readOnly": [
-                "src/features/auth/controller.ts"
-            ],
+            "readOnly": [],
             "forbiddenWrites": [],
             "launchGate": "WS-BE-SETTINGS accepted; npm run verify green at base.",
             "capabilityHints": [
@@ -386,6 +389,8 @@
                 "src/components/profile-settings/profile-settings.hbs",
                 "src/components/profile-settings/profile-settings.test.ts",
                 "src/components/profile-settings/profile-settings.ts",
+                "src/features/chats/ws/own.ts",
+                "src/features/chats/ws/ws.test.ts",
                 "src/features/profile/pages/profile/profile.hbs",
                 "src/features/profile/pages/profile/profile.test.ts",
                 "src/features/profile/pages/profile/profile.ts",
@@ -453,7 +458,7 @@
                     "EV-BE-1"
                 ],
                 "independentEvidenceIds": [],
-                "statement": "Migration 011 (display_name/phone/send_read_receipts) proven by the segment test with the explicit downgrade target; heads == 011_settings; PUT /auth/profile validation + updates pinned (401 anonymous); PUT /auth/password wrong-old 401 / success rehashes / old refresh 401 after / current session alive; POST /auth/logout-all kills previously issued access tokens (401-after pinned); auth responses carry the new additive fields; POST /chats/{id}/rejoin reactivates own archived rows (kicked 403, active idempotent, unknown 404, anonymous 401); GET /files/usage shape + isolation; receipts-off preserves the peer-facing unread on history load; display_name falls back to the email local-part in /users search, /contacts and chat members.",
+                "statement": "Migration 011 (display_name/phone/send_read_receipts) proven by the segment test with the explicit downgrade target; heads == 011_settings; PUT /auth/profile validation + updates pinned (401 anonymous); PUT /auth/password wrong-old 401 / success rehashes / old refresh 401 after / current session alive; POST /auth/logout-all kills previously issued access tokens (401-after pinned); auth responses carry the new additive fields; POST /chats/{id}/rejoin reactivates own archived rows (kicked 403, active idempotent, unknown 404, anonymous 401); GET /files/usage shape + isolation; receipts-off keeps the VIEWER's own unread badge after a history load (the marker does not advance; sender-visible receipts are a non-goal — no peer surface reads chat_last_reads); display_name falls back to the email local-part in /users search, /contacts and chat members.",
                 "description": "Backend integration tests.",
                 "source": "acceptance-criteria.md",
                 "priority": "P1"
@@ -558,7 +563,7 @@
         "per-chat storage breakdown; file deletion from Data Usage"
     ],
     "finalAuditGates": [
-        "[AC-BE-SETTINGS|EV-BE-1] migration 011 + profile/password/logout-all + rejoin + usage + receipts gate + name fallback — pytest; heads == 011_settings",
+        "[AC-BE-SETTINGS|EV-BE-1] migration 011 + profile/password/logout-all (token_version comparison BUILT in deps.py, 401-after pinned) + rejoin + usage + receipts gate (viewer-own badge semantics) + name fallback — pytest; heads == 011_settings",
         "[AC-FE-THEME|EV-FE-THEME] custom-property palette + dark overrides + complete sweep (grep gate) + theme module — verify/stylelint/tests",
         "[AC-FE-SETTINGS-LOGIC|EV-FE-1] profile port + rejoin + preferences module — mocha",
         "[AC-FE-SETTINGS-UI|EV-FE-2] navigable sections + account/archive/theme/toggles + delivery gates — mocha; guard strict zero",
@@ -585,9 +590,9 @@
         "reroute": "pause-and-review",
         "maxTotalTokens": 130000,
         "maxParallelWorkstreams": 1,
-        "maxRunWallSeconds": 18000,
-        "criticalPathWallSeconds": 14400,
-        "aggregateWorkstreamWallSeconds": 14400,
+        "maxRunWallSeconds": 21600,
+        "criticalPathWallSeconds": 16200,
+        "aggregateWorkstreamWallSeconds": 16200,
         "retryReserveWallSeconds": 3600
     },
     "budgets": {
