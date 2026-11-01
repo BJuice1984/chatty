@@ -30,6 +30,13 @@ export interface ChatInfo {
     // ИИ-чат (stage chats-social): собственный бэкенд отдаёт is_ai — по нему
     // список чатов рисует бейдж и акцент
     is_ai?: boolean
+    // Владелец чата (2026-11-01-chat-leave): «Удалить из чата» в меню
+    // участника доступно только ему
+    owner_id?: number
+    // Архивное членство (2026-11-01-chat-leave): left_at из GET /chats
+    // относительно вьюера; отсутствию/null (активный участник, ответы POST
+    // /chats и GET /chats/{id}) адаптер кладёт undefined
+    leftAt?: string | null
     last_message?: {
         time: string
         content: string

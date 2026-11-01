@@ -1,7 +1,7 @@
-// Own-адаптер chats (chats-social): searchUsers/deleteChat/setReaction
-// реализованы на контракте бэкенда — проверяем реальные запросы через
-// подмену XMLHttpRequest (адрес/метод/тело/CSRF), а не только наличие
-// методов. Остальные операции по-прежнему явно отвергаются.
+// Own-адаптер chats (chats-social; 2026-11-01-chat-leave — removeUsers и
+// leaveChat): операции реализованы на контракте бэкенда — проверяем реальные
+// запросы через подмену XMLHttpRequest (адрес/метод/тело/CSRF), а не только
+// наличие методов. Отвергается лишь загрузка аватара без chatId/файла.
 
 import { expect } from 'chai'
 import { JSDOM } from 'jsdom'
@@ -65,10 +65,6 @@ class FakeXHR {
     }
 }
 
-const unsupportedMethods = [
-    'removeUsers',
-] as const
-
 async function captureError(action: () => unknown): Promise<unknown> {
     try {
         await action()
@@ -90,6 +86,7 @@ describe('chats api adapter', () => {
             'getToken',
             'addUsers',
             'removeUsers',
+            'leaveChat',
             'getChatUsers',
             'changeChatAvatar',
             'searchUsers',
@@ -197,15 +194,19 @@ describe('chats api adapter', () => {
         expect(token.token).to.eq('')
     })
 
-    it('should reject unsupported own-mode operations explicitly', async () => {
-        for (const method of unsupportedMethods) {
-            const error = await captureError(
-                () => (ownChatsPort[method] as unknown as () => unknown)()
-            )
+    // 2026-11-01-chat-leave: владелец и архивное членство из GET /chats.
+    // left_at относителен к запросившему: строка — архив, отсутствию/null
+    // (активный участник, ответы POST /chats и GET /chats/{id}) — undefined
+    it('maps owner_id and a non-null left_at through toChatInfo', () => {
+        const chat = toChatInfo({ ...ownChat, left_at: '2026-11-01T10:00:00Z' }, 7)
 
-            expect(error, `own ${method}`).to.be.instanceOf(Error)
-            expect((error as Error).message, `own ${method}`).to.match(/недоступна в own-режиме/)
-        }
+        expect(chat.owner_id).to.eq(7)
+        expect(chat.leftAt).to.eq('2026-11-01T10:00:00Z')
+    })
+
+    it('maps absent and null left_at to undefined (active member)', () => {
+        expect(toChatInfo(ownChat, 7).leftAt).to.eq(undefined)
+        expect(toChatInfo({ ...ownChat, left_at: null }, 7).leftAt).to.eq(undefined)
     })
 })
 
@@ -296,6 +297,38 @@ describe('chats api social operations (fake XHR)', () => {
 
         expect(call.method).to.eq('DELETE')
         expect(call.url).to.contain('/chats/7')
+        expect(call.headers['X-CSRF-Token']).to.eq('token-1')
+    })
+
+    // 2026-11-01-chat-leave: кик — по одному DELETE на каждого участника
+    // (прецедент addUsers), owner-only на бэкенде
+    it('kicks members over one DELETE /chats/{cid}/members/{uid} per user with csrf', async () => {
+        FakeXHR.responses.push({ status: 204, response: null })
+        FakeXHR.responses.push({ status: 204, response: null })
+
+        await ownChatsPort.removeUsers({ users: [101, 102], chatId: 7 })
+
+        expect(FakeXHR.calls).to.have.lengthOf(2)
+
+        const [first, second] = FakeXHR.calls
+
+        expect(first.method).to.eq('DELETE')
+        expect(first.url).to.contain('/chats/7/members/101')
+        expect(first.headers['X-CSRF-Token']).to.eq('token-1')
+        expect(second.method).to.eq('DELETE')
+        expect(second.url).to.contain('/chats/7/members/102')
+        expect(second.headers['X-CSRF-Token']).to.eq('token-1')
+    })
+
+    it('leaves a chat over POST /chats/{id}/leave with the csrf header', async () => {
+        FakeXHR.responses.push({ status: 204, response: null })
+
+        await ownChatsPort.leaveChat(7)
+
+        const call = FakeXHR.calls[0]
+
+        expect(call.method).to.eq('POST')
+        expect(call.url).to.contain('/chats/7/leave')
         expect(call.headers['X-CSRF-Token']).to.eq('token-1')
     })
 
