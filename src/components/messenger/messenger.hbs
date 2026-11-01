@@ -5,7 +5,7 @@
             <h2 class="messenger__header-title">{{ chatInfo.title }}</h2>
             <div class="messenger__chat-users-container">
               {{#each selectedChatUsers}}
-                <div class="chat__container-profile-chat-ava">
+                <div class="chat__container-profile-chat-ava" data-testid="chat-user-avatar" data-user-id="{{this.id}}">
                   {{{ ChatAvatar src=this.avatar alt='Аватар пользователя' title=this.display_name onClick=this.onClick }}}
                 </div>
               {{/each}}
@@ -19,7 +19,7 @@
         <ul class="messenger__container">
           {{{ ChatHistory }}}
           {{#each messages}}
-            {{{ Message content=this.content user_id=this.user_id chat_id=this.chat_id id=this.id isMine=this.isMine isError=this.isError fileUrl=this.fileUrl time=this.time showDate=this.showDate replyTo=this.replyTo reactions=this.reactions onSetReaction=../this.onSetReaction onReply=../this.onReplyToMessage }}}
+            {{{ Message content=this.content user_id=this.user_id chat_id=this.chat_id id=this.id isMine=this.isMine isError=this.isError fileUrl=this.fileUrl autoDownload=../this.autoDownload time=this.time showDate=this.showDate replyTo=this.replyTo reactions=this.reactions onSetReaction=../this.onSetReaction onReply=../this.onReplyToMessage }}}
           {{/each}}
         </ul>
         {{#if replyDraft}}
@@ -28,6 +28,7 @@
             <button type="button" class="messenger__reply-preview-cancel" data-testid="reply-cancel" aria-label="Отменить ответ"></button>
           </div>
         {{/if}}
+        {{#unless archived}}
         <div class="messenger__composer">
             <form class="login-form" data-testid="composer-form">
                 <input
@@ -41,7 +42,9 @@
                 <button type="submit" class="messenger__composer-send" aria-label="Отправить"></button>
             </form>
         </div>
+        {{/unless}}
         {{{ Modal title='Добавить пользователя' isOpen=this.addUserOpen onClose=this.onCloseAddUser content=this.addUserContent }}}
+        {{{ Modal title=this.menuTitle isOpen=this.menuOpen onClose=this.onCloseMemberMenu content=this.menuContent }}}
         {{{ Modal title='Удалить чат' isOpen=this.deleteModalOpen onClose=this.onCloseDelete content=this.deleteContent }}}
     </div>
 {{else}}

@@ -1,7 +1,9 @@
 // Порты фичи auth (stage 3): контракт, за которым скрыто поведение.
 // Порты самодостаточны — не импортируют ничего (и тем более не вверх по слоям).
 // Реализация — own-адаптер (./api/own.ts); AuthUser сохраняет полную форму
-// исторического контракта — own-адаптер заполняет недостающие поля пустышками.
+// исторического контракта — own-адаптер заполняет недостающие поля пустышками
+// (2026-11-01-settings: display_name/phone/send_read_receipts теперь РЕАЛЬНЫЕ
+// поля бэкенда с фолбэками на уровне адаптера).
 
 export interface AuthUser {
     id: number
@@ -12,6 +14,9 @@ export interface AuthUser {
     display_name: string
     phone: string
     avatar: string
+    // серверный флаг «отправлять отчёты о прочтении» (тумблер приватности):
+    // own-адаптер дефолтит true, когда ответ поля не несёт
+    send_read_receipts: boolean
 }
 
 export interface SignInRequest {

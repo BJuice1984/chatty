@@ -18,10 +18,10 @@
         @include text;
         @include text-format(600, 14px, 24px);
 
-        background-color: $secondColor;
+        background-color: var(--second-color);
         border: none;
         border-radius: 4px;
-        color: white;
+        color: var(--main-text-color);
         padding-left: 8px;
         transition: $hoverTransition;
         box-sizing: border-box;
@@ -33,7 +33,7 @@
     }
 
     &__element::placeholder {
-        color: $mainTextColor;
+        color: var(--main-text-color);
         opacity: 0.5;
       }
 
@@ -48,7 +48,7 @@
       @include text;
       @include text-format(600, 12px, 11px);
 
-      color: $spanErrorColor;
+      color: var(--span-error-color);
       display: none;
 
       &_visible {

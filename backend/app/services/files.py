@@ -162,7 +162,9 @@ class FileService:
         content_type: str | None,
         body: bytes,
     ) -> PreparedUpload:
-        self._require_member(chat_id, owner_id)
+        # write guard: uploading creates a chat-scoped file row, so an
+        # archived membership is rejected (download keeps the READ variant)
+        self._require_active_member(chat_id, owner_id)
         safe_name = PurePath(original_name.replace('\\', '/')).name.strip()
         if not safe_name or safe_name in {'.', '..'}:
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail='invalid_file_name')
@@ -286,7 +288,16 @@ class FileService:
         )
 
     def _require_member(self, chat_id: int, user_id: int) -> None:
+        """READ-side guard (download): a membership row suffices — archived
+        members keep streaming the history they can still read."""
         if self.chats.get_by_id(chat_id) is None:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail='chat_not_found')
         if not self.chats.is_member(chat_id, user_id):
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail='chat_membership_required')
+
+    def _require_active_member(self, chat_id: int, user_id: int) -> None:
+        """WRITE-side guard (chat-scoped upload): ACTIVE membership required."""
+        if self.chats.get_by_id(chat_id) is None:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail='chat_not_found')
+        if not self.chats.is_active_member(chat_id, user_id):
             raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail='chat_membership_required')

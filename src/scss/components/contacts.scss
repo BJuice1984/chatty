@@ -1,0 +1,128 @@
+@import '../utils/mixins';
+@import '../utils/variable';
+
+.contacts {
+    @include size(100%, 100%);
+
+    display: grid;
+    grid-template-columns: min-content 1fr;
+    grid-template-rows: 100%;
+    overflow: hidden;
+    background-color: var(--main-color);
+
+    &__sidebar {
+        width: 380px;
+        height: 98%;
+        align-self: center;
+        border-right: var(--border-chat);
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        position: relative;
+    }
+
+    &__header {
+        width: 100%;
+        box-sizing: border-box;
+        padding: 13px 24px 18px;
+        display: flex;
+        flex-direction: row;
+        align-items: center;
+        justify-content: space-between;
+        position: relative;
+    }
+
+    &__header-title {
+        @include reset;
+        @include text;
+        @include text-format(500, 20px, 20px);
+
+        color: var(--main-text-color);
+        text-align: left;
+        cursor: default;
+    }
+
+    &__add-button {
+        @include reset;
+        @include text;
+        @include text-format(500, 13px, 18px);
+
+        color: var(--third-text-color);
+        padding: 6px 14px;
+        border: 1px solid var(--third-text-color);
+        border-radius: 999px;
+        background-color: transparent;
+        cursor: pointer;
+        transition: background-color $hoverTransition ease, box-shadow $hoverTransition ease;
+
+        &:hover {
+            background-color: var(--add-button-hover-background);
+            box-shadow: 0 0 8px 2px var(--add-button-hover-glow);
+        }
+    }
+
+    &__list {
+        @include reset;
+
+        margin-left: 8px;
+        display: grid;
+        row-gap: 16px;
+        align-content: start;
+        list-style: none;
+        width: 100%;
+        box-sizing: border-box;
+        flex: 1;
+        min-height: 0;
+        overflow: visible auto;
+        padding: 10px 8px;
+
+        @include scrollbar-slim;
+    }
+
+    &__pane {
+        @include flex-center-center;
+
+        overflow: hidden;
+        padding: 16px;
+        box-sizing: border-box;
+    }
+
+    &__placeholder {
+        @include reset;
+        @include text;
+        @include text-format(500, 14px, 20px);
+
+        color: var(--second-text-color);
+        text-align: center;
+    }
+
+    @media (min-width: $tablet) and (max-width: ($desktop - 1px)) {
+
+        &__sidebar {
+            width: 280px;
+        }
+
+        &__header {
+            padding: 10px 16px 12px;
+        }
+
+        &__list {
+            row-gap: 10px;
+        }
+    }
+
+    @media (max-width: ($tablet - 1px)) {
+        grid-template-columns: 1fr;
+        grid-template-rows: 100%;
+
+        &__sidebar {
+            width: 100%;
+            height: 100%;
+            border-right: none;
+        }
+
+        &__pane {
+            display: none;
+        }
+    }
+}

@@ -22,13 +22,21 @@
     /* Выбранный чат: устойчивое выделение между перерисовками списка */
 
     &_active {
-      background-color: rgb(129 117 255 / 16%);
-      box-shadow: inset 0 0 0 1px rgb(129 117 255 / 35%);
+      background-color: var(--chat-active-background);
+      box-shadow: inset 0 0 0 1px var(--chat-active-outline);
     }
 
     &_ai {
-      border-left: 3px solid $thirdTextColor;
-      background-image: linear-gradient(90deg, rgb(129 117 255 / 12%), transparent 55%);
+      border-left: 3px solid var(--third-text-color);
+      background-image: linear-gradient(90deg, var(--chat-ai-accent), transparent 55%);
+    }
+
+    &_archived {
+      opacity: 0.55;
+
+      img {
+        filter: grayscale(1);
+      }
     }
 
     &__container {
@@ -41,7 +49,7 @@
 
       &_type_add-story {
         background-image: none;
-        background-color: $borderYourStory;
+        background-color: var(--border-your-story);
       }
 
       &-content {
@@ -92,7 +100,7 @@
       object-fit: cover;
       overflow: hidden;
       border-radius: 12px;
-      border: $borderChat;
+      border: var(--border-chat);
       box-sizing: border-box;
       box-shadow: $boxShadowLogin;
       cursor: pointer;
@@ -109,7 +117,7 @@
       @include text;
       @include text-format(400, 10px, 16px);
 
-      color: $mainTextColor;
+      color: var(--main-text-color);
       width: 100%;
       overflow: hidden;
       text-overflow: ellipsis;
@@ -126,7 +134,7 @@
         @include text;
         @include text-format(400, 10px, 16px);
 
-        color: $mainTextColor;
+        color: var(--main-text-color);
         opacity: 0.65;
         width: 100%;
         overflow: hidden;
@@ -136,11 +144,10 @@
     }
 
     /* Подсветка совпадения поиска: акцент той же палитры, что выделение
-    активного чата (rgb(129 117 255) уже живёт в этом файле) — без
-    новых токенов дизайна */
+    активного чата — без новых токенов дизайна */
 
     mark {
-        background-color: rgb(129 117 255 / 35%);
+        background-color: var(--search-mark-background);
         color: inherit;
         border-radius: 2px;
         padding: 0 1px;
@@ -159,15 +166,15 @@
       height: 18px;
       padding: 0 5px;
       border-radius: 999px;
-      background-color: $thirdTextColor;
-      color: $mainColor;
+      background-color: var(--third-text-color);
+      color: var(--main-color);
       white-space: nowrap;
     }
 
     &__time {
       @include text-format(400, 9px, 12px);
 
-      color: $mainTextColor;
+      color: var(--main-text-color);
       opacity: 0.65;
       white-space: nowrap;
     }
@@ -182,9 +189,9 @@
       gap: 2px;
       margin-left: 6px;
       padding: 0 6px;
-      border: 1px solid $thirdTextColor;
+      border: 1px solid var(--third-text-color);
       border-radius: 999px;
-      color: $thirdTextColor;
+      color: var(--third-text-color);
       vertical-align: middle;
       white-space: nowrap;
 

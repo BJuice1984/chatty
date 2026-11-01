@@ -7,7 +7,7 @@
     @include text;
     @include text-format(600, 16px, 28px);
 
-    color: $mainTextColor;
+    color: var(--main-text-color);
     border: none;
     border-radius: $borderRadiusLoginButton;
     box-shadow: $boxShadowLoginButton;
@@ -21,11 +21,11 @@
     }
 
     &__primary {
-        background-color: $thirdColor;
+        background-color: var(--third-color);
     }
 
     &__disabled {
-        background-color: $fourthColor;
+        background-color: var(--fourth-color);
     }
 
     &__secondary {
@@ -34,13 +34,13 @@
         width: 280px;
         background-color: transparent;
         box-shadow: none;
-        color: $thirdTextColor;
+        color: var(--third-text-color);
 
         &:hover {
-            color: $mainTextColor;
+            color: var(--main-text-color);
 
             svg {
-                filter: drop-shadow(0 0 8px rgb(129 117 255 / 60%));
+                filter: drop-shadow(0 0 8px var(--icon-accent-glow));
             }
         }
     }

@@ -1,0 +1,245 @@
+@import '../utils/mixins';
+@import '../utils/variable';
+
+.profile-settings-item {
+  cursor: pointer;
+  border-radius: 8px;
+  transition: background-color 0.15s ease-in-out, box-shadow 0.15s ease-in-out;
+
+  &:hover {
+    background-color: var(--fourth-color);
+  }
+
+  &_active {
+    background-color: var(--chat-active-background);
+    box-shadow: inset 0 0 8px 0 var(--chat-active-inset);
+  }
+}
+
+.settings-section {
+  @include reset;
+  @include text;
+
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 14px;
+  width: 100%;
+  max-width: 420px;
+  box-sizing: border-box;
+  padding: 10px 20px 24px;
+  color: var(--main-text-color);
+
+  &__title {
+    @include reset;
+    @include text-format(600, 16px, 22px);
+
+    color: var(--main-text-color);
+    cursor: default;
+  }
+
+  &__hint {
+    @include reset;
+    @include text-format(400, 12px, 16px);
+
+    color: var(--second-text-color);
+    cursor: default;
+  }
+
+  &__block {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    width: 100%;
+
+    &_type_password {
+      border-top: var(--border-chat-bottom);
+      padding-top: 16px;
+    }
+  }
+
+  &__readonly {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    width: 100%;
+  }
+
+  &__readonly-row {
+    @include reset;
+    @include text-format(400, 14px, 20px);
+
+    display: flex;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 6px 0;
+    border-bottom: var(--border-chat-bottom);
+  }
+
+  &__readonly-label {
+    color: var(--second-text-color);
+    cursor: default;
+  }
+
+  &__readonly-value {
+    color: var(--main-text-color);
+    overflow-wrap: anywhere;
+    text-align: right;
+    cursor: default;
+  }
+
+  &__feedback {
+    @include reset;
+    @include text-format(400, 12px, 16px);
+
+    color: var(--span-error-color);
+    min-height: 16px;
+  }
+
+  &__danger-zone {
+    display: flex;
+    justify-content: flex-start;
+    padding-top: 4px;
+  }
+
+  &__danger-button {
+    @include reset;
+    @include text;
+    @include text-format(500, 14px, 20px);
+
+    padding: 8px 18px;
+    border: none;
+    border-radius: 999px;
+    background-color: transparent;
+    color: var(--span-error-color);
+    cursor: pointer;
+    transition: background-color 0.15s ease-in-out;
+
+    &:hover {
+      background-color: var(--danger-hover-background);
+    }
+  }
+
+  &__archive-list {
+    @include reset;
+
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    list-style: none;
+    width: 100%;
+  }
+
+  &__archive-item {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 10px 12px;
+    border: var(--border-chat-bottom);
+    border-radius: 10px;
+  }
+
+  &__archive-title {
+    @include text-format(500, 14px, 20px);
+
+    color: var(--main-text-color);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    cursor: default;
+  }
+
+  &__empty {
+    @include reset;
+    @include text-format(400, 12px, 16px);
+
+    color: var(--second-text-color);
+    cursor: default;
+  }
+
+  &__action {
+    @include reset;
+    @include text;
+    @include text-format(500, 13px, 18px);
+
+    flex-shrink: 0;
+    padding: 6px 14px;
+    border: none;
+    border-radius: 999px;
+    background-color: var(--third-text-color);
+    color: var(--main-color);
+    cursor: pointer;
+    transition: background-color 0.15s ease-in-out, transform 0.15s ease-in-out;
+
+    &:hover {
+      background-color: var(--send-button-hover);
+    }
+
+    &:active {
+      transform: scale(0.96);
+    }
+  }
+
+  &__radio-group {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+
+  &__radio {
+    @include text-format(400, 14px, 20px);
+
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 8px 12px;
+    border: var(--border-chat-bottom);
+    border-radius: 10px;
+    cursor: pointer;
+
+    &:has(input:checked) {
+      background-color: var(--chat-active-background);
+    }
+
+    input {
+      accent-color: var(--third-text-color);
+      cursor: pointer;
+    }
+
+    span {
+      color: var(--main-text-color);
+      cursor: pointer;
+    }
+  }
+
+  &__toggle {
+    @include text-format(400, 14px, 20px);
+
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 10px 12px;
+    border: var(--border-chat-bottom);
+    border-radius: 10px;
+    cursor: pointer;
+
+    input {
+      accent-color: var(--third-text-color);
+      cursor: pointer;
+    }
+
+    span {
+      color: var(--main-text-color);
+      cursor: pointer;
+    }
+  }
+
+  &__usage {
+    @include reset;
+    @include text-format(500, 14px, 20px);
+
+    color: var(--main-text-color);
+    cursor: default;
+  }
+}

@@ -1,0 +1,88 @@
+{
+    "revision": 3,
+    "id": "SPEC-CONTACTS",
+    "title": "User contacts: persistent address book with a dedicated route and DM creation",
+    "intent": "The user gets a persistent contact list backed by the own backend. A new table `contacts` (owner_id, contact_user_id, created_at; composite PK) stores one-directional contacts: when user A adds user B to any chat through the existing add-member flow, A's contact list silently records B; the same list is managed explicitly from the new /contacts route. The route reuses the messenger page skeleton (header, list sidebar, bottom bar) with the chat list replaced by the contacts list and a top «Добавить» button that opens the existing debounced user-search modal (GET /users prefix search) — found users already in the contact list are badged «уже в контактах». Clicking a contact opens a small modal menu with two entries: «Создать» (working: get-or-create a 1:1 chat via POST /chats/dm on a new Chat.is_dm flag, then navigate to /messenger with that chat selected) and «Найти все чаты» (visible but disabled stub — the chat-search implementation living on another machine is not merged yet; recorded as not-done in the docs). Contacts can be removed via a hover cross on the card with a confirmation modal (DELETE /contacts/{user_id}). The contacts sidebar must mirror the messenger responsive layout: 380px desktop sidebar, 280px tablet, single column under 768px with no chat pane.",
+    "requirements": [
+        {
+            "id": "REQ-BE-CONTACTS",
+            "title": "Contacts persistence: model, migration, repository, service, endpoints, implicit capture",
+            "description": "New model Contact (backend/app/models/contact.py): table `contacts`, composite PK (owner_id FK users.id ON DELETE CASCADE, contact_user_id FK users.id ON DELETE CASCADE), created_at DateTime(timezone=True) server_default now(); registered in models/__init__.py. Migration backend/alembic/versions/009_contacts.py: create_table contacts + batch_alter_table('chats') adds is_dm (see REQ-BE-DM); downgrade drops both; alembic heads becomes 009_contacts. Repository ContactRepository (repositories/contacts.py): get(owner_id, contact_user_id), upsert(owner_id, contact_user_id) following the add_member get-then-insert idiom, remove(owner_id, contact_user_id) -> bool, list_for_owner(owner_id) joining users ordered created_at DESC, contact_user_id DESC. Service ContactService (services/contacts.py): list_for_owner builds ContactResponse {id (contact user id), login (lower email), display_name (email local part, the UserSearchItem.from_user rule), avatar_url (file avatar_url helper), created_at}; add(owner_id, user_id) guards self-add -> 400 detail 'contact_self_forbidden', unknown user -> 404 'user_not_found', then idempotent upsert; remove guards missing row -> 404 'contact_not_found'. Endpoints (endpoints/contacts.py, router prefix '/contacts', registered through the register_domain seam from endpoints/__init__.py like users.py): GET '' -> list[ContactResponse]; POST '' body ContactCreate {user_id} -> 201 ContactResponse (idempotent, existing row returned with 201 — the add_member precedent); DELETE '/{user_id}' -> 204 | 404; all three behind get_current_user (anonymous 401). Implicit capture: ChatService.add_member records the contact (requester -> added user, skipped when user_id == requester_id) on EVERY successful resolution — the fresh-insert path inside its existing transaction AND the existing-membership early return (which becomes a small write path with its own commit; idempotent upsert, so a crash between the two writes only delays capture to the next add) — no response change for POST /chats/{id}/members.",
+            "priority": "P1",
+            "source": "operator request 2026-11-01 (contacts appear from users found and added to chats; explicit add via search)",
+            "acceptanceIds": [
+                "AC-BE-CONTACTS",
+                "AC-BE-MIGRATION"
+            ],
+            "evidenceIds": [
+                "EV-BE-1"
+            ],
+            "owner": "WS-BE-CONTACTS"
+        },
+        {
+            "id": "REQ-BE-DM",
+            "title": "DM get-or-create: Chat.is_dm flag and POST /chats/dm",
+            "description": "Chat model gains is_dm: Mapped[bool] (Boolean, default False, server_default '0', nullable=False) — migration 009 adds the column. ChatResponse gains additive is_dm: bool = False (model_validate fills it from the ORM; existing POST/GET chat responses change only by the new field). ChatRepository.find_dm(user_a_id, user_b_id): the earliest Chat with is_dm = true whose id appears in both users' ChatMember rows (two IN-subqueries, order by id asc, limit 1). New endpoint POST /api/v1/chats/dm body ChatDmCreate {user_id} (endpoints/chats.py) registered BEFORE the /{chat_id} routes (FastAPI registration order — an int path param would 422 on the literal 'dm', the /search precedent): target unknown -> 404 'user_not_found'; target == caller -> 400 'dm_self_forbidden'; existing DM -> 200 ChatResponse; none -> ChatService.create_dm creates Chat(title = target email local part, owner_id = caller, is_ai False, is_dm True) with members caller + target -> 201 ChatResponse. Known documented edge: POST /chats/{id}/members can later grow a DM chat beyond two members (degenerates into a group keeping the flag) — accepted at study scale. A plain 2-member group chat is NOT a DM: POST /chats/dm never reuses it (find_dm filters is_dm only, integration-pinned). list_chats passes is_dm=chat.is_dm explicitly in its field-by-field ChatResponse construction (the POST /chats and GET /chats/{id} model_validate paths fill it automatically). Accepted race (review F-7): two concurrent first POST /chats/dm calls for the same pair can create two DM rows — no pair uniqueness constraint, sequential UI actions make it practically unreachable, documented as a study-scale deferral.",
+            "priority": "P1",
+            "source": "operator request 2026-11-01 (contact menu: 'Создать' opens/creates the 1:1 chat)",
+            "acceptanceIds": [
+                "AC-BE-DM",
+                "AC-BE-MIGRATION"
+            ],
+            "evidenceIds": [
+                "EV-BE-1"
+            ],
+            "owner": "WS-BE-CONTACTS"
+        },
+        {
+            "id": "REQ-FE-CONTACTS-LOGIC",
+            "title": "Frontend logic: contacts feature module (ports, own adapter, store slice, controller, wiring)",
+            "description": "UI type ContactInfo {id: number, login: string, display_name: string, avatar: string} in src/utils/types.ts (never imported from api/). New self-sufficient feature module src/features/contacts/ (cross-feature imports are forbidden outside features/index.ts): ports.ts declares ContactsPort {fetchContacts(): Promise<ContactInfo[]>; addContact(userId: number): Promise<ContactInfo>; removeContact(userId: number): Promise<void>; searchUsers(data: SearchUserData): Promise<{id, login, display_name}[]>; createDm(userId: number): Promise<{chatId: number}>} with locally declared result types (features must not import each other; the DM result carries the chat id ONLY — HTTPTransport resolves xhr.response alone (src/utils/HTTPTransport.ts:124-126), so a created: 201-vs-200 flag is unimplementable within the write-sets and nothing consumes it — review F-1). api/own.ts: HTTPTransport('/contacts') GET '' / POST '' {user_id} + csrf / DELETE '/{userId}' + csrf; searchUsers via GET /users?login= (a dedicated HTTPTransport('/users'), the chats adapter precedent); createDm via POST /chats/dm {user_id} + csrf mapping the response to {chatId: id}; ContactInfo mapping resolves avatar as avatar_url ?? avatarPoolUrl(id) (single fallback point, the getChatUsers precedent); api/index.ts exports contactsPort = ownContactsPort. store.ts: contacts slice behind the in-slice cast idiom (ChatSearchStoreState precedent: ContactStoreState = AppState & {contacts?: ContactInfo[]}, no utils/Store.ts edit) with setContacts/getContacts. controller.ts: singleton ContactsFeatureController — fetchContacts (port -> slice, silent error), addContact (port -> refetch), removeContact (port -> refetch), searchUsers (port, error -> []), openDm(userId) (port.createDm -> injected chatOpener(chatId), silent error); module-level setChatOpener(opener) defaults to a noop so the feature stays import-clean. module.ts: contactsModule {name: 'contacts', deps: ['auth']}. src/features/index.ts registers the module and wires setChatOpener((chatId) => { ChatsController.selectChat(chatId); void ChatsController.getChatUsers(chatId); Router.go(MESSENGER) }) — the ONLY legal cross-feature seam (the setProfileController precedent). utils/constants.ts gains CONTACTS = '/contacts'. The /contacts route is protected by the existing allowlist auth guard (guard.ts PUBLIC_PATHS) with zero guard edits.",
+            "priority": "P1",
+            "source": "operator request 2026-11-01 (route with contacts instead of chats, reuse user search)",
+            "acceptanceIds": [
+                "AC-FE-LOGIC"
+            ],
+            "evidenceIds": [
+                "EV-FE-1"
+            ],
+            "owner": "WS-FE-CONTACTS-LOGIC"
+        },
+        {
+            "id": "REQ-FE-CONTACTS-UI",
+            "title": "Frontend UI: /contacts route, sidebar skeleton, add-modal reuse, contact menu, responsive styles",
+            "description": "Route: src/main.ts registers Routes.Contacts = CONTACTS and Router.use(Routes.Contacts, ContactsPage) (the messenger import block grows the page import). BottomBar (components/bottomBar/bottomBar.ts): the «Контакты» icon (currently a console.log no-op) navigates Router.go(CONTACTS) and is active when currentPath === CONTACTS (the Чаты icon keeps MESSENGER). New page features/contacts/pages/contacts/: withStore maps the contacts slice; componentDidMount calls ContactsController.fetchContacts(); the page owns controller-free modal state in props (the messenger precedent): addOpen/addQuery/addResults/addFeedback, menuTarget (ContactInfo | null), deleteTarget. Left column skeleton mirrors chat.hbs: header row (h2 «Контакты» + «Добавить» button), scrolling list ul of ContactItem, BottomBar in flow — no stories row, no chat search bar (operator decision: simplified column). «Добавить» opens a Modal reusing renderAddUserModalContent (components/messenger/messenger.ts) which gains an optional alreadyBadge?: string prop (default 'уже в чате' — messenger behaviour unchanged); the page passes alreadyBadge 'уже в контактах' and memberIds = current contact ids so found contacts render disabled with the badge; the input debounce reuses the exported USER_SEARCH_DEBOUNCE_MS with root-delegated input/click events and page-owned refocus (the messenger wiring, copied not imported — components cannot own page state). Clicking a contact card opens a Modal menu (title = display_name): button «Создать» -> ContactsController.openDm(id) then closes (failure keeps the menu with feedback text); button «Найти все чаты» -> rendered disabled with a 'пока не реализовано' title attribute and documented as not-done (the search implementation from the other machine is not merged); «Отмена» closes. The card hover cross opens a delete-confirm Modal («Удалить контакт <имя>?» + Удалить/Отмена, the renderDeleteModalContent pattern) -> ContactsController.removeContact(id). New component src/components/contactItem/ (Block + hbs): props {id, title, subtitle, avatar, onClick, onDelete}; double-brace rendering only (XSS test with a <script> login); registered in components/components.ts. ChatPage (features/chats/pages/chat/chat.ts): chatPaneOpen initial value becomes propsFromStore.selectedChat != null so arriving from /contacts with a preselected chat opens the pane on mobile (documented behaviour change for any return to /messenger with a live selection; mocha-pinned). SCSS: new src/scss/components/contacts.scss (page grid: min-content 1fr, 380px sidebar, border-right, header row, list with scrollbar-slim and flex: 1 min-height: 0 own scroll — the chat.scss structure) + contact-item.scss (card, hover cross), both imported in _all.scss; tablet 768–1023 narrows the sidebar to 280px with the chat.scss paddings; mobile <768 is a single column with the right placeholder hidden (no pane switching on this route). Docs: docs/NEXT.md records the feature INCLUDING the explicit not-done note for «Найти все чаты»; docs/progress/progress_log.md entry on top.",
+            "priority": "P1",
+            "source": "operator request 2026-11-01 (contacts route, top «Добавить» button, menu Создать/Найти все чаты, delete with confirm, styles for all resolutions)",
+            "acceptanceIds": [
+                "AC-FE-UI",
+                "AC-PROCESS"
+            ],
+            "evidenceIds": [
+                "EV-FE-2"
+            ],
+            "owner": "WS-FE-CONTACTS-UI"
+        }
+    ],
+    "constraints": [
+        "Layers only downward (pages -> components -> controllers -> api -> utils -> core); guard-architecture --all --strict stays green; components never import features/controllers; UI types never import from api/; features never import each other — the ONLY cross-feature seam is src/features/index.ts (setChatOpener wiring, the setProfileController precedent).",
+        "Migration 009_contacts is additive: new table contacts + new column chats.is_dm; alembic heads becomes 009_contacts (pinned by verify:backend, which runs pytest + alembic heads only); the 009 upgrade AND downgrade paths are proven INSIDE pytest by a segment roundtrip test (backend/tests/integration/test_migration_009_contacts_segment.py: scratch SQLite file -> Base.metadata.create_all -> alembic stamp head -> downgrade -1 -> upgrade head, inspector-asserted both ways) — a full-chain SQLite run is impossible by design (008 CREATE EXTENSION pg_trgm and 005 ALTER-based create_foreign_key are PG-only; the full chain is exercised operationally on the compose PostgreSQL, not by this gate — review F-8).",
+        "All contacts/DM endpoints sit behind get_current_user (cookie JWT); anonymous 401 integration-pinned; contact rows are scoped strictly by owner_id — another user's contacts never appear (isolation-pinned); mutating frontend calls carry readCsrfToken() (the existing POST/DELETE precedent).",
+        "Modal content HTML is built only through the escapeHtml builder (renderAddUserModalContent precedent); ContactItem renders through double braces; a <script> payload in a login or display_name renders as text (XSS test); triple braces only for pre-escaped modal slot HTML.",
+        "The contacts Store slice lives behind an in-slice cast (the chatSearch idiom); utils/Store.ts AppState is NOT edited; the auth guard stays allowlist-based with zero changes for /contacts.",
+        "Existing suites stay green; test counts grow from the 337 mocha / 184 pytest baseline (docs/NEXT.md, 2026-10-27; actual counts captured in evidence).",
+        "The messenger add-user modal behaviour is unchanged: alreadyBadge defaults to 'уже в чате' and messenger.ts passes nothing (additive optional prop only).",
+        "chats.is_dm never reuses plain 2-member groups (find_dm filters is_dm); POST /chats/dm is idempotent (existing DM -> 200 same chat id)."
+    ],
+    "nonGoals": [
+        "«Найти все чаты» implementation — the chat-search work from the other machine is not merged; the menu entry ships disabled and is recorded as not-done in docs/NEXT.md",
+        "two-way (symmetric) contacts — capture is one-directional (the adder gets the contact); B does not receive A",
+        "WS push of contact-list changes; live contact sync while another tab adds a contact (page CDM refetch is the refresh point)",
+        "contact import/export, favorites, contact editing, contact profile pages",
+        "server-side pagination of GET /contacts (full list, study scale)",
+        "DM member-count enforcement — a DM can later grow via POST /chats/{id}/members (documented edge)",
+        "pair-uniqueness for concurrent POST /chats/dm — two simultaneous first calls can create two DM rows (accepted study-scale race, review F-7)",
+        "unread badges, last-message snippets or any chat-list features on contact cards",
+        "deleting a contact deleting the DM chat or membership"
+    ]
+}

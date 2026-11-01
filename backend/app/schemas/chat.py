@@ -17,6 +17,10 @@ class ChatMemberCreate(BaseModel):
     user_id: PositiveInt
 
 
+class ChatDmCreate(BaseModel):
+    user_id: PositiveInt
+
+
 class ChatMemberBrief(BaseModel):
     """Member summary in the chat list — the GET /chats/{id}/members shape."""
 
@@ -41,6 +45,10 @@ class ChatResponse(BaseModel):
     title: str
     owner_id: int
     is_ai: bool
+    # DM marker (additive, default False): the GET /chats field-by-field
+    # construction passes it explicitly, the model_validate paths fill it
+    # from the ORM attribute automatically
+    is_dm: bool = False
     created_at: datetime
     # непрочитанные для запрашивающего: чужие сообщения новее последнего
     # прочитанного (0, если всё прочитано)
@@ -58,6 +66,12 @@ class ChatResponse(BaseModel):
     # дефолт, без которого оба эндпоинта падали бы с ValidationError
     # (прецедент members default_factory)
     last_message: ChatLastMessageBrief | None = None
+    # caller-relative архивный статус участия: None = активный, метка =
+    # само-leave. Наполняет только GET /chats (поле за полем из строки
+    # chat_members) — POST /chats и GET /chats/{id} идут через
+    # model_validate по ORM-объекту Chat без контекста участия и оставляют
+    # None по дизайну (список — источник правды для UI)
+    left_at: datetime | None = None
 
 
 class ChatMemberResponse(BaseModel):

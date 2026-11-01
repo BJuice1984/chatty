@@ -114,6 +114,64 @@ describe('message bubble', () => {
     })
 })
 
+// Гейт автозагрузки вложений (2026-11-01-settings): выключенная автозагрузка
+// подменяет превью («Вложение») ссылкой «Скачать» на тот же безопасный fileUrl;
+// включённая/не заданная — прежний вид. Обе ветки обязаны остаться ссылками.
+describe('message attachment auto-download gate', () => {
+    it('renders the inline attachment link by default', () => {
+        const message = new Message({ content: 'файл', user_id: 1, fileUrl: '/api/v1/files/5/download' })
+
+        const link = message.element?.querySelector<HTMLAnchorElement>('.messenger__message-attachment')
+
+        expect(link?.textContent?.trim()).to.equal('Вложение')
+        expect(link?.getAttribute('href')).to.equal('/api/v1/files/5/download')
+        expect(message.element?.querySelector('[data-testid="attachment-download"]')).to.not.exist
+
+        message.destroy()
+    })
+
+    it('keeps the inline attachment when autoDownload is on', () => {
+        const message = new Message({
+            content: 'файл',
+            user_id: 1,
+            fileUrl: '/api/v1/files/5/download',
+            autoDownload: true,
+        })
+
+        expect(message.element?.querySelector('.messenger__message-attachment')?.textContent?.trim()).to.equal('Вложение')
+        expect(message.element?.querySelector('[data-testid="attachment-download"]')).to.not.exist
+
+        message.destroy()
+    })
+
+    it('renders the «Скачать» link instead of the preview when autoDownload is off', () => {
+        const message = new Message({
+            content: 'файл',
+            user_id: 1,
+            fileUrl: '/api/v1/files/5/download',
+            autoDownload: false,
+        })
+
+        const download = message.element?.querySelector<HTMLAnchorElement>('[data-testid="attachment-download"]')
+
+        expect(download).to.exist
+        expect(download?.getAttribute('href')).to.equal('/api/v1/files/5/download')
+        expect(download?.textContent?.trim()).to.equal('Скачать')
+        expect(message.element?.querySelector('.messenger__message-attachment')?.textContent?.trim()).to.equal('Скачать')
+
+        message.destroy()
+    })
+
+    it('renders no attachment markup without a file', () => {
+        const message = new Message({ content: 'без файла', user_id: 1, autoDownload: false })
+
+        expect(message.element?.querySelector('.messenger__message-attachment')).to.not.exist
+        expect(message.element?.querySelector('[data-testid="attachment-download"]')).to.not.exist
+
+        message.destroy()
+    })
+})
+
 // Реакции и реплаи (chats-social): аффордансы только у сообщений с id,
 // чипы с подсветкой своего, фиксированный набор эмодзи, блок цитаты —
 // NaN-safe (мусорный/пустой сниппет не рендерится).

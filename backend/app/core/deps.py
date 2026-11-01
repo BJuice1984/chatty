@@ -59,11 +59,18 @@ async def get_current_user(
     payload = decode_token(token, settings, 'access')
     try:
         user_id = int(payload['sub'])
-    except (TypeError, ValueError) as exc:
+        token_version = int(payload['ver'])
+    except (KeyError, TypeError, ValueError) as exc:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail='invalid_subject') from exc
     user = UserRepository(db).get_by_id(user_id)
     if user is None or not user.is_active:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail='user_unavailable')
+    # create_token embeds the user's token_version as `ver`; a bump
+    # (password change, logout-everywhere, refresh rotation) retires every
+    # previously issued access token here — the same comparison
+    # rotate_refresh_token applies on the refresh side
+    if user.token_version != token_version:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail='token_version_stale')
     return user
 
 

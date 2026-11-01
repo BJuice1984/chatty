@@ -4,6 +4,9 @@
 // chats-social: колбэки @-поиска, добавления пользователя, реакций и
 // реплаев; chatPaneOpen дополнительно сбрасывается при очистке selectedChat
 // (WS chat_deleted сбрасывает выбор через контроллер).
+// 2026-11-01-chat-leave: колбэки меню участника (контакт/кик/выход) и
+// пропсы его матрицы видимости (contactIds/meId/ownerId) уходят в Messenger,
+// карточка списка получает leftAt для потушенного архивного модификатора.
 // stories: лента приходит из стора (срез features/chats/stories), страница
 // сохраняет только жизненный цикл UI — таймер автозакрытия и фокус оверлея
 // принадлежат именно странице, потому что hbs-дети пересоздаются каждой
@@ -14,7 +17,7 @@
 
 import Block from '../../../../core/Block.ts'
 import { AppState, withStore } from '../../../../utils/Store.ts'
-import type { ChatInfo, ChatSearchMatch } from '../../../../utils/types.ts'
+import type { ChatInfo, ChatSearchMatch, ContactInfo } from '../../../../utils/types.ts'
 import { emptyValidationMessage } from '../../../../utils/constants.ts'
 import { emptyValidator } from '../../../../utils/validators.ts'
 import ChatsController from '../../controller.ts'
@@ -60,6 +63,11 @@ interface ChatPageProps {
     // мобильное переключение (<768): true — показана панель чата, список
     // скрыт; false — список. Модификатор корня chat_pane-open в chat.hbs
     chatPaneOpen?: boolean
+    // матрица видимости меню участника (2026-11-01-chat-leave): id контактов
+    // вьюера, его собственный id и владелец выбранного чата
+    contactIds?: number[]
+    meId?: number
+    ownerId?: number
 }
 
 // Карточка списка чатов в пропсах страницы: ChatInfo + декорации
@@ -310,7 +318,11 @@ class ChatPageBase extends Block {
     }
     constructor(propsFromStore: ChatPageProps) {
         super({
-            chatPaneOpen: false,
+            // 2026-11-01-contacts: страница, смонтированная с уже выбранным
+            // чатом (возврат на /messenger после openDm из /contacts),
+            // стартует с открытой панелью — раньше живой выбор игнорировался
+            // и мобильный вход всегда показывал список
+            chatPaneOpen: propsFromStore.selectedChat != null,
             // единая точка входа для плиток: add-плитка открывает пикер,
             // обычная — вьюер с автозакрытием
             onSelectStory: (id?: string) => {
@@ -377,6 +389,18 @@ class ChatPageBase extends Block {
             onSetReaction: (chatId: number, messageId: number, emoji: string) => {
                 void ChatsController.setReaction(chatId, messageId, emoji)
             },
+            // меню участника (2026-11-01-chat-leave): контакт — через шов
+            // contacts-фичи, кик — owner-only на бэкенде, собственный выход
+            // архивирует членство и сбрасывает выбор (контроллер)
+            onAddContact: (userId: number) => {
+                ChatsController.addContact(userId)
+            },
+            onKickUser: (userId: number, chatId: number) => {
+                void ChatsController.removeUsersFromChat([userId], chatId)
+            },
+            onLeaveChat: (chatId: number) => {
+                void ChatsController.leaveChat(chatId)
+            },
             inputs: [
                 {
                     label: 'type chat name',
@@ -400,6 +424,11 @@ class ChatPageBase extends Block {
             // перечисляет пропсы явно — stories обязана проброситься сюда,
             // иначе потеряется между withStore и Block
             stories: propsFromStore.stories ?? [],
+            // матрица видимости меню участника: пробрасывается тем же
+            // перечислением (иначе потерялась бы между withStore и Block)
+            contactIds: propsFromStore.contactIds ?? [],
+            meId: propsFromStore.meId,
+            ownerId: propsFromStore.ownerId,
             events: {
                 // делегированный change (см. handleStoryFileChange)
                 change: (event: Event) => {
@@ -543,6 +572,11 @@ class ChatPageBase extends Block {
         // Router-ом при монтировании; уход с маршрута уничтожает инстанс,
         // поэтому возврат монтирует свежий и фетч повторяется.
         void ChatsController.fetchChats()
+        // бутстрап списка контактов (2026-11-01-chat-leave): слайс сегодня
+        // наполняет только страница контактов, а условный пункт «Добавить в
+        // контакты» нужен уже на холодном входе в /messenger — обновляем
+        // при каждом заходе (инъекция contacts-фичи, review F-5)
+        ChatsController.refreshContacts()
         // лента историй — так же на каждом заходе (мок-стадия убрана)
         void StoriesController.fetchStories()
         // живые кольца: глобальный stories-сокет открывается вместе с
@@ -580,6 +614,13 @@ const withChats = withStore((state: AppState) => {
     const chats = search != null && search.query !== ''
         ? searchOrder(allChats, search.query, search.results)
         : activityOrder(allChats)
+    // контакты (2026-11-01-chat-leave): слайс contacts-фичи, ключ в
+    // AppState не объявлен — тот же каст-идиом (страница контактов)
+    const contacts = (state as AppState & { contacts?: ContactInfo[] }).contacts
+    // владелец выбранного чата: «Удалить из чата» — только ему
+    const ownerId = state.selectedChat == null
+        ? undefined
+        : allChats.find(chat => chat.id === state.selectedChat)?.owner_id
 
     return {
         chats,
@@ -587,6 +628,10 @@ const withChats = withStore((state: AppState) => {
         // лента историй (срез features/chats/stories) — рендер-список
         // (add-плитка + строковые id) страница строит в render()
         stories: state.stories as StoryDto[] | undefined,
+        // матрица видимости меню участника
+        contactIds: (contacts ?? []).map(contact => contact.id),
+        meId: state.user?.id,
+        ownerId,
     }
 })
 

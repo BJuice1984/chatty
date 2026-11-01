@@ -10,7 +10,7 @@
       @include size(56px, 56px);
       @include flex-center-center;
 
-      background-image: $borderStoryGradientBorder;
+      background-image: var(--border-story-gradient-border);
       border-radius: 18px;
       box-sizing: border-box;
       position: relative;
@@ -20,7 +20,7 @@
         position: absolute;
         content: "";
         inset: 0; /* same as { top: 0; right: 0; bottom: 0; left: 0; } */
-        background-image: $borderStoryGradientBorderHovered;
+        background-image: var(--border-story-gradient-border-hovered);
         z-index: 1;
         opacity: 0;
         transition: opacity 0.25s linear;
@@ -36,23 +36,23 @@
 
       &_viewed {
         background-image: none;
-        background-color: $borderYourStory;
+        background-color: var(--border-your-story);
       }
 
       //своя история: зелёный градиент вместо синего (просмотр не гасит)
 
       &_own {
-        background-image: $borderOwnStoryGradientBorder;
+        background-image: var(--border-own-story-gradient-border);
 
         &::before {
-          background-image: $borderOwnStoryGradientBorder;
+          background-image: var(--border-own-story-gradient-border);
           opacity: 0.45;
         }
       }
 
       &_type_add-story {
         background-image: none;
-        background-color: $borderYourStory;
+        background-color: var(--border-your-story);
       }
     }
 
@@ -61,8 +61,8 @@
       @include flex-center-center;
 
       border-radius: 15px;
-      border: $borderStory;
-      background-color: $secondColor;
+      border: var(--border-story);
+      background-color: var(--second-color);
       box-sizing: border-box;
       z-index: 3;
     }
@@ -80,7 +80,7 @@
       @include text;
       @include text-format(400, 10px, 16px);
 
-      color: $mainTextColor;
+      color: var(--main-text-color);
       width: 56px;
       overflow: hidden;
       text-overflow: ellipsis;

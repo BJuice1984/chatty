@@ -1,6 +1,6 @@
-from app.api.v1.endpoints import auth, bot, documents, health, users
+from app.api.v1.endpoints import auth, bot, contacts, documents, health, users
 
-__all__ = ['auth', 'bot', 'documents', 'health', 'users']
+__all__ = ['auth', 'bot', 'contacts', 'documents', 'health', 'users']
 
 # Stage-8 composition: the documents domain registers itself through the
 # stage-5 seam (app.api.v1.router.register_domain_router) while this package
@@ -13,3 +13,6 @@ bot.register_domain()
 
 # Stage-16 composition: the users search domain mounts through the same seam.
 users.register_domain()
+
+# Stage-17 composition: the contacts domain mounts through the same seam.
+contacts.register_domain()

@@ -1,4 +1,4 @@
-<li class="profile-settings-item">
+<li class="profile-settings-item{{#if isActive}} profile-settings-item_active{{/if}}" data-testid="settings-item">
     <img class="profile-settings-item__img" src={{setting-img-src}} alt={{setting-alt}}>
     <p class="profile-settings-item__name">{{setting-name}}</p>
     <img class="chat__container-profile-arrow" src="/images/arrow.svg" alt="Иконка. Стрелка вперёд">

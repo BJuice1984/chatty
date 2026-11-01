@@ -1,0 +1,20 @@
+<section class="contacts">
+    <div class="contacts__sidebar">
+        <div class="contacts__header">
+            <h2 class="contacts__header-title">Контакты</h2>
+            <button type="button" class="contacts__add-button" data-testid="contacts-add">Добавить</button>
+        </div>
+        <ul class="contacts__list">
+          {{#each contacts}}
+            {{{ ContactItem id=this.id title=this.display_name subtitle=this.login avatar=this.avatar onClick=../this.onSelectContact onDelete=../this.onDeleteContact }}}
+          {{/each}}
+        </ul>
+        {{{ BottomBar }}}
+    </div>
+    <div class="contacts__pane">
+        <h2 class="contacts__placeholder">Chatty: выберите контакт, чтобы начать диалог</h2>
+    </div>
+    {{{ Modal title='Добавить контакт' isOpen=this.addOpen onClose=this.onCloseAdd content=this.addContent }}}
+    {{{ Modal title=this.menuTitle isOpen=this.menuOpen onClose=this.onCloseMenu content=this.menuContent }}}
+    {{{ Modal title='Удалить контакт' isOpen=this.deleteOpen onClose=this.onCloseDelete content=this.deleteContent }}}
+</section>

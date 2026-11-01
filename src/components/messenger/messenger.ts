@@ -1,10 +1,12 @@
 // Мессенджер выбранного чата (stage 4; stage 7 — все действия через пропсы;
-// chats-social — модалки, @-поиск, реакции, реплаи): компонент получает
+// chats-social — модалки, @-поиск, реакции, реплаи; 2026-11-01-chat-leave —
+// контекстные меню участников и архивный режим): компонент получает
 // поведение колбэками из пропсов (фича chats); компоненты не импортируют ни
 // контроллеры, ни фичи. Модальные сценарии собраны на универсальном Modal:
-// «добавить пользователя» (дебаунс-поиск по @логину, клик добавляет) и
-// «удалить чат» (подтверждение). Состояние модалок/черновика ответа —
-// controller-free UI-состояние, живёт в пропсах компонента.
+// «добавить пользователя» (дебаунс-поиск по @логину, клик добавляет),
+// «удалить чат» (подтверждение) и меню участника по клику его аватара в
+// шапке. Состояние модалок/черновика ответа — controller-free UI-состояние,
+// живёт в пропсах компонента.
 // chat-ui-polish: стороны пузырей/время/маркеры дней (mapTypedMessages) и
 // кнопка «назад» мобильного переключения (onBack из chat.ts).
 // URL вложения вычисляется из env (fileUrl) — безопасные схемы гарантирует joinUrl.
@@ -14,6 +16,7 @@ import Handlebars from 'handlebars'
 import { Button, Input, Message } from '../../utils/types.ts'
 import { AppState, withStore } from '../../utils/Store.ts'
 import { fileUrl } from '../../utils/env.ts'
+import { getPreferences, subscribePreferences } from '../../utils/preferences.ts'
 import { messageDayKey } from '../message/message.ts'
 import template from './messenger.hbs'
 
@@ -55,6 +58,18 @@ interface MessengerProps {
     onSendMessage?: (chatId: number, message: string, replyToId?: number) => void
     // возврат к списку чатов в мобильном переключении (<768)
     onBack?: () => void
+    // 2026-11-01-chat-leave: матрица видимости меню участника — контакты
+    // вьюера (id), его собственный id и владелец чата; поведение, как везде,
+    // колбэками из пропсов (страница фичи ведёт в контроллер)
+    contactIds?: number[]
+    meId?: number
+    ownerId?: number
+    // eslint-disable-next-line no-unused-vars
+    onAddContact?: (userId: number) => void
+    // eslint-disable-next-line no-unused-vars
+    onKickUser?: (userId: number, chatId: number) => void
+    // eslint-disable-next-line no-unused-vars
+    onLeaveChat?: (chatId: number) => void
     // controller-free UI-состояние (внутреннее, поднимается через setProps):
     // модалка добавления пользователя и её данные поиска
     addUserOpen?: boolean
@@ -63,16 +78,22 @@ interface MessengerProps {
     addUserFeedback?: string
     // модалка подтверждения удаления чата
     deleteModalOpen?: boolean
+    // открытое меню участника (клик по его аватару в шапке; null — закрыто)
+    menuTarget?: ChatListUserEntry | null
     // черновик ответа: превью над инпутом, уходит с отправкой (reply_to_id)
     replyDraft?: ReplyDraft | null
     // раскрыт ли набор эмодзи у сообщения (переключается самим message)
     reactionsOpen?: boolean
+    // Гейт автозагрузки вложений (2026-11-01-settings): начальное значение —
+    // из preferences, живые переключения подъезжают подпиской
+    autoDownload?: boolean
     [key: string]: unknown
 }
 
 interface ChatListUserEntry {
     id: number
     avatar: string
+    display_name?: string
     onClick?: () => void
     [key: string]: unknown
 }
@@ -85,21 +106,26 @@ const escapeHtml = (value: unknown): string => Handlebars.escapeExpression(
 
 // Контент модалки добавления пользователя: поле @-поиска, подсказка,
 // фидбек и список находок {display_name, login}. Данные экранируются —
-// modal рендерит слот без экранирования
+// modal рендерит слот без экранирования. alreadyBadge — текст метки уже
+// добавленного (мессенджер не передаёт: дефолт «уже в чате» хранит его
+// поведение бит-в-бит; страница контактов переиспользует билдер с
+// «уже в контактах», 2026-11-01-contacts)
 export function renderAddUserModalContent(props: {
     addUserQuery?: string
     addUserResults?: UserSearchEntry[]
     addUserFeedback?: string
     memberIds?: number[]
+    alreadyBadge?: string
 }): string {
     const query = props.addUserQuery ?? ''
     const results = props.addUserResults ?? []
     const feedback = props.addUserFeedback ?? ''
     const memberIds = new Set(props.memberIds ?? [])
+    const alreadyBadge = props.alreadyBadge ?? 'уже в чате'
     const items = results.map(user => {
         const already = memberIds.has(user.id)
         const disabled = already ? ' disabled' : ''
-        const badge = already ? '<span class="modal__result-badge">уже в чате</span>' : ''
+        const badge = already ? `<span class="modal__result-badge">${escapeHtml(alreadyBadge)}</span>` : ''
 
         return '<li class="modal__result-item">'
             + `<button type="button" class="modal__result" data-testid="user-search-result" data-user-id="${escapeHtml(user.id)}"${disabled}>`
@@ -119,7 +145,7 @@ export function renderAddUserModalContent(props: {
         + '<div class="modal__search-flow">'
         + '<input class="modal__input" type="text" name="user-search" data-testid="user-search-input" '
         + `placeholder="Имя пользователя (email)" value="${escapeHtml(query)}" autocomplete="off" aria-label="Логин для поиска" />`
-        + `<p class="modal__hint">Начните вводить начало email — поиск сработает сам; «@» не нужен</p>${
+        + `<p class="modal__hint">Начните вводить начало или полный email — поиск сработает сам</p>${
             feedbackHtml
         }<ul class="modal__results" data-testid="user-search-results">${items}</ul>${
             emptyHint
@@ -138,6 +164,43 @@ export function renderDeleteModalContent(chatTitle: unknown): string {
         + '<button type="button" class="modal__button" data-testid="delete-chat-cancel">Отмена</button>'
         + '</div>'
         + '</div>'
+}
+
+// Контент меню участника (2026-11-01-chat-leave, узор меню контактов):
+// матрица видимости — чужой аватар: «Добавить в контакты» (id НЕ в контактах
+// вьюера) и «Удалить из чата» (вьюер — владелец); собственный аватар:
+// «Удалиться из чата»; «Отмена» — всегда. Данные экранируются — modal
+// рендерит слот без экранирования
+export function renderChatMemberMenuContent(options: {
+    target?: { id?: number, display_name?: string } | null
+    contactIds?: number[]
+    meId?: number
+    ownerId?: number
+}): string {
+    const id = typeof options.target?.id === 'number' ? options.target.id : undefined
+    const name = options.target?.display_name ?? ''
+    const contacts = new Set(options.contactIds ?? [])
+    const isSelf = id !== undefined && options.meId !== undefined && id === options.meId
+    const isOwner = options.meId !== undefined && options.ownerId !== undefined && options.meId === options.ownerId
+    const actions: string[] = []
+
+    if (id !== undefined && !isSelf && !contacts.has(id)) {
+        actions.push('<button type="button" class="modal__button" data-testid="member-menu-add-contact">Добавить в контакты</button>')
+    }
+
+    if (id !== undefined && !isSelf && isOwner) {
+        actions.push('<button type="button" class="modal__button modal__button_danger" data-testid="member-menu-kick">Удалить из чата</button>')
+    }
+
+    if (isSelf) {
+        actions.push('<button type="button" class="modal__button modal__button_danger" data-testid="member-menu-leave">Удалиться из чата</button>')
+    }
+
+    actions.push('<button type="button" class="modal__button" data-testid="member-menu-cancel">Отмена</button>')
+
+    const nameHtml = `<p class="modal__text" data-testid="member-menu-name">${escapeHtml(name)}</p>`
+
+    return `<div class="modal__confirm-flow">${nameHtml}<div class="modal__actions">${actions.join('')}</div></div>`
 }
 
 // Пропсы Message, вычисленные из DTO: сторона пузыря, безопасный URL
@@ -218,6 +281,9 @@ class MessengerBase extends Block {
 
     private scrollPlan: 'bottom' | 'preserve' | null = null
     private scrollPlanScheduled = false
+    // отписка от preferences: тумблер автозагрузки в настройках должен
+    // перерисовать вложения открытого чата, а утечка подписки — нет
+    private unsubscribePreferences: (() => void) | null = null
 
     private memoryKey(): number {
         const chatId = (this.props as MessengerProps).selectedChat
@@ -330,6 +396,9 @@ class MessengerBase extends Block {
     constructor(propsFromStore: MessengerProps) {
         super({
             ...propsFromStore,
+            // гейт автозагрузки вложений: стартует из preferences, дальше
+            // живёт подпиской (тумблер в настройках применяет сразу)
+            autoDownload: getPreferences().autoDownload,
             // controller-free UI-состояние модалок и черновика ответа
             addUserOpen: false,
             addUserQuery: '',
@@ -337,6 +406,7 @@ class MessengerBase extends Block {
             addUserFeedback: '',
             deleteModalOpen: false,
             replyDraft: null,
+            menuTarget: null,
             // черновик ответа: пузырь поднял событие — превью над инпутом
             onReplyToMessage: (draft: ReplyDraft | null) => {
                 this.setProps({ replyDraft: draft })
@@ -346,6 +416,9 @@ class MessengerBase extends Block {
             },
             onCloseDelete: () => {
                 this.setProps({ deleteModalOpen: false })
+            },
+            onCloseMemberMenu: () => {
+                this.setProps({ menuTarget: null })
             },
             // Колбэк обязан жить в пропсах: this.props обновляется setProps,
             // а замыкание конструктора застывало на старом selectedChat (LIVE-7)
@@ -373,6 +446,27 @@ class MessengerBase extends Block {
 
                     if (target?.closest('[data-testid="reply-cancel"]') != null) {
                         this.setProps({ replyDraft: null })
+
+                        return
+                    }
+
+                    // клик по аватару участника в шапке: меню участника.
+                    // Архивный чат (leftAt) — меню нет вовсе; участник ищется
+                    // в selectedChatUsers по data-user-id обёртки аватара
+                    const avatarHost = target?.closest('[data-testid="chat-user-avatar"]') as HTMLElement | null
+
+                    if (avatarHost != null) {
+                        const chatInfo = (this.props as MessengerProps).chatInfo as { leftAt?: string | null } | undefined
+
+                        if (chatInfo?.leftAt == null) {
+                            const userId = Number(avatarHost.dataset.userId)
+                            const users = (this.props as MessengerProps).selectedChatUsers ?? []
+                            const user = users.find(entry => entry.id === userId)
+
+                            if (user != null) {
+                                this.setProps({ menuTarget: user })
+                            }
+                        }
 
                         return
                     }
@@ -411,10 +505,55 @@ class MessengerBase extends Block {
 
                     if (target?.closest('[data-testid="delete-chat-cancel"]') != null) {
                         this.setProps({ deleteModalOpen: false })
+
+                        return
+                    }
+
+                    // действия меню участника: читаются из this.props на
+                    // момент клика (LIVE-7); меню закрывается всегда
+                    if (target?.closest('[data-testid="member-menu-add-contact"]') != null) {
+                        const { menuTarget, onAddContact } = this.props as MessengerProps
+
+                        this.setProps({ menuTarget: null })
+
+                        if (menuTarget != null) {
+                            onAddContact?.(menuTarget.id)
+                        }
+
+                        return
+                    }
+
+                    if (target?.closest('[data-testid="member-menu-kick"]') != null) {
+                        const { menuTarget, onKickUser, selectedChat } = this.props as MessengerProps
+
+                        this.setProps({ menuTarget: null })
+
+                        if (menuTarget != null && typeof selectedChat === 'number') {
+                            onKickUser?.(menuTarget.id, selectedChat)
+                        }
+
+                        return
+                    }
+
+                    if (target?.closest('[data-testid="member-menu-leave"]') != null) {
+                        const { onLeaveChat, selectedChat } = this.props as MessengerProps
+
+                        this.setProps({ menuTarget: null })
+
+                        if (typeof selectedChat === 'number') {
+                            onLeaveChat?.(selectedChat)
+                        }
+
+                        return
+                    }
+
+                    if (target?.closest('[data-testid="member-menu-cancel"]') != null) {
+                        this.setProps({ menuTarget: null })
                     }
                 },
-                // @-поиск: ввод с префиксом @ -> дебаунс -> onSearchUsers ->
-                // список находок; перерисовка только по ответу, фокус возвращаем
+                // поиск пользователя: ввод (начало или полный email) ->
+                // дебаунс -> onSearchUsers -> список находок; перерисовка
+                // только по ответу, фокус возвращаем
                 input: (event: Event) => {
                     const target = event.target as HTMLElement | null
 
@@ -422,17 +561,9 @@ class MessengerBase extends Block {
                         return
                     }
 
-                    const input = target as HTMLInputElement
-                    let raw = input.value
-
-                    // символ «@» — маркер поиска, в сам логин он входить не
-                    // может: не даём его ввести (вырезаем из значения)
-                    if (raw.includes('@')) {
-                        raw = raw.split('@').join('')
-                        input.value = raw
-                    }
-
-                    const query = raw
+                    // значение уходит в поиск как введено: логин — полный
+                    // email, «@» из него не вырезается
+                    const query = (target as HTMLInputElement).value
 
                     if (this.userSearchDebounce != null) {
                         clearTimeout(this.userSearchDebounce)
@@ -475,6 +606,11 @@ class MessengerBase extends Block {
                 },
             ],
         })
+
+        // живой тумблер автозагрузки: настройка применяется к открытому чату
+        this.unsubscribePreferences = subscribePreferences(preferences => {
+            this.setProps({ autoDownload: preferences.autoDownload })
+        })
     }
 
     // фокус в поле поиска после перерисовки по ответу поиска: DOM заменён,
@@ -496,15 +632,37 @@ class MessengerBase extends Block {
             clearTimeout(this.userSearchDebounce)
         }
 
+        this.unsubscribePreferences?.()
+        this.unsubscribePreferences = null
+
         super.destroy()
     }
 
     render() {
         const props = this.props as MessengerProps
-        const chatTitle = (props.chatInfo as { title?: unknown } | undefined)?.title
+        const chatInfo = props.chatInfo as { title?: unknown, leftAt?: string | null } | undefined
+        const chatTitle = chatInfo?.title
+        // архивное членство (left_at из GET /chats): чат только читается —
+        // меню участников, кнопка «+» и композер скрыты, история скроллится
+        const archived = chatInfo?.leftAt != null
+        const menuTarget = props.menuTarget ?? null
+        const headerButtons = (props.headerButtons as { extraClass?: string }[] | undefined) ?? []
+        const visibleHeaderButtons = archived
+            ? headerButtons.filter(button => button.extraClass !== 'cross')
+            : headerButtons
 
         return this.compile(template, {
             ...props,
+            archived,
+            headerButtons: visibleHeaderButtons,
+            menuTitle: menuTarget?.display_name ?? '',
+            menuOpen: menuTarget != null,
+            menuContent: renderChatMemberMenuContent({
+                target: menuTarget,
+                contactIds: props.contactIds,
+                meId: props.meId,
+                ownerId: props.ownerId,
+            }),
             addUserContent: renderAddUserModalContent({
                 ...props,
                 memberIds: ((props).selectedChatUsers ?? [])

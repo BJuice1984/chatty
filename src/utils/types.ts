@@ -30,6 +30,13 @@ export interface ChatInfo {
     // ИИ-чат (stage chats-social): собственный бэкенд отдаёт is_ai — по нему
     // список чатов рисует бейдж и акцент
     is_ai?: boolean
+    // Владелец чата (2026-11-01-chat-leave): «Удалить из чата» в меню
+    // участника доступно только ему
+    owner_id?: number
+    // Архивное членство (2026-11-01-chat-leave): left_at из GET /chats
+    // относительно вьюера; отсутствию/null (активный участник, ответы POST
+    // /chats и GET /chats/{id}) адаптер кладёт undefined
+    leftAt?: string | null
     last_message?: {
         time: string
         content: string
@@ -47,6 +54,17 @@ export interface ChatSearchMatch {
     matched_in: 'title' | 'message' | 'both'
     snippet?: { before: string; match: string; after: string } | null
     last_match_at?: string | null
+}
+
+// DTO контакта адресной книги (2026-11-01-contacts): id — id
+// ПОЛЬЗОВАТЕЛЯ-контакта, login — полный email, display_name — его локальная
+// часть; avatar уже разрешён own-адаптером (avatar_url ?? pool-фолбэк по id)
+// — DTO-зеркало ответа GET /contacts живёт во фиче (features/contacts/api)
+export interface ContactInfo {
+    id: number
+    login: string
+    display_name: string
+    avatar: string
 }
 
 export interface ChatUser {
@@ -93,13 +111,19 @@ export interface SearchUserData {
     [key: string]: unknown
 }
 
+// Правка профиля (2026-11-01-settings): контракт ЧАСТИЧНЫЙ — собственный
+// бэкенд принимает только display_name/phone/send_read_receipts, own-адаптер
+// шлёт лишь определённые поля (тумблер приватности несёт один флаг, отсутствующее
+// поле колонку на сервере не затирает); legacy-поля форм (first_name/
+// second_name/login/email) в own-запрос не попадают.
 export interface ChangeUserData {
-    first_name: string
-    second_name: string
-    display_name: string
-    login: string
-    email: string
-    phone: string
+    first_name?: string
+    second_name?: string
+    display_name?: string
+    login?: string
+    email?: string
+    phone?: string
+    send_read_receipts?: boolean
     [key: string]: unknown
 }
 

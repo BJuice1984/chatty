@@ -6,6 +6,11 @@
 // черновик реплая над инпутом. Шаблон грузится тестовым погрузчиком
 // (прецедент — ai-assistant), компоненты-хелперы (Modal/Message/Form) —
 // импортом components.ts, как в прод-сборке main.ts.
+// 2026-11-01-chat-leave: меню участника по клику аватара в шапке — матрица
+// видимости (владелец/контакт/свой аватар), архивный режим (нет меню,
+// кнопки «+» и композер скрыты), колбэки и XSS на display_name.
+// 2026-11-01-settings: проводка autoDownload — вложения открытого чата
+// перерисовываются живым тумблером preferences (подписка мессенджера).
 
 import { expect } from 'chai'
 import sinon from 'sinon'
@@ -16,6 +21,7 @@ import { registerComponent } from '../../core/registerComponent.ts'
 import * as Components from '../components.ts'
 import { mapTypedMessages, Messenger, USER_SEARCH_DEBOUNCE_MS } from './messenger.ts'
 import store from '../../utils/Store.ts'
+import { initPreferences, setPreference } from '../../utils/preferences.ts'
 import type { Message } from '../../utils/types.ts'
 
 // Регистрация компонентов-хелперов как в прод-сборке (main.ts): модалкам и
@@ -41,6 +47,7 @@ interface MessengerTestProps {
     headerButtons: HeaderButton[]
     addUserOpen?: boolean
     deleteModalOpen?: boolean
+    menuTarget?: { id?: number, display_name?: string } | null
     onReplyToMessage?: (draft: { id?: number; snippet: string }) => void
 }
 
@@ -242,9 +249,10 @@ describe('messenger action dispatch', () => {
     })
 })
 
-// Модалка добавления пользователя (chats-social): @-поиск с дебаунсом через
-// onSearchUsers, клик по находке зовёт onAddUser(userId, chatId), фидбек
-// после добавления. Модальное состояние — controller-free UI-пропсы.
+// Модалка добавления пользователя (chats-social): поиск по началу или
+// полному email с дебаунсом через onSearchUsers, клик по находке зовёт
+// onAddUser(userId, chatId), фидбек после добавления. Модальное состояние —
+// controller-free UI-пропсы.
 describe('messenger add-user modal', () => {
     beforeEach(() => {
         store.set('messages', { 5: [] })
@@ -279,10 +287,10 @@ describe('messenger add-user modal', () => {
         }
     })
 
-    it('debounces the @-prefixed search and renders the typed results', async () => {
+    it('debounces the search and passes the full email verbatim', async () => {
         const clock = sinon.useFakeTimers()
         const onSearchUsers = sinon.stub().resolves([
-            { id: 101, login: 'bob@example.com', display_name: 'bob' },
+            { id: 101, login: 'alice@chatty.local', display_name: 'alice' },
         ])
         const messenger = new Messenger({ onSearchUsers } as never)
 
@@ -291,10 +299,13 @@ describe('messenger add-user modal', () => {
 
             const input = messenger.element?.querySelector<HTMLInputElement>('[data-testid="user-search-input"]')
 
-            input!.value = '@bob'
+            input!.value = 'alice@chatty.local'
             // mochaSetup даёт только MouseEvent-глобал: тип события 'input'
             // важнее интерфейса, слушатель смотрит на event.type и target
             input!.dispatchEvent(new MouseEvent('input', { bubbles: true }))
+
+            // значение не переписывается: полный email остаётся как введён
+            expect(input!.value).to.equal('alice@chatty.local')
 
             // до истечения дебаунса поиска нет
             await clock.tickAsync(USER_SEARCH_DEBOUNCE_MS - 50)
@@ -302,13 +313,40 @@ describe('messenger add-user modal', () => {
 
             await clock.tickAsync(100)
 
-            expect(onSearchUsers.calledOnceWith('bob')).to.be.true
+            expect(onSearchUsers.calledOnceWith('alice@chatty.local')).to.be.true
 
             const result = messenger.element?.querySelector<HTMLButtonElement>('[data-testid="user-search-result"]')
 
             expect(result?.dataset.userId).to.eq('101')
-            expect(result?.textContent).to.contain('bob')
-            expect(result?.textContent).to.contain('bob@example.com')
+            expect(result?.textContent).to.contain('alice')
+            expect(result?.textContent).to.contain('alice@chatty.local')
+
+            // перерисовка по ответу коммитит запрос в инпут дословно
+            const revived = messenger.element?.querySelector<HTMLInputElement>('[data-testid="user-search-input"]')
+
+            expect(revived?.value).to.equal('alice@chatty.local')
+        } finally {
+            messenger.destroy()
+            clock.restore()
+        }
+    })
+
+    it('still searches a bare prefix without the full email', async () => {
+        const clock = sinon.useFakeTimers()
+        const onSearchUsers = sinon.stub().resolves([])
+        const messenger = new Messenger({ onSearchUsers } as never)
+
+        try {
+            openAddUser(messenger)
+
+            const input = messenger.element?.querySelector<HTMLInputElement>('[data-testid="user-search-input"]')
+
+            input!.value = 'bob'
+            input!.dispatchEvent(new MouseEvent('input', { bubbles: true }))
+
+            await clock.tickAsync(USER_SEARCH_DEBOUNCE_MS)
+
+            expect(onSearchUsers.calledOnceWith('bob')).to.be.true
         } finally {
             messenger.destroy()
             clock.restore()
@@ -371,6 +409,29 @@ describe('messenger add-user modal', () => {
             expect(content?.innerHTML).to.contain('&lt;script&gt;')
         } finally {
             messenger.destroy()
+        }
+    })
+
+    // 2026-11-01-contacts (review F-6): билдер модалки получил опциональный
+    // alreadyBadge — дефолт обязан остаться «уже в чате», мессенджер ничего
+    // не передаёт и его поведение бит-в-бит прежнее
+    it('badges an already-member with the default «уже в чате» and disables the result', () => {
+        store.set('chatUsers', [{ id: 101, avatar: '' }])
+        const messenger = new Messenger({} as never)
+
+        try {
+            messenger.setProps({
+                addUserOpen: true,
+                addUserResults: [{ id: 101, login: 'bob@example.com', display_name: 'bob' }],
+            })
+
+            const result = messenger.element?.querySelector<HTMLButtonElement>('[data-testid="user-search-result"]')
+
+            expect(result?.disabled).to.be.true
+            expect(result?.textContent).to.contain('уже в чате')
+        } finally {
+            messenger.destroy()
+            store.set('chatUsers', undefined)
         }
     })
 })
@@ -471,6 +532,346 @@ describe('messenger reply draft', () => {
             submitComposer(messenger, 'просто')
 
             expect(onSendMessage.calledOnceWith(5, 'просто', undefined)).to.be.true
+        } finally {
+            messenger.destroy()
+        }
+    })
+})
+
+// Меню участника (2026-11-01-chat-leave): клик по аватару в шапке открывает
+// Modal-меню; матрица видимости — чужой аватар: «Добавить в контакты» (id
+// не в contactIds) и «Удалить из чата» (meId === ownerId); свой аватар:
+// «Удалиться из чата»; архивный чат (leftAt): меню нет вовсе, кнопка «+» и
+// композер скрыты, история остаётся; «Отмена» — всегда
+describe('messenger member menu', () => {
+    const members = [
+        { id: 9, avatar: '', display_name: 'Боб' },
+        { id: 7, avatar: '', display_name: 'Я' },
+    ]
+
+    beforeEach(() => {
+        store.set('chats', [{ id: 5, title: 'рабочий чат', avatar: '', unread_count: 0, owner_id: 7 }])
+        store.set('chatUsers', members)
+        store.set('messages', { 5: [] })
+        store.set('selectedChat', 5)
+    })
+
+    afterEach(() => {
+        store.set('messages', undefined)
+        store.set('selectedChat', undefined)
+        store.set('chatUsers', undefined)
+        store.set('chats', undefined)
+    })
+
+    const openMemberMenu = (messenger: { element?: Element | null }, userId: number): void => {
+        messenger.element?.querySelector(`[data-testid="chat-user-avatar"][data-user-id="${userId}"]`)
+            ?.dispatchEvent(new MouseEvent('click', { bubbles: true }))
+    }
+
+    const menuQuery = (messenger: { element?: Element | null }, testid: string) =>
+        messenger.element?.querySelector(`[data-testid="${testid}"]`)
+
+    const menuActions = (messenger: { element?: Element | null }) => ({
+        addContact: menuQuery(messenger, 'member-menu-add-contact'),
+        kick: menuQuery(messenger, 'member-menu-kick'),
+        leave: menuQuery(messenger, 'member-menu-leave'),
+        cancel: menuQuery(messenger, 'member-menu-cancel'),
+    })
+
+    it('owner viewing a non-contact member: contact item, kick and cancel', () => {
+        const messenger = new Messenger({ meId: 7, ownerId: 7, contactIds: [] } as never)
+
+        try {
+            openMemberMenu(messenger, 9)
+
+            expect(propsOf(messenger).menuTarget?.id).to.eq(9)
+
+            const actions = menuActions(messenger)
+
+            expect(actions.addContact, 'add-contact shown').to.exist
+            expect(actions.kick, 'kick shown for the owner').to.exist
+            expect(actions.leave, 'no self-leave on another member').to.not.exist
+            expect(actions.cancel, 'cancel always').to.exist
+        } finally {
+            messenger.destroy()
+        }
+    })
+
+    it('owner viewing an existing contact: kick stays, contact item gone', () => {
+        const messenger = new Messenger({ meId: 7, ownerId: 7, contactIds: [9] } as never)
+
+        try {
+            openMemberMenu(messenger, 9)
+
+            const actions = menuActions(messenger)
+
+            expect(actions.addContact, 'already a contact').to.not.exist
+            expect(actions.kick).to.exist
+            expect(actions.cancel).to.exist
+        } finally {
+            messenger.destroy()
+        }
+    })
+
+    it('non-owner viewing a non-contact member: contact item only, no kick', () => {
+        const messenger = new Messenger({ meId: 3, ownerId: 7, contactIds: [] } as never)
+
+        try {
+            openMemberMenu(messenger, 9)
+
+            const actions = menuActions(messenger)
+
+            expect(actions.addContact).to.exist
+            expect(actions.kick, 'kick is owner-only').to.not.exist
+            expect(actions.leave).to.not.exist
+            expect(actions.cancel).to.exist
+        } finally {
+            messenger.destroy()
+        }
+    })
+
+    it('non-owner viewing an existing contact: cancel only', () => {
+        const messenger = new Messenger({ meId: 3, ownerId: 7, contactIds: [9] } as never)
+
+        try {
+            openMemberMenu(messenger, 9)
+
+            const actions = menuActions(messenger)
+
+            expect(actions.addContact).to.not.exist
+            expect(actions.kick).to.not.exist
+            expect(actions.leave).to.not.exist
+            expect(actions.cancel).to.exist
+        } finally {
+            messenger.destroy()
+        }
+    })
+
+    it('own avatar of a non-owner member: leave only', () => {
+        const messenger = new Messenger({ meId: 9, ownerId: 7, contactIds: [] } as never)
+
+        try {
+            openMemberMenu(messenger, 9)
+
+            const actions = menuActions(messenger)
+
+            expect(actions.leave, 'self-leave shown').to.exist
+            expect(actions.addContact, 'no self-contact').to.not.exist
+            expect(actions.kick, 'no self-kick').to.not.exist
+            expect(actions.cancel).to.exist
+        } finally {
+            messenger.destroy()
+        }
+    })
+
+    it('own avatar of the owner: leave only — no self-kick either', () => {
+        const messenger = new Messenger({ meId: 7, ownerId: 7, contactIds: [] } as never)
+
+        try {
+            openMemberMenu(messenger, 7)
+
+            const actions = menuActions(messenger)
+
+            expect(actions.leave).to.exist
+            expect(actions.kick).to.not.exist
+            expect(actions.addContact).to.not.exist
+        } finally {
+            messenger.destroy()
+        }
+    })
+
+    it('cancel closes the menu without firing any action', () => {
+        const onAddContact = sinon.spy()
+        const onKickUser = sinon.spy()
+        const onLeaveChat = sinon.spy()
+        const messenger = new Messenger({
+            meId: 7,
+            ownerId: 7,
+            contactIds: [],
+            onAddContact,
+            onKickUser,
+            onLeaveChat,
+        } as never)
+
+        try {
+            openMemberMenu(messenger, 9)
+            menuQuery(messenger, 'member-menu-cancel')?.dispatchEvent(new MouseEvent('click', { bubbles: true }))
+
+            expect(propsOf(messenger).menuTarget).to.be.null
+            expect(menuActions(messenger).kick).to.not.exist
+            expect(onAddContact.called).to.be.false
+            expect(onKickUser.called).to.be.false
+            expect(onLeaveChat.called).to.be.false
+        } finally {
+            messenger.destroy()
+        }
+    })
+
+    it('add-contact fires onAddContact with the member id and closes', () => {
+        const onAddContact = sinon.spy()
+        const messenger = new Messenger({ meId: 3, ownerId: 7, contactIds: [], onAddContact } as never)
+
+        try {
+            openMemberMenu(messenger, 9)
+            menuQuery(messenger, 'member-menu-add-contact')?.dispatchEvent(new MouseEvent('click', { bubbles: true }))
+
+            expect(onAddContact.calledOnceWith(9)).to.be.true
+            expect(propsOf(messenger).menuTarget).to.be.null
+        } finally {
+            messenger.destroy()
+        }
+    })
+
+    it('kick fires onKickUser with the member id and the chat id', () => {
+        const onKickUser = sinon.spy()
+        const messenger = new Messenger({ meId: 7, ownerId: 7, contactIds: [], onKickUser } as never)
+
+        try {
+            openMemberMenu(messenger, 9)
+            menuQuery(messenger, 'member-menu-kick')?.dispatchEvent(new MouseEvent('click', { bubbles: true }))
+
+            expect(onKickUser.calledOnceWith(9, 5)).to.be.true
+            expect(propsOf(messenger).menuTarget).to.be.null
+        } finally {
+            messenger.destroy()
+        }
+    })
+
+    it('leave fires onLeaveChat with the chat id', () => {
+        const onLeaveChat = sinon.spy()
+        const messenger = new Messenger({ meId: 9, ownerId: 7, contactIds: [], onLeaveChat } as never)
+
+        try {
+            openMemberMenu(messenger, 9)
+            menuQuery(messenger, 'member-menu-leave')?.dispatchEvent(new MouseEvent('click', { bubbles: true }))
+
+            expect(onLeaveChat.calledOnceWith(5)).to.be.true
+            expect(propsOf(messenger).menuTarget).to.be.null
+        } finally {
+            messenger.destroy()
+        }
+    })
+
+    it('archived chat: no menu, no + button, no composer — history stays', () => {
+        store.set('chats', [{ id: 5, title: 'архив', avatar: '', unread_count: 0, leftAt: '2026-11-01T09:00:00Z' }])
+        const onLeaveChat = sinon.spy()
+        const messenger = new Messenger({ meId: 7, ownerId: 7, contactIds: [], onLeaveChat } as never)
+
+        try {
+            openMemberMenu(messenger, 9)
+
+            // меню не открылось — действий в DOM нет, пропс не тронут
+            expect(propsOf(messenger).menuTarget).to.be.null
+            const actions = menuActions(messenger)
+
+            expect(actions.addContact).to.not.exist
+            expect(actions.kick).to.not.exist
+            expect(actions.leave).to.not.exist
+            expect(onLeaveChat.called).to.be.false
+
+            // кнопка «+» скрыта, удаление чата остаётся (owner-only на бэке)
+            const headerButtons = messenger.element?.querySelector('.messenger__header-buttons-container')
+
+            expect(headerButtons?.querySelector('.cross')).to.not.exist
+            expect(headerButtons?.querySelector('.close')).to.exist
+
+            // композер скрыт, история остаётся скроллимой
+            expect(messenger.element?.querySelector('.messenger__composer')).to.not.exist
+            expect(messenger.element?.querySelector('.messenger__container')).to.exist
+        } finally {
+            messenger.destroy()
+        }
+    })
+
+    it('active chat keeps the + button and the composer', () => {
+        const messenger = new Messenger({} as never)
+
+        try {
+            expect(messenger.element?.querySelector('.messenger__header-buttons-container .cross')).to.exist
+            expect(messenger.element?.querySelector('.messenger__composer')).to.exist
+        } finally {
+            messenger.destroy()
+        }
+    })
+
+    it('renders a hostile display_name as text (XSS)', () => {
+        store.set('chatUsers', [{ id: 11, avatar: '', display_name: '<script>alert(1)</script>' }])
+        const messenger = new Messenger({ meId: 7, ownerId: 7, contactIds: [] } as never)
+
+        try {
+            openMemberMenu(messenger, 11)
+
+            expect(messenger.element?.querySelector('script')).to.not.exist
+
+            const nameLine = messenger.element?.querySelector('[data-testid="member-menu-name"]')
+
+            expect(nameLine?.innerHTML).to.contain('&lt;script&gt;')
+
+            const menuTitle = nameLine?.closest('[data-testid="modal"]')?.querySelector('[data-testid="modal-title"]')
+
+            expect(menuTitle?.textContent).to.contain('alert(1)')
+            expect(menuTitle?.innerHTML).to.contain('&lt;script&gt;')
+        } finally {
+            messenger.destroy()
+        }
+    })
+})
+
+// Гейт автозагрузки вложений (2026-11-01-settings): мессенджер несёт
+// autoDownload из preferences и живо перерисовывает вложения открытого чата
+// при переключении тумблера (подписка, не только начальное значение).
+describe('messenger attachment auto-download wiring', () => {
+    beforeEach(() => {
+        store.set('chats', [{ id: 5, title: 'файлы', avatar: '', unread_count: 0 }])
+        store.set('messages', {
+            5: [{ chat_id: 5, time: 't1', type: 'message', user_id: 7, content: 'файл', file_url: '/api/v1/files/9/download', id: 21 }],
+        })
+        store.set('selectedChat', 5)
+        window.localStorage.removeItem('chatty-preferences')
+        initPreferences()
+    })
+
+    afterEach(() => {
+        store.set('messages', undefined)
+        store.set('selectedChat', undefined)
+        store.set('chats', undefined)
+        window.localStorage.removeItem('chatty-preferences')
+        initPreferences()
+    })
+
+    it('renders the inline attachment by default and re-renders on the live toggle', () => {
+        const messenger = new Messenger({} as never)
+
+        try {
+            expect(messenger.element?.querySelector('.messenger__message-attachment')?.textContent?.trim())
+                .to.equal('Вложение')
+
+            setPreference('autoDownload', false)
+
+            const download = messenger.element?.querySelector<HTMLAnchorElement>('[data-testid="attachment-download"]')
+
+            expect(download).to.exist
+            expect(download?.getAttribute('href')).to.equal('/api/v1/files/9/download')
+            expect(messenger.element?.querySelector('[data-testid="attachment-download"]')?.textContent?.trim())
+                .to.equal('Скачать')
+
+            setPreference('autoDownload', true)
+
+            expect(messenger.element?.querySelector('[data-testid="attachment-download"]')).to.not.exist
+            expect(messenger.element?.querySelector('.messenger__message-attachment')?.textContent?.trim())
+                .to.equal('Вложение')
+        } finally {
+            messenger.destroy()
+        }
+    })
+
+    it('starts with the preview suppressed when the preference is already off', () => {
+        setPreference('autoDownload', false)
+
+        const messenger = new Messenger({} as never)
+
+        try {
+            expect(messenger.element?.querySelector('[data-testid="attachment-download"]')).to.exist
         } finally {
             messenger.destroy()
         }

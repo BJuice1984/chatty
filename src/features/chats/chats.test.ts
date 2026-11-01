@@ -2,7 +2,8 @@ import { expect } from 'chai'
 import sinon from 'sinon'
 import { JSDOM } from 'jsdom'
 import store from '../../utils/Store.ts'
-import { ChatsFeatureController, applyReactionDelta, toggleOwnReaction } from './controller.ts'
+import { ChatsFeatureController, applyReactionDelta, setContactsIntegration, toggleOwnReaction } from './controller.ts'
+import { ownChatsPort } from './api/own.ts'
 import { chatSearchSlice, chatsSlice } from './store.ts'
 import { notifyChatDeleted, notifyReactionEvent } from './ws/gateway.ts'
 import { OwnWsAdapter } from './ws/own.ts'
@@ -21,6 +22,8 @@ function makePort(overrides: Partial<ChatsPort> = {}): ChatsPort {
         getToken: async (chatId: number) => ({ token: `token-${chatId}` }),
         addUsers: async () => undefined,
         removeUsers: async () => undefined,
+        leaveChat: async () => undefined,
+        rejoinChat: async () => undefined,
         getChatUsers: async () => [],
         changeChatAvatar: async () => ({ avatar: '' }),
         searchUsers: async () => [],
@@ -455,6 +458,221 @@ describe('chats controller chat_deleted', () => {
         expect(store.getState().selectedChat).to.eq(undefined)
         expect(closeChat.calledOnceWith(3)).to.be.true
         expect(fetchChats.calledOnce).to.be.true
+    })
+})
+
+// 2026-11-01-chat-leave: кик и собственный выход. Кик — публичный метод
+// (мгновенный кик по клику аватара из getChatUsers умер вместе с приватным
+// deleteChatUsers); выход архивирует членство — сокет чата гасится без
+// реконнекта, выбор сбрасывается, список рефетчится (чат остаётся с leftAt)
+describe('chats controller chat leave', () => {
+    afterEach(() => {
+        store.set('chatUsers', undefined)
+        store.set('selectedChat', undefined)
+    })
+
+    it('kicks members through the port and refetches both the roster and the list', async () => {
+        const removeUsers = sinon.stub().resolves()
+        const getChatUsers = sinon.stub().resolves([])
+        const fetchChats = sinon.stub().resolves([])
+        const controller = new ChatsFeatureController(
+            makePort({ removeUsers, getChatUsers, fetchChats }),
+            makeMessages()
+        )
+
+        await controller.removeUsersFromChat([101, 102], 7)
+
+        expect(removeUsers.calledOnceWith({ users: [101, 102], chatId: 7 })).to.be.true
+        expect(getChatUsers.calledOnceWith(7)).to.be.true
+        expect(fetchChats.calledOnce).to.be.true
+    })
+
+    // закрепляем смерть legacy-провода: состав кладётся как приехал, без
+    // onClick — клик по аватару на уровне контроллера ничего не делает
+    it('stores the roster without the legacy instant-kick onClick wiring', async () => {
+        const controller = new ChatsFeatureController(makePort({
+            getChatUsers: async () => [{
+                id: 101,
+                first_name: 'ada',
+                second_name: '',
+                display_name: 'ada',
+                login: 'ada@example.com',
+                email: 'ada@example.com',
+                phone: '',
+                avatar: '',
+            }],
+        }), makeMessages())
+
+        await controller.getChatUsers(3)
+
+        const [user] = chatsSlice.getChatUsers() ?? []
+
+        expect(user?.id).to.eq(101)
+        expect(user).to.not.have.property('onClick')
+    })
+
+    it('leaves through the port, closes the socket without reconnect, clears selection and refetches', async () => {
+        store.set('selectedChat', 3)
+        const leaveChat = sinon.stub().resolves()
+        const closeChat = sinon.stub().resolves()
+        const connect = sinon.spy()
+        const fetchChats = sinon.stub().resolves([])
+        const controller = new ChatsFeatureController(
+            makePort({ leaveChat, fetchChats }),
+            makeMessages({ closeChat, connect })
+        )
+
+        await controller.leaveChat(3)
+
+        expect(leaveChat.calledOnceWith(3)).to.be.true
+        expect(store.getState().selectedChat).to.eq(undefined)
+        expect(closeChat.calledOnceWith(3)).to.be.true
+        expect(connect.notCalled).to.be.true
+        expect(fetchChats.calledOnce).to.be.true
+    })
+})
+
+// 2026-11-01-settings: возврат в архивированный чат. Реактивация через порт,
+// затем рефетч списка — карточка сама выходит из «покинутых» (leftAt гаснет);
+// ошибка порта молчит, список не трогаем
+describe('chats controller chat rejoin', () => {
+    afterEach(() => {
+        chatsSlice.setChats([])
+    })
+
+    it('rejoins through the port and refetches the list', async () => {
+        const rejoinChat = sinon.stub().resolves()
+        const fetchChats = sinon.stub().resolves([])
+        const controller = new ChatsFeatureController(
+            makePort({ rejoinChat, fetchChats }),
+            makeMessages()
+        )
+
+        await controller.rejoinChat(3)
+
+        expect(rejoinChat.calledOnceWith(3)).to.be.true
+        expect(fetchChats.calledOnce).to.be.true
+    })
+
+    it('stays silent and keeps the list when the port rejects', async () => {
+        const errorSpy = sinon.stub(console, 'error')
+        const rejoinChat = sinon.stub().rejects(new Error('boom'))
+        const fetchChats = sinon.stub().resolves([])
+        const controller = new ChatsFeatureController(
+            makePort({ rejoinChat, fetchChats }),
+            makeMessages()
+        )
+
+        try {
+            await controller.rejoinChat(3)
+        } finally {
+            errorSpy.restore()
+        }
+
+        expect(fetchChats.notCalled).to.be.true
+    })
+})
+
+// Адаптер возврата (узор chats/api/api.test.ts): подмена XMLHttpRequest
+// закрепляет метод/адрес/CSRF — POST /chats/{id}/rejoin c double-submit
+describe('chats api rejoin (fake XHR)', () => {
+    interface CapturedCall {
+        method: string
+        url: string
+        headers: Record<string, string>
+    }
+
+    class FakeXHR {
+        static calls: CapturedCall[] = []
+
+        onload: (() => void) | null = null
+        withCredentials = false
+        responseType = ''
+        timeout = 0
+        status = 0
+        response: unknown = null
+
+        private method = ''
+        private url = ''
+        private headers: Record<string, string> = {}
+
+        open(method: string, url: string): void {
+            this.method = method
+            this.url = url
+        }
+
+        setRequestHeader(name: string, value: string): void {
+            this.headers[name] = value
+        }
+
+        send(): void {
+            FakeXHR.calls.push({ method: this.method, url: this.url, headers: { ...this.headers } })
+
+            this.status = 204
+            this.response = null
+            this.onload?.()
+        }
+    }
+
+    // URL обязателен: cookie на about:blank jsdom молча отбрасывается
+    const dom = new JSDOM('', { url: 'http://localhost/' })
+
+    let originalXHR: typeof XMLHttpRequest
+    let originalDocument: Document
+
+    beforeEach(() => {
+        originalXHR = globalThis.XMLHttpRequest
+        originalDocument = global.document
+        global.document = dom.window.document
+        FakeXHR.calls = []
+        globalThis.XMLHttpRequest = FakeXHR as unknown as typeof XMLHttpRequest
+        dom.window.document.cookie = 'chatty_csrf=token-1'
+    })
+
+    afterEach(() => {
+        globalThis.XMLHttpRequest = originalXHR
+        global.document = originalDocument
+        dom.window.document.cookie = 'chatty_csrf=; expires=Thu, 01 Jan 1970 00:00:00 GMT'
+    })
+
+    it('rejoins over POST /chats/{id}/rejoin with the csrf header', async () => {
+        await ownChatsPort.rejoinChat(7)
+
+        const call = FakeXHR.calls[0]
+
+        expect(call.method).to.eq('POST')
+        expect(call.url).to.contain('/chats/7/rejoin')
+        expect(call.headers['X-CSRF-Token']).to.eq('token-1')
+    })
+})
+
+// Контактный шов (consumer-side): до связывания — noop (обёртки не падают),
+// после инъекции addContact/refreshContacts делегируются объекту целиком
+describe('chats controller contacts seam', () => {
+    afterEach(() => {
+        setContactsIntegration({ addContact: () => {}, refreshContacts: () => {} })
+    })
+
+    it('defaults to noop: wrapper calls neither throw nor reach any feature', () => {
+        const controller = new ChatsFeatureController(makePort(), makeMessages())
+
+        expect(() => controller.addContact(42)).to.not.throw()
+        expect(() => controller.refreshContacts()).to.not.throw()
+    })
+
+    it('delegates addContact and refreshContacts to the injected integration', () => {
+        const addContact = sinon.spy()
+        const refreshContacts = sinon.spy()
+
+        setContactsIntegration({ addContact, refreshContacts })
+
+        const controller = new ChatsFeatureController(makePort(), makeMessages())
+
+        controller.addContact(42)
+        controller.refreshContacts()
+
+        expect(addContact.calledOnceWith(42)).to.be.true
+        expect(refreshContacts.calledOnceWith()).to.be.true
     })
 })
 

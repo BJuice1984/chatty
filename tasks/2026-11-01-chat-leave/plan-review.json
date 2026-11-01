@@ -1,0 +1,101 @@
+{
+    "schemaVersion": "agent-plan-review.v1",
+    "packageId": "2026-11-01-chat-leave",
+    "planRevision": 3,
+    "reviewId": "review-2026-11-01-chat-leave-freeze-r2",
+    "reviewedPlanHash": "4e883d27a09fcb7e82956e2bbc2a7c2c4ae56c0b8655241dc4f5c5c3ba8677f4",
+    "fullReview": true,
+    "verdict": "READY_TO_FREEZE",
+    "reviewer": {
+        "id": "claude-code-independent-subagent",
+        "independent": true,
+        "runId": "audit-run-20261101-chat-leave-plan-r2",
+        "surface": "audit-agent-plan"
+    },
+    "reviewedAt": "2026-11-01",
+    "verification": {
+        "completenessCheck": "PASS on FROZEN revision 3 (agent-plan-completeness-validation.v1, 12 required checks, 0 blockers); reviewedPlanHash above is the canonical planDigest from the reviewer's own `agent_lifecycle plan completeness-check --manifest tasks/2026-11-01-chat-leave/plan.manifest.json` run after the rev-3 amendment (digest lineage: c4267b7e rev-1 -> c1f95e8e rev-2 at verdict -> a21eae53 rev-2 frozen -> 4e883d27 rev-3)",
+        "rev3Amendment": "CONFIRMED as the minimal sound resolution of a genuine plan gap. Breakage mechanism verified independently from source (not just the worker's report): backend/tests/integration/test_migration_009_contacts_segment.py:66 stamps 'head' and :70 runs head-relative downgrade '-1' — once 010_chat_leave exists, '-1' from head executes 010's downgrade and lands on the 009 state, so the 008-state assertions at :72-73 ('contacts' not in tables, 'is_dm' not in chats_columns) fail deterministically; the rev-2 write-set contained no file that could fix it, making the wave's exit-0 suite gate (verify:backend green modulo only the 4 ingestion failures) unachievable. The fix — one functional line changing the downgrade target to the explicit revision id '008_pg_trgm_search_indexes' plus a comment — preserves the test's documented intent exactly (from a stamped head, downgrading to 008 still runs 009's own downgrade; upgrading to head re-applies 009 and 010; both 009-segment directions stay exercised) and is head-independent (future 011+ cannot break it again). Alternatives rejected correctly: leaving the test red breaks the pinned gate; skipping/deselecting the test silently weakens evidence; reverting 010 blocks the operator-approved feature; the only comparable variant (stamp '009_contacts' + keep '-1') is equal in size but leaves the step-relative fragility. Ownership legality: the 009 SEGMENT TEST is not in WS-BE-CHAT-LEAVE.forbiddenWrites (which protects the migration scripts 001-009 — untouched); adding the test to writes is the correct ALK-legal authorization for the forced deviation. Delta audit: the rev-3 edit is exactly the five stated changes — planRevision 3; the 009 test added to WS-BE writes (13 entries, no forbiddenWrites collision); the migration plannedItem's amendment sentence (with a semantics-free 'downgrade -1' -> 'downgrade one step' reword of the 010-pattern phrasing, correct since one step down from head 010 is 010's downgrade); planReview.reviewedRevision 3; the matching amendment sentence in plan.md wave-1 and the AC-BE-LEAVE row — everything else byte-identical to the approved frozen rev-2 (requirements, other writes/plannedItems, ACs, gates, budgets, planFiles all verified line-by-line).",
+        "postAcceptanceDelta": "Freeze bookkeeping previously verified: status FROZEN; planReview verdict READY_TO_FREEZE; plan-review.json declared in planFiles; F-12 fixes (setContactsIntegration in constraints[0]/scope/releaseImpact, constraints[4] slice-module reword) and F-13 fix (readOnly path backend/tests/integration/chat/test_stories_ws.py) — all confirmed in the frozen rev-2 and carried unchanged into rev-3.",
+        "round2Scope": "Every round-1 finding (F-1..F-11) was re-verified against revision 2 and the unchanged source tree at 25f1868; all closed in the normative texts. Write-sets pairwise disjoint; services/messages.py readOnly READ side; bot.py/files.py in writes; contacts/controller.ts readOnly; budgets 3 x 30000 <= 100000. The rev-3 amendment adds one test file to WS-BE writes and does not alter any of those properties.",
+        "baseClaims": "mocha 423 passing verified by running npm test at 25f1868 (round 1); pytest 218 + 4 documented Windows ingestion failures matches docs/NEXT.md:32; alembic heads at base is 009_contacts (single chain 001..009); base sha matches the manifest baseRevision"
+    },
+    "findings": [
+        {
+            "id": "F-12",
+            "severity": "minor",
+            "status": "closed",
+            "title": "Non-normative rev-1 prose still named setContactAdder and claimed the contacts slice stays untouched — CLOSED in freeze bookkeeping",
+            "detail": "Round-2 finding (open at verdict time): plan.manifest.json specification.constraints[0], specification.scope and releaseImpact still said 'setContactAdder', developer-overview.md:36-39 described a contacts-side setter, and constraints[4] 'chatSearch/contacts/history slices untouched' read oddly against the pinned ChatPage-CDM refreshContacts. CLOSED post-acceptance: the freeze edit renamed all three manifest spots to setContactsIntegration (consumer-side), reworded constraints[4] to 'slice modules untouched (the contacts slice is deliberately POPULATED via the injected refreshContacts — no module edit)', and developer-overview.md dropped the stale prose; the normative texts (requirements, plannedItems, ACs, plan.md) were already consistent. Closure verified in the post-acceptance delta audit.",
+            "files": [
+                "tasks/2026-11-01-chat-leave/plan.manifest.json",
+                "tasks/2026-11-01-chat-leave/developer-overview.md"
+            ],
+            "requiredFix": "Closed — no further action; the fix is part of the frozen manifest this review hashes."
+        },
+        {
+            "id": "F-13",
+            "severity": "minor",
+            "status": "closed",
+            "title": "WS-BE-CHAT-LEAVE readOnly listed a non-existent path for the WS harness precedent — CLOSED in freeze bookkeeping",
+            "detail": "Round-2 finding (open at verdict time): readOnly pointed at backend/tests/integration/stories/test_stories_ws.py while the file lives at backend/tests/integration/chat/test_stories_ws.py. CLOSED post-acceptance: the freeze edit corrected the readOnly path to backend/tests/integration/chat/test_stories_ws.py; verified in the post-acceptance delta audit (plan.manifest.json workstreams[0].readOnly).",
+            "files": [
+                "tasks/2026-11-01-chat-leave/plan.manifest.json"
+            ],
+            "requiredFix": "Closed — no further action; the fix is part of the frozen manifest this review hashes."
+        }
+    ],
+    "reviewVerdict": {
+        "schemaVersion": "agent-review-verdict.v1",
+        "overall": "ACCEPTED",
+        "dimensions": {
+            "requirementFit": {
+                "status": "PASS",
+                "reasonCode": "operator-asks-covered",
+                "summary": "All seven operator asks are pinned and deliverable: menus on the header avatars, conditional «Добавить в контакты» backed by a CDM-refreshed contacts slice (F-5), owner-only kick via the now-mapped ChatInfo.owner_id (F-3), self-leave into a kept-for-history dimmed archive, messages stop arriving via the active-membership fan-out filter with an integration-level two-socket pin (F-9), and archived read-only enforced on every write path — WS send, REST message POST, reaction, add member, leave, bot run, chat-scoped file upload (F-1, F-4). The rev-3 amendment changes no requirement or acceptance semantics; it authorizes a one-line test-target fix required to keep the pinned suite gate achievable."
+            },
+            "implementationQuality": {
+                "status": "PASS",
+                "reasonCode": "planned-items-executable",
+                "summary": "Every plannedItem matches the source. The guard split is enforced at entry points the write-set owns (require_active_member from endpoints/chats.py message-create + reaction-toggle, ws/router.py send, add_member, leave, bot.py, files.py) with services/messages.py explicitly the untouched READ side; the seam is consumer-side setContactsIntegration in features/chats/controller.ts wired in the guard-exempt features/index.ts; ChatInfo gains owner_id with the toChatInfo mapping; the hub plannedItem names per-socket identity, user-scoped close_user_chat and the active fan-out filter; the legacy onClick forEach removal is pinned in the wave that owns controller.ts; migration 010 chains 009_contacts with the verified 009 segment/batch_alter pattern; write-sets are pairwise disjoint and cover the work. The rev-3 amendment makes the previously-unexecutable exit-0 gate executable: the 009 segment test joins WS-BE writes with an explicit, head-independent downgrade target."
+            },
+            "evidenceQuality": {
+                "status": "PASS",
+                "reasonCode": "pins-match-contract",
+                "summary": "ACs pin exactly what the requirements promise, including the previously missing cases: archived REST message POST / bot-run / file-upload 403s, mark_read no-op, the two-socket fan-out pin (active receives, archived silent; kick/leave close only the affected user's socket), the wave-2 legacy-wiring-gone pin, the CDM refreshContacts pin, and the single-chat left_at null-by-design narrowing. The AC-BE-LEAVE row now also carries the 009-test amendment so the evidence contract matches the executed reality. Base counts remain real (mocha 423 verified by running the suite; pytest 218 + 4 documented ingestion failures). Evidence routes unchanged."
+            },
+            "residualRisk": {
+                "status": "PASS",
+                "reasonCode": "no-open-findings",
+                "summary": "No open findings. The rev-3 amendment risk is bounded and verified from source: the change touches one assertion-adjacent line of an existing test's downgrade target, preserves both directions of the 009 segment proof, keeps the 001-009 migration scripts in forbiddenWrites, and is the only alternative to an unachievable gate or a blocked feature. Noted forward-looking symmetry (not a defect): the new 010 segment test's one-step-from-head downgrade will need the same explicit-target treatment when a future 011 lands — that belongs to the future plan, same pattern. Final implementation audit remains required by the manifest."
+            }
+        },
+        "routing": {
+            "nextAction": "accept",
+            "target": "controller: amendment confirmed on revision 3 (digest 4e883d27...) — the run continues under the amended ownership; the executed 009-test change is to be validated by the standing per-task/final implementation audits against this amended plan"
+        }
+    },
+    "rounds": [
+        {
+            "round": 1,
+            "reviewId": "review-2026-11-01-chat-leave-freeze-r1",
+            "reviewedPlanHash": "c4267b728878ace0035c0299f96fc6acc104d9bf8ff2c7a8e6f5f8746ff1a1e4",
+            "verdict": "CHANGES_REQUIRED",
+            "findingsCount": 11,
+            "summary": "Independent source-level audit of revision 1 at 25f1868 (reviewId review-2026-11-01-chat-leave-freeze-r1, runId audit-run-20261101-chat-leave-plan-r1). Architecture sound, most claims source-accurate, but 5 majors (guard-split call sites in services/messages.py outside the write-set + REST message POST omitted from WRITE paths; setContactAdder seam inverted vs the setChatOpener precedent and guard-blocking as written; ChatInfo.owner_id missing so the owner gate was dead; bot-run and file-upload write paths reachable by archived members and unfixable in-scope; contacts slice never fetched on /messenger) and 6 minors (single-chat left_at, mark_read side, wave-2 legacy-wiring pin, hub user identity, archived header affordances/re-add actor, budget arithmetic). Verdict CHANGES_REQUIRED -> revision 2."
+        },
+        {
+            "round": 2,
+            "verdict": "READY_TO_FREEZE",
+            "findingsCount": 2,
+            "summary": "Closure verification against the on-disk revision 2 (planRevision 2, digest c1f95e8e... at verdict time; completeness PASS). All eleven round-1 findings closed in the normative texts: F-1 guard split relocated to write-set-owned entry points with the REST message POST added to the WRITE list and services/messages.py designated readOnly READ side; F-2 seam inverted consumer-side to setContactsIntegration in features/chats/controller.ts with contacts/controller.ts out of the writes; F-3 ChatInfo.owner_id + toChatInfo mapping pinned; F-4 bot.py and files.py added to the write-set with archived bot-run/file-upload 403 pinned and SEC-MEMBERSHIP-AUTHZ enumerating every path; F-5 refreshContacts + ChatPage CDM call pinned; F-6 single-chat left_at null-by-design documented; F-7 mark_read no-op; F-8 legacy onClick forEach removal pinned in wave 2; F-9 hub per-socket identity, user-scoped close and the integration-level two-socket pin replacing the hedge; F-10 + button hidden for archived and the re-add actor specified active; F-11 budgets 30000/100000. Two non-blocking documentation minors were left open at verdict (F-12, F-13) and both were subsequently closed by the controller's freeze bookkeeping. READY_TO_FREEZE. Post-acceptance re-hash: after the verdict the controller edited the manifest with exactly the freeze bookkeeping (status FROZEN, planReview reviewedRevision 2 / READY_TO_FREEZE, plan-review.json added to planFiles) plus the F-12/F-13 fixes; the delta was verified line-by-line as semantics-free, completeness-check re-run PASS, and reviewedPlanHash was reset to the new canonical digest a21eae53ab3093a53cdb296d5b84731b78d7d681d4b81d83eb16cfa63fe7e0ac from the reviewer's own run."
+        },
+        {
+            "round": 3,
+            "type": "amendment-confirmation",
+            "verdict": "READY_TO_FREEZE",
+            "findingsCount": 0,
+            "summary": "Mid-execution rev-3 amendment confirmed (digest 4e883d27a09fcb7e82956e2bbc2a7c2c4ae56c0b8655241dc4f5c5c3ba8677f4, completeness PASS). Cause verified independently from source: the 009 segment test's downgrade '-1' is head-relative (test stamps 'head' at :66, downgrades one step at :70), so adding 010 makes it run 010's downgrade and the 008-state assertions at :72-73 fail — no in-write-set fix existed and the wave's exit-0 gate was unachievable. The amendment (009 test joins WS-BE writes; its downgrade target becomes the explicit '008_pg_trgm_search_indexes' revision id, one functional line + comment, head-independent, both 009-segment directions preserved) is the minimal sound resolution; alternatives (red test, skipped test, revert-and-block) are all worse, and the 001-009 migration scripts remain forbiddenWrites. Delta audit: exactly the five stated changes, everything else byte-identical to the approved frozen rev-2. Verdict remains READY_TO_FREEZE / ACCEPTED; the run continues on the amended ownership and the executed test change is covered by the standing implementation audits."
+        }
+    ]
+}

@@ -24,6 +24,10 @@ interface MessageProps {
     replyTo?: MessageReplyTo | null
     // сводка реакций (mine вычислена viewer-side контроллером)
     reactions?: ReactionSummary[]
+    // Гейт автозагрузки вложений (2026-11-01-settings): false — превью
+    // выключено, вложение рендерится ссылкой «Скачать»; отсутствие/true —
+    // прежний вид (ссылка «Вложение»)
+    autoDownload?: boolean
     // eslint-disable-next-line no-unused-vars
     onSetReaction?: (chatId: number, messageId: number, emoji: string) => void
     // eslint-disable-next-line no-unused-vars
@@ -162,6 +166,7 @@ export class Message extends Block {
             emojiSet: MESSAGE_EMOJI_SET,
             hasReactions: (reactions?.length ?? 0) > 0,
             quoteSnippet,
+            attachmentDownload: (this.props as MessageProps).autoDownload === false,
         })
     }
 }

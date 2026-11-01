@@ -2,7 +2,7 @@
 @import '../utils/variable';
 
 .page {
-	background-color: $mainTextColor;
+	background-color: var(--page-background);
 	font-family: 'Mulish', 'Arial', sans-serif, 'Inter', system-ui, 'Avenir', 'Helvetica';
 	-moz-osx-font-smoothing: grayscale;
 	-webkit-font-smoothing: antialiased;

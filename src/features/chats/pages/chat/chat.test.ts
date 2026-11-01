@@ -7,6 +7,8 @@
 // chats-social: chat_deleted очищает selectedChat в сторе — панель обязана
 // вернуться к списку; страница пробрасывает колбэки @-поиска/реакций в
 // мессенджер через контроллер фичи.
+// 2026-11-01-chat-leave: меню участника — CDM бутстрапит контакты, мэппер
+// даёт contactIds/meId/ownerId, колбэки ведут в контроллер фичи.
 
 import { expect } from 'chai'
 import sinon from 'sinon'
@@ -41,6 +43,13 @@ interface ChatPageCallbacks {
     onAddUser?: (userId: number, chatId: number) => Promise<void>
     onSetReaction?: (chatId: number, messageId: number, emoji: string) => void
     onSendMessage?: (chatId: number, message: string, replyToId?: number) => void
+    // меню участника (2026-11-01-chat-leave): матрица видимости + колбэки
+    contactIds?: number[]
+    meId?: number
+    ownerId?: number
+    onAddContact?: (userId: number) => void
+    onKickUser?: (userId: number, chatId: number) => void
+    onLeaveChat?: (chatId: number) => void
     // stories: срез стора (DTO-форма, числовые id); рендер-список
     // (add-плитка + строковые id) страница строит только в render()
     onSelectStory?: (id?: string) => void
@@ -85,6 +94,25 @@ describe('chat page mobile pane switch', () => {
             page.destroy()
         } finally {
             fetchChats.restore()
+        }
+    })
+
+    // 2026-11-01-contacts: вход на страницу с живым выбором (навигация из
+    // /contacts после openDm) открывает панель чата, а не список
+    it('starts with the pane open when a chat is already selected', () => {
+        const fetchChats = sinon.stub(ChatsController, 'fetchChats').resolves()
+
+        try {
+            store.set('selectedChat', 4)
+
+            const page = new ChatPage({} as never)
+
+            expect(callbacksOf(page).chatPaneOpen).to.be.true
+
+            page.destroy()
+        } finally {
+            fetchChats.restore()
+            store.set('selectedChat', undefined)
         }
     })
 
@@ -322,6 +350,124 @@ describe('chat page social callbacks', () => {
             setReaction.restore()
             addUsersToChat.restore()
             fetchChats.restore()
+        }
+    })
+})
+
+// Меню участника (2026-11-01-chat-leave): CDM бутстрапит слайс контактов
+// (холодный вход в /messenger), мэппер снабжает матрицу видимости
+// (contactIds/meId/ownerId), колбэки ведут в контроллер, карточка
+// архивного чата гаснет модификатором от leftAt прямо в списке страницы
+describe('chat page member menu wiring', () => {
+    let storiesSocket: sinon.SinonStub
+    let fetchChats: sinon.SinonStub
+
+    beforeEach(() => {
+        storiesSocket = sinon.stub(StoriesController, 'connectStoriesSocket')
+        fetchChats = sinon.stub(ChatsController, 'fetchChats').resolves()
+    })
+
+    afterEach(() => {
+        fetchChats.restore()
+        storiesSocket.restore()
+        store.set('chats', undefined)
+        store.set('contacts', undefined)
+        store.set('user', undefined)
+        store.set('selectedChat', undefined)
+    })
+
+    it('refreshes the contacts slice on componentDidMount, not on construction', () => {
+        const refreshContacts = sinon.stub(ChatsController, 'refreshContacts')
+
+        try {
+            const page = new ChatPage({} as never)
+
+            expect(refreshContacts.called).to.be.false
+
+            page.dispatchComponentDidMount()
+
+            expect(refreshContacts.calledOnce).to.be.true
+
+            page.destroy()
+        } finally {
+            refreshContacts.restore()
+        }
+    })
+
+    it('maps contactIds, meId and ownerId into the page props', () => {
+        store.set('user', {
+            id: 7,
+            display_name: 'Я',
+            first_name: '',
+            second_name: '',
+            email: 'me@chatty.local',
+            login: 'me@chatty.local',
+            phone: '',
+            avatar: '',
+        })
+        store.set('contacts', [
+            { id: 3, login: 'a@example.com', display_name: 'a', avatar: '' },
+            { id: 9, login: 'b@example.com', display_name: 'b', avatar: '' },
+        ])
+        store.set('chats', [{ id: 5, title: 'чат', avatar: '', unread_count: 0, owner_id: 42 }])
+        store.set('selectedChat', 5)
+
+        const page = new ChatPage({} as never)
+
+        try {
+            const props = callbacksOf(page)
+
+            expect(props.contactIds).to.deep.eq([3, 9])
+            expect(props.meId).to.eq(7)
+            expect(props.ownerId).to.eq(42)
+        } finally {
+            page.destroy()
+        }
+    })
+
+    it('wires the member-menu callbacks into the controller', () => {
+        const addContact = sinon.stub(ChatsController, 'addContact')
+        const removeUsersFromChat = sinon.stub(ChatsController, 'removeUsersFromChat').resolves()
+        const leaveChat = sinon.stub(ChatsController, 'leaveChat').resolves()
+
+        try {
+            const page = new ChatPage({} as never)
+            const props = callbacksOf(page)
+
+            props.onAddContact?.(9)
+            expect(addContact.calledOnceWith(9)).to.be.true
+
+            props.onKickUser?.(9, 5)
+            expect(removeUsersFromChat.calledOnceWith([9], 5)).to.be.true
+
+            props.onLeaveChat?.(5)
+            expect(leaveChat.calledOnceWith(5)).to.be.true
+
+            page.destroy()
+        } finally {
+            leaveChat.restore()
+            removeUsersFromChat.restore()
+            addContact.restore()
+        }
+    })
+
+    it('renders the dimmed archived card from leftAt in the chat list', () => {
+        store.set('chats', [
+            { id: 5, title: 'покинутый', avatar: '', unread_count: 0, leftAt: '2026-11-01T09:00:00Z' },
+            { id: 6, title: 'активный', avatar: '', unread_count: 0 },
+        ])
+
+        const page = new ChatPage({} as never)
+
+        try {
+            const rows = Array.from(page.element?.querySelectorAll('.chat-list-user') ?? [])
+            const archivedRow = rows.find(row => row.textContent?.includes('покинутый'))
+            const activeRow = rows.find(row => row.textContent?.includes('активный'))
+
+            expect(archivedRow?.classList.contains('chat-list-user_archived')).to.be.true
+            expect(activeRow?.classList.contains('chat-list-user_archived')).to.be.false
+        } finally {
+            page.destroy()
         }
     })
 })

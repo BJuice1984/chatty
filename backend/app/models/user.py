@@ -19,6 +19,19 @@ class User(Base):
     role: Mapped[str] = mapped_column(String(32), default='user', nullable=False)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
     token_version: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    # Editable profile fields: display_name NULL falls back to the email
+    # local part at every response boundary (search, contacts, member briefs)
+    display_name: Mapped[str | None] = mapped_column(String(120), nullable=True)
+    phone: Mapped[str | None] = mapped_column(String(30), nullable=True)
+    # Privacy toggle: when false, the viewer's own history loads stop
+    # advancing their last-read marker (chat_last_reads has no peer
+    # consumer — sender-visible receipts are a non-goal)
+    send_read_receipts: Mapped[bool] = mapped_column(
+        Boolean,
+        default=True,
+        server_default='1',
+        nullable=False,
+    )
     # use_alter: files<->chats/users FK-цикл, drop_all без него не сортирует таблицы
     avatar_file_id: Mapped[int | None] = mapped_column(
         ForeignKey('files.id', ondelete='SET NULL', use_alter=True),

@@ -1,5 +1,6 @@
 // Фича-контроллер chats (stage 4; stage 7 — режимные адаптеры; chats-social —
-// реакции, реплаи, chat_deleted): бизнес-логика за портом. Порты по
+// реакции, реплаи, chat_deleted; 2026-11-01-chat-leave — кик участника,
+// собственный выход и контактный шов): бизнес-логика за портом. Порты по
 // умолчанию — адаптеры, выбранные по env.mode: ./api/index.ts (HTTP) и
 // ./ws/gateway.ts (WebSocket, замена MessagesController).
 //
@@ -14,6 +15,29 @@ import { chatsPort } from './api/index.ts'
 import type { ChatMessagesPort, ChatReactionEvent, ChatsPort, ChatsUserSearchResult } from './ports.ts'
 import { chatSearchSlice, chatsSlice } from './store.ts'
 import { chatMessagesPort, setChatsEventListeners } from './ws/gateway.ts'
+
+// Контактный шов (2026-11-01-chat-leave): «Добавить в контакты» из меню
+// участника и бутстрап списка контактов — логика contacts-фичи. Шов живёт
+// в ПОТРЕБИТЕЛЕ (здесь): сеттер в contacts заставил бы chats тянуть
+// cross-feature импорт (урок setChatOpener, review F-2). До связывания
+// стоят noop — контроллерские обёртки не падают.
+export interface ContactsIntegration {
+    // eslint-disable-next-line no-unused-vars
+    addContact(userId: number): void | Promise<void>
+    refreshContacts(): void | Promise<void>
+}
+
+const noopContactsIntegration: ContactsIntegration = {
+    addContact: () => {},
+    refreshContacts: () => {},
+}
+
+let contactsIntegration: ContactsIntegration = noopContactsIntegration
+
+// Композиция (features/index.ts) вызывает это до первого рендера.
+export function setContactsIntegration(integration: ContactsIntegration): void {
+    contactsIntegration = integration
+}
 
 // Применяет дельту события реакции к сводке одного сообщения (чистая функция):
 // count ± 1, mine перевычисляется только для действия самого вьюера,
@@ -325,13 +349,12 @@ export class ChatsFeatureController {
         }
     }
 
+    // Состав участников для хедера: клик по аватару больше не кикает
+    // мгновенно — контекстное меню навешивает UI (2026-11-01-chat-leave);
+    // контроллер укладывает состав как приехал, без onClick
     async getChatUsers(id: number): Promise<void> {
         try {
             const users = await this.port.getChatUsers(id)
-
-            users.forEach(user => {
-                user.onClick = () => void this.deleteChatUsers({ users: [user.id], chatId: id })
-            })
 
             chatsSlice.setChatUsers(users)
         } catch (e: unknown) {
@@ -405,13 +428,61 @@ export class ChatsFeatureController {
         store.set('chats', chats)
     }
 
-    private async deleteChatUsers(data: { users: number[]; chatId: number }): Promise<void> {
+    // Кик участников (2026-11-01-chat-leave): owner-only на бэкенде; после
+    // удаления обновляем и состав участников, и список чатов (у кикнутого
+    // чат исчезает целиком, но наш список мы просто рефетчим). Заменил
+    // приватный deleteChatUsers с мгновенным киком по клику аватара
+    async removeUsersFromChat(users: number[], chatId: number): Promise<void> {
         try {
-            await this.port.removeUsers(data)
-            void this.getChatUsers(data.chatId)
+            await this.port.removeUsers({ users, chatId })
+
+            void this.fetchChats()
+            void this.getChatUsers(chatId)
         } catch (e: unknown) {
             console.error('Ошибка при удалении пользователя из чата:', e)
         }
+    }
+
+    // Собственный выход (2026-11-01-chat-leave): членство архивируется, чат
+    // остаётся в списке (потушенный leftAt), история читается — гасим сокет
+    // чата без реконнекта, сбрасываем выбор и рефетчим список
+    async leaveChat(chatId: number): Promise<void> {
+        try {
+            await this.port.leaveChat(chatId)
+
+            store.set('selectedChat', undefined)
+            void this.messages.closeChat(chatId)
+            void this.fetchChats()
+        } catch (e: unknown) {
+            console.error('Ошибка при выходе из чата:', e)
+        }
+    }
+
+    // Возврат в архивированный чат (2026-11-01-settings): реактивирует
+    // собственное членство, список рефетчится — карточка сама выходит из
+    // «покинутых» (leftAt гаснет в сторе); выбор чата не трогаем (остаётся
+    // ручным), сокет поднимает общий цикл fetchChats
+    async rejoinChat(chatId: number): Promise<void> {
+        try {
+            await this.port.rejoinChat(chatId)
+
+            void this.fetchChats()
+        } catch (e: unknown) {
+            console.error('Ошибка при возвращении в чат:', e)
+        }
+    }
+
+    // «Добавить в контакты» из меню участника — делегируется contacts-фиче
+    // через инъекцию (до связывания noop)
+    addContact(userId: number): void {
+        void contactsIntegration.addContact(userId)
+    }
+
+    // Бутстрап списка контактов для условного пункта меню: слайс сегодня
+    // наполняет только страница контактов, холодный вход в /messenger
+    // требует явного обновления (review F-5)
+    refreshContacts(): void {
+        void contactsIntegration.refreshContacts()
     }
 }
 

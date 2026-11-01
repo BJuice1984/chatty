@@ -1,16 +1,17 @@
 // Own-адаптер порта chats (stage 7; stage chats-social добавил поиск
 // пользователей, удаление чата и реакции; 2026-10-25-chats-list-members —
 // составы участников в списке; 2026-10-26-chat-search — last_message в
-// списке и живой поиск): контракт собственного бэкенда —
+// списке и живой поиск; 2026-11-01-chat-leave — кик участника и собственный
+// выход): контракт собственного бэкенда —
 // POST /chats (создание), GET /chats (список с краткими составами
 // участников и last_message), GET /chats/search?q= (живой поиск по чатам),
 // POST /chats/{id}/members
 // (добавление участника, по одному user_id на вызов), GET /users?login=
 // (префиксный поиск), DELETE /chats/{id} (owner-only, перед удалением бэкенд
-// рассылает WS chat_deleted и закрывает сокеты чата), POST
-// /chats/{cid}/messages/{mid}/reactions (toggle). Остальные операции
-// (список/удаление участников, аватар чата) бэкендом не предоставлены и
-// явно отвергаются.
+// рассылает WS chat_deleted и закрывает сокеты чата), DELETE
+// /chats/{id}/members/{uid} (кик, owner-only, по одному участнику на вызов),
+// POST /chats/{id}/leave (собственный выход, архивирует членство), POST
+// /chats/{cid}/messages/{mid}/reactions (toggle).
 //
 // getToken возвращает пустой токен-сентинел: WS own-режима аутентифицируется
 // cookie, а не токеном в URL (см. ws/own.ts) — контроллерский цикл
@@ -47,6 +48,10 @@ export interface OwnChatResponse {
     // поля — чат без сообщений и ответы POST /chats, GET /chats/{id}
     // (null-дефолт сервера)
     last_message?: { content: string | null; time: string } | null
+    // архивное членство из GET /chats, относительно ЗАПРОСИВШЕГО: null —
+    // активный участник; нет поля — ответы POST /chats и GET /chats/{id}
+    // (единого членства там нет, список остаётся источником)
+    left_at?: string | null
 }
 
 // Ответ GET /users?login= : id, полный (нижнерегистровый) email и выводимое
@@ -74,10 +79,6 @@ interface OwnReactionSummaryResponse {
 const http = new HTTPTransport('/chats')
 // поиск пользователей живёт вне префикса /chats (GET /users)
 const usersHttp = new HTTPTransport('/users')
-
-function unsupported(method: string): never {
-    throw new Error(`Операция ${method} недоступна в own-режиме: контракт бэкенда её не предоставляет`)
-}
 
 // Аватар чата: свой avatar_url с бэкенда, иначе — реальный аватар
 // единственного собеседника (не я) с pool-фолбэком; без meId или без
@@ -108,6 +109,12 @@ export function toChatInfo(response: OwnChatResponse, meId?: number): ChatInfo {
         unread_count: response.unread_count ?? 0,
         // ИИ-чат: бейдж и акцент в списке чатов
         is_ai: response.is_ai,
+        // владелец чата: пункт «Удалить из чата» в меню участника — только
+        // для него (меню UI-волны)
+        owner_id: response.owner_id,
+        // архивное членство вьюера: отсутствию/null (активный участник,
+        // ответы без членского контекста) — undefined
+        leftAt: response.left_at ?? undefined,
         // Последнее сообщение (сортировка списка по активности): единая
         // точка плейсхолдера «Вложение» для файловых (content null);
         // отсутствующему/пустому last_message — undefined, чат тонет вниз
@@ -144,8 +151,25 @@ export const ownChatsPort: ChatsPort = {
             )
         )
     },
-    removeUsers() {
-        unsupported('removeUsers')
+    async removeUsers(data) {
+        // кик: owner-only на бэкенде; бэкенд удаляет одного участника
+        // за вызов (прецедент addUsers — Promise.all по user_id)
+        await Promise.all(
+            data.users.map(user_id =>
+                http.delete(`/${data.chatId}/members/${user_id}`, { csrfToken: readCsrfToken() })
+            )
+        )
+    },
+    async leaveChat(chatId: number) {
+        // собственный выход: архивирует членство (left_at), повтор —
+        // идемпотентный 204; бэкенд закрывает наш сокет чата
+        await http.post(`/${chatId}/leave`, { csrfToken: readCsrfToken() })
+    },
+    async rejoinChat(chatId: number) {
+        // возврат в свой архивированный чат (2026-11-01-settings):
+        // реактивирует собственное членство (left_at -> NULL); активное
+        // членство — идемпотентный 204
+        await http.post(`/${chatId}/rejoin`, { csrfToken: readCsrfToken() })
     },
     async getChatUsers(chatId: number) {
         const members = await (http.get(`/${chatId}/members`) as unknown as Promise<

@@ -1,6 +1,6 @@
 import Block from '../../core/Block.ts'
 import Router from '../../utils/Router.ts'
-import { MESSENGER, PROFILE } from '../../utils/constants.ts'
+import { CONTACTS, MESSENGER, PROFILE } from '../../utils/constants.ts'
 import template from './bottomBar.hbs'
 
 export class BottomBar extends Block {
@@ -16,9 +16,9 @@ export class BottomBar extends Block {
                 {
                     src: '/images/bottom-bar-icon_group.svg',
                     alt: 'Иконка. Контакты',
-                    isActive: false,
+                    isActive: currentPath === CONTACTS,
                     onClick: () => {
-                        console.log('render contacts')
+                        Router.go(CONTACTS)
                     },
                 },
                 {

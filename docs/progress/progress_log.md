@@ -1,3 +1,182 @@
+# 2026-11-01 — Feat(settings): UI шести секций /settings и доставка фоновых сообщений (WS-FE-SETTINGS-UI)
+
+Четвёртая волна ALK-прогона `2026-11-01-settings` (ветка
+feature/2026-11-01-contacts, после бэкенда 72e6be7, темы f9fc22c и логики
+716b22b): мёртвые пункты сайдбара /settings стали навигацией по правой
+панели. `ProfileSettingsItem` получил onClick (читает this.props на момент
+клика — LIVE-7) и модификатор `_active`; секция — состояние в пропсах
+страницы (`section: account|chats|appearance|notification|privacy|data`),
+рендер вычисляет флаги видимости и checked-состояния. **Account**:
+display_name/phone через существующую Form-идиому (валидаторы; phone
+опционален — обёртка empty-или-формат, NULL на бэкенде разрешён),
+email/login — read-only строки плоской разметкой в profile.hbs (контракт
+Form/Input read-value не рендерит), смена пароля — второй Form со
+старым/новым/повтором (12+ политика из passwordValidationMessage,
+совпадение повтора — фидбек «Новые пароли не совпадают» без вызова
+контроллера), «Sign out» остался кнопкой формы, «Sign out everywhere» —
+за модалкой-подтверждением (билдер renderLogoutAllModalContent по узору
+renderDeleteModalContent, логин экранируется escapeHtml; подтверждение →
+getProfileController().logoutAll()). **Chats**: архив = слайс chats с
+leftAt, «Вернуться» → getProfileController().rejoinChat(id) (шов
+композиции на ChatsController.rejoinChat) — карточка оживает рефетчем
+стора (страница перерисовывается из слайса, пин). **Appearance**: радио
+light/dark/system → setTheme (живьём в document.documentElement.dataset,
+персист chatty-theme). **Notification**: тумблеры звука и браузерных
+уведомлений на utils/preferences (включение уведомлений спрашивает
+Notification.requestPermission, отсутствие API — подсказка «не
+поддерживаются»). **Privacy**: send_read_receipts из стора → одно-полевой
+PUT changeUserInfo({send_read_receipts}). **Data Usage**: fetchUsage на
+ВХОДЕ в секцию (componentDidUpdate-переход, не на каждом рендере; ошибка —
+подсказка), формат КБ/МБ/ГБ (formatUsageSize, порог 1024) + тумблер
+autoDownload. Доставка: шов deliverBackgroundNotice в features/chats/ws/
+own.ts — чужое сообщение в невыбранном чате (предикаты инкремента
+непрочитанных) играет WebAudio-пинг (ленивый AudioContext, кеш привязан к
+конструктору — тестовые подмены естественно пересоздают; без ассета) и
+показывает Notification(title чата, body сниппет / «Вложение») только при
+тумблер+granted+document.hidden; мессенджер несёт autoDownload из
+preferences живой подпиской (destroy отписывает), message.hbs при
+выключенной автозагрузке рендерит ссылку «Скачать» (data-testid
+attachment-download) вместо превью «Вложение». Новый
+`src/scss/components/settings-sections.scss` — секции/тумблеры/радио/
+архив/usage только на var(--token), без комментариев; подключён в
+_all.scss. Тесты: +55 mocha (база 485 → 540): profile-страница 33
+(навигация шести секций, active-маркер, read-only+XSS, правка/валидация,
+пароль ок/несовпадение/12+/Sign out/модалка, архив+rejoin+оживание,
+тема живьём, тумблеры, usage+формат), ws-гейты 10 (звук вкл/выкл/свой/
+открытый, ленивость контекста, уведомление granted+hidden / visible /
+denied / выкл / свой, «Вложение» и фолбэк-заголовок), messenger 2 (живая
+перерисовка вложений тумблером), message 4 (обе ветки гейта + без файла),
+ProfileSettingsItem 6 (клик, живой колбэк, _active, XSS). Гейты: npm run
+verify — typecheck, 540 mocha, eslint, stylelint зелёные;
+guard-architecture --all --strict — 0 нарушений. Кумулятивный реестр
+открытых хвостов (наследован от предыдущих волн + находки этого прогона,
+к закрытию отдельными правками): 1) зачистка легаси-комментариев про
+«@-поиск» после 2026-11-01-email-search; 2) явный multi-row-тест порядка
+GET /contacts (created_at DESC); 3) негерметичный пин дефолтного
+noop-опенера в contacts.test.ts (порядок загрузки файлов); 4) мёртвый
+eslint-disable в src/features/contacts/controller.ts; 5) дормирующие
+catch-ветки, найденные ревью волн логики и бэкенда; 6) бэкенд-фикстура
+owner_id требует distinct-пользователей; 7) сегментный тест 011_settings
+при появлении 012 перепинить на явную ревизию; 8) остаточная проверка
+версии refresh-токена в WS-хендшейке (ver-клейм сравнивается только в
+REST get_current_user); 9) ai-assistant не проверен на светлую тему
+(жёсткие цвета вне токенов — прогон 2026-11-01-settings не трогал);
+10) устаревший комментарий у chat-list-user (описывает убранное поведение);
+11) одно-кадровая вспышка светлой темы при холодной загрузке с тёмным
+выбором — заявленный non-goal (инлайн-скрипт бутстрапа).
+
+# 2026-11-01 — Feat(chats): UI членства — меню участника, архивная карточка, скрытый композер (WS-FE-CHAT-LEAVE-UI)
+
+Третья волна ALK-прогона `2026-11-01-chat-leave` (ветка feature/2026-11-01-contacts,
+после бэкенд-волны fce6a5d и фронтенд-логики 53c0d9d): клик по аватару участника
+в шапке мессенджера открывает Modal-контекстное меню (прецедент меню контактов)
+вместо удалённого волной 2 мгновенного кика. Матрица видимости: чужой аватар —
+«Добавить в контакты» (только когда id НЕ в contactIds) и «Удалить из чата»
+(только при meId === ownerId, owner-only на бэкенде); собственный аватар —
+«Удалиться из чата»; «Отмена» — всегда. Контент меню строит escapeHtml-билдер
+`renderChatMemberMenuContent` (XSS-пин на display_name — и в слоте, и в заголовке
+модалки двойными скобками). Новые пропсы Messenger: contactIds/meId/ownerId/
+onAddContact/onKickUser/onLeaveChat — компонент остаётся controller-free.
+Архивный чат (leftAt из GET /chats): меню нет вовсе, кнопка «+» шапки скрыта
+(фильтрация headerButtons в render), композер скрыт (условие в messenger.hbs),
+история остаётся скроллимой. Страница чатов: CDM дополнительно зовёт
+`ChatsController.refreshContacts()` (инъекция contacts-фичи, шов волны 2) —
+холодный вход в /messenger наполняет слайс контактов для условного пункта
+(review F-5, пин); withStore-мэппер снабжает contactIds (каст-идиом слайса
+contacts), meId (state.user?.id) и ownerId (chats.find(selected)?.owner_id);
+колбэки ведут в addContact / removeUsersFromChat([userId], chatId) / leaveChat
+(сброс выбора и закрытие сокета — контроллер волны 2). Карточка списка:
+chatListUser гаснет модификатором `chat-list-user_archived` от leftAt
+(пониженная opacity + grayscale аватара; chat.hbs прокидывает leftAt в User) —
+вышедший чат остаётся в списке для чтения истории. Тесты: +19 mocha —
+messenger 13 (матрица владелец/не-владелец × контакт/не-контакт × свой аватар
+× архив, подавления кнопки «+» и композера, колбэки с правильными id, cancel,
+XSS), chat 4 (refreshContacts на CDM, поля мэппера, проводка колбэков,
+архивная карточка в списке), chatListUser 2 (модификатор есть/нет). Гейты:
+npm run verify — typecheck, 450 mocha (база 431 + 19), eslint, stylelint
+зелёные; guard-architecture --all --strict — 0 нарушений; бэкенд контура —
+230 pytest passed (+4 известных Windows-падения ingestion), alembic heads ==
+010_chat_leave. Наследованный реестр открытых хвостов (по итогам ревью
+принятых волн, к закрытию отдельными правками): 1) зачистка легаси-комментариев
+про «@-поиск» после 2026-11-01-email-search; 2) явный multi-row-тест порядка
+GET /contacts (created_at DESC) — сейчас только косвенные данные; 3) негерметичный
+пин дефолтного noop-опенера в contacts.test.ts (зависит от порядка загрузки
+тестовых файлов, модульный шов общий на процесс); 4) мёртвый eslint-disable в
+src/features/contacts/controller.ts; 5) дормирующие catch-ветки, найденные
+ревью волн логики и бэкенда; 6) бэкенд-фикстура owner_id требует пина на
+distinct-пользователях; 7) сегментный тест 010_chat_leave при появлении 011
+потребуется перепинить на явную ревизию (как 009 перепинен на 008).
+
+# 2026-11-01 — Fix(search): полный email в поиске пользователей — убран @-стрип в обеих модалках (WS-FE-EMAIL-SEARCH)
+
+Прогон `2026-11-01-email-search` (ветка feature/2026-11-01-contacts): поиск
+пользователя в модалках «Добавить пользователя» (мессенджер) и «Добавить»
+(контакты) больше не вырезает «@» из введённого значения. Логин на собственном
+бэкенде — полный email, поэтому старый @-стрип (рудимент конвенции «@логин»
+практикум-эры) превращал `alice@chatty.local` в префикс `alicechatty.local` и
+ничего не находил; работали только голые префиксы. Правки: в обработчике
+input модалок удалён блок @-стрипа — значение уходит в дебаунс-поиск
+дословно (`components/messenger/messenger.ts` и
+`features/contacts/pages/contacts/contacts.ts`), подсказка модалки —
+«Начните вводить начало или полный email — поиск сработает сам» (билдер
+общий, текст обновился в обеих модалках), комментарии про «@»-маркер
+переписаны. Тесты: @-strip-пины заменены на пины дословной передачи —
+`alice@chatty.local` доходит до onSearchUsers без изменений и значение
+инпута не переписывается (messenger.test.ts), полный email `bob@example.com`
+доходит до searchUsers и коммитится в инпут после перерисовки
+(contacts.test.ts), префикс без «@» по-прежнему ищет (пин в обоих файлах).
+Бэкенд не тронут: экранирование LIKE и `@`-префиксы уже закреплены в
+backend/tests/integration/chat/test_social_api.py:129. Гейты: npm run verify —
+typecheck, 423 mocha (база 422 + 1 новый префикс-пин), eslint, stylelint
+зелёные; guard-architecture --all --strict — 0 нарушений.
+
+# 2026-11-01 — Feat(contacts): UI адресной книги — маршрут /contacts, сайдбар, модалки, адаптив (WS-FE-CONTACTS-UI)
+
+Третья волна ALK-прогона `2026-11-01-contacts` (ветка feature/2026-11-01-contacts,
+после бэкенд-волны a01d015 и фронтенд-логики 66bc316): адресная книга получила
+маршрут и интерфейс. Маршрут `/contacts` зарегистрирован в main.ts (Routes.Contacts
+= CONTACTS из констант) и защищён существующим allowlist-гардом auth-фичи без правок
+гарда. Новый компонент `components/contactItem` — карточка контакта (аватар через
+ChatAvatar с его fileUrl-маппингом и pool-фолбэком, display_name, login,
+hover-крест удаления), пользовательские данные — только двойные скобки (XSS-пин:
+login с `<script>` рендерится текстом), клики по карточке и кресту расходятся в
+onClick/onDelete. BottomBar: иконка «Контакты» вместо console.log-заглушки зовёт
+Router.go(CONTACTS) и подсвечивается на /contacts («Чаты» не тронута — пин-тесты
+навигации и активных состояний). `renderAddUserModalContent` мессенджера получил
+опциональный `alreadyBadge` с дефолтом «уже в чате» — аддитивно, поведение
+мессенджера бит-в-бит прежнее (дефолт закреплён кейсом в messenger.test.ts).
+Страница `features/contacts/pages/contacts`: withStore по слайсу contacts
+(каст-идиом, utils/Store.ts не тронут — возврат мэппера аннотирован пересечением
+с ComponentProps, т.к. ключ contacts в интерфейсе не объявлен), CDM фетчит список,
+упрощённый сайдбар (шапка «Контакты» + «Добавить», список, BottomBar — без
+stories-ряда и поиска по чатам) и правая панель-заглушка; модальное состояние —
+controller-free UI-пропсы по прецеденту Messenger с корневой делегацией событий:
+модалка «Добавить» переиспользует билдер messenger с бейджем «уже в контактах»,
+дебаунс 300 мс (USER_SEARCH_DEBOUNCE_MS импортирован из components/messenger —
+импорт вниз по слоям) и возврат фокуса; меню контакта («Создать» → openDm и
+закрытие, при отказе — фидбек «Не удалось создать чат»; «Найти все чаты» —
+видимый disabled-стаб с title «пока не реализовано»; «Отмена»), подтверждение
+удаления («Удалить контакт «имя»?» → removeContact). Слоты модалок строят
+escapeHtml-билдеры страницы (узор renderDeleteModalContent, инлайн для контактов).
+Страница чатов: chatPaneOpen стартует из живого выбора (`selectedChat != null`) —
+возврат на /messenger после openDm с /contacts на мобильном открывает панель чата,
+а не список; поведение осознанное, задокументировано и пинновано тестом.
+SCSS: новый `contacts.scss` (grid min-content 1fr на всю высоту, сайдбар 380px с
+border-right, шапка с отступами как у chat.scss, список — собственный скролл
+flex:1/min-height:0 + scrollbar-slim, BottomBar в потоке, заглушка по центру)
+и `contact-item.scss` (карточка: аватар, двухстрочный текст, крест — гасится до
+hover только на pointer:fine); оба подключены в `_all.scss`; планшет 768–1023 —
+сайдбар 280px с компактными отступами chat.scss, мобильный <768 — одна колонка,
+правая панель скрыта, переключения панелей на маршруте нет. Конвенция: в новых
+scss-файлах комментариев нет. Гейты: npm run verify — typecheck, 422 mocha
+(база 398 + 24 новых), eslint, stylelint зелёные; guard-architecture --all
+--strict — 0 нарушений. Известный долг принятых волн (по итогам их ревью,
+к наследованию этой волной): 1) порядок GET /contacts (created_at DESC) пиннован
+бэкенд-тестом только на косвенных данных — нужен явный multi-row-тест порядка;
+2) пин дефолтного noop-опенера в contacts.test.ts не герметичен (зависит от
+порядка загрузки тестовых файлов — модульный chatOpener общий на процесс);
+3) мёртвый eslint-disable в src/features/contacts/controller.ts.
+
 # 2026-11-01 — Feat(ui): стилевая сессия оператора — скроллбары, подсветка роута, конвенция без комментариев
 
 Серия правок по запросам оператора в живой сессии против dev-сервера (Vite own-режим).

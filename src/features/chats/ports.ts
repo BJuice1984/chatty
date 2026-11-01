@@ -1,5 +1,6 @@
 // Порты фичи chats (stage 4; stage 7 добавил поиск пользователей; stage
-// chats-social добавил реакции): контракт за границей фичи.
+// chats-social добавил реакции; 2026-11-01-chat-leave добавил поддержку
+// removeUsers и leaveChat): контракт за границей фичи.
 // Реализация — собственный адаптер в ./api/{own,index}.ts; порт остаётся
 // самодостаточным (без импортов). Раньше поиск жил в прямом вызове legacy UserApi
 // из контроллера — с cutover он часть контракта.
@@ -49,6 +50,15 @@ export interface ChatsPort {
     addUsers(data: AddChatUsersData): Promise<void>
     // eslint-disable-next-line no-unused-vars
     removeUsers(data: RemoveChatUsersData): Promise<void>
+    // Собственный выход из чата (2026-11-01-chat-leave): архивирует
+    // членство (left_at), повторный выход идемпотентен; любой участник
+    // eslint-disable-next-line no-unused-vars
+    leaveChat(chatId: number): Promise<void>
+    // Возврат в свой архивированный чат (2026-11-01-settings): реактивирует
+    // собственное членство (left_at -> NULL); активное членство —
+    // идемпотентный 204
+    // eslint-disable-next-line no-unused-vars
+    rejoinChat(chatId: number): Promise<void>
     // eslint-disable-next-line no-unused-vars
     getChatUsers(chatId: number): Promise<ChatUser[]>
     // Запуск ассистента по сообщению в is_ai-чате (для отображения ошибки)

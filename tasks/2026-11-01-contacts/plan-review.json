@@ -1,0 +1,66 @@
+{
+    "schemaVersion": "agent-plan-review.v1",
+    "packageId": "2026-11-01-contacts",
+    "planRevision": 3,
+    "reviewId": "review-2026-11-01-contacts-freeze-r1",
+    "fullReview": true,
+    "verdict": "READY_TO_FREEZE",
+    "reviewedPlanHash": "5fbeed579ad26a2d17d7de81e069075a07b59faf7145ca0b65e032d1cf53d5c5",
+    "reviewer": {
+        "id": "claude-code-independent-subagent",
+        "independent": true,
+        "runId": "audit-run-20261101-contacts-plan-r1",
+        "surface": "audit-agent-plan"
+    },
+    "findings": [],
+    "reviewVerdict": {
+        "schemaVersion": "agent-review-verdict.v1",
+        "overall": "ACCEPTED",
+        "dimensions": {
+            "requirementFit": {
+                "status": "PASS",
+                "reasonCode": "operator-asks-pinned",
+                "summary": "Complete across all three revisions: implicit capture pinned on both add_member resolution paths (AC-BE-CONTACTS + details), explicit add reusing the debounced search modal with badge switch, menu Создать / «Найти все чаты» disabled stub double-pinned (nonGoals in BOTH manifest spots + specification.json + AC-PROCESS not-done note), delete with confirmation, simplified sidebar, bottom-bar reachability with active state, responsive ladder honestly labeled review/smoke-verified. Concurrent-DM race documented as an accepted study-scale deferral in five places."
+            },
+            "implementationQuality": {
+                "status": "PASS",
+                "reasonCode": "planned-items-implementable",
+                "summary": "Every plannedItem is implementable against the real code. Round-1 defects closed and re-verified in rounds 2-3: createDm -> {chatId} only (HTTPTransport discards success statuses, correctly cited); list_chats passes is_dm=chat.is_dm explicitly (endpoints/chats.py:52-63 field-by-field constructor; model_validate paths automatic); capture on the fresh-insert transaction AND the existing-membership early return with its own commit (idempotent upsert, sound crash-tolerance note). All architecture claims re-verified against source: setChatOpener in features/index.ts is the one legal cross-feature seam (guard's featureName regex skips the composition file; setProfileController precedent), the page importing renderAddUserModalContent/USER_SEARCH_DEBOUNCE_MS from components/messenger is downward-legal, /contacts protected by the PUBLIC_PATHS allowlist with zero guard edits, register_domain seam, /dm-before-/{chat_id} ordering, no service cycle, cast-idiom slice, DM navigation delivers messages end to end (CDM fetchChats -> WS Connected initial history -> applyInitialHistory always writes the slice), chatPaneOpen blast radius mobile-only and pinned, messenger modal additive prop bit-identical by default and pinned in messenger.test.ts (now inside the UI write-set)."
+            },
+            "evidenceQuality": {
+                "status": "PASS",
+                "reasonCode": "evidence-claims-match-reality",
+                "summary": "F-2 and F-8 closed with a strictly stronger mechanism than originally requested: the migration upgrade/downgrade proof moved INSIDE pytest (backend/tests/integration/test_migration_009_contacts_segment.py, in WS-BE-CONTACTS writes) — machine-gated by verify:backend rather than a manual receipt. The segment recipe is technically sound and avoids both round-2 traps: create_all(current models) yields the post-009 schema so `alembic stamp head` is truthful; `downgrade -1` then runs ONLY 009's downgrade (contacts/is_dm exist, batch reflection on chats works) producing the faithful 008 state; `upgrade head` re-applies only 009; 001-008 (PG-only: 008 CREATE EXTENSION pg_trgm, 005 ALTER-based create_foreign_key) are never executed on SQLite, and the docs now say exactly that, routing the full chain to the compose-PostgreSQL operational path and explicitly warning never to 'fix' 008 (forbiddenWrites). The CHATTY_DATABASE_URL override mechanism is real (config.py env_prefix + alembic/env.py:16-18). All five recipe spots consistent (plan.md contract item 6 + wave-1 items 2/7 + wave 4, specification constraint, manifest constraint/writes/plannedItems/qualityFloor/AC-BE-MIGRATION/finalAuditGates, acceptance-criteria row + rewritten details, developer-overview risk bullet). Remaining gates verified earlier: npm run verify = typecheck+mocha+eslint+stylelint, guard strict real, 337 mocha / 184 pytest baselines and the Windows bash/PYTHON_BIN caveat in docs/NEXT.md. One cosmetic observation only: specification.json still carries its internal \"revision\": 2 after the amendment (the authoritative planRevision 3 in the manifest is what the structural gates ran against) — no action required."
+            },
+            "residualRisk": {
+                "status": "PASS",
+                "reasonCode": "risks-honestly-scoped",
+                "summary": "Security seams precedented and pinned (get_current_user everywhere, owner isolation, DM closed by construction, CSRF header per the existing seam, XSS via escapeHtml builder + double braces with pinned tests). Migration 009 additive, chained from the verified sole head 008, both directions now pytest-proven at the segment level with the full-chain limitation honestly documented. Concurrent-DM duplicate race accepted and documented. chatPaneOpen and the messenger modal prop remain honestly scoped, documented, pinned behaviour changes. No open risks."
+            }
+        },
+        "routing": {
+            "target": "plan-freeze",
+            "nextAction": "accept"
+        }
+    },
+    "rounds": [
+        {
+            "round": 1,
+            "verdict": "BLOCKED",
+            "findings": 7,
+            "summary": "Two majors: F-1 the pinned {chatId, created: 201-vs-200} DM mapping unimplementable (HTTPTransport discards success statuses; transport outside all write-sets); F-2 acceptance criteria claimed verify:backend exercises alembic upgrade/downgrade while verify.sh runs pytest + alembic heads only. Five minors: F-3 GET /chats needs explicit is_dm in list_chats, F-4 capture misses the existing-member early return, F-5 responsive SCSS under a mocha-proven heading, F-6 messenger.test.ts outside the write-set, F-7 concurrent-DM race undocumented. All cited precedents otherwise verified sound against source; requirement coverage complete."
+        },
+        {
+            "round": 2,
+            "verdict": "BLOCKED",
+            "findings": 1,
+            "summary": "F-1 through F-7 verified genuinely closed in revision 2. One NEW major (F-8): the replacement F-2 receipt — throwaway SQLite URL, upgrade head -> downgrade -1 -> upgrade head — was unexecutable, because migrations 005 and 008 are PG-only (008 unconditionally runs CREATE EXTENSION pg_trgm; 005 uses ALTER-based create_foreign_key) so the chain dies before reaching 009, and the stamp-to-008 workaround on an empty DB fails 009's batch_alter_table reflection on the missing chats table. Fix offered: scratch PostgreSQL or a prepared-DB 009-segment proof. Three cosmetic remnants noted."
+        },
+        {
+            "round": 3,
+            "verdict": "READY_TO_FREEZE",
+            "findings": 0,
+            "summary": "Focused amendment confirmation of revision 3 (planRevision 3, not a fresh review round). F-8 CLOSED: the unexecutable SQLite full-chain recipe is gone from all five spots and is replaced by a pytest-pinned 009 SEGMENT roundtrip — backend/tests/integration/test_migration_009_contacts_segment.py (added to WS-BE-CONTACTS writes; no ownership conflicts): scratch SQLite file -> Base.metadata.create_all (current models) -> alembic stamp head -> downgrade -1 -> upgrade head, inspector-asserted both ways, driven through the real CHATTY_DATABASE_URL override. The recipe ordering is the key correctness point: create_all(current models) produces the post-009 schema so the stamp is truthful, the downgrade-first direction runs only 009's own downgrade against existing tables (avoiding both the PG-only 001-008 execution and the empty-DB batch-reflection trap from round 2), and upgrade head re-applies exactly the segment this plan owns. The proof is now machine-gated inside verify:backend — stronger than the manual receipt F-8 asked for — with the full chain honestly routed to the compose-PostgreSQL operational path and an explicit never-touch-008 warning (forbiddenWrites). The three cosmetic remnants are also fixed (plan.md contract item 5 'every successful resolution', developer-overview 'both success paths', manifest AC-FE-UI title without 'proven by mocha' over SCSS, F-7 race line in both manifest nonGoals spots). Regression sweep of the surgical diff: write-sets changed only by the new test file, plannedItems otherwise identical to rev 2, DAG/budgets/orchestration/securityGates/tier untouched, all previously closed AC statements unchanged. One cosmetic observation: specification.json's internal revision field stays 2 after the amendment (manifest planRevision 3 is authoritative and is what the structural gates validated). All dimensions PASS; no open findings. Package is READY_TO_FREEZE. Post-acceptance note: the controller then applied exactly three freeze-bookkeeping edits to plan.manifest.json (status DRAFT -> FROZEN; planReview verdict PENDING -> READY_TO_FREEZE with reviewedRevision 3, recording this round-3 outcome; planFiles grew by tasks/2026-11-01-contacts/plan-review.json) plus specification.json revision 2 -> 3 — re-read in full and verified as the complete delta with zero substantive change to requirements, write-sets, acceptance criteria, budgets or orchestration. Hash note: reviewedPlanHash carries the CANONICAL whitespace-invariant planDigest of the frozen manifest as printed by `py -3.12 -m agent_lifecycle plan completeness-check --manifest tasks/2026-11-01-contacts/plan.manifest.json` (planDigest 5fbeed579ad26a2d17d7de81e069075a07b59faf7145ca0b65e032d1cf53d5c5, status PASS, zero blockers — the digest lock-create compares against); the raw file sha256 of the exact same verified bytes is d957c513401ac051ad9606deab5e290e32f985baed35362a312e5e9dfaf7e977 (re-confirmed unchanged after the bookkeeping edits), superseding the pre-bookkeeping raw sha256 4a202b58.... Verdict unchanged: READY_TO_FREEZE / ACCEPTED."
+        }
+    ]
+}

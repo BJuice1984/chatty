@@ -19,6 +19,12 @@ export interface AppState {
     // человекочитаемая ошибка последнего запроса авторизации (сеть/бэкенд):
     // контроллер auth пишет, страницы входа/регистрации показывают под формой
     authError?: string | null
+    // Пользователь (2026-11-01-settings): display_name/phone несут РЕАЛЬНЫЕ
+    // значения бэкенда (адаптеры фич применяют фолбэки «локальная часть
+    // email»/'' для NULL — синтеза display_name=email больше нет),
+    // send_read_receipts — серверный флаг «отправлять отчёты о прочтении»
+    // (тумблер приватности). Поля обязательны: оба слайса (auth/profile)
+    // читают стор в форму AuthUser/ProfileUser
     user?: {
         display_name: string
         first_name: string
@@ -28,6 +34,7 @@ export interface AppState {
         phone: string
         id: number
         avatar: string
+        send_read_receipts: boolean
     }
     chats?: {
         [key: string]: unknown

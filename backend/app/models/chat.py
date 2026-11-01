@@ -17,6 +17,9 @@ class Chat(Base):
     title: Mapped[str] = mapped_column(String(200), nullable=False)
     owner_id: Mapped[int] = mapped_column(ForeignKey('users.id', ondelete='RESTRICT'), nullable=False, index=True)
     is_ai: Mapped[bool] = mapped_column(Boolean, default=False, server_default='0', nullable=False)
+    # DM marker: a 1:1 chat is defined ONLY by this flag (never by member
+    # counting), so a plain 2-member group is never promoted implicitly
+    is_dm: Mapped[bool] = mapped_column(Boolean, default=False, server_default='0', nullable=False)
     # use_alter: files<->chats/users FK-цикл, drop_all без него не сортирует таблицы
     avatar_file_id: Mapped[int | None] = mapped_column(
         ForeignKey('files.id', ondelete='SET NULL', use_alter=True),
@@ -47,3 +50,7 @@ class ChatMember(Base):
         server_default=func.now(),
         nullable=False,
     )
+    # Self-leave timestamp: NULL = active member, set = archived membership
+    # (history stays readable, writes and live pushes stop). A kick removes
+    # the row entirely; re-adding a left member resets this to NULL.
+    left_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)

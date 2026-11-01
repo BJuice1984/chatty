@@ -1,0 +1,276 @@
+{
+    "schemaVersion": "agent-plan-manifest.v1",
+    "status": "FROZEN",
+    "planRevision": 1,
+    "package": {
+        "id": "2026-11-01-email-search",
+        "title": "User search accepts the full email (drop the legacy @-strip in both add-user modals)",
+        "workspaceRoot": ".",
+        "artifactRoot": "work/2026-11-01-email-search",
+        "planArtifactRoot": "tasks/2026-11-01-email-search"
+    },
+    "packageIntegrity": {
+        "required": true,
+        "lockSchemaVersion": "agent-plan-lock.v2",
+        "inventorySource": "planFiles",
+        "undeclaredTopLevelFiles": "reject",
+        "allowedUnlistedFiles": [
+            "plan.lock.json",
+            "plan-review.json"
+        ]
+    },
+    "author": {
+        "id": "claude-code",
+        "surface": "agent-first-planning",
+        "runId": "2026-11-01-email-search-draft"
+    },
+    "baseRevision": {
+        "ref": "feature/2026-11-01-contacts",
+        "sha": "90f843095b6af31cd0b5b8c37ca3cb813601241e"
+    },
+    "specification": {
+        "tier": "S2",
+        "intent": "Both add-user modals (messenger and the contacts page) strip every '@' out of the search input before the debounced prefix search, so typing a full email (alice@chatty.local) degenerates to the prefix alicechatty.local and finds nothing. The backend already matches prefixes containing '@' (pinned by test_social_api.py:129) — the fix removes the legacy @-strip in the two input handlers and updates the shared hint text; prefix semantics, debounce, refocus and disabled-result behaviour stay as they are.",
+        "status": "DRAFT",
+        "requirements": [
+            {
+                "id": "REQ-FE-EMAIL-SEARCH",
+                "title": "Drop the @-strip in both add-user modals; the full email reaches the search verbatim",
+                "description": "src/components/messenger/messenger.ts: delete the @-strip block in the root-delegated input handler (raw.includes('@') -> split/join -> input.value rewrite) so the typed value goes to the debounced onSearchUsers unchanged; update the renderAddUserModalContent hint to «Начните вводить начало или полный email — поиск сработает сам» (one place — the contacts page reuses the builder); update the stale @-marker comment. src/features/contacts/pages/contacts/contacts.ts: delete the mirrored @-strip block in the page input handler. Tests: messenger.test.ts and contacts.test.ts REPLACE the @-strip expectations with verbatim-pass pins (query 'alice@chatty.local' reaches onSearchUsers/searchUsers unchanged, input value not rewritten) while prefix-only queries still search. No backend change (test_social_api.py:129 stays the full-email pin).",
+                "priority": "P1",
+                "source": "operator request 2026-11-01 (admin could not find alice/caro1 typing the full email; live-diagnosed: strip mangles the query, backend returns the users for plain prefixes)",
+                "acceptanceIds": [
+                    "AC-FE-EMAIL-SEARCH",
+                    "AC-PROCESS"
+                ],
+                "evidenceIds": [
+                    "EV-FE-1"
+                ],
+                "owner": "WS-FE-EMAIL-SEARCH"
+            }
+        ],
+        "goal": "Typing the full email into either add-user modal finds the user; bare prefixes keep working.",
+        "constraints": [
+            "Layers only downward; guard-architecture --all --strict stays green; no new imports or components.",
+            "Search semantics stay PREFIX (server LIKE prefix%, server order, cap 10) — only the destroyed characters change; no backend file is touched.",
+            "The existing messenger debounce test asserts the @-strip and MUST be updated to the verbatim-pass expectation (verify must not break).",
+            "Existing suites stay green; mocha count grows from the 422 contacts-feature baseline."
+        ],
+        "nonGoals": [
+            "substring/contains or fuzzy search; ranking",
+            "backend repository/endpoint changes (already correct and pinned)",
+            "the chat-list search (GET /chats/search)",
+            "email-format validation of the typed query"
+        ],
+        "scope": "two frontend input handlers + the shared modal hint + two test files + progress log; evidence under work/2026-11-01-email-search/."
+    },
+    "readOnly": [
+        "AGENTS.md",
+        "tasks/README.md",
+        "backend/tests/integration/chat/test_social_api.py"
+    ],
+    "forbiddenWrites": [
+        "src/core",
+        "src/scss/libs",
+        "src/utils/Store.ts",
+        "backend",
+        "docs/project-principles.json",
+        ".github/workflows",
+        "netlify.toml"
+    ],
+    "leadOwned": [
+        {
+            "path": "tasks/2026-11-01-email-search",
+            "owner": "controller",
+            "reason": "Controller owns plan-package artifacts."
+        }
+    ],
+    "workstreams": [
+        {
+            "id": "WS-FE-EMAIL-SEARCH",
+            "title": "Frontend: drop the @-strip in both modals, update hint and tests",
+            "owner": "worker-frontend-ui",
+            "reviewer": "independent-release-reviewer",
+            "dependsOn": [],
+            "writes": [
+                "docs/progress/progress_log.md",
+                "src/components/messenger/messenger.test.ts",
+                "src/components/messenger/messenger.ts",
+                "src/features/contacts/pages/contacts/contacts.test.ts",
+                "src/features/contacts/pages/contacts/contacts.ts"
+            ],
+            "readOnly": [
+                "AGENTS.md",
+                "backend/tests/integration/chat/test_social_api.py",
+                "src/features/contacts/controller.ts"
+            ],
+            "forbiddenWrites": [],
+            "launchGate": "branch off the contacts feature line (feature/2026-11-01-contacts @ 90f8430 or its merged dev successor); npm run verify green at base (mocha 422).",
+            "capabilityHints": [
+                "typescript",
+                "mocha",
+                "sinon"
+            ],
+            "requiredTools": [
+                "node",
+                "npm"
+            ],
+            "contextRefs": [
+                "plan.md",
+                "acceptance-criteria.md",
+                "developer-overview.md"
+            ],
+            "acceptanceIds": [
+                "AC-FE-EMAIL-SEARCH",
+                "AC-PROCESS"
+            ],
+            "evidenceIds": [
+                "EV-FE-1"
+            ],
+            "executionPolicy": {
+                "maxAttempts": 2,
+                "maxWallSeconds": 1800
+            },
+            "artifactPaths": {
+                "result": "work/2026-11-01-email-search/evidence/WS-FE-EMAIL-SEARCH/task-result-{attempt}.json",
+                "review": "work/2026-11-01-email-search/evidence/WS-FE-EMAIL-SEARCH/task-review-{attempt}.json"
+            },
+            "required": true,
+            "plannedItems": [
+                "messenger.ts: delete the @-strip block in the input handler; hint -> «Начните вводить начало или полный email — поиск сработает сам»; fix the stale comment",
+                "contacts.ts: delete the mirrored @-strip block; fix the copied comment",
+                "messenger.test.ts: replace @-strip expectations with verbatim-pass pins (full email unchanged, prefix still searches), incl. the adjacent @-strip test titles/comments (suite comment :245, title :282) and the stale handler comments in messenger.ts:421-422/:433-434 (review F-1)",
+                "contacts.test.ts: same verbatim-pass pin for the page handler, incl. the inline comment at :148 («@» вырезан из значения)",
+                "progress_log.md: entry on top",
+                "gates: npm run verify + guard --all --strict green"
+            ],
+            "qualityFloor": "npm run verify green end to end; guard-architecture --all --strict zero violations; no backend file touched."
+        }
+    ],
+    "acceptance": {
+        "criteria": [
+            {
+                "id": "AC-FE-EMAIL-SEARCH",
+                "title": "Full email reaches the search verbatim in both modals",
+                "requirementIds": [
+                    "REQ-FE-EMAIL-SEARCH"
+                ],
+                "evidenceIds": [
+                    "EV-FE-1"
+                ],
+                "independentEvidenceIds": [],
+                "statement": "Neither modal rewrites the typed value: a query containing '@' reaches onSearchUsers/searchUsers VERBATIM (alice@chatty.local intact) — mocha-pinned in messenger.test.ts and contacts.test.ts, replacing the old @-strip expectations; the hint says начало или полный email; prefix-only queries still search (pinned); backend untouched (test_social_api.py:129 remains the full-email prefix pin).",
+                "description": "Frontend unit tests.",
+                "source": "acceptance-criteria.md",
+                "priority": "P1"
+            },
+            {
+                "id": "AC-PROCESS",
+                "title": "Gates and bookkeeping",
+                "requirementIds": [
+                    "REQ-FE-EMAIL-SEARCH"
+                ],
+                "evidenceIds": [
+                    "EV-FE-1"
+                ],
+                "independentEvidenceIds": [],
+                "statement": "npm run verify green end-to-end and guard-architecture --all --strict zero violations; docs/progress/progress_log.md entry on top; no file outside the manifest write-set changes.",
+                "description": "Gate runs captured as evidence.",
+                "source": "acceptance-criteria.md",
+                "priority": "P1"
+            }
+        ]
+    },
+    "validation": {
+        "commands": [
+            "npm run verify",
+            "node .claude/hooks/scripts/guard-architecture.mjs --all --strict"
+        ]
+    },
+    "orchestration": {
+        "startMode": "reviewed-plan",
+        "remediationMode": "ask",
+        "maxPlanReviewRounds": 1,
+        "maxTaskAttempts": 2,
+        "maxParallelTasks": 1,
+        "maxValidationRunsPerTask": 2,
+        "stateFile": "work/2026-11-01-email-search/run.state.json",
+        "eventLog": "work/2026-11-01-email-search/events.jsonl",
+        "stepReviewRequired": true,
+        "finalAuditRequired": true
+    },
+    "implementationAudit": {
+        "required": true,
+        "finalRequired": true
+    },
+    "developerOverview": "tasks/2026-11-01-email-search/developer-overview.md",
+    "releaseTarget": {
+        "kind": "local-only",
+        "environment": "Vite own mode + compose own-backend",
+        "productionPromotionClaimed": false
+    },
+    "releaseImpact": "Two modal input handlers stop stripping '@'; shared hint text updated; two test files updated; no backend, schema, routing or deployment changes.",
+    "nonGoals": [
+        "substring/contains or fuzzy search; ranking",
+        "backend repository/endpoint changes (already correct and pinned)",
+        "the chat-list search (GET /chats/search)",
+        "email-format validation of the typed query"
+    ],
+    "finalAuditGates": [
+        "[AC-FE-EMAIL-SEARCH|EV-FE-1] verbatim full-email pass-through pinned in BOTH modals; prefix queries still search; backend untouched",
+        "[AC-PROCESS|EV-FE-1] verify + guard strict green with grown counts; progress-log entry; no write outside the manifest write-set"
+    ],
+    "securityGates": [],
+    "budgetPolicy": {
+        "units": "tokens-and-resources",
+        "reroute": "pause-and-review",
+        "maxTotalTokens": 30000,
+        "maxParallelWorkstreams": 1,
+        "maxRunWallSeconds": 5400,
+        "criticalPathWallSeconds": 3600,
+        "aggregateWorkstreamWallSeconds": 3600,
+        "retryReserveWallSeconds": 1800
+    },
+    "budgets": {
+        "defaultWorkstreamTokens": 20000,
+        "maxEvidenceBytesPerRun": 2097152
+    },
+    "contextLimits": {
+        "profile": "small-context-profile.v1",
+        "maxPlanContextBytes": 60000,
+        "maxRenderedPacketBytes": 24000,
+        "smallContextPacketBytes": 20000,
+        "maxReferenceFilesPerPacket": 8,
+        "includeOnlyOwnedWrites": true,
+        "excludeRuntimeWorkArtifacts": true
+    },
+    "tierResolution": {
+        "status": "RESOLVED",
+        "tier": "S2",
+        "requestedTier": "S2",
+        "reason": "browser-risk resolved by agent-lifecycle tier resolve",
+        "independentReviewRequired": true,
+        "requestPath": "tasks/2026-11-01-email-search/tier-request.json",
+        "resolutionPath": "tasks/2026-11-01-email-search/tier-resolution.json",
+        "requestDigest": "a05be5ba97781eef24881299eb202439b1b152d9ee53ed1e4f58265b755b0eff"
+    },
+    "planReview": {
+        "required": true,
+        "reviewerClass": "independent-plan-reviewer",
+        "maxRounds": 1,
+        "implementationAuthorized": false,
+        "report": "tasks/2026-11-01-email-search/plan-review.json",
+        "reviewedRevision": 1,
+        "verdict": "READY_TO_FREEZE"
+    },
+    "planFiles": [
+        "tasks/2026-11-01-email-search/acceptance-criteria.md",
+        "tasks/2026-11-01-email-search/developer-overview.md",
+        "tasks/2026-11-01-email-search/plan-review-request.md",
+        "tasks/2026-11-01-email-search/plan-review.json",
+        "tasks/2026-11-01-email-search/plan.manifest.json",
+        "tasks/2026-11-01-email-search/plan.md",
+        "tasks/2026-11-01-email-search/tier-request.json",
+        "tasks/2026-11-01-email-search/tier-resolution.json"
+    ]
+}

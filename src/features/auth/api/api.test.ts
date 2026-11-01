@@ -29,14 +29,39 @@ describe('auth api adapter', () => {
 
         expect(user.id).to.eq(7)
         expect(user.login).to.eq('ada@example.com')
-        expect(user.display_name).to.eq('ada@example.com')
+        // 2026-11-01-settings: display_name нет в ответе → фолбэк локальной
+        // частью email (синтез display_name=email убран — он затирал правки имени)
+        expect(user.display_name).to.eq('ada')
         expect(user.email).to.eq('ada@example.com')
         expect(user.first_name).to.eq('')
         expect(user.second_name).to.eq('')
         expect(user.phone).to.eq('')
+        // флаг отчётов о прочтении отсутствует на старых ответах → true
+        expect(user.send_read_receipts).to.be.true
         // аватар — детерминированный из пула статики (id 7 → 8-я картинка):
         // avatar_url в ответе нет
         expect(user.avatar).to.eq('/images/avatars/8.svg')
+    })
+
+    // 2026-11-01-settings: профильные поля ответа — РЕАЛЬНЫЕ значения
+    it('should map the REAL display_name, phone and send_read_receipts', () => {
+        const user = toAuthUser({
+            ...ownResponse,
+            display_name: 'Ada Lovelace',
+            phone: '+7 000 000 0000',
+            send_read_receipts: false,
+        })
+
+        expect(user.display_name).to.eq('Ada Lovelace')
+        expect(user.phone).to.eq('+7 000 000 0000')
+        expect(user.send_read_receipts).to.be.false
+    })
+
+    it('should fall back display_name null to the email local part and phone null to empty', () => {
+        const user = toAuthUser({ ...ownResponse, display_name: null, phone: null })
+
+        expect(user.display_name).to.eq('ada')
+        expect(user.phone).to.eq('')
     })
 
     it('should map the uploaded avatar_url onto AuthUser, null falls back to the pool', () => {

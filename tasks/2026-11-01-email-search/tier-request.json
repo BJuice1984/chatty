@@ -1,0 +1,23 @@
+{
+    "capabilityHints": [
+        "typescript",
+        "mocha",
+        "sinon"
+    ],
+    "executableOwners": [
+        "worker-frontend-ui"
+    ],
+    "externalSpecification": false,
+    "requirementsBytes": 1800,
+    "riskFlags": {
+        "architecture": false,
+        "browser": true,
+        "data": false,
+        "external": false,
+        "migration": false,
+        "performance": false,
+        "release": false,
+        "security": false
+    },
+    "taskCount": 1
+}

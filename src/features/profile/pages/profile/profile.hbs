@@ -8,25 +8,129 @@
             {{{ UserAvatar avatar=this.user.avatar }}}
           </div>
           <div class="chat__container-profile-info">
-            <p class="chat__container-profile-info-contact">{{this.user.first_name}}</p>
+            <p class="chat__container-profile-info-contact">{{this.user.display_name}}</p>
             <p class="chat__container-profile-info-contact chat__container-profile-info-contact_type_tel">{{this.user.phone}}</p>
           </div>
           <img class="chat__container-profile-arrow" src="/images/arrow.svg" alt="Иконка. Стрелка вперёд">
         </div>
         <ul class="chat__container-profile-settings">
-            {{{ ProfileSettingsItem setting-name="Account" setting-img-src="/images/account-icon.svg" setting-alt="Иконка. Настройки аккаунта"}}}
-            {{{ ProfileSettingsItem setting-name="Chats" setting-img-src="/images/bottom-bar-icon_chats.svg" setting-alt="Иконка. Чаты"}}}
+            {{{ ProfileSettingsItem setting-name="Account" setting-img-src="/images/account-icon.svg" setting-alt="Иконка. Настройки аккаунта" isActive=this.accountActive onClick=this.onSelectAccount }}}
+            {{{ ProfileSettingsItem setting-name="Chats" setting-img-src="/images/bottom-bar-icon_chats.svg" setting-alt="Иконка. Чаты" isActive=this.chatsActive onClick=this.onSelectChats }}}
         </ul>
         <ul class="chat__container-profile-settings chat__container-profile-settings_type_last">
-            {{{ ProfileSettingsItem setting-name="Appearance" setting-img-src="/images/appearance-icon.svg" setting-alt="Иконка. Солнышко"}}}
-            {{{ ProfileSettingsItem setting-name="Notification" setting-img-src="/images/notification-icon.svg" setting-alt="Иконка. Колокольчик"}}}
-            {{{ ProfileSettingsItem setting-name="Privacy" setting-img-src="/images/privacy-icon.svg" setting-alt="Иконка. Щит"}}}
-            {{{ ProfileSettingsItem setting-name="Data Usage" setting-img-src="/images/data-usage-icon.svg" setting-alt="Иконка. Папочка"}}}
+            {{{ ProfileSettingsItem setting-name="Appearance" setting-img-src="/images/appearance-icon.svg" setting-alt="Иконка. Солнышко" isActive=this.appearanceActive onClick=this.onSelectAppearance }}}
+            {{{ ProfileSettingsItem setting-name="Notification" setting-img-src="/images/notification-icon.svg" setting-alt="Иконка. Колокольчик" isActive=this.notificationActive onClick=this.onSelectNotification }}}
+            {{{ ProfileSettingsItem setting-name="Privacy" setting-img-src="/images/privacy-icon.svg" setting-alt="Иконка. Щит" isActive=this.privacyActive onClick=this.onSelectPrivacy }}}
+            {{{ ProfileSettingsItem setting-name="Data Usage" setting-img-src="/images/data-usage-icon.svg" setting-alt="Иконка. Папочка" isActive=this.dataActive onClick=this.onSelectData }}}
         </ul>
         {{{ BottomBar }}}
     </div>
     <div class="chat__container-profile-changing">
-        {{{ Avatar avatar=this.user.avatar onUserFile=this.onUserAvatar }}}
-        {{{ Form inputs=this.inputs buttons=this.buttons user=this.user }}}
+        {{#if sectionAccount}}
+        <div class="settings-section" data-testid="settings-section-account">
+            {{{ Avatar avatar=this.user.avatar onUserFile=this.onUserAvatar }}}
+            <div class="settings-section__block" data-testid="account-form">
+                {{{ Form inputs=this.inputs buttons=this.buttons user=this.user }}}
+            </div>
+            <div class="settings-section__readonly">
+                <p class="settings-section__readonly-row" data-testid="readonly-email">
+                    <span class="settings-section__readonly-label">Email</span>
+                    <span class="settings-section__readonly-value">{{this.user.email}}</span>
+                </p>
+                <p class="settings-section__readonly-row" data-testid="readonly-login">
+                    <span class="settings-section__readonly-label">Login</span>
+                    <span class="settings-section__readonly-value">{{this.user.login}}</span>
+                </p>
+            </div>
+            <div class="settings-section__block settings-section__block_type_password" data-testid="password-form">
+                {{{ Form inputs=this.passwordInputs buttons=this.passwordButtons }}}
+            </div>
+            <p class="settings-section__feedback" data-testid="password-feedback">{{this.passwordFeedback}}</p>
+            <div class="settings-section__danger-zone">
+                <button type="button" class="settings-section__danger-button" data-testid="logout-all-open">Sign out everywhere</button>
+            </div>
+        </div>
+        {{/if}}
+        {{#if sectionChats}}
+        <div class="settings-section" data-testid="settings-section-chats">
+            <h3 class="settings-section__title">Архив чатов</h3>
+            <p class="settings-section__hint">Чаты, из которых вы вышли: история доступна только для чтения.</p>
+            {{#if this.archivedChats.length}}
+            <ul class="settings-section__archive-list">
+                {{#each this.archivedChats}}
+                <li class="settings-section__archive-item" data-testid="archived-chat">
+                    <span class="settings-section__archive-title">{{this.title}}</span>
+                    <button type="button" class="settings-section__action" data-testid="rejoin-chat" data-chat-id="{{this.id}}">Вернуться</button>
+                </li>
+                {{/each}}
+            </ul>
+            {{else}}
+            <p class="settings-section__empty" data-testid="archived-empty">Нет архивированных чатов</p>
+            {{/if}}
+        </div>
+        {{/if}}
+        {{#if sectionAppearance}}
+        <div class="settings-section" data-testid="settings-section-appearance">
+            <h3 class="settings-section__title">Тема оформления</h3>
+            <div class="settings-section__radio-group" role="radiogroup" aria-label="Тема оформления">
+                <label class="settings-section__radio">
+                    <input type="radio" name="theme-choice" value="light" data-testid="theme-light" {{#if this.themeLight}}checked{{/if}}>
+                    <span>Светлая</span>
+                </label>
+                <label class="settings-section__radio">
+                    <input type="radio" name="theme-choice" value="dark" data-testid="theme-dark" {{#if this.themeDark}}checked{{/if}}>
+                    <span>Тёмная</span>
+                </label>
+                <label class="settings-section__radio">
+                    <input type="radio" name="theme-choice" value="system" data-testid="theme-system" {{#if this.themeSystem}}checked{{/if}}>
+                    <span>Системная</span>
+                </label>
+            </div>
+        </div>
+        {{/if}}
+        {{#if sectionNotification}}
+        <div class="settings-section" data-testid="settings-section-notification">
+            <h3 class="settings-section__title">Уведомления</h3>
+            <label class="settings-section__toggle">
+                <input type="checkbox" data-testid="toggle-sound" {{#if this.soundEnabled}}checked{{/if}}>
+                <span>Звук входящих сообщений</span>
+            </label>
+            <label class="settings-section__toggle">
+                <input type="checkbox" data-testid="toggle-browser-notifications" {{#if this.notificationsEnabled}}checked{{/if}}>
+                <span>Браузерные уведомления</span>
+            </label>
+            {{#if this.notificationsHint}}
+            <p class="settings-section__hint" data-testid="notifications-hint">{{this.notificationsHint}}</p>
+            {{/if}}
+        </div>
+        {{/if}}
+        {{#if sectionPrivacy}}
+        <div class="settings-section" data-testid="settings-section-privacy">
+            <h3 class="settings-section__title">Приватность</h3>
+            <label class="settings-section__toggle">
+                <input type="checkbox" data-testid="toggle-read-receipts" {{#if this.receiptsEnabled}}checked{{/if}}>
+                <span>Отправлять отчёты о прочтении</span>
+            </label>
+            <p class="settings-section__hint">Выключенные отчёты не двигают вашу метку прочтения — собственный счётчик непрочитанных сохраняется.</p>
+        </div>
+        {{/if}}
+        {{#if sectionData}}
+        <div class="settings-section" data-testid="settings-section-data">
+            <h3 class="settings-section__title">Хранилище</h3>
+            {{#if this.usage}}
+            <p class="settings-section__usage" data-testid="usage-summary">Занято {{this.usageText}} · файлов: {{this.usageCount}}</p>
+            {{else if this.usageFailed}}
+            <p class="settings-section__hint" data-testid="usage-error">Не удалось получить данные о хранилище</p>
+            {{else}}
+            <p class="settings-section__hint" data-testid="usage-loading">Загружаем…</p>
+            {{/if}}
+            <label class="settings-section__toggle">
+                <input type="checkbox" data-testid="toggle-auto-download" {{#if this.autoDownloadEnabled}}checked{{/if}}>
+                <span>Автозагрузка вложений</span>
+            </label>
+            <p class="settings-section__hint">Выключенная автозагрузка прячет превью вложений за ссылкой «Скачать».</p>
+        </div>
+        {{/if}}
+        {{{ Modal title='Выйти со всех устройств' isOpen=this.logoutAllOpen onClose=this.onCloseLogoutAll content=this.logoutAllContent }}}
     </div>
 </section>

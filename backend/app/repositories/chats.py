@@ -29,24 +29,68 @@ class ChatRepository:
     def get_by_id(self, chat_id: int) -> Chat | None:
         return self.session.get(Chat, chat_id)
 
-    def list_for_user(self, user_id: int) -> list[Chat]:
+    def list_for_user(self, user_id: int) -> list[tuple[Chat, datetime | None]]:
+        """ALL chats of the user — active AND archived rows alike — as
+        (chat, membership left_at) pairs: None = active, set = archived
+        (self-left; history stays readable, the list shows the archive
+        entry). Kicked users have no row, so the chat disappears here."""
         statement = (
-            select(Chat)
+            select(Chat, ChatMember.left_at)
             .join(ChatMember, ChatMember.chat_id == Chat.id)
             .where(ChatMember.user_id == user_id)
             .order_by(Chat.created_at.asc(), Chat.id.asc())
         )
-        return list(self.session.scalars(statement))
+        return [(chat, left_at) for chat, left_at in self.session.execute(statement).all()]
 
     def is_member(self, chat_id: int, user_id: int) -> bool:
+        """Row-exists membership — the READ side (active OR archived)."""
         statement = select(ChatMember.chat_id).where(
             ChatMember.chat_id == chat_id,
             ChatMember.user_id == user_id,
         )
         return self.session.scalar(statement) is not None
 
+    def is_active_member(self, chat_id: int, user_id: int) -> bool:
+        """ACTIVE membership — the WRITE side: a row with left_at set is an
+        archived membership and must not pass write guards."""
+        statement = select(ChatMember.chat_id).where(
+            ChatMember.chat_id == chat_id,
+            ChatMember.user_id == user_id,
+            ChatMember.left_at.is_(None),
+        )
+        return self.session.scalar(statement) is not None
+
+    def active_member_ids(self, chat_id: int) -> set[int]:
+        """ACTIVE member user ids of the chat — the WS broadcast fan-out
+        filter: archived sockets must not receive live pushes."""
+        statement = select(ChatMember.user_id).where(
+            ChatMember.chat_id == chat_id,
+            ChatMember.left_at.is_(None),
+        )
+        return set(self.session.scalars(statement))
+
     def get_member(self, chat_id: int, user_id: int) -> ChatMember | None:
         return self.session.get(ChatMember, (chat_id, user_id))
+
+    def find_dm(self, user_a: int, user_b: int) -> Chat | None:
+        """Earliest is_dm chat whose membership covers BOTH users: each
+        membership is its own IN-subquery, so a DM is defined solely by the
+        is_dm flag plus the two memberships — member counting never promotes
+        a plain 2-member group. id asc, limit 1 keeps the get-or-create
+        deterministic; order of the pair does not matter."""
+        membership_a = select(ChatMember.chat_id).where(ChatMember.user_id == user_a).scalar_subquery()
+        membership_b = select(ChatMember.chat_id).where(ChatMember.user_id == user_b).scalar_subquery()
+        statement = (
+            select(Chat)
+            .where(
+                Chat.is_dm.is_(True),
+                Chat.id.in_(membership_a),
+                Chat.id.in_(membership_b),
+            )
+            .order_by(Chat.id.asc())
+            .limit(1)
+        )
+        return self.session.scalars(statement).first()
 
     def add(self, chat: Chat) -> Chat:
         self.session.add(chat)
@@ -63,6 +107,32 @@ class ChatRepository:
         self.session.add(member)
         self.session.flush()
         return member
+
+    def reactivate_member(self, member: ChatMember) -> bool:
+        """Clear the archive marker of an EXISTING membership row:
+        left_at -> NULL on the SAME row (joined_at kept — the fresh-row
+        semantics of a post-kick re-add never apply here). True when the
+        row was archived and this call reactivated it, False when it was
+        already active (the idempotent no-write); the commit stays with
+        the caller's transaction."""
+        if member.left_at is None:
+            return False
+        member.left_at = None
+        self.session.flush()
+        return True
+
+    def remove_member(self, chat_id: int, user_id: int) -> bool:
+        """Hard-deletes the membership row (owner kick — opposed to the
+        soft left_at archive of a self-leave): the user loses the chat
+        entirely and a later re-add starts a FRESH row. False when no row
+        exists (member_not_found at the service)."""
+
+        member = self.get_member(chat_id, user_id)
+        if member is None:
+            return False
+        self.session.delete(member)
+        self.session.flush()
+        return True
 
     def unread_counts(self, user_id: int) -> dict[int, int]:
         """Чужие сообщения новее последнего прочитанного маркера по каждому чату
@@ -111,34 +181,36 @@ class ChatRepository:
         self.session.execute(statement)
         self.session.commit()
 
-    def list_members(self, chat_id: int) -> list[tuple[int, str, int | None]]:
-        """Участники чата как (user_id, email-хэнл, avatar_file_id) — для
-        UI-списка, меток «уже добавлен» в поиске и аватаров участников."""
+    def list_members(self, chat_id: int) -> list[tuple[int, str, int | None, str | None]]:
+        """Участники чата как (user_id, email-хэнл, avatar_file_id,
+        display_name) — для UI-списка, меток «уже добавлен» в поиске и
+        аватаров участников; display_name идёт в fallback to_member_brief."""
         rows = (
-            self.session.query(ChatMember.user_id, User.email, User.avatar_file_id)
+            self.session.query(ChatMember.user_id, User.email, User.avatar_file_id, User.display_name)
             .join(User, User.id == ChatMember.user_id)
             .filter(ChatMember.chat_id == chat_id)
             .order_by(ChatMember.user_id)
             .all()
         )
-        return [(row.user_id, row.email, row.avatar_file_id) for row in rows]
+        return [(row.user_id, row.email, row.avatar_file_id, row.display_name) for row in rows]
 
-    def list_members_for_chats(self, chat_ids: list[int]) -> list[tuple[int, int, str, int | None]]:
+    def list_members_for_chats(self, chat_ids: list[int]) -> list[tuple[int, int, str, int | None, str | None]]:
         """Участники многих чатов одним IN-запросом как (chat_id, user_id,
-        email-хэнл, avatar_file_id) — для пакетного состава в GET /chats;
-        порядок детерминирован (чат, порядок вступления, user_id)."""
+        email-хэнл, avatar_file_id, display_name) — для пакетного состава в
+        GET /chats; порядок детерминирован (чат, порядок вступления,
+        user_id)."""
         if not chat_ids:
             return []
         rows = (
             self.session.query(
-                ChatMember.chat_id, ChatMember.user_id, User.email, User.avatar_file_id
+                ChatMember.chat_id, ChatMember.user_id, User.email, User.avatar_file_id, User.display_name
             )
             .join(User, User.id == ChatMember.user_id)
             .filter(ChatMember.chat_id.in_(chat_ids))
             .order_by(ChatMember.chat_id, ChatMember.joined_at, ChatMember.user_id)
             .all()
         )
-        return [(row.chat_id, row.user_id, row.email, row.avatar_file_id) for row in rows]
+        return [(row.chat_id, row.user_id, row.email, row.avatar_file_id, row.display_name) for row in rows]
 
     def last_messages_for_chats(self, chat_ids: list[int]) -> list[tuple[int, str | None, datetime]]:
         """Новейшее сообщение каждого чата из списка одним SELECT: окно

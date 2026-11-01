@@ -1,6 +1,8 @@
 // Элемент списка чатов (chats-social): ИИ-чаты визуально отличимы — бейдж
 // ✦ AI рядом с названием и акцентный модификатор корня от is_ai
 // (флаг приезжает из toChatInfo own-адаптера).
+// 2026-11-01-chat-leave: архивное членство (leftAt из GET /chats) гасит
+// карточку — потушенный модификатор корня.
 
 import { expect } from 'chai'
 import { JSDOM } from 'jsdom'
@@ -28,6 +30,38 @@ describe('chat list user ai badge', () => {
 
         expect(user.element?.querySelector('[data-testid="ai-badge"]')).to.not.exist
         expect(user.element?.classList.contains('chat-list-user_ai')).to.be.false
+
+        user.destroy()
+    })
+})
+
+// Архивное членство (2026-11-01-chat-leave): выход из чата оставляет его в
+// списке — карточка гаснет модификатором от leftAt (null/undefined — актив)
+describe('chat list user archived modifier', () => {
+    it('renders the dimmed archived modifier for a left chat', () => {
+        const user = new User({
+            id: 3,
+            title: 'Покинутый чат',
+            avatar: '',
+            unread_count: 0,
+            leftAt: '2026-11-01T10:00:00Z',
+        })
+
+        expect(user.element?.classList.contains('chat-list-user_archived')).to.be.true
+
+        user.destroy()
+    })
+
+    it('keeps the plain row for an active membership', () => {
+        const user = new User({
+            id: 4,
+            title: 'Активный чат',
+            avatar: '',
+            unread_count: 0,
+            leftAt: null,
+        })
+
+        expect(user.element?.classList.contains('chat-list-user_archived')).to.be.false
 
         user.destroy()
     })

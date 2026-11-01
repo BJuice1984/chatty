@@ -1,0 +1,78 @@
+{
+    "schemaVersion": "agent-plan-review.v1",
+    "packageId": "2026-11-01-email-search",
+    "planRevision": 1,
+    "reviewId": "review-2026-11-01-email-search-freeze-r1",
+    "fullReview": true,
+    "verdict": "READY_TO_FREEZE",
+    "reviewedPlanHash": "3480a5afd11f88cab810a91c27b402db8c3e37125a6929139d7a9a6a28336e84",
+    "reviewer": {
+        "id": "claude-code-independent-subagent",
+        "independent": true,
+        "runId": "audit-run-20261101-email-search-plan-r1",
+        "surface": "audit-agent-plan"
+    },
+    "findings": [
+        {
+            "id": "F-1",
+            "severity": "minor",
+            "title": "Stale @-strip documentation in the two owned test files should be updated together with the replaced expectations",
+            "detail": "Both strip-pinning tests are correctly identified for REPLACEMENT (messenger.test.ts:294 sets '@bob' and :305 asserts onSearchUsers.calledOnceWith('bob'); contacts.test.ts:140 sets 'b@ob', :149 asserts searchUsers.calledOnceWith('bob'), :161 asserts the re-rendered input value 'bob'), but the surrounding documentation also describes the removed behavior and is not named in plannedItems: the test title at messenger.test.ts:282 ('debounces the @-prefixed search and renders the typed results'), the suite comment at messenger.test.ts:245 ('@-поиск с дебаунсом'), the inline comment at contacts.test.ts:148 ('@» вырезан из значения'), and the handler comment at messenger.ts:421-422 ('@-поиск: ввод с префиксом @'). A worker following only the letter of 'REPLACE the @-strip expectations' could flip the assertions yet leave titles/comments documenting the strip. All occurrences are inside files already in the write-set, so no write-set change is needed.",
+            "files": [
+                "src/components/messenger/messenger.test.ts",
+                "src/features/contacts/pages/contacts/contacts.test.ts",
+                "src/components/messenger/messenger.ts"
+            ],
+            "requiredFix": "Not blocking. Treat 'REPLACE the @-strip expectations' as including the adjacent stale test titles and comments in the same files (messenger.test.ts:282/:245, contacts.test.ts:148, messenger.ts:421-422) so the suite does not document removed behavior. Historical feature-name labels elsewhere (messenger.ts:2/:20/:86/:176, chat.ts:4/:372, chat.test.ts:8, searchBar.ts:11) carry no strip behavior or assertion and may stay."
+        },
+        {
+            "id": "F-2",
+            "severity": "minor",
+            "title": "Live smoke is NOTE-only evidence — explicit narrowing, acceptable for this local-only tier",
+            "detail": "EV-FE-1 is unit-level only (mocha pins + guard receipt); the live check 'typing alice@chatty.local finds the user' is an operator NOTE, not a gate (acceptance-criteria.md 'AC-PROCESS — scope discipline'). This is not a silent downgrade: releaseTarget is local-only with productionPromotionClaimed=false, and the changed surface is bracketed by independent pins on both sides — frontend verbatim pass-through (to be pinned in both test files) and backend @-prefix matching already pinned at backend/tests/integration/chat/test_social_api.py:129-130. The untouched wiring between them was verified to pass the login verbatim: messenger modal -> onSearchUsers -> ChatsController.searchUsers (src/features/chats/controller.ts:167-175) -> GET /users?login= (src/features/chats/api/own.ts:190-194); contacts modal -> ContactsController.searchUsers (src/features/contacts/controller.ts:69-77) -> GET /users?login= (src/features/contacts/api/own.ts:69-73). No other transform exists on the path (grep split('@') across src/ hits only messenger.ts:436 and contacts.ts:213).",
+            "files": [
+                "tasks/2026-11-01-email-search/acceptance-criteria.md",
+                "tasks/2026-11-01-email-search/plan.md"
+            ],
+            "requiredFix": "Not required — the narrowing is explicit and the claim is scoped to local-only. If the package is ever promoted toward a production claim, the live smoke must become a real gate at that point."
+        }
+    ],
+    "reviewVerdict": {
+        "schemaVersion": "agent-review-verdict.v1",
+        "overall": "ACCEPTED",
+        "dimensions": {
+            "requirementFit": {
+                "status": "PASS",
+                "reasonCode": "DIAGNOSIS_VERIFIED_AGAINST_SOURCE",
+                "summary": "Every factual claim reproduced in source: the @-strip block in the root-delegated input handler (messenger.ts:423-438, delegation filter :426) and the mirrored block (contacts.ts:212-215, comment :200-201); the hint lives once inside renderAddUserModalContent (messenger.ts:127 within :92-132) and the contacts page reuses that builder (contacts.ts:13 import, :269 addContent), so one hint edit covers both modals; backend needs no change — search_by_login_prefix escapes only backslash/%/_ and leaves '@' untouched (backend/app/repositories/users.py:34,38) and test_social_api.py:129-130 pins login='alice@ex' matching. Downstream controller/adapter path passes the query verbatim, so the two strips are the only mangling points. The fix is correctly frontend-only with prefix semantics preserved."
+            },
+            "implementationQuality": {
+                "status": "PASS",
+                "reasonCode": "MINIMAL_DIFF_SOUND",
+                "summary": "Single workstream, five-file write-set, no new imports/components; deleting the two strip blocks plus one shared hint string is the minimal correct change. Write-set is complete: split('@') occurs only at messenger.ts:436 and contacts.ts:213, the hint string only at messenger.ts:127, and the only tests asserting the strip are the two test files already in the write-set — nothing outside the write-set must change for the fix or for verify to pass. Base pin verified (90f8430 = feat(contacts) commit; HEAD e0b9c1e adds only the plan package)."
+            },
+            "evidenceQuality": {
+                "status": "PASS",
+                "reasonCode": "GATES_EXECUTABLE_BASELINE_REPRODUCED",
+                "summary": "Validation commands are real and sufficient (npm run verify; guard-architecture --all --strict). The REPLACE-not-extend requirement is confirmed necessary and correctly scoped to BOTH files: messenger.test.ts:294+305 and contacts.test.ts:140+149+161 assert the strip today and would fail without replacement. Baseline reproduced independently: mocha 422 passing at HEAD (== base for src/), exactly as the launchGate claims. Completeness-check run by reviewer: PASS, zero blockers."
+            },
+            "residualRisk": {
+                "status": "PASS",
+                "reasonCode": "MINOR_NOTES_NON_BLOCKING",
+                "summary": "Two minor, non-blocking notes (F-1 stale @-titles inside owned test files; F-2 live smoke as NOTE-only). No Medium/High findings. Orchestration fits the tier: S2 resolved deterministically via browser-risk (tier-resolution.json), 1 review round, maxTaskAttempts 2, maxParallelTasks 1, budgets scaled down and internally consistent (1800s workstream + 1800s retry reserve <= 3600s critical path <= 5400s run wall; 20k workstream tokens <= 30k total; package ~12KB fits the 60KB small-context plan budget)."
+            }
+        },
+        "routing": {
+            "target": "plan-freeze",
+            "nextAction": "accept"
+        }
+    },
+    "rounds": [
+        {
+            "round": 1,
+            "verdict": "READY_TO_FREEZE",
+            "findings": 2,
+            "summary": "Independent pre-freeze review; every source claim verified against the tree at e0b9c1e (src state identical to pinned base 90f8430). Both @-strip blocks, the shared hint builder, the backend @-prefix pin and both strip-asserting tests confirmed at the cited lines; write-set complete; completeness-check PASS (planDigest f340e668...); mocha baseline 422 reproduced. Two minor findings, no majors — freeze may proceed. Post-acceptance re-hash: the post-verdict manifest delta was verified edit-by-edit to be freeze bookkeeping (status FROZEN, planReview verdict recorded, plan-review.json declared in planFiles) plus the F-1 fold-in only; reviewer re-ran completeness-check on the frozen manifest (PASS, zero blockers) and updated reviewedPlanHash from f340e668948c506517cedb83b4e73d8ba9cb8303bba924121daf2dd799a98681 to the new canonical planDigest 3480a5afd11f88cab810a91c27b402db8c3e37125a6929139d7a9a6a28336e84; verdict and dimensions unchanged."
+        }
+    ]
+}
