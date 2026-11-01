@@ -49,6 +49,17 @@ export interface ChatSearchMatch {
     last_match_at?: string | null
 }
 
+// DTO контакта адресной книги (2026-11-01-contacts): id — id
+// ПОЛЬЗОВАТЕЛЯ-контакта, login — полный email, display_name — его локальная
+// часть; avatar уже разрешён own-адаптером (avatar_url ?? pool-фолбэк по id)
+// — DTO-зеркало ответа GET /contacts живёт во фиче (features/contacts/api)
+export interface ContactInfo {
+    id: number
+    login: string
+    display_name: string
+    avatar: string
+}
+
 export interface ChatUser {
     id: number
     first_name: string
