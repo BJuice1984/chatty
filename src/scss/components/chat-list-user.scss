@@ -31,6 +31,14 @@
       background-image: linear-gradient(90deg, rgb(129 117 255 / 12%), transparent 55%);
     }
 
+    &_archived {
+      opacity: 0.55;
+
+      img {
+        filter: grayscale(1);
+      }
+    }
+
     &__container {
       @include size(56px, 56px);
       @include flex-center-center;

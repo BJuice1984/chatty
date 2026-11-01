@@ -1,3 +1,45 @@
+# 2026-11-01 — Feat(chats): UI членства — меню участника, архивная карточка, скрытый композер (WS-FE-CHAT-LEAVE-UI)
+
+Третья волна ALK-прогона `2026-11-01-chat-leave` (ветка feature/2026-11-01-contacts,
+после бэкенд-волны fce6a5d и фронтенд-логики 53c0d9d): клик по аватару участника
+в шапке мессенджера открывает Modal-контекстное меню (прецедент меню контактов)
+вместо удалённого волной 2 мгновенного кика. Матрица видимости: чужой аватар —
+«Добавить в контакты» (только когда id НЕ в contactIds) и «Удалить из чата»
+(только при meId === ownerId, owner-only на бэкенде); собственный аватар —
+«Удалиться из чата»; «Отмена» — всегда. Контент меню строит escapeHtml-билдер
+`renderChatMemberMenuContent` (XSS-пин на display_name — и в слоте, и в заголовке
+модалки двойными скобками). Новые пропсы Messenger: contactIds/meId/ownerId/
+onAddContact/onKickUser/onLeaveChat — компонент остаётся controller-free.
+Архивный чат (leftAt из GET /chats): меню нет вовсе, кнопка «+» шапки скрыта
+(фильтрация headerButtons в render), композер скрыт (условие в messenger.hbs),
+история остаётся скроллимой. Страница чатов: CDM дополнительно зовёт
+`ChatsController.refreshContacts()` (инъекция contacts-фичи, шов волны 2) —
+холодный вход в /messenger наполняет слайс контактов для условного пункта
+(review F-5, пин); withStore-мэппер снабжает contactIds (каст-идиом слайса
+contacts), meId (state.user?.id) и ownerId (chats.find(selected)?.owner_id);
+колбэки ведут в addContact / removeUsersFromChat([userId], chatId) / leaveChat
+(сброс выбора и закрытие сокета — контроллер волны 2). Карточка списка:
+chatListUser гаснет модификатором `chat-list-user_archived` от leftAt
+(пониженная opacity + grayscale аватара; chat.hbs прокидывает leftAt в User) —
+вышедший чат остаётся в списке для чтения истории. Тесты: +19 mocha —
+messenger 13 (матрица владелец/не-владелец × контакт/не-контакт × свой аватар
+× архив, подавления кнопки «+» и композера, колбэки с правильными id, cancel,
+XSS), chat 4 (refreshContacts на CDM, поля мэппера, проводка колбэков,
+архивная карточка в списке), chatListUser 2 (модификатор есть/нет). Гейты:
+npm run verify — typecheck, 450 mocha (база 431 + 19), eslint, stylelint
+зелёные; guard-architecture --all --strict — 0 нарушений; бэкенд контура —
+230 pytest passed (+4 известных Windows-падения ingestion), alembic heads ==
+010_chat_leave. Наследованный реестр открытых хвостов (по итогам ревью
+принятых волн, к закрытию отдельными правками): 1) зачистка легаси-комментариев
+про «@-поиск» после 2026-11-01-email-search; 2) явный multi-row-тест порядка
+GET /contacts (created_at DESC) — сейчас только косвенные данные; 3) негерметичный
+пин дефолтного noop-опенера в contacts.test.ts (зависит от порядка загрузки
+тестовых файлов, модульный шов общий на процесс); 4) мёртвый eslint-disable в
+src/features/contacts/controller.ts; 5) дормирующие catch-ветки, найденные
+ревью волн логики и бэкенда; 6) бэкенд-фикстура owner_id требует пина на
+distinct-пользователях; 7) сегментный тест 010_chat_leave при появлении 011
+потребуется перепинить на явную ревизию (как 009 перепинен на 008).
+
 # 2026-11-01 — Fix(search): полный email в поиске пользователей — убран @-стрип в обеих модалках (WS-FE-EMAIL-SEARCH)
 
 Прогон `2026-11-01-email-search` (ветка feature/2026-11-01-contacts): поиск
