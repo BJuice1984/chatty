@@ -10,7 +10,7 @@ import { TypingIndicator } from '../components/typing-indicator.ts'
 import { DocumentCard } from '../components/document-card.ts'
 import AiAssistantController from '../controller.ts'
 import { type AiAssistantState, aiAssistantSlice } from '../store.ts'
-import type { AiChatSummary } from '../ports.ts'
+import type { AiChatSummary, AiDocumentChunk } from '../ports.ts'
 import template from './assistant.hbs'
 
 // Стили фичи (../styles/ai-assistant.scss) подключаются импортом в
@@ -123,6 +123,29 @@ class AssistantPageBase extends Block {
     }
 }
 
+// Один файл в топ-к может попасть несколькими чанками — карточка нужна
+// одна на файл. Список отсортирован по score, поэтому первое вхождение
+// файла — его лучший чанк (титул и сниппет берутся из него).
+function toDocumentCards(documents: AiDocumentChunk[]): { file_id: number, title: string, snippet: string }[] {
+    const seen = new Set<number>()
+    const cards: { file_id: number, title: string, snippet: string }[] = []
+
+    for (const chunk of documents) {
+        if (seen.has(chunk.file_id)) {
+            continue
+        }
+
+        seen.add(chunk.file_id)
+        cards.push({
+            file_id: chunk.file_id,
+            title: chunk.file_name !== '' ? chunk.file_name : `Документ #${chunk.document_id}`,
+            snippet: chunk.content,
+        })
+    }
+
+    return cards
+}
+
 const mapAssistantState = (state: AppState) => {
     const assistant = currentAssistant(state)
     const aiChats = currentChats(state)
@@ -140,11 +163,7 @@ const mapAssistantState = (state: AppState) => {
         answer: assistant.answer,
         attachedFileId: assistant.attachedFileId,
         hasAttachment: assistant.attachedFileId !== null,
-        documentCards: assistant.documents.map(chunk => ({
-            file_id: chunk.file_id,
-            title: `Документ #${chunk.document_id}, фрагмент ${chunk.ordinal}`,
-            snippet: chunk.content,
-        })),
+        documentCards: toDocumentCards(assistant.documents),
         error: assistant.error,
     }
 }

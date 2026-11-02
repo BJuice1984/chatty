@@ -25,7 +25,7 @@ function port(overrides: Partial<AiAssistantPort> = {}): AiAssistantPort {
             { id: 4, title: 'Plain chat', is_ai: false },
         ],
         searchDocuments: async () => [
-            { document_id: 1, file_id: 7, ordinal: 0, content: 'chunk text', score: 0.9 },
+            { document_id: 1, file_id: 7, file_name: 'sample.docx', ordinal: 0, content: 'chunk text', score: 0.9 },
         ],
         askBot: async () => ({ run: successfulRun(), answerText: 'ответ ассистента' }),
         ...overrides,
@@ -98,6 +98,28 @@ describe('ai assistant controller state machine', () => {
         expect(aiAssistantSlice.getAssistant().status).to.eq('success')
         expect(aiAssistantSlice.getAssistant().answer).to.eq('ответ ассистента')
         expect(aiAssistantSlice.getAssistant().attachedFileId).to.eq(77)
+    })
+
+    // Карточки под ответом бота: тот же вопрос уходит в documents/search,
+    // результат ложится в documents рядом с ответом
+    it('ask follows up with a document search and stores its hits', async () => {
+        await controller.ask(3, 'какие есть документы на отпуск')
+
+        expect(aiAssistantSlice.getAssistant().documents).to.have.length(1)
+        expect(aiAssistantSlice.getAssistant().documents[0].file_name).to.eq('sample.docx')
+        expect(aiAssistantSlice.getAssistant().status).to.eq('success')
+    })
+
+    it('ask keeps the answer when the follow-up search fails', async () => {
+        controller = new AiAssistantController(port({ searchDocuments: async () => {
+            throw new Error('поиск недоступен')
+        } }))
+
+        await controller.ask(3, 'вопрос')
+
+        expect(aiAssistantSlice.getAssistant().status).to.eq('success')
+        expect(aiAssistantSlice.getAssistant().answer).to.eq('ответ ассистента')
+        expect(aiAssistantSlice.getAssistant().documents).to.deep.eq([])
     })
 
     it('failed bot runs surface their error kind as text', async () => {
@@ -174,9 +196,9 @@ describe('ai assistant controller state machine', () => {
     })
 
     it('drops a late search result after the chat switched (NEW-2)', async () => {
-        let resolveSearch: (documents: { document_id: number; file_id: number; ordinal: number; content: string; score: number }[]) => void = () => {}
+        let resolveSearch: (documents: { document_id: number; file_id: number; file_name: string; ordinal: number; content: string; score: number }[]) => void = () => {}
 
-        const searchDocuments = () => new Promise<{ document_id: number; file_id: number; ordinal: number; content: string; score: number }[]>(resolve => {
+        const searchDocuments = () => new Promise<{ document_id: number; file_id: number; file_name: string; ordinal: number; content: string; score: number }[]>(resolve => {
             resolveSearch = resolve
         })
 
@@ -186,7 +208,7 @@ describe('ai assistant controller state machine', () => {
 
         controller.selectChat(4)
 
-        resolveSearch([{ document_id: 1, file_id: 7, ordinal: 0, content: 'chunk', score: 0.9 }])
+        resolveSearch([{ document_id: 1, file_id: 7, file_name: 'sample.docx', ordinal: 0, content: 'chunk', score: 0.9 }])
         await pending
 
         const state = aiAssistantSlice.getAssistant()

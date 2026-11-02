@@ -551,15 +551,20 @@ class ChatPageBase extends Block {
         }
 
         // автоскролл: смена чата — всегда вниз; рост сообщений — только если
-        // читали низ (pinnedToBottom обновляется scroll-слушателем из CDM)
+        // читали низ (pinnedToBottom обновляется scroll-слушателем из CDM).
+        // Исключение — плейсхолдер «Ассистент печатает…»: он всегда должен
+        // быть в зоне видимости, поэтому пинит низ принудительно
         const chatChanged = (oldProps as { selectedChat?: number }).selectedChat !== newProps.selectedChat
         const oldLen = ((oldProps as { messages?: unknown[] }).messages ?? []).length
         const newLen = (newProps.messages ?? []).length
+        const lastMessage = ((newProps.messages ?? []) as { isPending?: boolean }[])[newLen - 1]
+        const tailIsPendingIndicator = newLen > 0 && lastMessage?.isPending === true
 
         if (chatChanged) {
             this.pinnedToBottom = true
             this.restoreMessagesScroll(true)
-        } else if (newLen > oldLen && this.pinnedToBottom) {
+        } else if (newLen > oldLen && (this.pinnedToBottom || tailIsPendingIndicator)) {
+            this.pinnedToBottom = true
             this.restoreMessagesScroll(true)
         } else {
             // перерисовка без роста (реакция, реплай-черновик): вернуть
@@ -611,6 +616,13 @@ class ChatPageBase extends Block {
                 this.pinnedToBottom = el.scrollHeight - (el.scrollTop ?? 0) - (el.clientHeight ?? 0) < 120
             }
         })
+
+        // Вход на страницу с уже выбранным чатом (возврат из /contacts по
+        // openDm): CDU-перехода «смена чата» нет — первый рендер монтируется
+        // сразу с историей, скроллим низ вручную
+        if (this.props.selectedChat != null) {
+            this.restoreMessagesScroll(true)
+        }
     }
 
     render() {

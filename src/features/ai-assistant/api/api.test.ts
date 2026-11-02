@@ -19,6 +19,7 @@ const ownChat = {
 const ownChunk = {
     document_id: 12,
     file_id: 34,
+    file_name: 'sample.docx',
     ordinal: 2,
     content: 'фрагмент документа',
     score: 0.75,
@@ -56,6 +57,7 @@ describe('ai assistant api adapter', () => {
         expect(toAiDocumentChunk(ownChunk)).to.deep.eq({
             document_id: 12,
             file_id: 34,
+            file_name: 'sample.docx',
             ordinal: 2,
             content: 'фрагмент документа',
             score: 0.75,

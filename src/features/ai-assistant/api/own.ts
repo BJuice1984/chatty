@@ -26,6 +26,7 @@ interface OwnChatResponse {
 interface OwnDocumentChunkResponse {
     document_id: number
     file_id: number
+    file_name: string
     ordinal: number
     content: string
     score: number
@@ -66,6 +67,7 @@ export function toAiDocumentChunk(response: OwnDocumentChunkResponse): AiDocumen
     return {
         document_id: response.document_id,
         file_id: response.file_id,
+        file_name: response.file_name,
         ordinal: response.ordinal,
         content: response.content,
         score: response.score,

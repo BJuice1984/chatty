@@ -3,7 +3,7 @@
 // текстовым error-состоянием, никогда — исполняемым DOM.
 
 import { aiAssistantPort } from './api/index.ts'
-import { type AiAssistantPort, AiBotRunError, type AiChatSummary } from './ports.ts'
+import { type AiAssistantPort, AiBotRunError, type AiChatSummary, type AiDocumentChunk } from './ports.ts'
 import { aiAssistantSlice } from './store.ts'
 
 export const AI_SEARCH_TOP_K = 5
@@ -167,11 +167,23 @@ export class AiAssistantController {
                 return
             }
 
+            // Ответ записывается сразу; карточки документов под ответом
+            // (тот же вопрос идёт в поиск) догружаются вторым патчем. Ошибка
+            // поиска не роняет ответ бота — карточки просто остаются пустыми.
             aiAssistantSlice.setAssistant({
                 status: 'success',
                 answer: answerText,
                 attachedFileId: run.attachment_file_id,
+                documents: [],
             })
+
+            const documents = await this.searchAnswerDocuments(chatId, trimmed)
+
+            if (this.isStaleChat(chatId)) {
+                return
+            }
+
+            aiAssistantSlice.setAssistant({ documents })
         } catch (error) {
             if (this.isStaleChat(chatId)) {
                 return
@@ -188,6 +200,17 @@ export class AiAssistantController {
             })
         } finally {
             this.askInFlight = false
+        }
+    }
+
+    // Карточки под ответом бота: тот же вопрос уходит в documents/search.
+    // Поиск вторичен по отношению к ответу — его исключение проглатывается
+    // (ответ уже записан), карточки остаются пустыми.
+    private async searchAnswerDocuments(chatId: number, question: string): Promise<AiDocumentChunk[]> {
+        try {
+            return await this.port.searchDocuments(chatId, question, AI_SEARCH_TOP_K)
+        } catch {
+            return []
         }
     }
 

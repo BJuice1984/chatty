@@ -11,6 +11,7 @@ export interface AiChatSummary {
 export interface AiDocumentChunk {
     document_id: number
     file_id: number
+    file_name: string
     ordinal: number
     content: string
     score: number

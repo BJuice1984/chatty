@@ -128,7 +128,10 @@ register or log in via `/api/v1/auth`, retain the HttpOnly access/refresh
 cookies, send the `chatty_csrf` value in `X-CSRF-Token` for refresh/logout,
 and confirm that logout removes access to `/api/v1/auth/me`. The live AI
 scenario then walks: create an `is_ai` chat, upload a document, ask the
-assistant and download the attached file.
+assistant and download the attached file. For bulk document loading the
+helper script `backend/scripts/upload_documents.sh` does the whole walk
+(admin login, find-or-create the AI chat, host-side `.doc`/`.rtf` →
+`.docx` conversion via `soffice`, upload + ingest with a per-file report).
 
 If Docker, PostgreSQL, RustFS, the AI inference server or the target
 internal network is unavailable, record that dependency as `UNAVAILABLE`;

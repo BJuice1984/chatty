@@ -433,6 +433,33 @@ describe('own ws adapter social events', () => {
         expect(socket.sent[socket.sent.length - 1]).to.eq('{"type":"message","content":"просто"}')
     })
 
+    // идемпотентный повтор bot/runs может доставить тот же ответ дважды —
+    // дедуп по серверному id не дублирует ни ленту, ни счётчик непрочитанных
+    it('ignores a duplicate delivery of the same server message id', async () => {
+        const { socket } = await connectedSocket()
+
+        const payload = JSON.stringify({
+            type: 'message',
+            content: {
+                id: 21,
+                chat_id: 3,
+                user_id: 42,
+                content: 'ответ ассистента',
+                file_id: null,
+                client_message_id: null,
+                created_at: '2026-11-02T00:00:00Z',
+            },
+        })
+
+        socket.triggerMessage(payload)
+        socket.triggerMessage(payload)
+
+        const list = store.getState().messages?.[3] ?? []
+
+        expect(list).to.have.length(1)
+        expect((list[0] as { id?: number }).id).to.eq(21)
+    })
+
     it('closes through the adapter closeChat without reconnect', async () => {
         const { adapter, socket } = await connectedSocket()
 

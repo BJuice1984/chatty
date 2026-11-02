@@ -14,8 +14,13 @@ from app.core.deps import get_current_user, get_db, get_settings
 from app.ingestion.config import rag_settings_from_env
 from app.ingestion.embeddings import get_provider
 from app.models.user import User
+from app.repositories.bot_runs import BotRunRepository
+from app.repositories.messages import MessageRepository
 from app.schemas.bot import BotRunCreate, BotRunResponse
 from app.services.bot import BotService
+from app.services.chats import ChatService
+from app.services.messages import MessageService
+from app.ws.hub import hub
 
 router = APIRouter(tags=['bot'])
 
@@ -57,10 +62,26 @@ async def create_bot_run(
         provider=get_bot_provider(request.app.state, bot),
         rag_provider=get_provider(request.app.state, rag),
     )
+    # The bot answer is written straight to the database by the service;
+    # without this broadcast the messenger feed only saw it on a refetch.
+    # A run that had already succeeded before this call is an idempotent
+    # redelivery — re-broadcasting it would duplicate the answer in every
+    # connected feed.
+    existing = BotRunRepository(db).get_by_message_id(payload.message_id)
+    already_succeeded = existing is not None and existing.status == 'succeeded'
     run = await asyncio.to_thread(
         service.run,
         chat_id=chat_id,
         user_id=current_user.id,
         message_id=payload.message_id,
     )
+    if not already_succeeded and run.status == 'succeeded' and run.response_message_id is not None:
+        message = MessageRepository(db).get_by_id(run.response_message_id)
+        if message is not None:
+            response = MessageService(db).present_one(message, current_user.id).model_dump(mode='json')
+            await hub.broadcast(
+                chat_id,
+                {'type': 'message', 'content': response},
+                active_user_ids=ChatService(db).active_member_ids(chat_id),
+            )
     return BotRunResponse.model_validate(run)

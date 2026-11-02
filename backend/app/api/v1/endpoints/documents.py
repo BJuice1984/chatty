@@ -72,11 +72,12 @@ async def search_documents(
     )
     return [
         DocumentChunkResponse(
-            document_id=chunk.document_id,
-            file_id=chunk.file_id,
-            ordinal=chunk.ordinal,
-            content=chunk.content,
-            score=score,
+            document_id=hit.chunk.document_id,
+            file_id=hit.chunk.file_id,
+            file_name=hit.file_name,
+            ordinal=hit.chunk.ordinal,
+            content=hit.chunk.content,
+            score=hit.score,
         )
-        for chunk, score in results
+        for hit in results
     ]
