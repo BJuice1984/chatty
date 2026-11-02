@@ -623,7 +623,7 @@ class ChatPageBase extends Block {
     // принёс undefined в пропсы, панель возвращается к списку чатов.
     // Гвардия по переходу «был выбор → пропал»: панель не захлопывается,
     // пока чат ещё не выбирали (мобильный вход на страницу)
-    protected componentDidUpdate(oldProps: unknown, newProps: { selectedChat?: number, messages?: unknown[] }) {
+    protected componentDidUpdate(oldProps: unknown, newProps: { selectedChat?: number }) {
         this.restoreUsersScroll()
         this.restoreSearchFocus()
 

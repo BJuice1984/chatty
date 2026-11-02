@@ -180,6 +180,10 @@ describe('settings page mobile pane', () => {
         store.set('user', { ...user })
         window.localStorage.removeItem('chatty-preferences')
         initPreferences()
+        // шестипунктный проход заходит и в Data Usage: без стаба герметичный
+        // контроллер честно падает в catch fetchUsage и шумит console.error
+        // (финальный аудит FA-1); undefined = «запрос не удался» без шума
+        sinon.stub(controller, 'fetchUsage').resolves(undefined)
     })
 
     afterEach(() => {
