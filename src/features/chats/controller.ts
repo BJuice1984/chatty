@@ -10,6 +10,7 @@
 // REST-ответом toggle (его сводка viewer-relative), чужие — дельтой события.
 
 import store from '../../utils/Store.ts'
+import { TransportError } from '../../utils/HTTPTransport.ts'
 import type { ChatInfo, Message, ReactionSummary } from '../../utils/types.ts'
 import { chatsPort } from './api/index.ts'
 import type { ChatMessagesPort, ChatReactionEvent, ChatsPort, ChatsUserSearchResult } from './ports.ts'
@@ -37,6 +38,12 @@ const noopContactsIntegration: ContactsIntegration = {
 // чтобы плейсхолдер «печатает…» вставал сразу за вопросом
 const BOT_ECHO_WAIT_MS = 5_000
 const BOT_ECHO_WAIT_TICK_MS = 25
+
+// Паузы между повторами POST /bot/runs после сетевого обрыва (2026-11-02:
+// браузерный XHR длинного прогона рвался «Ошибка сети», хотя сервер ран
+// выполнял — см. runbook). Ретрай идемпотентен: ран уникален по message_id,
+// повторный вызов вернёт тот же ран и не создаст второй ответ
+const BOT_RUN_RETRY_DELAYS_MS: readonly number[] = [5_000, 15_000]
 
 let contactsIntegration: ContactsIntegration = noopContactsIntegration
 
@@ -129,12 +136,16 @@ export class ChatsFeatureController {
     // только ответ последнего вызова
     private searchSequence = 0
 
+    private readonly botRunRetryDelaysMs: readonly number[]
+
     constructor(
         port: ChatsPort = chatsPort,
-        messages: ChatMessagesPort = chatMessagesPort
+        messages: ChatMessagesPort = chatMessagesPort,
+        options: { botRunRetryDelaysMs?: readonly number[] } = {}
     ) {
         this.port = port
         this.messages = messages
+        this.botRunRetryDelaysMs = options.botRunRetryDelaysMs ?? BOT_RUN_RETRY_DELAYS_MS
 
         // WS-события реакции/удаления чата приходят в адаптер — бизнес-логика
         // здесь (паттерн attachPort из history-модуля; прямой импорт дал бы цикл)
@@ -388,6 +399,32 @@ export class ChatsFeatureController {
         return result
     }
 
+    // Сетевой обрыв POST /bot/runs — не приговор прогону: запрос мог дойти
+    // (ран выполняется, ответ придёт WS-broadcast'ом) или не дойти вовсе.
+    // Идемпотентный ретрай закрывает оба случая; http-ошибки (4xx/5xx) и
+    // непредвиденные выбросы не ретраятся
+    private async runBotWithNetworkRetry(chatId: number, messageId: number) {
+        let lastError: unknown
+
+        for (const delay of [0, ...this.botRunRetryDelaysMs]) {
+            if (delay > 0) {
+                await new Promise(resolve => setTimeout(resolve, delay))
+            }
+
+            try {
+                return await this.port.runBot?.(chatId, messageId)
+            } catch (error) {
+                lastError = error
+
+                if (!(error instanceof TransportError) || (error.kind !== 'network' && error.kind !== 'timeout')) {
+                    throw error
+                }
+            }
+        }
+
+        throw lastError
+    }
+
     private async runBotForLastOwnMessage(chatId: number): Promise<void> {
         const dropPending = () => {
             const list = store.getState().messages?.[chatId] ?? []
@@ -451,7 +488,7 @@ export class ChatsFeatureController {
                 },
             ])
 
-            const run = await this.port.runBot?.(chatId, target)
+            const run = await this.runBotWithNetworkRetry(chatId, target)
 
             if (run?.status === 'failed') {
                 pushError(run.error_kind ?? 'unknown')

@@ -2,6 +2,7 @@ import { expect } from 'chai'
 import sinon from 'sinon'
 import { JSDOM } from 'jsdom'
 import store from '../../utils/Store.ts'
+import { TransportError } from '../../utils/HTTPTransport.ts'
 import { AI_CHAT_TITLE } from '../../utils/constants.ts'
 import { ChatsFeatureController, applyReactionDelta, setContactsIntegration, toggleOwnReaction } from './controller.ts'
 import { ownChatsPort } from './api/own.ts'
@@ -957,6 +958,54 @@ describe('chats controller bot run', () => {
         await until(() => errorMessage() !== undefined)
 
         expect(errorMessage()?.content).to.contain('Время ожидания запроса истекло')
+        expect(hasPending()).to.be.false
+    })
+
+    // Сетевой обрыв POST /bot/runs (2026-11-02): ран на сервере мог
+    // выполняться — ретрай идемпотентен и не создаёт второй ответ, ошибка
+    // не показывается, пока не исчерпаны попытки
+    it('retries a network-failed run request without surfacing an error', async () => {
+        setupAiChat()
+        const runBot = sinon.stub()
+            .onFirstCall().rejects(new TransportError('Ошибка сети. Запрос не выполнен', 'network'))
+            .onSecondCall().resolves({ id: 1, status: 'succeeded', error_kind: null })
+        const controller = new ChatsFeatureController(
+            makePort({ runBot }),
+            makeMessages(),
+            { botRunRetryDelaysMs: [10] }
+        )
+
+        const sent = controller.sendMessage(38, 'вопрос')
+
+        echoOwnMessage()
+        await sent
+        await until(() => hasPending())
+        await until(() => runBot.calledTwice)
+        await until(() => !hasPending())
+
+        expect(runBot.calledTwice).to.be.true
+        expect(runBot.secondCall.calledWith(38, 101)).to.be.true
+        expect(errorMessage()).to.be.undefined
+    })
+
+    it('gives up after the retry budget and surfaces the network error', async () => {
+        setupAiChat()
+        const runBot = sinon.stub().rejects(new TransportError('Ошибка сети. Запрос не выполнен', 'network'))
+        const controller = new ChatsFeatureController(
+            makePort({ runBot }),
+            makeMessages(),
+            { botRunRetryDelaysMs: [10] }
+        )
+
+        const sent = controller.sendMessage(38, 'вопрос')
+
+        echoOwnMessage()
+        await sent
+        await until(() => errorMessage() !== undefined)
+
+        // исходная попытка + один ретрай по бюджету [10]
+        expect(runBot.calledTwice).to.be.true
+        expect(errorMessage()?.content).to.contain('Ошибка сети')
         expect(hasPending()).to.be.false
     })
 })

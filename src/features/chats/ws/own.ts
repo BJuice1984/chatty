@@ -261,6 +261,15 @@ export class OwnWsAdapter {
                 const raw = wsEvent.content as OwnMessageResponse
                 const message = toMessage(raw)
 
+                // Дедуп по серверному id: повторная доставка того же
+                // сообщения (идемпотентный повтор bot/runs и т.п.) не
+                // дублирует ни ленту, ни счётчик непрочитанных
+                const known = (store.getState().messages?.[id] ?? []) as { id?: number }[]
+
+                if (typeof message.id === 'number' && known.some(item => item.id === message.id)) {
+                    return
+                }
+
                 store.set(`messages.${id}`, appendMessages(
                     store.getState().messages?.[id] ?? [],
                     message
