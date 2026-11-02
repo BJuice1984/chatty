@@ -330,6 +330,14 @@
         &_pane-open &__container-chats {
             display: block;
         }
+
+        &__container-profile-changing {
+            display: none;
+        }
+
+        &_pane-open &__container-profile-changing {
+            display: flex;
+        }
     }
 }
 

@@ -242,4 +242,45 @@
     color: var(--main-text-color);
     cursor: default;
   }
+
+  &__back {
+    @include reset;
+    @include text;
+
+    display: none;
+    align-self: flex-start;
+    margin-bottom: -4px;
+    padding: 0;
+    border: none;
+    background-color: transparent;
+    cursor: pointer;
+  }
+}
+
+@media (max-width: ($tablet - 1px)) {
+
+  .settings-section {
+
+    &__back {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      width: 32px;
+      height: 32px;
+      padding: 0;
+      border: none;
+      border-radius: 8px;
+      background-color: transparent;
+      cursor: pointer;
+
+      &::before {
+        content: '';
+        width: 10px;
+        height: 10px;
+        border-left: 2px solid var(--main-text-color);
+        border-bottom: 2px solid var(--main-text-color);
+        transform: rotate(45deg);
+      }
+    }
+  }
 }

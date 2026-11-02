@@ -1,4 +1,4 @@
-<section class="chat">
+<section class="chat{{#if this.settingsPaneOpen}} chat_pane-open{{/if}}">
     <div class="chat__container-users">
         <div class="chat__container-header">
             <h2 class="chat__header">More</h2>
@@ -26,6 +26,7 @@
         {{{ BottomBar }}}
     </div>
     <div class="chat__container-profile-changing">
+        <button type="button" class="settings-section__back" data-testid="settings-back" aria-label="Назад к настройкам"></button>
         {{#if sectionAccount}}
         <div class="settings-section" data-testid="settings-section-account">
             {{{ Avatar avatar=this.user.avatar onUserFile=this.onUserAvatar }}}

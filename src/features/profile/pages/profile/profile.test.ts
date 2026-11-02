@@ -174,6 +174,80 @@ describe('settings page sections', () => {
     })
 })
 
+describe('settings page mobile pane', () => {
+    beforeEach(() => {
+        setProfileController(controller)
+        store.set('user', { ...user })
+        window.localStorage.removeItem('chatty-preferences')
+        initPreferences()
+    })
+
+    afterEach(() => {
+        sinon.restore()
+        store.set('user', undefined)
+        store.set('chats', undefined)
+        window.localStorage.removeItem('chatty-preferences')
+        initPreferences()
+        window.localStorage.removeItem('chatty-theme')
+        applyTheme('system')
+    })
+
+    it('starts with the pane closed and the back button in the markup', () => {
+        const page = new ProfilePage({} as never)
+
+        try {
+            expect(page.element?.classList.contains('chat_pane-open')).to.be.false
+            expect(page.element?.querySelector('[data-testid="settings-back"]')).to.exist
+        } finally {
+            page.destroy()
+        }
+    })
+
+    it('opens the pane from each of the six items and back closes it keeping the section', () => {
+        const page = new ProfilePage({} as never)
+        const sections: [string, string][] = [
+            ['Account', 'settings-section-account'],
+            ['Chats', 'settings-section-chats'],
+            ['Appearance', 'settings-section-appearance'],
+            ['Notification', 'settings-section-notification'],
+            ['Privacy', 'settings-section-privacy'],
+            ['Data Usage', 'settings-section-data'],
+        ]
+
+        try {
+            for (const [name, testid] of sections) {
+                clickItem(page, name)
+
+                expect(page.element?.classList.contains('chat_pane-open'), name).to.be.true
+                expect(page.element?.querySelector(`[data-testid="${testid}"]`), name).to.exist
+
+                click(page.element?.querySelector('[data-testid="settings-back"]'))
+
+                expect(page.element?.classList.contains('chat_pane-open'), name).to.be.false
+                expect(page.element?.querySelector(`[data-testid="${testid}"]`),
+                    `${name} stays the current section after back`).to.exist
+            }
+        } finally {
+            page.destroy()
+        }
+    })
+
+    it('re-opens the pane on a repeated tap of the same item', () => {
+        const page = new ProfilePage({} as never)
+
+        try {
+            clickItem(page, 'Appearance')
+            click(page.element?.querySelector('[data-testid="settings-back"]'))
+            clickItem(page, 'Appearance')
+
+            expect(page.element?.classList.contains('chat_pane-open')).to.be.true
+            expect(page.element?.querySelector('[data-testid="settings-section-appearance"]')).to.exist
+        } finally {
+            page.destroy()
+        }
+    })
+})
+
 describe('settings account section', () => {
     beforeEach(() => {
         syncFormContract()
