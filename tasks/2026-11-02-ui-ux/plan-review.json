@@ -1,11 +1,11 @@
 {
     "schemaVersion": "agent-plan-review.v1",
     "packageId": "2026-11-02-ui-ux",
-    "planRevision": 2,
+    "planRevision": 3,
     "reviewId": "review-2026-11-02-ui-ux-freeze-r2",
     "fullReview": true,
     "verdict": "READY_TO_FREEZE",
-    "reviewedPlanHash": "60a2e622034b6cca1412014a9521aab91f327a97eed9665dbc76ede994b3685b",
+    "reviewedPlanHash": "a3fe9b7529a4ac85f1146a643d34360ae67bf13914982f2724ef014241be689e",
     "reviewer": {
         "id": "claude-code-independent-subagent",
         "independent": true,
@@ -86,6 +86,12 @@
             "verdict": "READY_TO_FREEZE",
             "findings": 0,
             "summary": "Post-verdict freeze fold-in verification (pre-authorized in F-4's requiredFix). The delta since round 2 was verified edit-by-edit against the reviewer's round-2 reading and is EXACTLY the declared set, nothing else semantic: (F-4) 'scroll-machinery removal' -> 'scroll-memory extraction' at plan.manifest.json:53 (requirement description opening), :338 (AC-FE-MESSENGER-SURFACE title), :421 (finalAuditGates line), plan.md:53 and developer-overview.md:81 — grep now finds the old phrase only in this review file and the historical round-1 plan-review-request.md; (F-5) helper contract pinned in plan.md:188-197 (module owns memory + document-capture sync + plan RESOLUTION values only; each caller keeps its own rAF coalescing and applies its plan to its OWN element via this.element; never a module-global plan slot or document-resolved target; zombie Messenger instances' plans no-op against detached elements) and folded into the manifest plannedItems feed-scroll.ts item (:249, which also correctly narrows the module's export from 'coalesced plan helper' to 'plan resolution values'); freeze bookkeeping only — status DRAFT->FROZEN (:3), planReview.reviewedRevision 2 + verdict READY_TO_FREEZE (:473-474), plan-review.json added to planFiles (:480). REQ-FE-FEED-SCROLL, goal/constraints/scope, all three workstream write-sets/dependsOn/launchGates/plannedItems (other than the declared F-5 fold), budgets, gates and orchestration are byte-identical to the round-2 review. Reviewer re-ran completeness-check on the frozen manifest: PASS, zero blockers, planDigest 60a2e622034b6cca1412014a9521aab91f327a97eed9665dbc76ede994b3685b; reviewedPlanHash updated from 174d10c4... to this digest; verdict and dimensions unchanged. F-4 and F-5 are now RESOLVED (folded in); zero open findings."
+        },
+        {
+            "round": 4,
+            "verdict": "READY_TO_FREEZE",
+            "findings": 0,
+            "summary": "Amendment review (settings-run precedent, one bounded delta). The executing worker's write-set gap claim is technically correct: registerComponent constructs each hbs child from the explicit helper hash only (registerComponent.ts:24 new Component(hash)), and messenger.hbs:22's {{{ Message ... }}} invocation passes fileUrl/autoDownload/time/etc. but no attachments — without a template edit the mapped attachments prop could never reach the Message component, so the staleness gate was right to reject the claim. The rev-3 delta was verified against the actual manifest and is EXACTLY the declared set: planRevision 2 -> 3 (:4); WS-FE-MESSENGER writes + src/components/messenger/messenger.hbs (:199, inserted in sorted position, 14 -> 15 entries, nothing else moved); the mapping plannedItem gains the appended 'messenger.hbs hands attachments through to the Message helper (rev-3 amendment...)' sentence (:248). All other manifest content (status FROZEN, requirements, other workstreams, budgets, gates, orchestration, planFiles) is identical to the round-3 verified state; the digest move 60a2e622... -> 16c2136c... is fully attributable to these three edits. Ownership impact checked: messenger.hbs is written by no other workstream and appears in no readOnly list, so the write-sets remain pairwise disjoint and the wave-1 pair still shares no file; the file sits inside the already-one-owner components/messenger surface, and the addition is consistent with round-1 F-3's recorded alternative ('or add messenger.hbs to the write-set'). Reviewer re-ran completeness-check on the amended frozen manifest: PASS, zero blockers, planDigest 16c2136c9841f7482d63102dcc692b238c2c89c17466d63c1f4aa73bd82eaeb8; reviewedPlanHash updated to this digest; verdict and dimensions unchanged; zero open findings."
         }
     ]
 }

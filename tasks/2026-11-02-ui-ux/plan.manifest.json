@@ -1,7 +1,7 @@
 {
     "schemaVersion": "agent-plan-manifest.v1",
     "status": "FROZEN",
-    "planRevision": 2,
+    "planRevision": 3,
     "package": {
         "id": "2026-11-02-ui-ux",
         "title": "Messenger UX batch: mobile /settings navigation, bot attachment file lists (mock), feed autoscroll, search-modal focus",
@@ -196,6 +196,7 @@
                 "src/components/message/message.ts",
                 "src/components/messenger/bot-attachments.mock.ts",
                 "src/components/messenger/feed-scroll.ts",
+                "src/components/messenger/messenger.hbs",
                 "src/components/messenger/messenger.test.ts",
                 "src/components/messenger/messenger.ts",
                 "src/scss/components/messenger.scss",
@@ -244,7 +245,7 @@
                 "message.ts: per-attachment icon kind from the name extension (pdf; xls/xlsx->xlsx; doc/docx->doc; else generic)",
                 "message.hbs: attachments list replaces the single fileUrl link (both «Вложение» and the autoDownload-gated branch); per item icon img, double-brace name, «Скачать» a[download][data-testid attachment-download]; no list without attachments",
                 "bot-attachments.mock.ts (new): MOCK_BOT_DOCUMENTS + mockBotAttachments(url, realName) with the loud MOCK-removal header",
-                "messenger.ts mapping: fileUrl -> attachments; AI chat + incoming -> mockBotAttachments (first name from file.filename when present); otherwise single {file.filename ?? 'Файл'}",
+                "messenger.ts mapping: fileUrl -> attachments; AI chat + incoming -> mockBotAttachments (first name from file.filename when present); otherwise single {file.filename ?? 'Файл'}; messenger.hbs hands attachments through to the Message helper (rev-3 amendment: the prop pass lives in the template — the file joins this write-set)",
                 "messenger.ts focus: the cross handler resets addUserQuery and focuses the search input next frame; the empty-query branch refocuses after its setProps re-render; the debounced-response refocus stays",
                 "feed-scroll.ts (new, review F-1 revision): shared scroll state — per-chat memory Map, one-time document-capture installScrollSync (class guard, 300ms echo window, pinned<120px), plan resolution values; helper contract pinned (review F-5): the module owns memory + sync + resolution ONLY, each caller keeps its own rAF coalescing and applies its plan to its OWN element (per-instance resolution — zombie Messenger instances' plans no-op against their detached elements, never displacing the page engine's plan; no module-global plan slot, no document-resolved target); messenger.ts sources all of it with ZERO behavior change (the Messenger-internal preserve path for modal/draft/menu re-renders stays in effect; only the store-driven half was dead and it stays harmless until the page engine owns it in WS-FE-FEED-SCROLL); messenger.hbs keeps passing autoDownload (recorded decision F-3)",
                 "public/images: file-pdf/file-xlsx/file-doc/file-generic svg (24x24, currentColor)",
@@ -470,7 +471,7 @@
         "maxRounds": 2,
         "implementationAuthorized": false,
         "report": "tasks/2026-11-02-ui-ux/plan-review.json",
-        "reviewedRevision": 2,
+        "reviewedRevision": 3,
         "verdict": "READY_TO_FREEZE"
     },
     "planFiles": [
