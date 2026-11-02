@@ -1,0 +1,486 @@
+{
+    "schemaVersion": "agent-plan-manifest.v1",
+    "status": "FROZEN",
+    "planRevision": 2,
+    "package": {
+        "id": "2026-11-02-ui-ux",
+        "title": "Messenger UX batch: mobile /settings navigation, bot attachment file lists (mock), feed autoscroll, search-modal focus",
+        "workspaceRoot": ".",
+        "artifactRoot": "work/2026-11-02-ui-ux",
+        "planArtifactRoot": "tasks/2026-11-02-ui-ux"
+    },
+    "packageIntegrity": {
+        "required": true,
+        "lockSchemaVersion": "agent-plan-lock.v2",
+        "inventorySource": "planFiles",
+        "undeclaredTopLevelFiles": "reject",
+        "allowedUnlistedFiles": [
+            "plan.lock.json",
+            "plan-review.json"
+        ]
+    },
+    "author": {
+        "id": "claude-code",
+        "surface": "agent-first-planning",
+        "runId": "2026-11-02-ui-ux-draft"
+    },
+    "baseRevision": {
+        "ref": "feature/2026-11-02-ui-ux",
+        "sha": "7dbd7aa247014a727ef6f9b367f4009a85436462"
+    },
+    "specification": {
+        "tier": "S2",
+        "intent": "Four operator-reported UX defects of the messenger surface, frontend-only: mobile /settings items are dead taps (the right pane has no mobile rule and is clipped away); message attachments render as one generic «Вложение» link instead of a readable file list (bot answers in AI chats get a marked mock list while the bot is disabled); the feed never autoscrolls (entry/send/receive) because every store emit recreates the Messenger hbs-children without CDM/CDU while the page scroll listener dies with its replaced node and the page CDU compares messages the mapper never maps in; the add-user search modal never focuses on open and loses focus when the typed text is fully cleared.",
+        "status": "DRAFT",
+        "requirements": [
+            {
+                "id": "REQ-FE-SETTINGS-MOBILE",
+                "title": "Mobile /settings: pane navigation for all six sections",
+                "description": "ProfilePage gains controller-free settingsPaneOpen UI state; each of the six onSelect* handlers sets {section, settingsPaneOpen: true}; onSettingsBack closes the pane keeping the current section. profile.hbs root grows the chat_pane-open modifier (chats-page precedent) and the changing pane gains a settings-section__back button (data-testid settings-back) as its first child, desktop-first hidden. chat.scss mobile block (<768): chat__container-profile-changing display:none by default, display:flex under chat_pane-open (the existing pane-open users-hiding rule already covers the sidebar; the existing pane-open container-chats rule is irrelevant to this page — no such child); the modifier is inert >=768. settings-sections.scss owns the back-button styles after the messenger__back precedent (display:none desktop, inline-flex + chevron inside the mobile media). No comments in scss. Tests: each of the six items opens the pane (root modifier + that section's settings-section-* testid visible), back closes while keeping section, existing desktop suites unchanged.",
+                "priority": "P1",
+                "source": "operator request 2026-11-02 item 1 (check ALL settings items on mobile)",
+                "acceptanceIds": [
+                    "AC-FE-SETTINGS-MOBILE"
+                ],
+                "evidenceIds": [
+                    "EV-MOBILE-1"
+                ],
+                "owner": "WS-FE-SETTINGS-MOBILE"
+            },
+            {
+                "id": "REQ-FE-MESSENGER-SURFACE",
+                "title": "Messenger component surface: attachment file lists (mock bot set), modal focus, scroll-memory extraction",
+                "description": "One owner for the whole components/messenger + components/message surface (the write-sets cannot be split: the attachment mapping seam, the modal focus handlers and the scroll-memory extraction all live in messenger.ts, and the pinned «Вложение» render expectations live in messenger.test.ts). (a) Attachments: Message.attachments?: {name, url}[] additive in types.ts; message.hbs replaces the single fileUrl link (both the «Вложение» and the autoDownload-gated «Скачать» branches — no preview exists to gate; the preference stays for future previews and the settings hint stays honest because the list always provides «Скачать») with a list: per item an icon img /images/file-{kind}.svg (kind from the name extension: pdf; xls/xlsx->xlsx; doc/docx->doc; else generic), the escaped name (double-brace), a «Скачать» link (href=item url, download attribute, data-testid attachment-download). messenger.ts mapping (withMessenger/mapTypedMessages seam): any message with fileUrl gets attachments; AI chat (chatInfo.is_ai) + incoming (!isMine) -> the marked mock list from components/messenger/bot-attachments.mock.ts (first item keeps file.filename when present, every url is the real download url; loud MOCK-removal header); otherwise a single {name: file.filename ?? 'Файл', url}. Four new public/images/file-*.svg icons (24x24, currentColor); messenger.scss list rows on existing theme tokens. (b) Focus: the add-user cross handler resets addUserQuery and focuses [data-testid user-search-input] in the next frame (refocusSearchInput reuse); the empty-query branch of the input handler refocuses after its immediate setProps re-render; the debounced-response refocus stays. (c) Scroll-memory extraction (review F-1 revision — behavior identical): the Messenger scroll machinery is NOT dead and stays — Messenger-INTERNAL setProps (modal open/close, reply draft, member menu, search state, autoDownload subscription) re-render the LIVE instance and its planMessagesScroll('preserve') restores the reading position after those re-renders (feed and modals share one .messenger element); only the store-driven half is dead (the page store handler re-renders the page and detaches the live Messenger before its own store handler runs). This wave extracts the scroll state into a new shared module src/components/messenger/feed-scroll.ts (per-chat memory Map, one-time document-capture installScrollSync with class guard/300ms echo window/pinned<120px, and the coalesced plan helper); messenger.ts sources all of it with zero behavior change (the CDU preserve path stays in effect); messenger.hbs keeps passing autoDownload to Message (prop reserved for future previews — recorded decision, review F-3). Honest naming note (review F-2): no adapter populates Message.file at runtime, so file.filename is fixture-only and real non-AI file messages render the «Файл» fallback. The chat-list and WS-notification «Вложение» placeholders are a different surface — untouched. Tests: message rendering (icon kinds incl. docx->doc/unknown->generic, XSS-escaped name, href/download, absent without attachments); the mapping rule (AI incoming -> mock list with first name from file.filename when present, own/non-AI -> single, no file -> none); focus on open + focus kept after a full clear; the pinned «Вложение» feed-render expectations updated to the list UI.",
+                "priority": "P1",
+                "source": "operator request 2026-11-02 items 2 and 4 (messenger half)",
+                "acceptanceIds": [
+                    "AC-FE-MESSENGER-SURFACE"
+                ],
+                "evidenceIds": [
+                    "EV-MESSENGER-1"
+                ],
+                "owner": "WS-FE-MESSENGER"
+            },
+            {
+                "id": "REQ-FE-FEED-SCROLL",
+                "title": "Page-owned feed autoscroll engine + contacts modal focus + docs",
+                "description": "The chat page owns the store-driven scroll engine (its own header comment already assigns the feed scroll here; the page instance is the only stable owner across store re-renders), built on the SHARED scroll module extracted by WS-FE-MESSENGER (components/messenger/feed-scroll.ts — pages->components is a legal downward import; one memory for both writers, disjoint triggers: the page reacts to store emits, Messenger-internal preserve plans react to its own setProps). The engine consumes the shared per-chat memory + the one-time document-capture sync, replacing the page's per-node CDM scroll listener (dead after the first re-render) and deleting the page's dead CDU branch comparing never-mapped messages (always 0/0). Page CDU reads the STORE for the selected chat's messages: chat change -> delete memory + plan bottom; tail growth (length grew with the head id unchanged — append, NOT «загрузить ещё» prepend) AND (pinned OR the last message isPending typing-placeholder) -> bottom; else -> restore the saved top. One coalesced rAF plan per frame on the live .messenger__container (the last CDU of a cascade wins); the CDM entry-with-selectedChat bottom scroll stays (openDm return). Contacts page mirrors the modal focus (focus on open next frame + empty-query branch refocus; the search-response refocus already exists). Docs: NEXT.md record + progress_log entry on top with the mock-removal pointer. Tests: chat.test.ts decision table with flushed frames (chat change -> bottom + memory cleared; append pinned -> bottom; append unpinned -> saved top; prepend -> saved top, never bottom; pending tail -> bottom regardless); contacts.test.ts focus on open.",
+                "priority": "P1",
+                "source": "operator request 2026-11-02 items 3 and 4 (contacts half)",
+                "acceptanceIds": [
+                    "AC-FE-FEED-SCROLL",
+                    "AC-PROCESS"
+                ],
+                "evidenceIds": [
+                    "EV-PAGEUX-1"
+                ],
+                "owner": "WS-FE-FEED-SCROLL"
+            }
+        ],
+        "goal": "The four reported UX defects are gone: mobile /settings works, attachments read as file lists, the feed autoscrolls, the search modal focuses.",
+        "constraints": [
+            "Layers only downward; guard-architecture --all --strict stays 0; components never import features/controllers; the mock data lives in components/messenger (bot semantics already live in the message layer), not in features/ai-assistant.",
+            "Frontend-only: backend/** is a forbidden write; no store-shape, WS-protocol, routing or dependency changes.",
+            "No comments in new/edited scss (stylelint); imports with .ts extension; 4-space/single-quote/no-semicolon style enforced by eslint:fix.",
+            "Message.attachments is additive; file_url/file stay (list snippet and mapping seams depend on them); the «Вложение» placeholders of the chat list and WS notifications stay untouched.",
+            "Existing suites stay green; mocha counts grow from the 568 base."
+        ],
+        "nonGoals": [
+            "real bot multi-file message contract (the marked mock is the seam)",
+            "image/media attachment previews and the autoDownload preview gate",
+            "«Найти все чаты» and RAG carry-over work",
+            "scroll preservation across full page reloads; virtualized lists",
+            "ai-assistant page restyle in dark theme"
+        ],
+        "scope": "profile page mobile pane + settings/back scss; messenger component surface (attachment list + icons + mock + types + modal focus + scroll-memory extraction into the shared feed-scroll module); page-owned store-driven autoscroll engine + contacts modal focus + docs; evidence under work/2026-11-02-ui-ux/."
+    },
+    "readOnly": [
+        "AGENTS.md",
+        "tasks/README.md"
+    ],
+    "forbiddenWrites": [
+        "backend",
+        "src/core",
+        "src/scss/libs",
+        "src/scss/utils/mixins.scss",
+        "src/scss/utils/scrollbar.scss",
+        "src/utils/Store.ts",
+        "docs/project-principles.json",
+        ".github/workflows",
+        "netlify.toml",
+        "server/server.js",
+        ".env",
+        ".env.development",
+        ".env.own"
+    ],
+    "leadOwned": [
+        {
+            "path": "tasks/2026-11-02-ui-ux",
+            "owner": "controller",
+            "reason": "Controller owns plan-package artifacts."
+        }
+    ],
+    "workstreams": [
+        {
+            "id": "WS-FE-SETTINGS-MOBILE",
+            "title": "Mobile /settings pane navigation",
+            "owner": "worker-frontend-settings",
+            "reviewer": "independent-release-reviewer",
+            "dependsOn": [],
+            "writes": [
+                "src/features/profile/pages/profile/profile.hbs",
+                "src/features/profile/pages/profile/profile.test.ts",
+                "src/features/profile/pages/profile/profile.ts",
+                "src/scss/components/chat.scss",
+                "src/scss/components/settings-sections.scss"
+            ],
+            "readOnly": [
+                "src/components/profile-settings/profile-settings.ts",
+                "src/features/chats/pages/chat/chat.hbs"
+            ],
+            "forbiddenWrites": [],
+            "launchGate": "branch feature/2026-11-02-ui-ux at 7dbd7aa; npm run verify green at base (mocha 568); guard strict 0.",
+            "capabilityHints": [
+                "typescript",
+                "handlebars",
+                "scss",
+                "mocha",
+                "sinon"
+            ],
+            "requiredTools": [
+                "node",
+                "npm"
+            ],
+            "contextRefs": [
+                "plan.md",
+                "acceptance-criteria.md",
+                "developer-overview.md"
+            ],
+            "acceptanceIds": [
+                "AC-FE-SETTINGS-MOBILE"
+            ],
+            "evidenceIds": [
+                "EV-MOBILE-1"
+            ],
+            "executionPolicy": {
+                "maxAttempts": 3,
+                "maxWallSeconds": 3600
+            },
+            "artifactPaths": {
+                "result": "work/2026-11-02-ui-ux/evidence/WS-FE-SETTINGS-MOBILE/task-result-{attempt}.json",
+                "review": "work/2026-11-02-ui-ux/evidence/WS-FE-SETTINGS-MOBILE/task-review-{attempt}.json"
+            },
+            "required": true,
+            "plannedItems": [
+                "profile.ts: settingsPaneOpen UI state (default false); all six onSelect* set {section, settingsPaneOpen: true}; onSettingsBack -> {settingsPaneOpen: false}; flag inert on desktop",
+                "profile.hbs: root chat{{#if settingsPaneOpen}} chat_pane-open{{/if}}; settings-section__back button (data-testid settings-back, aria-label) as the first child of chat__container-profile-changing, outside the section ifs",
+                "chat.scss mobile block: chat__container-profile-changing display none <768; display flex under chat_pane-open; existing pane-open users rule reused; no desktop changes; zero comments",
+                "settings-sections.scss: back-button styles after the messenger__back precedent (hidden desktop-first, inline-flex + chevron in the mobile media); zero comments",
+                "profile.test.ts: each of the six items opens the pane (root modifier + settings-section-* present); back removes the modifier keeping section; re-tap re-opens; existing desktop describes stay green"
+            ],
+            "qualityFloor": "npm run verify green; guard strict 0; no file outside the write-set touched."
+        },
+        {
+            "id": "WS-FE-MESSENGER",
+            "title": "Messenger surface: attachment file lists (mock), modal focus, scroll-memory extraction",
+            "owner": "worker-frontend-messenger",
+            "reviewer": "independent-release-reviewer",
+            "dependsOn": [],
+            "writes": [
+                "public/images/file-doc.svg",
+                "public/images/file-generic.svg",
+                "public/images/file-pdf.svg",
+                "public/images/file-xlsx.svg",
+                "src/components/message/message.hbs",
+                "src/components/message/message.test.ts",
+                "src/components/message/message.ts",
+                "src/components/messenger/bot-attachments.mock.ts",
+                "src/components/messenger/feed-scroll.ts",
+                "src/components/messenger/messenger.test.ts",
+                "src/components/messenger/messenger.ts",
+                "src/scss/components/messenger.scss",
+                "src/utils/types.ts"
+            ],
+            "readOnly": [
+                "src/features/ai-assistant/pages/assistant.hbs",
+                "src/features/chats/api/own.ts",
+                "src/features/chats/ws/own.ts"
+            ],
+            "forbiddenWrites": [],
+            "launchGate": "branch feature/2026-11-02-ui-ux at 7dbd7aa; npm run verify green at base (mocha 568); guard strict 0.",
+            "capabilityHints": [
+                "typescript",
+                "handlebars",
+                "scss",
+                "mocha",
+                "sinon"
+            ],
+            "requiredTools": [
+                "node",
+                "npm"
+            ],
+            "contextRefs": [
+                "plan.md",
+                "acceptance-criteria.md",
+                "developer-overview.md"
+            ],
+            "acceptanceIds": [
+                "AC-FE-MESSENGER-SURFACE"
+            ],
+            "evidenceIds": [
+                "EV-MESSENGER-1"
+            ],
+            "executionPolicy": {
+                "maxAttempts": 3,
+                "maxWallSeconds": 5400
+            },
+            "artifactPaths": {
+                "result": "work/2026-11-02-ui-ux/evidence/WS-FE-MESSENGER/task-result-{attempt}.json",
+                "review": "work/2026-11-02-ui-ux/evidence/WS-FE-MESSENGER/task-review-{attempt}.json"
+            },
+            "required": true,
+            "plannedItems": [
+                "types.ts: MessageAttachment {name, url}; Message.attachments additive",
+                "message.ts: per-attachment icon kind from the name extension (pdf; xls/xlsx->xlsx; doc/docx->doc; else generic)",
+                "message.hbs: attachments list replaces the single fileUrl link (both «Вложение» and the autoDownload-gated branch); per item icon img, double-brace name, «Скачать» a[download][data-testid attachment-download]; no list without attachments",
+                "bot-attachments.mock.ts (new): MOCK_BOT_DOCUMENTS + mockBotAttachments(url, realName) with the loud MOCK-removal header",
+                "messenger.ts mapping: fileUrl -> attachments; AI chat + incoming -> mockBotAttachments (first name from file.filename when present); otherwise single {file.filename ?? 'Файл'}",
+                "messenger.ts focus: the cross handler resets addUserQuery and focuses the search input next frame; the empty-query branch refocuses after its setProps re-render; the debounced-response refocus stays",
+                "feed-scroll.ts (new, review F-1 revision): shared scroll state — per-chat memory Map, one-time document-capture installScrollSync (class guard, 300ms echo window, pinned<120px), plan resolution values; helper contract pinned (review F-5): the module owns memory + sync + resolution ONLY, each caller keeps its own rAF coalescing and applies its plan to its OWN element (per-instance resolution — zombie Messenger instances' plans no-op against their detached elements, never displacing the page engine's plan; no module-global plan slot, no document-resolved target); messenger.ts sources all of it with ZERO behavior change (the Messenger-internal preserve path for modal/draft/menu re-renders stays in effect; only the store-driven half was dead and it stays harmless until the page engine owns it in WS-FE-FEED-SCROLL); messenger.hbs keeps passing autoDownload (recorded decision F-3)",
+                "public/images: file-pdf/file-xlsx/file-doc/file-generic svg (24x24, currentColor)",
+                "messenger.scss: file-list rows on existing tokens; zero comments",
+                "tests: message rendering (icon kinds, XSS-escaped name, href/download, absent without attachments); mapping rule (AI incoming -> mock list, own/non-AI -> single, no file -> none); focus on open + kept after a full clear; the pinned «Вложение» feed expectations updated to the list UI; the list/notification placeholder suites stay green untouched"
+            ],
+            "qualityFloor": "npm run verify green; guard strict 0; mock single-sourced with the removal marker."
+        },
+        {
+            "id": "WS-FE-FEED-SCROLL",
+            "title": "Page-owned feed autoscroll engine + contacts modal focus + docs",
+            "owner": "worker-frontend-page-ux",
+            "reviewer": "independent-release-reviewer",
+            "dependsOn": [
+                "WS-FE-MESSENGER"
+            ],
+            "writes": [
+                "docs/NEXT.md",
+                "docs/progress/progress_log.md",
+                "src/features/chats/pages/chat/chat.test.ts",
+                "src/features/chats/pages/chat/chat.ts",
+                "src/features/contacts/pages/contacts/contacts.test.ts",
+                "src/features/contacts/pages/contacts/contacts.ts"
+            ],
+            "readOnly": [
+                "src/core/Block.ts",
+                "src/utils/Store.ts"
+            ],
+            "forbiddenWrites": [],
+            "launchGate": "WS-FE-MESSENGER accepted; npm run verify green at its head; guard strict 0.",
+            "capabilityHints": [
+                "typescript",
+                "mocha",
+                "sinon"
+            ],
+            "requiredTools": [
+                "node",
+                "npm"
+            ],
+            "contextRefs": [
+                "plan.md",
+                "acceptance-criteria.md",
+                "developer-overview.md"
+            ],
+            "acceptanceIds": [
+                "AC-FE-FEED-SCROLL",
+                "AC-PROCESS"
+            ],
+            "evidenceIds": [
+                "EV-PAGEUX-1"
+            ],
+            "executionPolicy": {
+                "maxAttempts": 3,
+                "maxWallSeconds": 5400
+            },
+            "artifactPaths": {
+                "result": "work/2026-11-02-ui-ux/evidence/WS-FE-FEED-SCROLL/task-result-{attempt}.json",
+                "review": "work/2026-11-02-ui-ux/evidence/WS-FE-FEED-SCROLL/task-review-{attempt}.json"
+            },
+            "required": true,
+            "plannedItems": [
+                "chat.ts: the engine consumes the SHARED module (components/messenger/feed-scroll.ts — memory + document-capture sync + plan helper), replacing the page's per-node CDM scroll listener (dead after the first re-render) and deleting the page's dead CDU branch comparing never-mapped messages (always 0/0)",
+                "chat.ts CDU (store-read for messages): chat change -> memory delete + bottom; tail growth (head id unchanged) AND (pinned OR isPending tail) -> bottom; else -> saved top; one coalesced rAF plan per frame on the live messenger__container; CDM entry-with-selection bottom scroll kept",
+                "contacts.ts: modal focus mirror — focus on open next frame + empty-query branch refocus (search-response refocus already exists)",
+                "tests: chat.test.ts scroll decision table with flushed frames (chat change -> bottom + memory cleared; append pinned -> bottom; append unpinned -> saved top; prepend -> saved top never bottom; pending tail -> bottom); contacts.test.ts focus on open",
+                "docs: NEXT.md record + progress_log entry on top with the mock-removal pointer",
+                "gates: npm run verify + guard strict green with grown counts"
+            ],
+            "qualityFloor": "npm run verify green end to end; guard strict 0; docs updated; no file outside the write-set touched."
+        }
+    ],
+    "acceptance": {
+        "criteria": [
+            {
+                "id": "AC-FE-SETTINGS-MOBILE",
+                "title": "Mobile /settings navigation proven by mocha",
+                "requirementIds": [
+                    "REQ-FE-SETTINGS-MOBILE"
+                ],
+                "evidenceIds": [
+                    "EV-MOBILE-1"
+                ],
+                "independentEvidenceIds": [],
+                "statement": "Each of the six sidebar items opens the pane (root chat_pane-open + that section's settings-section-* rendered); the back button removes the modifier preserving the section prop; desktop switching and the existing settings suites stay green; the mobile CSS hides chat__container-profile-changing below 768 and shows it under chat_pane-open with the modifier inert >=768 (rules live inside the mobile media block).",
+                "description": "Frontend unit tests.",
+                "source": "acceptance-criteria.md",
+                "priority": "P1"
+            },
+            {
+                "id": "AC-FE-MESSENGER-SURFACE",
+                "title": "Attachment lists + modal focus + scroll-memory extraction proven by mocha",
+                "requirementIds": [
+                    "REQ-FE-MESSENGER-SURFACE"
+                ],
+                "evidenceIds": [
+                    "EV-MESSENGER-1"
+                ],
+                "independentEvidenceIds": [],
+                "statement": "Attachments render one row per item — icon by extension (pdf; xls/xlsx->xlsx; doc/docx->doc; else generic), escaped name, «Скачать» link with the item url and download attribute; the mapping pins AI-chat incoming -> marked mock list (first name from file.filename when present — fixture-only at runtime since no adapter populates Message.file, real bot names come from the mock set; real urls), own/non-AI -> single item rendering the «Файл» fallback name at runtime, no file -> no list; the old single-link rendering is gone from message.hbs; the chat-list and notification «Вложение» placeholders and their suites stay untouched; the mock is single-sourced with a removal marker; the add-user modal focuses the input on open (query cleared) and keeps focus after a full clear; the scroll memory/sync is extracted to components/messenger/feed-scroll.ts with the Messenger preserve path intact (zero behavior change) and suites green.",
+                "description": "Frontend unit tests.",
+                "source": "acceptance-criteria.md",
+                "priority": "P1"
+            },
+            {
+                "id": "AC-FE-FEED-SCROLL",
+                "title": "Autoscroll decision table + contacts focus proven by mocha",
+                "requirementIds": [
+                    "REQ-FE-FEED-SCROLL"
+                ],
+                "evidenceIds": [
+                    "EV-PAGEUX-1"
+                ],
+                "independentEvidenceIds": [],
+                "statement": "Store-driven page re-renders with flushed frames show: chat change -> bottom + memory cleared; tail append while pinned -> bottom; tail append while NOT pinned -> the saved top restored (reading history never yanked); head growth («загрузить ещё» prepend) -> saved top, never bottom; a pending typing-placeholder tail pins the bottom regardless; the engine runs on the shared feed-scroll module alongside the intact Messenger preserve plans (disjoint triggers, one memory). The contacts add-modal focuses its input on open.",
+                "description": "Frontend unit tests.",
+                "source": "acceptance-criteria.md",
+                "priority": "P1"
+            },
+            {
+                "id": "AC-PROCESS",
+                "title": "Gates and bookkeeping",
+                "requirementIds": [
+                    "REQ-FE-FEED-SCROLL"
+                ],
+                "evidenceIds": [
+                    "EV-PAGEUX-1"
+                ],
+                "independentEvidenceIds": [],
+                "statement": "npm run verify exit 0 with mocha counts grown from the 568 base; guard strict 0 at final; no file outside the manifest write-sets changes (ownership audit clean); NEXT.md + progress_log carry the run record with the mock-removal pointer; rides feature/2026-11-02-ui-ux (base dev 7dbd7aa); backend untouched.",
+                "description": "Gate runs captured as evidence.",
+                "source": "acceptance-criteria.md",
+                "priority": "P1"
+            }
+        ]
+    },
+    "validation": {
+        "commands": [
+            "npm run verify",
+            "node .claude/hooks/scripts/guard-architecture.mjs --all --strict"
+        ]
+    },
+    "orchestration": {
+        "startMode": "reviewed-plan",
+        "remediationMode": "ask",
+        "maxPlanReviewRounds": 2,
+        "maxTaskAttempts": 3,
+        "maxParallelTasks": 1,
+        "maxValidationRunsPerTask": 2,
+        "stateFile": "work/2026-11-02-ui-ux/run.state.json",
+        "eventLog": "work/2026-11-02-ui-ux/events.jsonl",
+        "stepReviewRequired": true,
+        "finalAuditRequired": true
+    },
+    "implementationAudit": {
+        "required": true,
+        "finalRequired": true
+    },
+    "developerOverview": "tasks/2026-11-02-ui-ux/developer-overview.md",
+    "releaseTarget": {
+        "kind": "local-only",
+        "environment": "Vite own mode + compose own-backend",
+        "productionPromotionClaimed": false
+    },
+    "releaseImpact": "Profile page mobile pane state + settings/back scss; message attachment list UI with four new svg icons + additive Message.attachments + marked mock module; modal focus fixes (messenger + contacts); shared scroll-memory module (behavior-identical extraction) + page-owned store-driven autoscroll engine alongside the intact Messenger preserve path; docs. No backend, store-shape, WS-protocol or dependency changes.",
+    "nonGoals": [
+        "real bot multi-file message contract",
+        "image previews / autoDownload preview gating",
+        "«Найти все чаты» and RAG carry-over",
+        "scroll preservation across reloads; virtualized lists",
+        "ai-assistant page restyle"
+    ],
+    "finalAuditGates": [
+        "[AC-FE-SETTINGS-MOBILE|EV-MOBILE-1] six-item mobile pane navigation + back — mocha, verify green",
+        "[AC-FE-MESSENGER-SURFACE|EV-MESSENGER-1] attachment file lists with icons + marked mock mapping + modal focus + scroll-memory extraction — mocha, verify green",
+        "[AC-FE-FEED-SCROLL|EV-PAGEUX-1] autoscroll decision table + contacts focus — mocha, verify green",
+        "[AC-PROCESS|EV-PAGEUX-1] all gates green with grown counts; guard strict 0; ownership audit clean; docs with the mock-removal pointer"
+    ],
+    "securityGates": [
+        {
+            "id": "SEC-UI-XSS",
+            "statement": "Attachment names and every new user-visible string render double-braced or through escapeHtml builders; download hrefs come only from the fileUrl()-built safe URLs (joinUrl) — mock items reuse the real url, never a crafted one; no raw triple-brace injection outside pre-escaped builders.",
+            "evidenceIds": [
+                "EV-MESSENGER-1"
+            ]
+        }
+    ],
+    "budgetPolicy": {
+        "units": "tokens-and-resources",
+        "reroute": "pause-and-review",
+        "maxTotalTokens": 96000,
+        "maxParallelWorkstreams": 1,
+        "maxRunWallSeconds": 14400,
+        "criticalPathWallSeconds": 10800,
+        "aggregateWorkstreamWallSeconds": 10800,
+        "retryReserveWallSeconds": 3600
+    },
+    "budgets": {
+        "defaultWorkstreamTokens": 32000,
+        "maxEvidenceBytesPerRun": 4194304
+    },
+    "contextLimits": {
+        "profile": "small-context-profile.v1",
+        "maxPlanContextBytes": 120000,
+        "maxRenderedPacketBytes": 40000,
+        "smallContextPacketBytes": 30000,
+        "maxReferenceFilesPerPacket": 12,
+        "includeOnlyOwnedWrites": true,
+        "excludeRuntimeWorkArtifacts": true
+    },
+    "tierResolution": {
+        "status": "RESOLVED",
+        "tier": "S2",
+        "requestedTier": "S2",
+        "reason": "multiple-executable-owners + browser-risk resolved by agent-lifecycle tier resolve",
+        "independentReviewRequired": true,
+        "requestPath": "tasks/2026-11-02-ui-ux/tier-request.json",
+        "resolutionPath": "tasks/2026-11-02-ui-ux/tier-resolution.json",
+        "requestDigest": "937a25d648952a59cca5a8cb8e9bc17af28df37550c9281cb52a334946c6b3a4"
+    },
+    "planReview": {
+        "required": true,
+        "reviewerClass": "independent-plan-reviewer",
+        "maxRounds": 2,
+        "implementationAuthorized": false,
+        "report": "tasks/2026-11-02-ui-ux/plan-review.json",
+        "reviewedRevision": 2,
+        "verdict": "READY_TO_FREEZE"
+    },
+    "planFiles": [
+        "tasks/2026-11-02-ui-ux/acceptance-criteria.md",
+        "tasks/2026-11-02-ui-ux/developer-overview.md",
+        "tasks/2026-11-02-ui-ux/plan-review-request.md",
+        "tasks/2026-11-02-ui-ux/plan-review.json",
+        "tasks/2026-11-02-ui-ux/plan.manifest.json",
+        "tasks/2026-11-02-ui-ux/plan.md",
+        "tasks/2026-11-02-ui-ux/tier-request.json",
+        "tasks/2026-11-02-ui-ux/tier-resolution.json"
+    ]
+}
