@@ -16,7 +16,16 @@
 // withStore-мэппингом на любом постороннем store.set).
 
 import Block from '../../../../core/Block.ts'
-import { AppState, withStore } from '../../../../utils/Store.ts'
+import store, { AppState, withStore } from '../../../../utils/Store.ts'
+import {
+    deleteFeedScroll,
+    getFeedScroll,
+    installFeedScrollSync,
+    markFeedScrollPlan,
+    resolveFeedScrollTarget,
+    setFeedScroll,
+    setFeedScrollKey,
+} from '../../../../components/messenger/feed-scroll.ts'
 import type { ChatInfo, ChatSearchMatch, ContactInfo } from '../../../../utils/types.ts'
 import { AI_CHAT_TITLE, emptyValidationMessage } from '../../../../utils/constants.ts'
 import { emptyValidator } from '../../../../utils/validators.ts'
@@ -126,12 +135,25 @@ function searchOrder(chats: ChatInfo[], query: string, results: ChatSearchMatch[
 }
 
 class ChatPageBase extends Block {
-    // Дочерние Messenger-инстансы пересоздаются перерисовкой (семантика
-    // stage 14 — CDM только на дереве момента монтирования), поэтому
-    // автоскролл списка сообщений живёт здесь: инстанс страницы стабилен.
-    // При открытии чата показываем последние сообщения; новые докручивают
-    // список, только если читали низ.
-    private pinnedToBottom = true
+    // Стор-управляемый автоскролл ленты (2026-11-02-ui-ux) живёт здесь:
+    // инстанс страницы стабилен, а дочерние Messenger-инстансы пересоздаются
+    // каждой перерисовкой без CDM/CDU — их собственные планы до живого узла
+    // не доходили (мертвый путь прежней реализации). Память и document-
+    // capture синк — в общем модуле feed-scroll (им же пользуется Messenger
+    // для preserve после собственных перерисовок: модалки, черновик, меню);
+    // план применяется к собственному элементу страницы, поздние CDU
+    // каскада перезаписывают поле — последний побеждает
+    private pendingScrollPlan: 'bottom' | 'preserve' | null = null
+    private scrollPlanScheduled = false
+
+    // Снимок ленты выбранного чата (рост хвоста против роста головы:
+    // «загрузить ещё» добавляет в голову и не должно прыгать в низ)
+    private lastFeedSnapshot: {
+        chatId: number
+        len: number
+        headId: number | undefined
+        tailPending: boolean
+    } | null = null
 
     // Статичная add-плитка первой в рендер-списке: реальные истории
     // приносит стор (features/chats/stories), мок-плитки убраны
@@ -289,23 +311,84 @@ class ChatPageBase extends Block {
         input?.click()
     }
 
-    // Перерисовка дочернего Messenger пересоздаёт DOM списка и сбрасывает
-    // scrollTop. После рендера: если читали низ — докручиваем (или едем в
-    // низ при смене чата), иначе восстанавливаем сохранённую позицию —
-    // иначе любая реакция/ре-рендер отбрасывает чтение истории наверх.
-    private restoreMessagesScroll(toBottom: boolean): void {
-        const before = this.element?.querySelector('.messenger__container') as
-            { scrollTop?: number } | undefined
-        const saved = before != null && typeof before.scrollTop === 'number' ? before.scrollTop : 0
+    // Снимок ленты выбранного чата из стора (маппер страницы сообщений не
+    // несёт — прежняя ветка роста сравнивала undefined-массивы и никогда
+    // не срабатывала): длина, id головы (отличие = prepend истории) и
+    // pending-хвост (плейсхолдер «Ассистент печатает…» всегда пинит низ)
+    private feedSnapshot(): { chatId: number, len: number, headId: number | undefined, tailPending: boolean } | null {
+        const chatId = (this.props as unknown as ChatPageProps).selectedChat
+
+        if (typeof chatId !== 'number') {
+            return null
+        }
+
+        const messages = (store.getState().messages ?? {})[chatId] as { id?: number, isPending?: boolean }[] | undefined
+
+        if (messages == null) {
+            return { chatId, len: 0, headId: undefined, tailPending: false }
+        }
+
+        return {
+            chatId,
+            len: messages.length,
+            headId: messages[0]?.id,
+            tailPending: messages[messages.length - 1]?.isPending === true,
+        }
+    }
+
+    // Один план на кадр: последовательные CDU каскада перезаписывают поле,
+    // последний выигрывает; цель считает общий модуль, применение — к
+    // собственному элементу страницы (контракт review F-5)
+    private planFeedScroll(plan: 'bottom' | 'preserve'): void {
+        this.pendingScrollPlan = plan
+
+        if (this.scrollPlanScheduled) {
+            return
+        }
+
+        this.scrollPlanScheduled = true
 
         const run = () => {
+            this.scrollPlanScheduled = false
+
+            const action = this.pendingScrollPlan
+
+            this.pendingScrollPlan = null
+
+            // снимок ленты обновляется ОДИН раз на кадр: каждый CDU каскада
+            // решает против прошлого снимка, иначе поздние CDU того же
+            // эмита «не видят» рост и переигрывают решение на preserve
+            this.lastFeedSnapshot = this.feedSnapshot()
+
+            if (action == null) {
+                return
+            }
+
+            markFeedScrollPlan()
+
+            const chatId = (this.props as unknown as ChatPageProps).selectedChat
             const container = this.element?.querySelector('.messenger__container') as
                 { scrollTop?: number, scrollHeight?: number } | null
 
+            if (typeof chatId !== 'number') {
+                return
+            }
+
+            setFeedScrollKey(chatId)
+
             // утиная проверка: jsdom-тесты не дают HTMLElement; элемента
-            // может не быть вовсе (изолированные тесты)
-            if (container != null && typeof container.scrollHeight === 'number') {
-                container.scrollTop = toBottom ? container.scrollHeight : saved
+            // может не быть вовсе (изолированные тесты, пустая страница)
+            if (container == null || typeof container.scrollHeight !== 'number') {
+                return
+            }
+
+            const target = resolveFeedScrollTarget(chatId, action)
+
+            if (target === 'bottom') {
+                container.scrollTop = container.scrollHeight
+                setFeedScroll(chatId, { top: container.scrollTop, pinned: true })
+            } else {
+                container.scrollTop = target.top
             }
         }
 
@@ -437,6 +520,10 @@ class ChatPageBase extends Block {
                 },
             ],
             chats: propsFromStore.chats,
+            // selectedChat обязан проброситься и при рождении: без него
+            // первый стор-эмит выглядит «сменой чата» (undefined -> id) и
+            // стирает память прокрутки (2026-11-02-ui-ux)
+            selectedChat: propsFromStore.selectedChat,
             // лента историй из стора (мэппинг withChats): конструктор
             // перечисляет пропсы явно — stories обязана проброситься сюда,
             // иначе потеряется между withStore и Block
@@ -453,6 +540,10 @@ class ChatPageBase extends Block {
                 },
             } as unknown as Record<string, () => void>,
         })
+
+        // снимок ленты при рождении (selectedChat проброшен выше): первый
+        // стор-эмит до CDM всё равно отличит рост хвоста от prepend
+        this.lastFeedSnapshot = this.feedSnapshot()
     }
 
     // Скролл списка чатов: перерисовки страницы (выделение выбранного и
@@ -550,26 +641,38 @@ class ChatPageBase extends Block {
             this.focusViewer()
         }
 
-        // автоскролл: смена чата — всегда вниз; рост сообщений — только если
-        // читали низ (pinnedToBottom обновляется scroll-слушателем из CDM).
-        // Исключение — плейсхолдер «Ассистент печатает…»: он всегда должен
-        // быть в зоне видимости, поэтому пинит низ принудительно
+        // автоскролл (решения читают СТОР — маппер страницы сообщений не
+        // несёт): смена чата — память чата очищается, всегда низ; рост
+        // ХВОСТА (длина выросла, голова та же — append, а не «загрузить
+        // ещё») докручивает при прижатом низе или pending-плейсхолдере;
+        // прочее (prepend истории, реакции, чужие перерисовки) — вернуть
+        // сохранённую позицию чтения
         const chatChanged = (oldProps as { selectedChat?: number }).selectedChat !== newProps.selectedChat
-        const oldLen = ((oldProps as { messages?: unknown[] }).messages ?? []).length
-        const newLen = (newProps.messages ?? []).length
-        const lastMessage = ((newProps.messages ?? []) as { isPending?: boolean }[])[newLen - 1]
-        const tailIsPendingIndicator = newLen > 0 && lastMessage?.isPending === true
 
         if (chatChanged) {
-            this.pinnedToBottom = true
-            this.restoreMessagesScroll(true)
-        } else if (newLen > oldLen && (this.pinnedToBottom || tailIsPendingIndicator)) {
-            this.pinnedToBottom = true
-            this.restoreMessagesScroll(true)
+            if (typeof newProps.selectedChat === 'number') {
+                deleteFeedScroll(newProps.selectedChat)
+            }
+
+            this.lastFeedSnapshot = this.feedSnapshot()
+            this.planFeedScroll('bottom')
         } else {
-            // перерисовка без роста (реакция, реплай-черновик): вернуть
-            // читаемую позицию, сброшенную пересозданием DOM списка
-            this.restoreMessagesScroll(false)
+            const snapshot = this.feedSnapshot()
+            const previous = this.lastFeedSnapshot
+
+            const tailGrew = snapshot != null
+                && previous != null
+                && previous.chatId === snapshot.chatId
+                && snapshot.len > previous.len
+                && previous.headId === snapshot.headId
+            const memory = snapshot != null ? getFeedScroll(snapshot.chatId) : undefined
+            const pinned = memory?.pinned ?? true
+
+            if (tailGrew && (pinned || snapshot?.tailPending === true)) {
+                this.planFeedScroll('bottom')
+            } else {
+                this.planFeedScroll('preserve')
+            }
         }
 
         return true
@@ -605,23 +708,19 @@ class ChatPageBase extends Block {
         // лентой; идемпотентен — повторные заходы переиспользуют соединение
         StoriesController.connectStoriesSocket()
 
-        // scroll не всплывает — слушаем контейнер сообщений напрямую; узел
-        // умирает вместе с инстансом, утечки нет
-        const container = this.element?.querySelector('.messenger__container')
-
-        container?.addEventListener('scroll', () => {
-            const el = container as { scrollHeight?: number, scrollTop?: number, clientHeight?: number }
-
-            if (typeof el.scrollHeight === 'number') {
-                this.pinnedToBottom = el.scrollHeight - (el.scrollTop ?? 0) - (el.clientHeight ?? 0) < 120
-            }
-        })
+        // скролл-движок: document-capture синк модуля feed-scroll живёт
+        // вечно и переживает перерисовки (прежний per-node слушатель умирал
+        // вместе с узлом на первой же перерисовке — причина мёртвого
+        // автоскролла); ключ чата ставится при входе и каждым планом
+        installFeedScrollSync()
+        setFeedScrollKey(typeof this.props.selectedChat === 'number' ? this.props.selectedChat : -1)
+        this.lastFeedSnapshot = this.feedSnapshot()
 
         // Вход на страницу с уже выбранным чатом (возврат из /contacts по
         // openDm): CDU-перехода «смена чата» нет — первый рендер монтируется
         // сразу с историей, скроллим низ вручную
         if (this.props.selectedChat != null) {
-            this.restoreMessagesScroll(true)
+            this.planFeedScroll('bottom')
         }
     }
 
