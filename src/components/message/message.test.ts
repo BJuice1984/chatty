@@ -7,7 +7,7 @@
 import { expect } from 'chai'
 import sinon from 'sinon'
 import '../../features/ai-assistant/hbs-test-loader.ts'
-import { Message } from './message.ts'
+import { attachmentIconKind, Message } from './message.ts'
 
 // Локальная ISO-метка без зоны: парсится в локальном времени, поэтому
 // ожидаемые ЧЧ:ММ и «Сегодня» не зависят от таймзоны машины с тестами
@@ -129,61 +129,96 @@ describe('message bubble', () => {
     })
 })
 
-// Гейт автозагрузки вложений (2026-11-01-settings): выключенная автозагрузка
-// подменяет превью («Вложение») ссылкой «Скачать» на тот же безопасный fileUrl;
-// включённая/не заданная — прежний вид. Обе ветки обязаны остаться ссылками.
-describe('message attachment auto-download gate', () => {
-    it('renders the inline attachment link by default', () => {
-        const message = new Message({ content: 'файл', user_id: 1, fileUrl: '/api/v1/files/5/download' })
-
-        const link = message.element?.querySelector<HTMLAnchorElement>('.messenger__message-attachment')
-
-        expect(link?.textContent?.trim()).to.equal('Вложение')
-        expect(link?.getAttribute('href')).to.equal('/api/v1/files/5/download')
-        expect(message.element?.querySelector('[data-testid="attachment-download"]')).to.not.exist
-
-        message.destroy()
-    })
-
-    it('keeps the inline attachment when autoDownload is on', () => {
+// Файловый список вложений (2026-11-02-ui-ux): пункт на каждый attachment —
+// иконка по расширению имени (pdf; xls/xlsx -> xlsx; doc/docx -> doc; иначе
+// generic), имя (double-stash — экранирование), «Скачать» с download-
+// атрибутом на безопасный URL. Прежняя одиночная ссылка «Вложение»/«Скачать»
+// ушла; autoDownload больше не ветвит рендер (проп зарезервирован под
+// будущие превью).
+describe('message attachment file list', () => {
+    it('renders one file row per attachment with icon, name and download', () => {
         const message = new Message({
-            content: 'файл',
+            content: 'документы',
             user_id: 1,
-            fileUrl: '/api/v1/files/5/download',
-            autoDownload: true,
+            attachments: [
+                { name: 'Заявление на отпуск.pdf', url: '/api/v1/files/9/download' },
+                { name: 'Бюджет отдела 2026.xlsx', url: '/api/v1/files/9/download' },
+            ],
         })
 
-        expect(message.element?.querySelector('.messenger__message-attachment')?.textContent?.trim()).to.equal('Вложение')
-        expect(message.element?.querySelector('[data-testid="attachment-download"]')).to.not.exist
+        const rows = [...(message.element?.querySelectorAll('[data-testid="message-file"]') ?? [])]
 
-        message.destroy()
-    })
+        expect(rows).to.have.length(2)
+        expect(rows[0].querySelector('.messenger__message-file-name')?.textContent?.trim())
+            .to.equal('Заявление на отпуск.pdf')
+        expect(rows[0].querySelector<HTMLImageElement>('.messenger__message-file-icon')?.getAttribute('src'))
+            .to.equal('/images/file-pdf.svg')
+        expect(rows[1].querySelector<HTMLImageElement>('.messenger__message-file-icon')?.getAttribute('src'))
+            .to.equal('/images/file-xlsx.svg')
 
-    it('renders the «Скачать» link instead of the preview when autoDownload is off', () => {
-        const message = new Message({
-            content: 'файл',
-            user_id: 1,
-            fileUrl: '/api/v1/files/5/download',
-            autoDownload: false,
-        })
+        const download = rows[0].querySelector<HTMLAnchorElement>('[data-testid="attachment-download"]')
 
-        const download = message.element?.querySelector<HTMLAnchorElement>('[data-testid="attachment-download"]')
-
-        expect(download).to.exist
-        expect(download?.getAttribute('href')).to.equal('/api/v1/files/5/download')
+        expect(download?.getAttribute('href')).to.equal('/api/v1/files/9/download')
+        expect(download?.hasAttribute('download')).to.be.true
         expect(download?.textContent?.trim()).to.equal('Скачать')
-        expect(message.element?.querySelector('.messenger__message-attachment')?.textContent?.trim()).to.equal('Скачать')
 
         message.destroy()
     })
 
-    it('renders no attachment markup without a file', () => {
-        const message = new Message({ content: 'без файла', user_id: 1, autoDownload: false })
+    it('maps docx to the doc icon and unknown extensions to the generic one', () => {
+        const message = new Message({
+            content: 'микс',
+            user_id: 1,
+            attachments: [
+                { name: 'Инструкция.docx', url: '/f/1' },
+                { name: 'Фото архива.zip', url: '/f/2' },
+                { name: 'без расширения', url: '/f/3' },
+            ],
+        })
 
-        expect(message.element?.querySelector('.messenger__message-attachment')).to.not.exist
+        const icons = [...(message.element?.querySelectorAll('.messenger__message-file-icon') ?? [])]
+            .map(icon => icon.getAttribute('src'))
+
+        expect(icons).to.deep.equal([
+            '/images/file-doc.svg',
+            '/images/file-generic.svg',
+            '/images/file-generic.svg',
+        ])
+
+        message.destroy()
+    })
+
+    it('renders hostile attachment names as text (XSS)', () => {
+        const message = new Message({
+            content: 'зло',
+            user_id: 1,
+            attachments: [{ name: '<script>alert(1)</script>.pdf', url: '/f/1' }],
+        })
+
+        expect(message.element?.querySelector('script')).to.not.exist
+        expect(message.element?.querySelector('.messenger__message-file-name')?.innerHTML)
+            .to.contain('&lt;script&gt;')
+
+        message.destroy()
+    })
+
+    it('renders no file list without attachments', () => {
+        const message = new Message({ content: 'без файла', user_id: 1, fileUrl: '/api/v1/files/5/download' })
+
+        expect(message.element?.querySelector('[data-testid="message-files"]')).to.not.exist
         expect(message.element?.querySelector('[data-testid="attachment-download"]')).to.not.exist
 
         message.destroy()
+    })
+
+    it('attachmentIconKind covers the extension table', () => {
+        expect(attachmentIconKind('a.PDF')).to.equal('pdf')
+        expect(attachmentIconKind('a.xls')).to.equal('xlsx')
+        expect(attachmentIconKind('a.XLSX')).to.equal('xlsx')
+        expect(attachmentIconKind('a.doc')).to.equal('doc')
+        expect(attachmentIconKind('a.docx')).to.equal('doc')
+        expect(attachmentIconKind('архив.rar')).to.equal('generic')
+        expect(attachmentIconKind('имябезрасширения')).to.equal('generic')
     })
 })
 

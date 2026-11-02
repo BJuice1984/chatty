@@ -1,10 +1,37 @@
 import Block from '../../core/Block.ts'
-import type { MessageReplyTo, ReactionSummary } from '../../utils/types.ts'
+import type { MessageAttachment, MessageReplyTo, ReactionSummary } from '../../utils/types.ts'
 import template from './message.hbs'
 
 // Фикс-набор реакций (stage chats-social): тот же whitelist, что на бэкенде —
 // POST /reactions отвергает остальные эмодзи
 export const MESSAGE_EMOJI_SET: readonly string[] = ['👍', '❤️', '😂', '😮', '😢', '🙏']
+
+// Вид иконки вложения по расширению имени (2026-11-02-ui-ux): pdf;
+// xls/xlsx -> xlsx; doc/docx -> doc; прочее — generic-лист
+export type AttachmentIcon = 'pdf' | 'xlsx' | 'doc' | 'generic'
+
+export function attachmentIconKind(name: string): AttachmentIcon {
+    const extension = name.slice(name.lastIndexOf('.') + 1).toLowerCase()
+
+    if (extension === 'pdf') {
+        return 'pdf'
+    }
+
+    if (extension === 'xls' || extension === 'xlsx') {
+        return 'xlsx'
+    }
+
+    if (extension === 'doc' || extension === 'docx') {
+        return 'doc'
+    }
+
+    return 'generic'
+}
+
+// Пропсы иконок для шаблона: иконка + alt к пункту списка
+function toAttachmentView(attachment: MessageAttachment): MessageAttachment & { icon: AttachmentIcon } {
+    return { ...attachment, icon: attachmentIconKind(attachment.name) }
+}
 
 interface MessageProps {
     content: string
@@ -24,10 +51,13 @@ interface MessageProps {
     replyTo?: MessageReplyTo | null
     // сводка реакций (mine вычислена viewer-side контроллером)
     reactions?: ReactionSummary[]
-    // Гейт автозагрузки вложений (2026-11-01-settings): false — превью
-    // выключено, вложение рендерится ссылкой «Скачать»; отсутствие/true —
-    // прежний вид (ссылка «Вложение»)
+    // Гейт автозагрузки вложений (2026-11-01-settings): зарезервирован под
+    // будущие превью (messenger продолжает передавать его из preferences);
+    // файловый список ниже от гейта не зависит — «Скачать» есть всегда
     autoDownload?: boolean
+    // список вложений пузыря (2026-11-02-ui-ux): иконка по расширению,
+    // имя, «Скачать»; пустому/отсутствию — блока нет
+    attachments?: MessageAttachment[]
     // плейсхолдер прогона бота: пульсирующий пузырь «Ассистент печатает…»,
     // пока POST /bot/runs в полёте; без id — действия не рендерятся
     isPending?: boolean
@@ -169,7 +199,7 @@ export class Message extends Block {
             emojiSet: MESSAGE_EMOJI_SET,
             hasReactions: (reactions?.length ?? 0) > 0,
             quoteSnippet,
-            attachmentDownload: (this.props as MessageProps).autoDownload === false,
+            attachmentViews: ((this.props as MessageProps).attachments ?? []).map(toAttachmentView),
         })
     }
 }

@@ -161,6 +161,15 @@ export interface ReactionSummary {
     mine: boolean
 }
 
+// Вложение-файл в списке внутри пузыря (2026-11-02-ui-ux): имя для
+// отображения и безопасный URL скачивания; список строит маппинг
+// Messenger из file_url/file (мок бота подставляет имена найденных
+// документов, пока бот отключён)
+export interface MessageAttachment {
+    name: string
+    url: string
+}
+
 export interface Message {
     chat_id: number
     time: string
@@ -171,6 +180,10 @@ export interface Message {
     // вычисляемый безопасный URL вложения (filesUrl + /{file_id}/download)
     // — рендерится компонентом message
     file_url?: string
+    // список вложений пузыря (2026-11-02-ui-ux): рендерится файловой
+    // строкой (иконка + имя + «Скачать»); строится из file_url/file,
+    // отсутствию — прежний вид без вложений
+    attachments?: MessageAttachment[]
     // идентичность сообщения: ключ реакций, реплаев и дедупликации истории
     id?: number
     // цепочка ответов (stage chats-social): id цели и серверный снимок цитаты
