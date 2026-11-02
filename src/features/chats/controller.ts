@@ -32,6 +32,12 @@ const noopContactsIntegration: ContactsIntegration = {
     refreshContacts: () => {},
 }
 
+// Ожидание WS-эха отправленного сообщения (прогон бота): локальный стек
+// отвечает десятками мс, запас — на медленный канал; тик поллинга мал,
+// чтобы плейсхолдер «печатает…» вставал сразу за вопросом
+const BOT_ECHO_WAIT_MS = 5_000
+const BOT_ECHO_WAIT_TICK_MS = 25
+
 let contactsIntegration: ContactsIntegration = noopContactsIntegration
 
 // Композиция (features/index.ts) вызывает это до первого рендера.
@@ -138,7 +144,10 @@ export class ChatsFeatureController {
         })
     }
 
-    async create(data: { title: string }): Promise<void> {
+    // create (2026-10-27-ai-chat-creation): is_ai чекбокса/плитки летит в
+    // порт как есть — форму payload решает адаптер; необязательность бережёт
+    // прежние title-only вызовы
+    async create(data: { title: string, is_ai?: boolean }): Promise<void> {
         try {
             await this.port.createChat(data)
         } catch (e: unknown) {
@@ -380,37 +389,112 @@ export class ChatsFeatureController {
     }
 
     private async runBotForLastOwnMessage(chatId: number): Promise<void> {
-        const userId = store.getState().user?.id
-        const messages = store.getState().messages?.[chatId] ?? []
-        const own = [...messages]
-            .reverse()
-            .find(item => item.user_id === userId && typeof (item as { id?: number }).id === 'number') as { id?: number } | undefined
+        const dropPending = () => {
+            const list = store.getState().messages?.[chatId] ?? []
 
-        if (own?.id === undefined) {
-            return
+            store.set(`messages.${chatId}`, list.filter(
+                item => (item as { isPending?: boolean }).isPending !== true
+            ))
         }
 
+        const pushError = (reason: string) => {
+            const list = store.getState().messages?.[chatId] ?? []
+
+            store.set(`messages.${chatId}`, [
+                ...list,
+                {
+                    chat_id: chatId,
+                    time: new Date().toISOString(),
+                    type: 'message',
+                    user_id: -1,
+                    content: `⚠ Ассистент недоступен (${reason}). Попробуйте позже.`,
+                    isError: true,
+                },
+            ])
+        }
+
+        // try накрывает ВСЁ тело: вызов идёт void-ом из sendMessage, любой
+        // выброс до узкого catch ушёл бы unhandled — а пользователь видел
+        // бы молчание вместо сообщения о сбое
         try {
-            const run = await this.port.runBot?.(chatId, own.id)
+            const userId = store.getState().user?.id
+            const messages = store.getState().messages?.[chatId] ?? []
+            const knownIds = new Set(
+                (messages as { id?: number }[])
+                    .filter(item => typeof item.id === 'number')
+                    .map(item => item.id as number)
+            )
+
+            // путь отправки в стор НЕ пишет: своё сообщение доезжает эхом
+            // WS с серверным id (обычно десятки мс). Без ожидания
+            // плейсхолдер встал бы ВЫШЕ вопроса, а прогон ушёл бы по
+            // предыдущему message_id
+            const target = await this.waitForOwnEcho(chatId, userId, knownIds)
+
+            if (target === undefined) {
+                return
+            }
+
+            // индикатор «Ассистент печатает…»: прогон бота идёт минутами —
+            // без хвоста в ленте это выглядит как молчание; плейсхолдер
+            // живёт в сторе и снимается в finally по флагу (параллельные
+            // прогоны снимаются одним дропом)
+            store.set(`messages.${chatId}`, [
+                ...(store.getState().messages?.[chatId] ?? []),
+                {
+                    chat_id: chatId,
+                    time: new Date().toISOString(),
+                    type: 'message',
+                    user_id: -1,
+                    content: 'Ассистент печатает…',
+                    isPending: true,
+                },
+            ])
+
+            const run = await this.port.runBot?.(chatId, target)
 
             if (run?.status === 'failed') {
-                const reason = run.error_kind ?? 'unknown'
-                const list = store.getState().messages?.[chatId] ?? []
-
-                store.set(`messages.${chatId}`, [
-                    ...list,
-                    {
-                        chat_id: chatId,
-                        time: new Date().toISOString(),
-                        type: 'message',
-                        user_id: -1,
-                        content: `⚠ Ассистент недоступен (${reason}). Попробуйте позже.`,
-                        isError: true,
-                    },
-                ])
+                pushError(run.error_kind ?? 'unknown')
             }
         } catch (e: unknown) {
+            // транспортный провал (сеть/таймаут/5xx) и любые непредвиденные
+            // выбросы — системное сообщение в ленту: консоль пользователь
+            // не смотрит, молчание выглядит как игнор
+            pushError(e instanceof Error ? e.message : 'сеть')
+
             console.error('Ошибка при запуске ассистента:', e)
+        } finally {
+            dropPending()
+        }
+    }
+
+    // Эхо отправленного сообщения: первое собственное с серверным id,
+    // не входившим в knownIds на момент отправки
+    private async waitForOwnEcho(
+        chatId: number,
+        userId: number | undefined,
+        knownIds: Set<number>
+    ): Promise<number | undefined> {
+        const deadline = Date.now() + BOT_ECHO_WAIT_MS
+
+        for (;;) {
+            const found = [...(store.getState().messages?.[chatId] ?? [])]
+                .reverse()
+                .find(item =>
+                    item.user_id === userId
+                    && typeof (item as { id?: number }).id === 'number'
+                    && !knownIds.has((item as { id: number }).id)
+                ) as { id?: number } | undefined
+
+            if (found?.id !== undefined) {
+                return found.id
+            }
+
+            if (Date.now() >= deadline) {
+                return undefined
+            }
+
+            await new Promise(resolve => setTimeout(resolve, BOT_ECHO_WAIT_TICK_MS))
         }
     }
 

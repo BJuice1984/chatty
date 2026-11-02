@@ -1,10 +1,31 @@
 # NEXT — точка входа для следующей сессии
 
-Обновлено: 2026-11-01 (настройки: шесть живых секций /settings, тема,
-доставка фоновых сообщений, ALK-прогон `2026-11-01-settings`; до этого —
-членство в чате с контекстными меню, ALK-прогон `2026-11-01-chat-leave`).
+Обновлено: 2026-11-02 (в работе — три точки входа создания ИИ-чата на
+фронте, ALK-прогон `2026-10-27-ai-chat-creation`, PR на `dev`; в базу ветки
+вмержен dev 2026-11-01: настройки /settings `2026-11-01-settings`, членство
+в чате `2026-11-01-chat-leave`, контакты `2026-11-01-contacts`; до этого —
+pg_trgm-индексы для /chats/search, `2026-10-27-chats-search-trgm`).
 
 ## Состояние
+
+ИИ-чат можно создать с фронта (2026-10-27-ai-chat-creation, ветка
+feature/2026-10-27-ai-chat-creation, PR на `dev`): бэкенд давно умел
+`POST /chats {title, is_ai}` и автозапуск бота, фронт не мог отправить ни
+одного is_ai-чата. Три явные точки входа: (A) чекбокс «AI-ассистент» —
+сосед Form в ChatListCreate (у формы нет слота, а сериализация читает
+`element.value`, т.е. `'on'` при любом checked — состояние читает страница
+по `refs.create → input[name=is_ai]?.checked` в момент сабмита; снятый
+чекбокс = прежний payload `{title}` без поля); (B) one-click-плитка
+«Чат с AI» — `Button type=button` в том же `<li>`, шлёт
+`ChatsController.create({title: AI_CHAT_TITLE, is_ai: true})`; (C) кнопка
+«Создать чат с ассистентом» в пустом состоянии `/assistant` — ai-assistant
+расширил СОБСТВЕННЫЙ порт (`AiAssistantPort.createChat` над тем же
+POST /chats в своём адаптере, `AiAssistantController.createAiChat` с
+рефетчем через существующий `loadChats`), ноль импортов из features/chats —
+guard strict остаётся нагрузкой именно этого маршрута. Общая константа
+`AI_CHAT_TITLE = 'AI ассистент'` живёт в `src/utils/constants.ts` (обе
+фичи берут её вниз по слоям; из контроллера чатов не реэкспортируется).
+Гейты: фронт 394 mocha, guard strict 0.
 
 `/settings` перестал быть макетом (2026-11-01-settings, ветка
 feature/2026-11-01-contacts, четыре волны: бэкенд 011_settings → тема →

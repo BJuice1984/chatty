@@ -391,6 +391,19 @@ class MessengerBase extends Block {
         if (input != null) {
             input.value = ''
         }
+
+        // отправка пишет в стор (optimistic + pending-плейсхолдер) — лента
+        // перерисовывается и пересоздаёт DOM композера, фокус падает;
+        // возвращаем его в следующем кадре, когда перерисовка сошла
+        const restoreFocus = () => {
+            this.element?.querySelector<HTMLInputElement>('input[name="message"]')?.focus()
+        }
+
+        if (typeof requestAnimationFrame === 'function') {
+            requestAnimationFrame(restoreFocus)
+        } else {
+            setTimeout(restoreFocus, 0)
+        }
     }
 
     constructor(propsFromStore: MessengerProps) {

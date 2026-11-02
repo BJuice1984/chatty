@@ -210,6 +210,34 @@ describe('messenger action dispatch', () => {
         }
     })
 
+    it('restores the composer input focus after a send (rAF after rerender)', async () => {
+        // отправка пишет в стор — лента перерисовывается и пересоздаёт DOM
+        // композера; фокус возвращается в следующем кадре (2026-11-02)
+        const messenger = new Messenger({ onSendMessage: sinon.spy() } as never)
+
+        try {
+            // focus() двигает activeElement только у смонтированных узлов
+            const mount = messenger.element as Node
+            document.body.appendChild(mount)
+            store.set('messages', { 5: [] })
+            store.set('selectedChat', 5)
+
+            submitComposer(messenger, 'привет')
+
+            await new Promise(resolve => setTimeout(resolve, 10))
+
+            const input = messenger.element?.querySelector<HTMLInputElement>('input[name="message"]')
+
+            expect(input?.value).to.equal('')
+            expect(document.activeElement).to.equal(input)
+        } finally {
+            messenger.element?.remove()
+            messenger.destroy()
+            store.set('selectedChat', null)
+            store.set('messages', undefined)
+        }
+    })
+
     it('keeps the send dispatch silent until a chat is selected (LIVE-7)', () => {
         const onSendMessage = sinon.spy()
         const messenger = new Messenger({ onSendMessage } as never)

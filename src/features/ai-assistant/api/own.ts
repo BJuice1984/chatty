@@ -106,6 +106,20 @@ export const ownAiAssistantPort: AiAssistantPort = {
         return chats.map(toAiChatSummary)
     },
 
+    // 2026-10-27-ai-chat-creation: тот же эндпоинт POST /chats, что и у
+    // chats-фичи, — фича остаётся за собственным портом (guard). is_ai
+    // уезжает только выставленным, CSRF — double-submit как у остальных
+    // мутаций (зеркало chats/api/own.ts createChat)
+    async createChat(data) {
+        const payload: { title: string, is_ai?: boolean } = { title: data.title }
+
+        if (data.is_ai === true) {
+            payload.is_ai = true
+        }
+
+        await http.post('', { data: payload, csrfToken: readCsrfToken() })
+    },
+
     async searchDocuments(chatId, query, topK) {
         const chunks = await (http.post(`/${chatId}/documents/search`, {
             data: { query, top_k: topK },
@@ -123,6 +137,7 @@ export const ownAiAssistantPort: AiAssistantPort = {
         const rawRun = await (http.post(`/${chatId}/bot/runs`, {
             data: { message_id: message.id },
             csrfToken: readCsrfToken(),
+            timeout: 300_000,
         }) as unknown as Promise<OwnBotRunResponse>)
 
         const run = ensureSuccessfulRun(toAiBotRun(rawRun))

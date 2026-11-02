@@ -22,6 +22,7 @@ import type Block from '../../../../core/Block.ts'
 import { registerComponent } from '../../../../core/registerComponent.ts'
 import * as Components from '../../../../components/components.ts'
 import { SearchBar } from '../../../../components/searchBar/searchBar.ts'
+import { AI_CHAT_TITLE } from '../../../../utils/constants.ts'
 
 // Живой поиск: юнит-рендер страницы требует настоящих хелперов SearchBar
 // и User (chat.hbs вызывает их компонент-хелпами). Регистрация — как в
@@ -859,6 +860,91 @@ describe('chat page stories', () => {
 })
 
 
+// 2026-10-27-ai-chat-creation: обе формы явного создания ИИ-чата сходятся
+// на ChatsController.create — (A) чекбокс сосед Form читается по
+// refs.create в момент сабмита (сериализация до страницы не доходит),
+// (B) плитка «Чат с AI» шлёт дефолтный заголовок из utils/constants
+describe('chat page ai chat creation', () => {
+    let storiesSocket: sinon.SinonStub
+
+    beforeEach(() => {
+        storiesSocket = sinon.stub(StoriesController, 'connectStoriesSocket')
+    })
+
+    afterEach(() => {
+        storiesSocket.restore()
+    })
+
+    it('sends is_ai=true with the title when the AI checkbox is checked (A)', () => {
+        const fetchChats = sinon.stub(ChatsController, 'fetchChats').resolves()
+        const create = sinon.stub(ChatsController, 'create').resolves()
+
+        try {
+            const page = new ChatPage({} as never)
+            const checkbox = page.element?.querySelector<HTMLInputElement>('input[name="is_ai"]')
+
+            expect(checkbox).to.exist
+
+            checkbox!.checked = true
+
+            const submit = ((callbacksOf(page) as { buttons?: {
+                handleSubmitClick?: (value: { title: string }) => void
+            }[] }).buttons ?? [])[0]?.handleSubmitClick
+
+            submit?.({ title: 'мой ИИ-чат' })
+
+            expect(create.calledOnceWith({ title: 'мой ИИ-чат', is_ai: true })).to.be.true
+
+            page.destroy()
+        } finally {
+            create.restore()
+            fetchChats.restore()
+        }
+    })
+
+    it('keeps the unchecked submit exactly as before: title only, no is_ai (A)', () => {
+        const fetchChats = sinon.stub(ChatsController, 'fetchChats').resolves()
+        const create = sinon.stub(ChatsController, 'create').resolves()
+
+        try {
+            const page = new ChatPage({} as never)
+
+            const submit = ((callbacksOf(page) as { buttons?: {
+                handleSubmitClick?: (value: { title: string }) => void
+            }[] }).buttons ?? [])[0]?.handleSubmitClick
+
+            submit?.({ title: 'обычный чат' })
+
+            // calledOnceWith — глубокое равенство: is_ai в payload нет вовсе
+            expect(create.calledOnceWith({ title: 'обычный чат' })).to.be.true
+
+            page.destroy()
+        } finally {
+            create.restore()
+            fetchChats.restore()
+        }
+    })
+
+    it('creates the AI chat from the tile callback with the shared title (B)', () => {
+        const fetchChats = sinon.stub(ChatsController, 'fetchChats').resolves()
+        const create = sinon.stub(ChatsController, 'create').resolves()
+
+        try {
+            const page = new ChatPage({} as never)
+
+            ;(callbacksOf(page) as { onAiChatClick?: () => void }).onAiChatClick?.()
+
+            expect(create.calledOnceWith({ title: AI_CHAT_TITLE, is_ai: true })).to.be.true
+            expect(AI_CHAT_TITLE).to.eq('AI ассистент')
+
+            page.destroy()
+        } finally {
+            create.restore()
+            fetchChats.restore()
+        }
+    })
+})
+
 // Живой поиск по чатам (2026-10-26-chat-search): пустой запрос — порядок
 // по активности (новые сверху, без last_message — вниз, ничья id DESC);
 // активный запрос — только найденные чаты в порядке сервера; фокус и
@@ -921,14 +1007,14 @@ describe('chat page search list', () => {
 
     it('shows only the matching chats in the server order while searching', () => {
         store.set('chats', [
-            { id: 1, title: 'Almond', avatar: '', unread_count: 0, last_message: { time: '2026-01-05T00:00:00Z', content: 'заголовок' } },
+            { id: 1, title: 'Almond', avatar: '', unread_count: 0, last_message: { time: '2026-01-05T07:08:00', content: 'заголовок' } },
             { id: 2, title: 'Beta', avatar: '', unread_count: 0, last_message: { time: '2026-02-05T00:00:00Z', content: 'мимо' } },
             { id: 3, title: 'Gamma', avatar: '', unread_count: 0, last_message: { time: '2026-03-05T00:00:00Z', content: 'calm sea' } },
         ])
         store.set('chatSearch', {
             query: 'lm',
             results: [
-                { chat_id: 3, matched_in: 'message', snippet: { before: 'ca', match: 'lm', after: ' sea' }, last_match_at: '2026-10-20T10:00:00Z' },
+                { chat_id: 3, matched_in: 'message', snippet: { before: 'ca', match: 'lm', after: ' sea' }, last_match_at: '2026-10-20T10:00:00' },
                 { chat_id: 1, matched_in: 'title', snippet: null, last_match_at: null },
             ],
         })
@@ -939,13 +1025,15 @@ describe('chat page search list', () => {
 
         const rows = Array.from(page.element?.querySelectorAll('.chat-list-user') ?? [])
         // Gamma: message-совпадение — mark в сниппете, время — last_match_at
+        // (карточка рендерит ЧЧ:ММ; локальная ISO-фикстура без Z стабильна
+        // в любой таймзоне прогона)
         expect(rows[0]?.querySelector('.chat-list-user__snippet mark')?.textContent).to.equal('lm')
-        expect(rows[0]?.querySelector('.chat-list-user__time')?.textContent).to.equal('2026-10-20T10:00:00Z')
+        expect(rows[0]?.querySelector('.chat-list-user__time')?.textContent?.trim()).to.equal('10:00')
         // Almond: title-совпадение — mark в заголовке; сниппета нет (R-F2) —
         // обычная реплика, время — last_message.time
         expect(rows[1]?.querySelector('.chat-list-user__title mark')?.textContent).to.equal('lm')
         expect(rows[1]?.querySelector('.chat-list-user__snippet')?.textContent?.trim()).to.equal('заголовок')
-        expect(rows[1]?.querySelector('.chat-list-user__time')?.textContent).to.equal('2026-01-05T00:00:00Z')
+        expect(rows[1]?.querySelector('.chat-list-user__time')?.textContent?.trim()).to.equal('07:08')
 
         page.destroy()
     })

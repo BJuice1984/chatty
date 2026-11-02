@@ -43,6 +43,31 @@ export class AiAssistantController {
         }
     }
 
+    // Создание ИИ-чата (2026-10-27-ai-chat-creation): кнопка пустого
+    // состояния страницы ассистента. Создаёт через собственный порт фичи
+    // (chats-фича не импортируется — guard), затем обновляет список
+    // существующим loadChats: страница перерисуется срезом через стор.
+    // Ошибка создания — то же текстовое error-состояние, что и везде
+    async createAiChat(data: { title: string, is_ai?: boolean }): Promise<void> {
+        // createChat опционален в порте (литералы без него валидны);
+        // own-адаптер метод реализует
+        if (this.port.createChat === undefined) {
+            aiAssistantSlice.setAssistant({ status: 'error', error: 'Создание ИИ-чата недоступно' })
+
+            return
+        }
+
+        try {
+            await this.port.createChat(data)
+        } catch (error) {
+            aiAssistantSlice.setAssistant({ status: 'error', error: errorText(error) })
+
+            return
+        }
+
+        await this.loadChats()
+    }
+
     selectChat(chatId: number): void {
         // Смена чата обнуляет результаты чужого контекста (RV4): под новым
         // чатом не должны оставаться документы/вопрос/ответ предыдущего.

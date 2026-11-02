@@ -7,6 +7,16 @@
   </div>
   <div class="chat-list-user__container-content {{extraClass}}">
     {{{ Form inputs=this.inputs buttons=this.buttons }}}
+    {{!-- Чекбокс ИИ-чата — СОСЕД Form, не ребёнок: у формы нет слота, а
+       сериализация читает element.value ('on' при любом checked) — состояние
+       читает страница по input[name=is_ai] в момент сабмита (2026-10-27-ai-chat-creation) --}}
+    <label class="chat-list-create__ai-row">
+      <input type="checkbox" name="is_ai">
+      AI-ассистент
+    </label>
+    {{!-- One-click-плитка «Чат с AI»: type=button — НЕ сабмит формы,
+       колбэк страницы onAiChatClick --}}
+    {{{ Button classType="secondary" type="button" label="Чат с AI" onClick=this.onAiChatClick }}}
     {{!-- <h4 class="chat-list-user__title">{{title}}</h4>
     <h4 class="chat-list-user__title">{{last_message.content}}</h4> --}}
   </div>

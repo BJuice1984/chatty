@@ -36,6 +36,12 @@ export interface AiAnswer {
 
 export interface AiAssistantPort {
     fetchChats(): Promise<AiChatSummary[]>
+    // Создание ИИ-чата (2026-10-27-ai-chat-creation): фича НЕ импортирует
+    // chats-порт (guard: cross-feature = blocker) — расширяет собственный
+    // контракт над тем же POST /chats. is_ai уезжает только выставленным,
+    // бэкенд дефолтит false
+    // eslint-disable-next-line no-unused-vars
+    createChat?(data: { title: string, is_ai?: boolean }): Promise<void>
     // eslint-disable-next-line no-unused-vars
     searchDocuments(chatId: number, query: string, topK: number): Promise<AiDocumentChunk[]>
     // eslint-disable-next-line no-unused-vars

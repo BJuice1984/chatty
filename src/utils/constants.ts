@@ -16,3 +16,9 @@ export const SIGNUP = '/sign-up'
 export const PROFILE = '/settings'
 export const MESSENGER = '/messenger'
 export const CONTACTS = '/contacts'
+
+//Дефолтный заголовок ИИ-чата (2026-10-27-ai-chat-creation): общий для
+//плитки «Чат с AI» на странице чатов и пустого состояния ассистента.
+//Живёт в utils, чтобы обе фичи импортировали его вниз по слоям —
+//межфичевый импорт значения заблокировал бы архитектурный guard.
+export const AI_CHAT_TITLE = 'AI ассистент'

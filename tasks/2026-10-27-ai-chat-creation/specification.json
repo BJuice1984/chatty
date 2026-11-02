@@ -1,0 +1,92 @@
+{
+    "revision": 2,
+    "id": "SPEC-AI-CHAT-CREATION",
+    "title": "Explicit AI-chat creation: form checkbox, one-click tile, assistant empty-state",
+    "intent": "The AI-assistant loop is fully wired on the backend (POST /chats {title, is_ai}, auto bot runs on messages in is_ai chats, /assistant over is_ai chats) but the frontend has NO way to create an is_ai chat: the create form carries only title, the port contract has no is_ai field, so every user chat is is_ai=false and /assistant is permanently empty. Three additive entries close the gap: (A) an 'AI-ассистент' checkbox in the chat-create form flowing title+is_ai through controller/port/adapter to POST /chats; (B) a one-click 'Чат с AI' tile next to the create form that creates an is_ai chat with a default title in a single action; (C) an /assistant empty-state that offers 'Создать чат с ассистентом' when the user has no is_ai chats. No backend changes — ChatCreate.is_ai already exists and bot runs are already auto-triggered by controller.sendMessage for is_ai chats.",
+    "requirements": [
+        {
+            "id": "REQ-FE-CONTRACT",
+            "title": "Port/adapter/controller carry is_ai through chat creation",
+            "description": "ChatsPort.createChat widens additively via CreateChatData in src/utils/types.ts gaining is_ai?: boolean; the own adapter sends is_ai in the POST /chats payload when set (backend defaults is_ai=false); ChatsController.create(data: {title; is_ai?}) forwards it to port.createChat; existing title-only call sites (chat.ts:394) and test literals stay valid; toChatInfo already maps is_ai and the card renders the ✦AI badge.",
+            "priority": "P1",
+            "source": "operator request 2026-10-27 (no explicit way to create an AI chat)",
+            "acceptanceIds": [
+                "AC-FE-CONTRACT"
+            ],
+            "evidenceIds": [
+                "EV-FE-1"
+            ],
+            "owner": "WS-FE-AI-CHAT"
+        },
+        {
+            "id": "REQ-FE-CREATE-FORM",
+            "title": "AI checkbox in the chat-create form (entry A)",
+            "description": "ChatListCreate renders an 'AI-ассистент' checkbox as a SIBLING of the embedded {{{ Form }}} inside the component's <li> (the Form's inner markup is fixed by form.hbs — no slot; review F2); the page's handleSubmitClick reads it at submit time via this.refs.create (the existing precedent) -> .querySelector('input[name=is_ai]')?.checked — value serialization never reaches the page (Form passes only the serialized title). Unchecked behaves exactly as today; emptyValidator applies to the title input only.",
+            "priority": "P1",
+            "source": "operator request 2026-10-27 (variant A)",
+            "acceptanceIds": [
+                "AC-FE-FLOWS"
+            ],
+            "evidenceIds": [
+                "EV-FE-1"
+            ],
+            "owner": "WS-FE-AI-CHAT"
+        },
+        {
+            "id": "REQ-FE-AI-TILE",
+            "title": "One-click 'Чат с AI' tile next to the create form (entry B)",
+            "description": "A compact 'Чат с AI' Button rendered inside ChatListCreate's <li> next to the Form (review F5): type='button' (not a submit), callback prop onAiChatClick from the page -> ChatsController.create({title: AI_CHAT_TITLE, is_ai: true}) — one click, no modal; the created chat appears with the ✦AI badge and is selectable like any chat; existing styles, no new design tokens; AI_CHAT_TITLE lives in src/utils/constants.ts (shared lower layer — review F4).",
+            "priority": "P1",
+            "source": "operator request 2026-10-27 (variant B)",
+            "acceptanceIds": [
+                "AC-FE-FLOWS"
+            ],
+            "evidenceIds": [
+                "EV-FE-1"
+            ],
+            "owner": "WS-FE-AI-CHAT"
+        },
+        {
+            "id": "REQ-FE-ASSISTANT-EMPTY",
+            "title": "/assistant empty-state with a create action (entry C)",
+            "description": "The assistant page renders an explicit empty state when the user has no is_ai chats: a short Russian hint plus a 'Создать чат с ассистентом' button. Guard-clean route (review F1): the ai-assistant feature widens its OWN port — AiAssistantPort.createChat({title; is_ai?}) implemented in its own adapter (which already talks to /chats via fetchChats) — and AiAssistantController.createAiChat({title: AI_CHAT_TITLE, is_ai: true}) refreshes the list via the existing loadChats(); the assistant page NEVER imports from features/chats (cross-feature runtime import is a guard blocker). With existing is_ai chats the page renders as today.",
+            "priority": "P1",
+            "source": "operator request 2026-10-27 (variant C)",
+            "acceptanceIds": [
+                "AC-FE-FLOWS"
+            ],
+            "evidenceIds": [
+                "EV-FE-1"
+            ],
+            "owner": "WS-FE-AI-CHAT"
+        },
+        {
+            "id": "REQ-DOCS",
+            "title": "Docs closure",
+            "description": "docs/NEXT.md records the feature (AI-chat creation entries shipped); docs/progress/progress_log.md gets an entry on top in house style.",
+            "priority": "P2",
+            "source": "repo convention",
+            "acceptanceIds": [
+                "AC-PROCESS"
+            ],
+            "evidenceIds": [
+                "EV-FE-1"
+            ],
+            "owner": "WS-FE-AI-CHAT"
+        }
+    ],
+    "constraints": [
+        "Layers downward only; components never import features/controllers (callbacks come from the page); guard-architecture --all --strict stays green.",
+        "No backend changes: ChatCreate.is_ai and the bot auto-trigger already exist; the plan only opens the frontend path to them.",
+        "Port widening is additive ({title; is_ai?}) — existing create call sites and test literals stay valid.",
+        "UI text in Russian, consistent with the existing messenger UI; no new design tokens (reuse existing button/form styles).",
+        "Existing suites stay green; test counts grow from the 378 mocha baseline."
+    ],
+    "nonGoals": [
+        "renaming or configuring AI chats after creation (title editing)",
+        "multiple assistant personas/models, per-chat model selection",
+        "backend seeding of an AI chat for new users (explicit user action only)",
+        "changing the bot trigger (already auto on sendMessage in is_ai chats)",
+        "the assistant page document flow (already shipped)"
+    ]
+}

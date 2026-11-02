@@ -1,0 +1,393 @@
+{
+    "schemaVersion": "agent-plan-manifest.v1",
+    "status": "FROZEN",
+    "planRevision": 2,
+    "package": {
+        "id": "2026-10-27-ai-chat-creation",
+        "title": "Explicit AI-chat creation: form checkbox, one-click tile, assistant empty-state",
+        "workspaceRoot": ".",
+        "artifactRoot": "work/2026-10-27-ai-chat-creation",
+        "planArtifactRoot": "tasks/2026-10-27-ai-chat-creation"
+    },
+    "packageIntegrity": {
+        "required": true,
+        "lockSchemaVersion": "agent-plan-lock.v2",
+        "inventorySource": "planFiles",
+        "undeclaredTopLevelFiles": "reject",
+        "allowedUnlistedFiles": [
+            "plan.lock.json",
+            "plan-review.json"
+        ]
+    },
+    "author": {
+        "id": "claude-code",
+        "surface": "agent-first-planning",
+        "runId": "2026-10-27-ai-chat-creation-draft"
+    },
+    "baseRevision": {
+        "ref": "dev",
+        "sha": "353db1a7181e514862164570f264bf9927ff70bc"
+    },
+    "specification": {
+        "tier": "S2",
+        "intent": "The AI-assistant loop works end-to-end on the backend (POST /chats {title, is_ai}, auto bot runs in is_ai chats, /assistant over is_ai chats) but the frontend cannot create an is_ai chat at all (create form carries only title; the port contract has no is_ai field). Three additive entries close the gap: an 'AI-ассистент' checkbox in the chat-create form flowing title+is_ai through controller/port/adapter; a one-click 'Чат с AI' tile that creates an is_ai chat with a default title; an /assistant empty-state offering 'Создать чат с ассистентом' when no is_ai chats exist. No backend changes.",
+        "status": "DRAFT",
+        "requirements": [
+            {
+                "id": "REQ-FE-CONTRACT",
+                "title": "Port/adapter/controller carry is_ai through chat creation",
+                "description": "ChatsPort.createChat widens additively via CreateChatData in src/utils/types.ts gaining is_ai?: boolean; the own adapter sends is_ai in the POST /chats payload when set (backend defaults is_ai=false); ChatsController.create(data: {title; is_ai?}) forwards it to port.createChat; existing title-only call sites (chat.ts:394) and test literals stay valid; toChatInfo already maps is_ai and the card renders the ✦AI badge.",
+                "priority": "P1",
+                "source": "operator request 2026-10-27 (no explicit way to create an AI chat)",
+                "acceptanceIds": [
+                    "AC-FE-CONTRACT"
+                ],
+                "evidenceIds": [
+                    "EV-FE-1"
+                ],
+                "owner": "WS-FE-AI-CHAT"
+            },
+            {
+                "id": "REQ-FE-CREATE-FORM",
+                "title": "AI checkbox in the chat-create form (entry A)",
+                "description": "ChatListCreate renders an 'AI-ассистент' checkbox as a SIBLING of the embedded {{{ Form }}} inside the component's <li> (the Form's inner markup is fixed by form.hbs — no slot; review F2); the page's handleSubmitClick reads it at submit time via this.refs.create (the existing precedent) -> .querySelector('input[name=is_ai]')?.checked — value serialization never reaches the page (Form passes only the serialized title). Unchecked behaves exactly as today; emptyValidator applies to the title input only.",
+                "priority": "P1",
+                "source": "operator request 2026-10-27 (variant A)",
+                "acceptanceIds": [
+                    "AC-FE-FLOWS"
+                ],
+                "evidenceIds": [
+                    "EV-FE-1"
+                ],
+                "owner": "WS-FE-AI-CHAT"
+            },
+            {
+                "id": "REQ-FE-AI-TILE",
+                "title": "One-click 'Чат с AI' tile next to the create form (entry B)",
+                "description": "A compact 'Чат с AI' Button rendered inside ChatListCreate's <li> next to the Form (review F5): type='button' (not a submit), callback prop onAiChatClick from the page -> ChatsController.create({title: AI_CHAT_TITLE, is_ai: true}) — one click, no modal; the created chat appears with the ✦AI badge and is selectable like any chat; existing styles, no new design tokens; AI_CHAT_TITLE lives in src/utils/constants.ts (shared lower layer — review F4).",
+                "priority": "P1",
+                "source": "operator request 2026-10-27 (variant B)",
+                "acceptanceIds": [
+                    "AC-FE-FLOWS"
+                ],
+                "evidenceIds": [
+                    "EV-FE-1"
+                ],
+                "owner": "WS-FE-AI-CHAT"
+            },
+            {
+                "id": "REQ-FE-ASSISTANT-EMPTY",
+                "title": "/assistant empty-state with a create action (entry C)",
+                "description": "The assistant page renders an explicit empty state when the user has no is_ai chats: a short Russian hint plus a 'Создать чат с ассистентом' button. Guard-clean route (review F1): the ai-assistant feature widens its OWN port — AiAssistantPort.createChat({title; is_ai?}) implemented in its own adapter (which already talks to /chats via fetchChats) — and AiAssistantController.createAiChat({title: AI_CHAT_TITLE, is_ai: true}) refreshes the list via the existing loadChats(); the assistant page NEVER imports from features/chats (cross-feature runtime import is a guard blocker). With existing is_ai chats the page renders as today.",
+                "priority": "P1",
+                "source": "operator request 2026-10-27 (variant C)",
+                "acceptanceIds": [
+                    "AC-FE-FLOWS"
+                ],
+                "evidenceIds": [
+                    "EV-FE-1"
+                ],
+                "owner": "WS-FE-AI-CHAT"
+            },
+            {
+                "id": "REQ-DOCS",
+                "title": "Docs closure",
+                "description": "docs/NEXT.md records the feature (AI-chat creation entries shipped); docs/progress/progress_log.md gets an entry on top in house style.",
+                "priority": "P2",
+                "source": "repo convention",
+                "acceptanceIds": [
+                    "AC-PROCESS"
+                ],
+                "evidenceIds": [
+                    "EV-FE-1"
+                ],
+                "owner": "WS-FE-AI-CHAT"
+            }
+        ],
+        "goal": "A user can create an AI chat explicitly: via the create-form checkbox, via a one-click tile, or from the assistant empty-state — all converging on the existing controller path with the bot auto-trigger already in place.",
+        "constraints": [
+            "Layers downward only; components never import features/controllers (callbacks come from the page); guard-architecture --all --strict stays green.",
+            "No backend changes: ChatCreate.is_ai and the bot auto-trigger already exist.",
+            "Port widening is additive — existing create call sites and test literals stay valid.",
+            "UI text in Russian; no new design tokens.",
+            "Existing suites stay green; mocha grows from the 378 baseline."
+        ],
+        "nonGoals": [
+            "renaming or configuring AI chats after creation",
+            "multiple assistant personas/models, per-chat model selection",
+            "backend seeding of an AI chat for new users",
+            "changing the bot trigger",
+            "the assistant document flow"
+        ],
+        "scope": "frontend chats feature (ports, own adapter, controller), the chat page + ChatListCreate component, the ai-assistant page, scss; docs/NEXT.md and the progress log."
+    },
+    "readOnly": [
+        "AGENTS.md",
+        "tasks/README.md",
+        "docs/deployment/own-backend.md"
+    ],
+    "forbiddenWrites": [
+        "src/main.ts",
+        "src/features/index.ts",
+        "src/core",
+        "src/scss/libs",
+        "docs/project-principles.json",
+        ".github/workflows",
+        "netlify.toml",
+        "backend/alembic",
+        "backend/app"
+    ],
+    "leadOwned": [
+        {
+            "path": "tasks/2026-10-27-ai-chat-creation",
+            "owner": "controller",
+            "reason": "Controller owns plan-package artifacts."
+        }
+    ],
+    "workstreams": [
+        {
+            "id": "WS-FE-AI-CHAT",
+            "title": "Frontend: is_ai contract + three creation entries",
+            "owner": "worker-frontend-chats",
+            "reviewer": "independent-release-reviewer",
+            "dependsOn": [],
+            "writes": [
+                "docs/NEXT.md",
+                "docs/progress/progress_log.md",
+                "src/components/chatListCreate/chatListCreate.hbs",
+                "src/components/chatListCreate/chatListCreate.test.ts",
+                "src/components/chatListCreate/chatListCreate.ts",
+                "src/features/ai-assistant/api/api.test.ts",
+                "src/features/ai-assistant/api/own.ts",
+                "src/features/ai-assistant/controller.ts",
+                "src/features/ai-assistant/pages/assistant.hbs",
+                "src/features/ai-assistant/pages/assistant.test.ts",
+                "src/features/ai-assistant/pages/assistant.ts",
+                "src/features/ai-assistant/ports.ts",
+                "src/features/chats/api/api.test.ts",
+                "src/features/chats/api/own.ts",
+                "src/features/chats/chats.test.ts",
+                "src/features/chats/controller.ts",
+                "src/features/chats/pages/chat/chat.hbs",
+                "src/features/chats/pages/chat/chat.test.ts",
+                "src/features/chats/pages/chat/chat.ts",
+                "src/features/chats/ports.ts",
+                "src/scss/components/chat-list-create.scss",
+                "src/utils/constants.ts",
+                "src/utils/types.ts"
+            ],
+            "readOnly": [
+                "AGENTS.md",
+                "src/features/ai-assistant/store.ts",
+                "src/features/chats/store.ts",
+                "src/components/form/form.ts",
+                "src/components/button/button.ts"
+            ],
+            "forbiddenWrites": [],
+            "launchGate": "feature/2026-10-27-ai-chat-creation branch created at 353db1a; npm run verify green at base (378).",
+            "capabilityHints": [
+                "typescript",
+                "handlebars",
+                "scss",
+                "mocha",
+                "sinon"
+            ],
+            "requiredTools": [
+                "node",
+                "npm"
+            ],
+            "contextRefs": [
+                "plan.md",
+                "acceptance-criteria.md",
+                "specification.json",
+                "developer-overview.md"
+            ],
+            "acceptanceIds": [
+                "AC-FE-CONTRACT",
+                "AC-FE-FLOWS",
+                "AC-PROCESS"
+            ],
+            "evidenceIds": [
+                "EV-FE-1"
+            ],
+            "executionPolicy": {
+                "maxAttempts": 3,
+                "maxWallSeconds": 5400
+            },
+            "artifactPaths": {
+                "result": "work/2026-10-27-ai-chat-creation/evidence/WS-FE-AI-CHAT/task-result-{attempt}.json",
+                "review": "work/2026-10-27-ai-chat-creation/evidence/WS-FE-AI-CHAT/task-review-{attempt}.json"
+            },
+            "required": true,
+            "plannedItems": [
+                "contract: CreateChatData (src/utils/types.ts) gains is_ai?: boolean; ports.createChat forwards; adapter posts is_ai when set; api.test.ts payload pins (set and omitted); controller.create({title; is_ai?}) -> port.createChat; AI_CHAT_TITLE = 'AI ассистент' APPENDED to the existing src/utils/constants.ts (never exported from the chats controller)",
+                "adapter: createChat posts is_ai when present; api.test.ts payload pins (set and omitted)",
+                "controller: create forwards is_ai; export shared AI_CHAT_TITLE = 'AI ассистент'; chats.test.ts forward + constant pin",
+                "ChatListCreate: 'AI-ассистент' checkbox as a SIBLING of the Form inside the <li> + 'Чат с AI' Button (type='button', onAiChatClick prop); page handleSubmitClick reads the checkbox via this.refs.create querySelector (value-vs-checked trap documented); chatListCreate.test.ts render pins",
+                "chat page: handleSubmitClick passes is_ai (refs.create -> input[name=is_ai]?.checked); tile callback -> ChatsController.create({title: AI_CHAT_TITLE, is_ai: true}); AI_CHAT_TITLE exported from src/utils/constants.ts; chat.test.ts wiring pins for A and B",
+                "assistant feature: AiAssistantPort.createChat({title; is_ai?}) + adapter POST /chats + AiAssistantController.createAiChat (refresh via existing loadChats); page empty state (Russian hint + 'Создать чат с ассистентом') when no is_ai chats, wired to createAiChat — NO imports from features/chats (guard); non-empty page renders as today; assistant.test.ts pins",
+                "scss: checkbox row + tile in chat-list-create.scss (no new tokens)",
+                "docs: NEXT feature record + progress-log entry on top"
+            ],
+            "qualityFloor": "npm run verify green (378+); guard-architecture --all --strict zero violations; no backend file touched."
+        }
+    ],
+    "acceptance": {
+        "criteria": [
+            {
+                "id": "AC-FE-CONTRACT",
+                "title": "is_ai flows through the creation contract",
+                "requirementIds": [
+                    "REQ-FE-CONTRACT"
+                ],
+                "evidenceIds": [
+                    "EV-FE-1"
+                ],
+                "independentEvidenceIds": [],
+                "statement": "CreateChatData (src/utils/types.ts) gains is_ai?: boolean; ChatsPort.createChat accepts it additively; the own adapter includes is_ai in the POST /chats payload when set and omits it otherwise (mocha-pinned on the request shape); ChatsController.create forwards the field to createChat; title-only call sites keep working unchanged.",
+                "description": "Frontend unit tests.",
+                "source": "acceptance-criteria.md",
+                "priority": "P1"
+            },
+            {
+                "id": "AC-FE-FLOWS",
+                "title": "Three explicit creation entries work",
+                "requirementIds": [
+                    "REQ-FE-CREATE-FORM",
+                    "REQ-FE-AI-TILE",
+                    "REQ-FE-ASSISTANT-EMPTY"
+                ],
+                "evidenceIds": [
+                    "EV-FE-1"
+                ],
+                "independentEvidenceIds": [],
+                "statement": "(A) The create form shows an 'AI-ассистент' checkbox (sibling of the Form in ChatListCreate); checked sends is_ai=true with the title, unchecked behaves exactly as before (mocha-pinned, read via refs+querySelector). (B) A one-click 'Чат с AI' Button (type='button') inside ChatListCreate calls ChatsController.create({title: AI_CHAT_TITLE, is_ai: true}) via the onAiChatClick prop (mocha-pinned on the controller spy). (C) The assistant page with zero is_ai chats renders the Russian empty-state with a 'Создать чат с ассистентом' button wired to AiAssistantController.createAiChat (own AiAssistantPort.createChat, refresh via loadChats; zero imports from features/chats — guard-green); with existing is_ai chats the page renders as today (mocha-pinned).",
+                "description": "Frontend unit tests.",
+                "source": "acceptance-criteria.md",
+                "priority": "P1"
+            },
+            {
+                "id": "AC-PROCESS",
+                "title": "Gates and bookkeeping",
+                "requirementIds": [
+                    "REQ-FE-CONTRACT",
+                    "REQ-FE-CREATE-FORM",
+                    "REQ-FE-AI-TILE",
+                    "REQ-FE-ASSISTANT-EMPTY",
+                    "REQ-DOCS"
+                ],
+                "evidenceIds": [
+                    "EV-FE-1"
+                ],
+                "independentEvidenceIds": [],
+                "statement": "npm run verify green with grown test counts (378 baseline) and guard-architecture --all --strict zero violations; NEXT.md feature record + progress-log entry on top; no file outside the manifest write-sets changes; no backend file touched.",
+                "description": "Gate runs captured as evidence.",
+                "source": "acceptance-criteria.md",
+                "priority": "P1"
+            }
+        ]
+    },
+    "validation": {
+        "commands": [
+            "npm run verify",
+            "node .claude/hooks/scripts/guard-architecture.mjs --all --strict"
+        ]
+    },
+    "orchestration": {
+        "startMode": "reviewed-plan",
+        "remediationMode": "ask",
+        "maxPlanReviewRounds": 2,
+        "maxTaskAttempts": 3,
+        "maxParallelTasks": 1,
+        "maxValidationRunsPerTask": 2,
+        "stateFile": "work/2026-10-27-ai-chat-creation/run.state.json",
+        "eventLog": "work/2026-10-27-ai-chat-creation/events.jsonl",
+        "stepReviewRequired": true,
+        "finalAuditRequired": true
+    },
+    "implementationAudit": {
+        "required": true,
+        "finalRequired": true
+    },
+    "developerOverview": "tasks/2026-10-27-ai-chat-creation/developer-overview.md",
+    "releaseTarget": {
+        "kind": "local-only",
+        "environment": "Vite own mode + compose own-backend",
+        "productionPromotionClaimed": false
+    },
+    "releaseImpact": "Additive frontend-only change: is_ai flows through the chats creation contract; a checkbox, a one-click tile and an assistant empty-state button; no backend, router or WS changes.",
+    "nonGoals": [
+        "renaming or configuring AI chats after creation",
+        "multiple assistant personas/models",
+        "backend seeding of an AI chat",
+        "bot-trigger changes",
+        "the assistant document flow"
+    ],
+    "finalAuditGates": [
+        "[AC-FE-CONTRACT|EV-FE-1] is_ai flows additively through port/adapter/controller, pinned on the POST payload shape",
+        "[AC-FE-FLOWS|EV-FE-1] three explicit entries pinned: form checkbox (checked/unchecked), one-click tile create, assistant empty-state button + refresh, non-empty page unchanged",
+        "[AC-PROCESS|EV-FE-1] verify green with grown counts + guard strict 0; docs records; write-set exact; no backend touched"
+    ],
+    "securityGates": [
+        {
+            "id": "SEC-NO-NEW-SEAMS",
+            "statement": "No new raw-HTML injection: the checkbox/tile/empty-state render static Russian labels through double-brace templates; no user-controlled text enters triple braces; no backend surface changes.",
+            "evidenceIds": [
+                "EV-FE-1"
+            ]
+        }
+    ],
+    "budgetPolicy": {
+        "units": "tokens-and-resources",
+        "reroute": "pause-and-review",
+        "maxTotalTokens": 60000,
+        "maxParallelWorkstreams": 1,
+        "maxRunWallSeconds": 10800,
+        "criticalPathWallSeconds": 7200,
+        "aggregateWorkstreamWallSeconds": 7200,
+        "retryReserveWallSeconds": 3600
+    },
+    "budgets": {
+        "defaultWorkstreamTokens": 40000,
+        "maxEvidenceBytesPerRun": 4194304
+    },
+    "contextLimits": {
+        "profile": "small-context-profile.v1",
+        "maxPlanContextBytes": 120000,
+        "maxRenderedPacketBytes": 40000,
+        "smallContextPacketBytes": 30000,
+        "maxReferenceFilesPerPacket": 12,
+        "includeOnlyOwnedWrites": true,
+        "excludeRuntimeWorkArtifacts": true
+    },
+    "tierResolution": {
+        "status": "RESOLVED",
+        "tier": "S2",
+        "requestedTier": "S2",
+        "reason": "browser-risk resolved by agent-lifecycle tier resolve",
+        "independentReviewRequired": true,
+        "requestPath": "tasks/2026-10-27-ai-chat-creation/tier-request.json",
+        "resolutionPath": "tasks/2026-10-27-ai-chat-creation/tier-resolution.json",
+        "requestDigest": "15cf461432118aac0f4c4b72468a4f6c6ef0861e184f8b5ff7699c14702748fe"
+    },
+    "planFiles": [
+        "tasks/2026-10-27-ai-chat-creation/acceptance-criteria.md",
+        "tasks/2026-10-27-ai-chat-creation/developer-overview.md",
+        "tasks/2026-10-27-ai-chat-creation/plan-review-request.md",
+        "tasks/2026-10-27-ai-chat-creation/plan-review.json",
+        "tasks/2026-10-27-ai-chat-creation/plan.manifest.json",
+        "tasks/2026-10-27-ai-chat-creation/plan.md",
+        "tasks/2026-10-27-ai-chat-creation/specification.json",
+        "tasks/2026-10-27-ai-chat-creation/tier-request.json",
+        "tasks/2026-10-27-ai-chat-creation/tier-resolution.json"
+    ],
+    "planReview": {
+        "required": true,
+        "reviewerClass": "independent-plan-reviewer",
+        "maxRounds": 2,
+        "implementationAuthorized": false,
+        "report": "tasks/2026-10-27-ai-chat-creation/plan-review.json",
+        "reviewedRevision": 2,
+        "verdict": "READY_TO_FREEZE"
+    }
+}

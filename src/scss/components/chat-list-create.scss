@@ -32,6 +32,42 @@
         }
     }
 
+    /* Строка ИИ-чата (2026-10-27-ai-chat-creation): чекбокс «AI-ассистент»
+       и one-click-плитка «Чат с AI» — один ряд под формой создания; чекбокс
+       живёт соседом формы, чтобы сериализация его не читала */
+
+    &__ai-row {
+        display: flex;
+        flex-direction: row;
+        align-items: center;
+        gap: 8px;
+        margin-top: 4px;
+        cursor: pointer;
+        user-select: none;
+        color: var(--second-text-color);
+        font-size: 14px;
+
+        input {
+            /* таргет крупнее 44px на тач-ветке задаёт media-блок ниже;
+               здесь — базовый размер инпута чекбокса */
+            accent-color: var(--third-color);
+        }
+    }
+
+    /* Плитка «Чат с AI»: универсальный Button__secondary шириной 280px
+       рассчитан на страницы логина — в строке списка ужимаем по контенту
+       (селектор вложен по образцу button.scss: kebab-case-паттерн стайллинта
+       не пускает литеральный BEM-класс) */
+
+    .button {
+
+        &__secondary {
+            width: auto;
+            padding: 0 12px;
+            margin-top: 4px;
+        }
+    }
+
     /* Планшет (768–1023): сайдбар 280px — пустая аватар-заглушка (первый
        div строки) съедает ширину, прячем её, инпут занимает всю строку */
     @media (min-width: $tablet) and (max-width: ($desktop - 1px)) {
@@ -52,6 +88,13 @@
         .login-form input {
             min-height: 44px;
             font-size: 16px;
+        }
+
+        /* чекбокс ИИ-чата — тот же таргет 44px, что у инпута формы */
+
+        &__ai-row input {
+            min-height: 44px;
+            min-width: 44px;
         }
     }
 }

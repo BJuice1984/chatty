@@ -5,6 +5,7 @@
 import Block from '../../../core/Block.ts'
 import { registerComponent } from '../../../core/registerComponent.ts'
 import store, { AppState, ComponentProps, withStore } from '../../../utils/Store.ts'
+import { AI_CHAT_TITLE } from '../../../utils/constants.ts'
 import { TypingIndicator } from '../components/typing-indicator.ts'
 import { DocumentCard } from '../components/document-card.ts'
 import AiAssistantController from '../controller.ts'
@@ -92,6 +93,17 @@ class AssistantPageBase extends Block {
                     if (Number.isInteger(chatId)) {
                         AiAssistantController.selectChat(chatId)
                     }
+                }
+            },
+            // Кнопка пустого состояния (2026-10-27-ai-chat-creation): сырой
+            // button в assistant.hbs, делегированный клик со страницы —
+            // hbs-дети пересоздаются перерисовками стора. Гвардия по
+            // data-testid: submit-кнопки форм этот путь не задевают
+            click: (event: Event) => {
+                const target = event.target as HTMLElement | null
+
+                if (target?.closest('[data-testid="ai-create-chat"]') != null) {
+                    void AiAssistantController.createAiChat({ title: AI_CHAT_TITLE, is_ai: true })
                 }
             },
         } as unknown as Record<string, () => void>

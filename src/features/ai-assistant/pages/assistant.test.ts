@@ -5,6 +5,7 @@ import { AssistantPage } from './assistant.ts'
 import { aiAssistantPort } from '../api/index.ts'
 import AiAssistantController from '../controller.ts'
 import { aiAssistantSlice } from '../store.ts'
+import { AI_CHAT_TITLE } from '../../../utils/constants.ts'
 
 async function flushAsync(): Promise<void> {
     await new Promise(resolve => setTimeout(resolve, 0))
@@ -73,6 +74,77 @@ describe('ai assistant page states', () => {
         expect(select).to.exist
         expect(select?.querySelectorAll('option')).to.have.length(1)
         expect(page.element?.querySelector('[data-testid="ai-no-chats"]')).to.not.exist
+    })
+
+    // 2026-10-27-ai-chat-creation (C): пустое состояние получает кнопку
+    // создания ИИ-чата; непустая страница отрисовывается как раньше
+    it('renders the create-chat button in the empty state and wires it to createAiChat', () => {
+        const createAiChat = sinon.stub(AiAssistantController, 'createAiChat').resolves()
+
+        try {
+            const page = render()
+
+            const button = page.element?.querySelector<HTMLButtonElement>('[data-testid="ai-create-chat"]')
+
+            expect(button).to.exist
+            expect(button?.textContent?.trim()).to.eq('Создать чат с ассистентом')
+
+            // сырой button, обработанный делегированным click страницы
+            button?.click()
+
+            expect(createAiChat.calledOnce).to.be.true
+            expect(createAiChat.firstCall.args[0]).to.deep.eq({
+                title: AI_CHAT_TITLE,
+                is_ai: true,
+            })
+            expect(AI_CHAT_TITLE).to.eq('AI ассистент')
+
+            page.destroy()
+        } finally {
+            createAiChat.restore()
+        }
+    })
+
+    it('keeps the non-empty page unchanged: no create button with existing AI chats', () => {
+        aiAssistantSlice.setChats([{ id: 3, title: 'AI chat', is_ai: true }])
+
+        const page = render()
+
+        expect(page.element?.querySelector('#ai-chat-select')).to.exist
+        expect(page.element?.querySelector('[data-testid="ai-create-chat"]')).to.not.exist
+
+        page.destroy()
+    })
+
+    it('refreshes the list through loadChats after createAiChat', async () => {
+        const createChat = sinon.stub(aiAssistantPort, 'createChat').resolves()
+        const loadChats = sinon.stub(AiAssistantController, 'loadChats').resolves([])
+
+        try {
+            await AiAssistantController.createAiChat({ title: AI_CHAT_TITLE, is_ai: true })
+
+            expect(createChat.calledOnceWith({ title: AI_CHAT_TITLE, is_ai: true })).to.be.true
+            expect(loadChats.calledOnce).to.be.true
+        } finally {
+            loadChats.restore()
+            createChat.restore()
+        }
+    })
+
+    it('reports a create failure as the error state without refreshing', async () => {
+        const createChat = sinon.stub(aiAssistantPort, 'createChat').rejects(new Error('Создание не удалось'))
+        const loadChats = sinon.stub(AiAssistantController, 'loadChats').resolves([])
+
+        try {
+            await AiAssistantController.createAiChat({ title: AI_CHAT_TITLE, is_ai: true })
+
+            expect(aiAssistantSlice.getAssistant().status).to.eq('error')
+            expect(aiAssistantSlice.getAssistant().error).to.contain('Создание не удалось')
+            expect(loadChats.called).to.be.false
+        } finally {
+            loadChats.restore()
+            createChat.restore()
+        }
     })
 
     it('shows the typing indicator while searching or typing', () => {

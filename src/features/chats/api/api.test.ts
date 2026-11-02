@@ -232,6 +232,34 @@ describe('chats api social operations (fake XHR)', () => {
         dom.window.document.cookie = 'chatty_csrf=; expires=Thu, 01 Jan 1970 00:00:00 GMT'
     })
 
+    // 2026-10-27-ai-chat-creation: payload POST /chats пиннуется формой
+    // запроса — is_ai уезжает только выставленным, title-only вызов слал бы
+    // прежнее тело без поля (бэкенд дефолтит false)
+    it('creates a chat over POST /chats carrying is_ai when it is set', async () => {
+        FakeXHR.responses.push({ status: 201, response: { id: 5 } })
+
+        await ownChatsPort.createChat({ title: 'мой ИИ-чат', is_ai: true })
+
+        const call = FakeXHR.calls[0]
+
+        expect(call.method).to.eq('POST')
+        expect(call.url).to.contain('/chats')
+        expect(call.body).to.eq(JSON.stringify({ title: 'мой ИИ-чат', is_ai: true }))
+        expect(call.headers['X-CSRF-Token']).to.eq('token-1')
+    })
+
+    it('omits is_ai from POST /chats for a title-only create', async () => {
+        FakeXHR.responses.push({ status: 201, response: { id: 5 } })
+
+        await ownChatsPort.createChat({ title: 'мой чат' })
+
+        const call = FakeXHR.calls[0]
+
+        expect(call.method).to.eq('POST')
+        expect(call.body).to.eq(JSON.stringify({ title: 'мой чат' }))
+        expect(call.headers['X-CSRF-Token']).to.eq('token-1')
+    })
+
     it('searches users by the login prefix over GET /users', async () => {
         FakeXHR.responses.push({
             status: 200,
