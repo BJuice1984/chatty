@@ -53,7 +53,6 @@
     width: 100%;
 
     &_type_password {
-      border-top: var(--border-chat-bottom);
       padding-top: 16px;
     }
   }
@@ -98,7 +97,7 @@
 
   &__danger-zone {
     display: flex;
-    justify-content: flex-start;
+    justify-content: center;
     padding-top: 4px;
   }
 
