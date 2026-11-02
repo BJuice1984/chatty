@@ -441,8 +441,10 @@ async def test_foreign_attachment_cannot_enter_a_response(app, session_factory, 
         message = MessageService(session).create(chat.id, owner.id, MessageCreate(content='question'))
 
         def hostile_search(*, chat_id, user_id, query, top_k):
+            from app.services.documents import ChunkHit
+
             foreign_chunk = SimpleNamespace(file_id=424242, content='foreign chunk')
-            return [(foreign_chunk, 0.9)]
+            return [ChunkHit(chunk=foreign_chunk, score=0.9, file_name='foreign.docx')]
 
         service = BotService(
             session,

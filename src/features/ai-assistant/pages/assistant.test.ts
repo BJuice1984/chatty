@@ -198,8 +198,8 @@ describe('ai assistant page states', () => {
         aiAssistantSlice.setAssistant({
             status: 'success',
             documents: [
-                { document_id: 1, file_id: 7, ordinal: 0, content: 'текст <b>фрагмента</b>', score: 0.9 },
-                { document_id: 2, file_id: 8, ordinal: 1, content: 'второй', score: 0.8 },
+                { document_id: 1, file_id: 7, file_name: 'otpusk.docx', ordinal: 0, content: 'текст <b>фрагмента</b>', score: 0.9 },
+                { document_id: 2, file_id: 8, file_name: 'prikaz.pdf', ordinal: 1, content: 'второй', score: 0.8 },
             ],
         })
 
@@ -207,7 +207,32 @@ describe('ai assistant page states', () => {
 
         expect(cards).to.have.length(2)
         expect(page.element?.innerHTML).to.contain('&lt;b&gt;')
+        expect(page.element?.innerHTML).to.contain('otpusk.docx')
         expect(page.element?.querySelectorAll('.ai-assistant__document-link')).to.have.length(2)
+    })
+
+    // Один файл в топ-к попадает несколькими чанками — карточка одна на
+    // файл, с именем файла в заголовке и сниппетом лучшего чанка
+    it('deduplicates cards by file and titles them with the file name', () => {
+        aiAssistantSlice.setChats([{ id: 3, title: 'AI chat', is_ai: true }])
+        const page = render()
+
+        aiAssistantSlice.setAssistant({
+            status: 'success',
+            documents: [
+                { document_id: 1, file_id: 7, file_name: 'otpusk.docx', ordinal: 0, content: 'лучший чанк', score: 0.9 },
+                { document_id: 1, file_id: 7, file_name: 'otpusk.docx', ordinal: 1, content: 'второй чанк того же файла', score: 0.7 },
+                { document_id: 2, file_id: 8, file_name: '', ordinal: 0, content: 'без имени', score: 0.6 },
+            ],
+        })
+
+        const cards = page.element?.querySelectorAll('[data-testid="ai-document"]')
+
+        expect(cards).to.have.length(2)
+        expect(page.element?.innerHTML).to.contain('otpusk.docx')
+        expect(page.element?.innerHTML).to.contain('лучший чанк')
+        expect(page.element?.innerHTML).to.not.contain('второй чанк того же файла')
+        expect(page.element?.innerHTML).to.contain('Документ #2')
     })
 
     it('preserves the typed query through store-driven re-renders (RV2)', () => {
@@ -238,7 +263,7 @@ describe('ai assistant page states', () => {
 
         aiAssistantSlice.setAssistant({
             status: 'success',
-            documents: [{ document_id: 1, file_id: 7, ordinal: 0, content: 'текст', score: 0.9 }],
+            documents: [{ document_id: 1, file_id: 7, file_name: 'sample.docx', ordinal: 0, content: 'текст', score: 0.9 }],
         })
         expect(page.element?.querySelectorAll('[data-testid="ai-document"]')).to.have.length(1)
 

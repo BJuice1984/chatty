@@ -156,11 +156,11 @@ class BotService:
             if exc.status_code == status.HTTP_503_SERVICE_UNAVAILABLE:
                 return fail('embedding_provider_unavailable')
             raise
-        attachment_file_id = chunks[0][0].file_id if chunks else None
+        attachment_file_id = chunks[0].chunk.file_id if chunks else None
 
         try:
             answer = self.provider.complete(
-                build_messages(message.content, [chunk.content for chunk, _score in chunks])
+                build_messages(message.content, [hit.chunk.content for hit in chunks])
             )
         except BotProviderError as exc:
             return fail(exc.kind)

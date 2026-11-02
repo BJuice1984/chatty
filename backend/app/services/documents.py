@@ -9,6 +9,8 @@ searchable.
 
 from __future__ import annotations
 
+from typing import NamedTuple
+
 from fastapi import HTTPException, status
 from sqlalchemy.orm import Session
 
@@ -25,6 +27,14 @@ from app.repositories.documents import DocumentRepository
 from app.repositories.files import FileRepository
 from app.services.chats import ChatService
 from app.services.files import DownloadedObject, ObjectStorage
+
+
+class ChunkHit(NamedTuple):
+    """One retrieval hit: the chunk, its score and the source file name."""
+
+    chunk: DocChunk
+    score: float
+    file_name: str
 
 
 class DocumentService:
@@ -70,7 +80,11 @@ class DocumentService:
             return self._fail(document, exc.kind, exc)
         if not text.strip():
             return self._fail(document, 'no_text')
-        chunks = chunk_text(text)
+        # the original file name participates in the index: a query naming
+        # the topic ("vacation documents") matches the file name even when
+        # the body text never spells it out
+        indexed_text = f'{file.original_name}\n\n{text}'
+        chunks = chunk_text(indexed_text)
         try:
             vectors = self.provider.embed([chunk.content for chunk in chunks])
         except EmbeddingError as exc:
@@ -95,12 +109,16 @@ class DocumentService:
         self.session.refresh(document)
         return document
 
-    def search(self, *, chat_id: int, user_id: int, query: str, top_k: int) -> list[tuple[DocChunk, float]]:
+    def search(self, *, chat_id: int, user_id: int, query: str, top_k: int) -> list[ChunkHit]:
         self.chats.require_member(chat_id, user_id)
         capped = min(top_k, self.rag.top_k_max)
         candidates = self.documents.ready_chunks_for_chat(chat_id)
         if not candidates:
             return []
+        file_names = {
+            stored.id: stored.original_name
+            for stored in self.files.get_by_ids(sorted({chunk.file_id for chunk in candidates}))
+        }
         try:
             query_vectors = self.provider.embed([query])
         except EmbeddingError as exc:
@@ -117,7 +135,10 @@ class DocumentService:
         scored = [(chunk, cosine_similarity(query_vector, chunk.embedding)) for chunk in candidates]
         # deterministic order: score desc, then document/ordinal asc
         scored.sort(key=lambda item: (-item[1], item[0].document_id, item[0].ordinal))
-        return scored[:capped]
+        return [
+            ChunkHit(chunk=chunk, score=score, file_name=file_names.get(chunk.file_id, ''))
+            for chunk, score in scored[:capped]
+        ]
 
     def _processing_document(self, file: File, admin_id: int) -> Document:
         """Reset the document to `processing` before any external call.

@@ -29,6 +29,7 @@ class DocumentSearchRequest(BaseModel):
 class DocumentChunkResponse(BaseModel):
     document_id: int
     file_id: int
+    file_name: str
     ordinal: int
     content: str
     score: float

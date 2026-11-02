@@ -103,7 +103,17 @@ async def test_admin_ingestion_reaches_ready_and_search_returns_file_id(client, 
     assert results, 'ready document must be searchable'
     top = max(results, key=lambda item: item['score'])
     assert top['file_id'] == file['file_id']
+    assert top['file_name'] == 'sample.docx'
     assert {item['file_id'] for item in results} == {file['file_id']}
+    assert all(item['file_name'] == 'sample.docx' for item in results)
+
+    # the original file name participates in the index: topic queries name
+    # the file even when the body text never spells it out
+    from app.repositories.documents import DocumentRepository
+
+    with session_factory() as session:
+        chunks = DocumentRepository(session).ready_chunks_for_chat(chat_id)
+        assert any('sample.docx' in chunk.content for chunk in chunks), 'file name must be indexed'
 
 
 async def test_non_admin_cannot_ingest(client, app):

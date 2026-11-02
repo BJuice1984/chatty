@@ -15,6 +15,12 @@ class FileRepository:
     def get_by_id(self, file_id: int) -> File | None:
         return self.session.get(File, file_id)
 
+    def get_by_ids(self, file_ids: list[int]) -> list[File]:
+        if not file_ids:
+            return []
+        statement = select(File).where(File.id.in_(file_ids))
+        return list(self.session.scalars(statement))
+
     def add(self, file: File) -> File:
         self.session.add(file)
         self.session.flush()
