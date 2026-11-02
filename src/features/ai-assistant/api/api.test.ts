@@ -1,7 +1,12 @@
 import { expect } from 'chai'
+import { JSDOM } from 'jsdom'
 import { AiBotRunError } from '../ports.ts'
 import { ownAiAssistantPort, ensureSuccessfulRun, findAnswerText, toAiBotRun, toAiChatSummary, toAiDocumentChunk } from './own.ts'
 import { aiAssistantPort } from './index.ts'
+
+// URL обязателен: cookie на about:blank jsdom молча отбрасывается (CSRF)
+const dom = new JSDOM('', { url: 'http://localhost/' })
+global.document = dom.window.document
 
 const ownChat = {
     id: 3,
@@ -34,7 +39,7 @@ describe('ai assistant api adapter', () => {
     it('should expose the own adapter as the port', () => {
         expect(aiAssistantPort).to.eq(ownAiAssistantPort)
 
-        for (const method of ['fetchChats', 'searchDocuments', 'askBot'] as const) {
+        for (const method of ['fetchChats', 'createChat', 'searchDocuments', 'askBot'] as const) {
             expect(aiAssistantPort, `own ${method}`).to.have.property(method)
         }
     })
@@ -90,5 +95,102 @@ describe('ai assistant api adapter', () => {
 
         expect(findAnswerText(messages, 11)).to.eq('ответ')
         expect(findAnswerText(messages, 999)).to.eq('')
+    })
+})
+
+// createChat (2026-10-27-ai-chat-creation): собственный POST /chats — фича
+// не тянет chats-порт (guard: cross-feature), поэтому форму запроса пиннуем
+// здесь той же подменой XMLHttpRequest, что и chats/api/api.test.ts
+describe('ai assistant api createChat (fake XHR)', () => {
+    interface CapturedCall {
+        method: string
+        url: string
+        body: string | undefined
+        headers: Record<string, string>
+    }
+
+    class FakeXHR {
+        static calls: CapturedCall[] = []
+        static responses: { status: number; response: unknown }[] = []
+
+        onload: (() => void) | null = null
+        withCredentials = false
+        responseType = ''
+        timeout = 0
+        status = 0
+        response: unknown = null
+
+        private method = ''
+        private url = ''
+        private headers: Record<string, string> = {}
+
+        open(method: string, url: string): void {
+            this.method = method
+            this.url = url
+        }
+
+        setRequestHeader(name: string, value: string): void {
+            this.headers[name] = value
+        }
+
+        send(body?: string): void {
+            FakeXHR.calls.push({ method: this.method, url: this.url, body, headers: { ...this.headers } })
+
+            const queued = FakeXHR.responses.shift() ?? { status: 200, response: null }
+
+            this.status = queued.status
+            this.response = queued.response
+            this.onload?.()
+        }
+    }
+
+    let originalXHR: typeof XMLHttpRequest
+    let originalDocument: Document
+
+    beforeEach(() => {
+        originalXHR = globalThis.XMLHttpRequest
+        originalDocument = global.document
+        global.document = dom.window.document
+        FakeXHR.calls = []
+        FakeXHR.responses = []
+        globalThis.XMLHttpRequest = FakeXHR as unknown as typeof XMLHttpRequest
+        dom.window.document.cookie = 'chatty_csrf=token-1'
+    })
+
+    afterEach(() => {
+        globalThis.XMLHttpRequest = originalXHR
+        global.document = originalDocument
+        dom.window.document.cookie = 'chatty_csrf=; expires=Thu, 01 Jan 1970 00:00:00 GMT'
+    })
+
+    // createChat опционален в контракте порта (см. ports.ts) — эти
+    // тесты проверяют HTTP-поведение own-адаптера, который метод реализует
+    function adapterCreateChat(data: { title: string, is_ai?: boolean }): Promise<void> {
+        if (ownAiAssistantPort.createChat === undefined) {
+            throw new Error('own-адаптер не реализует createChat')
+        }
+        return ownAiAssistantPort.createChat(data)
+    }
+    it('posts {title, is_ai} to /chats with the csrf header when is_ai is set', async () => {
+        FakeXHR.responses.push({ status: 201, response: { id: 9 } })
+
+        await adapterCreateChat({ title: 'AI ассистент', is_ai: true })
+
+        const call = FakeXHR.calls[0]
+
+        expect(call.method).to.eq('POST')
+        expect(call.url).to.contain('/chats')
+        expect(call.body).to.eq(JSON.stringify({ title: 'AI ассистент', is_ai: true }))
+        expect(call.headers['X-CSRF-Token']).to.eq('token-1')
+    })
+
+    it('omits is_ai from the payload for a title-only create', async () => {
+        FakeXHR.responses.push({ status: 201, response: { id: 9 } })
+
+        await adapterCreateChat({ title: 'обычный чат' })
+
+        const call = FakeXHR.calls[0]
+
+        expect(call.body).to.eq(JSON.stringify({ title: 'обычный чат' }))
     })
 })

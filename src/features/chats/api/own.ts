@@ -134,7 +134,16 @@ export const ownChatsPort: ChatsPort = {
         return chats.map(chat => toChatInfo(chat, meId))
     },
     async createChat(data) {
-        await http.post('', { data: { title: data.title }, csrfToken: readCsrfToken() })
+        // is_ai уезжает только выставленным (2026-10-27-ai-chat-creation):
+        // бэкенд дефолтит false, а title-only вызовы обязаны слать прежний
+        // payload без поля
+        const payload: { title: string, is_ai?: boolean } = { title: data.title }
+
+        if (data.is_ai === true) {
+            payload.is_ai = true
+        }
+
+        await http.post('', { data: payload, csrfToken: readCsrfToken() })
     },
     async deleteChat(data) {
         // owner-only на бэкенде; перед 204 участникам уходит WS chat_deleted
@@ -244,6 +253,9 @@ export const ownChatsPort: ChatsPort = {
     },
 
     async runBot(chatId: number, messageId: number) {
-        return http.post(`/${chatId}/bot/runs`, { data: { message_id: messageId }, csrfToken: readCsrfToken() })
+        // per-request timeout: thinking-модель с RAG отвечает дольше
+        // дефолтных 30с HTTPTransport — ждём как бэкенд (300с), иначе
+        // фронт отваливается по таймауту при живом прогоне
+        return http.post(`/${chatId}/bot/runs`, { data: { message_id: messageId }, csrfToken: readCsrfToken(), timeout: 300_000 })
     },
 }

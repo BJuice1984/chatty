@@ -9,6 +9,7 @@ import Block from '../../core/Block.ts'
 import Handlebars from 'handlebars'
 import { renderHighlighted } from '../../utils/highlight.ts'
 import type { ChatInfo } from '../../utils/types.ts'
+import { formatMessageTime } from '../message/message.ts'
 import template from './chatListUser.hbs'
 
 // equality-хелпер для выделения выбранного чата в списке (chat.hbs)
@@ -54,6 +55,14 @@ export class User extends Block {
 
     render() {
 
-        return this.compile(template, this.props)
+        const { searchTime, last_message } = this.props as UserProps
+
+        // Чистое форматирование вида (прецедент message.ts): ЧЧ:ММ из
+        // последнего совпадения поиска, иначе из последней реплики;
+        // невалидная метка рендерит строку без времени
+        return this.compile(template, {
+            ...this.props,
+            formattedTime: formatMessageTime(searchTime) ?? formatMessageTime(last_message?.time),
+        })
     }
 }

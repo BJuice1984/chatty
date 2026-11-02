@@ -213,6 +213,38 @@ Story viewer: кнопка удаления своей истории стала
 
 Обновлён agent-lifecycle-kit сразу в двух согласованных частях — по правилу репозитория версия CLI строго равна версии плагина. Локальный marketplace-репозиторий `~/dev/agent-lifecycle-kit` подтянут fast-forward с 02e697b7 (2.25.0) до 00171014 (main, релиз 2.34.0 от 2026-10-31); локальный патч `.claude-plugin/marketplace.json` (`source: "./"` вместо github-ref — установка плагина из локальной директории) переприменён после разрешения единственного конфликта с апстримом (апстрим бампнул версию и ref), состояние прежнее: незакоммиченная модификация в working tree. Затем `claude plugin update agent-lifecycle-kit@agent-lifecycle-kit` (кеш плагина 2.25.0 → 2.34.0) и `pip install agent-lifecycle-kit==2.34.0` для py-3.12; согласованность подтверждена `agent_lifecycle version` → `2.34.0` и `claude plugin list` → 2.34.0, а `project profile check` из корня chatty — `PASS` без блокеров: профиль `.alk/` (preset feature-implementation) обратно совместим. Темы релизов 2.26–2.34: bounded-безопасность (Markdown-импорты, secret-чеки UTF-8/UTF-16 BOM), Windows-квалификация и производительность (path-object работа, legacy accounting-тесты), bounded-регрессии семи скилл-ролей и ресурсы инструкций из корня установленного скилла, транзакционный workflow-storage с миграцией состояния v4→v5 (с точным бэкапом оригинала) и same-run authorization renewal, advisory-процесс ревью и EN/RU документационные пары, упрощение приватных интерфейсов и строгая типизация релизных валидаторов; Python 3.15 добавлен в CI-матрицы, 3.11–3.14 сохранены. Активных ALK-прогонов в chatty нет — миграция v4→v5 рабочих состояний не задела. Изменений в коде chatty нет; для применения новой версии плагина нужен перезапуск Claude Code.
 
+# 2026-10-27 — Фронт научился создавать ИИ-чаты: чекбокс, плитка и пустое состояние /assistant (ALK 2026-10-27-ai-chat-creation)
+
+Бэкенд давно поддерживал `POST /chats {title, is_ai}` и автозапуск бота по
+сообщению в is_ai-чате, но фронт не мог отправить ни одного is_ai-чата —
+закрыто тремя явными точками входа (ветка feature/2026-10-27-ai-chat-creation,
+PR на `dev`, бэкенд не тронут). Контракт: `CreateChatData` (utils/types)
+получил `is_ai?: boolean`, `ChatsController.create` форвардит его в порт,
+own-адаптер шлёт поле ТОЛЬКО выставленным (`is_ai === true`) — title-only
+вызовы обязаны слать прежний payload `{title}`, бэкенд и так дефолтит false.
+(A) Чекбокс «AI-ассистент» в ChatListCreate — сосед Form внутри `<li>`:
+у Form нет слота, а `_serializeForm` читает `element.value` (для чекбокса
+`'on'` при любом checked), поэтому состояние читает страница в момент
+сабмита через `refs.create → querySelector('input[name="is_ai"]').checked`
+(сериализованный title доезжает как раньше, emptyValidator — только по
+инпуту названия). (B) One-click-плитка «Чат с AI» — Button `type=button`
+в том же `<li>` (не submit — не сабмитит форму) с колбэком `onAiChatClick`
+от страницы → `create({title: AI_CHAT_TITLE, is_ai: true})`; константа
+`AI_CHAT_TITLE = 'AI ассистент'` дописана в существующий utils/constants.ts
+(общий низкий слой для обеих фич — межфичевый импорт значения блокировал бы
+guard; из контроллера чатов не реэкспортируется). (C) Пустое состояние
+/assistant получило русскую подсказку и кнопку «Создать чат с ассистентом»:
+ai-assistant расширил собственный порт (`AiAssistantPort.createChat` над тем
+же POST /chats в собственном адаптере с CSRF-double-submit,
+`AiAssistantController.createAiChat` + рефетч существующим `loadChats`),
+ноль runtime-импортов из features/chats — guard strict как раз и был
+нагрузкой выбора маршрута. Тесты: payload-пины POST /chats (is_ai
+выставлен/опущен) в обеих фичах на fake-XHR, форвард контроллера, рендер
+чекбокса/плитки (chatListCreate.test.ts — новый компонентный тест по
+прецеденту searchBar.test.ts), A/B-обвязка страницы чатов, пустое/непустое
+состояние ассистента + рефетч. Гейты: `npm run verify` зелёный (394 mocha,
++16 к базовой 378), `guard-architecture --all --strict` — 0 нарушений.
+
 # 2026-10-27 — RAG переведён на выделенный bge-m3 (:8083), A/B против Qwen-эмбеддингов
 
 Оператор скачал и поднял `bge-m3-Q8_0` (ggml-org, 605 МБ) отдельным llama-server'ом на

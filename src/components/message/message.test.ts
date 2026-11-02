@@ -53,6 +53,21 @@ describe('message bubble', () => {
         normal.destroy()
     })
 
+    it('bot run tail: _pending modifier on the bubble only with isPending', () => {
+        // прогон бота идёт минутами: контроллер хвостит ленту плейсхолдером,
+        // пузырь пульсирует (2026-11-02 bot-run feedback); без id — действия
+        // не рендерятся
+        const pending = new Message({ content: 'Ассистент печатает…', user_id: -1, isMine: false, isPending: true, time: localIso(new Date()) })
+        const normal = new Message({ content: 'привет', user_id: 2, isMine: false, time: localIso(new Date()) })
+
+        expect(pending.element?.querySelector('.messenger__message-bubble')?.classList.contains('messenger__message-bubble_pending')).to.be.true
+        expect(pending.element?.querySelector('[data-testid="message-actions"]')).to.not.exist
+        expect(normal.element?.querySelector('.messenger__message-bubble')?.classList.contains('messenger__message-bubble_pending')).to.be.false
+
+        pending.destroy()
+        normal.destroy()
+    })
+
     it('renders HH:MM from the ISO time', () => {
         const message = new Message({ content: 'привет', user_id: 1, time: '2026-10-19T09:07:00' })
 

@@ -112,13 +112,13 @@ describe('chat list user search highlight', () => {
             title: 'Almond',
             avatar: '',
             unread_count: 0,
-            last_message: { time: '10:00', content: 'последняя реплика' },
+            last_message: { time: '2026-10-19T09:07:00', content: 'последняя реплика' },
         })
 
         const snippet = user.element?.querySelector('.chat-list-user__snippet')
         expect(snippet?.textContent?.trim()).to.equal('последняя реплика')
         expect(snippet?.querySelector('mark')).to.not.exist
-        expect(user.element?.querySelector('.chat-list-user__time')?.textContent).to.equal('10:00')
+        expect(user.element?.querySelector('.chat-list-user__time')?.textContent?.trim()).to.equal('09:07')
 
         user.destroy()
     })
@@ -166,11 +166,27 @@ describe('chat list user search highlight', () => {
             title: 'Almond',
             avatar: '',
             unread_count: 0,
-            last_message: { time: '2026-01-01T00:00:00Z', content: 'x' },
-            searchTime: '2026-10-20T10:00:00Z',
+            last_message: { time: '2026-10-01T01:02:00', content: 'x' },
+            searchTime: '2026-10-20T13:45:00',
         })
 
-        expect(user.element?.querySelector('.chat-list-user__time')?.textContent).to.equal('2026-10-20T10:00:00Z')
+        expect(user.element?.querySelector('.chat-list-user__time')?.textContent?.trim()).to.equal('13:45')
+
+        user.destroy()
+    })
+
+    it('renders an empty time row for an invalid last-message time (no throw)', () => {
+        // фикстуры ws гоняют метки вида 't'+id — строка времени пустая,
+        // карточка жива (прецедент message.ts)
+        const user = new User({
+            id: 8,
+            title: 'Almond',
+            avatar: '',
+            unread_count: 0,
+            last_message: { time: 't17', content: 'мусорная метка' },
+        })
+
+        expect(user.element?.querySelector('.chat-list-user__time')?.textContent?.trim()).to.equal('')
 
         user.destroy()
     })

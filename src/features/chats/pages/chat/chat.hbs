@@ -11,7 +11,7 @@
         </ul>
         <div class="chat__search-bar">{{{ SearchBar onSearch=this.onSearchChats }}}</div>
         <ul class="chat__container-users-list">
-          {{{ ChatListCreate ref="create" inputs=this.inputs buttons=this.buttons }}}
+          {{{ ChatListCreate ref="create" inputs=this.inputs buttons=this.buttons onAiChatClick=this.onAiChatClick }}}
           {{#each chats}}
             {{#if this.avatar }}
               {{{ User id=this.id last_message=this.last_message title=this.title unread_count=this.unread_count titleParts=this.titleParts snippetParts=this.snippetParts searchTime=this.searchTime is_ai=this.is_ai leftAt=this.leftAt isActive=(eq this.id ../selectedChat) src=this.avatar onSelect=../this.onSelectChat onChatFile=../this.onChatAvatar }}}

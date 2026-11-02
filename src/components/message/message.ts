@@ -28,6 +28,9 @@ interface MessageProps {
     // выключено, вложение рендерится ссылкой «Скачать»; отсутствие/true —
     // прежний вид (ссылка «Вложение»)
     autoDownload?: boolean
+    // плейсхолдер прогона бота: пульсирующий пузырь «Ассистент печатает…»,
+    // пока POST /bot/runs в полёте; без id — действия не рендерятся
+    isPending?: boolean
     // eslint-disable-next-line no-unused-vars
     onSetReaction?: (chatId: number, messageId: number, emoji: string) => void
     // eslint-disable-next-line no-unused-vars

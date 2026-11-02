@@ -1,0 +1,8 @@
+{
+    "capabilityHints": ["typescript", "handlebars", "scss", "mocha", "sinon", "ALK"],
+    "executableOwners": ["worker-frontend-chats"],
+    "externalSpecification": false,
+    "requirementsBytes": 3400,
+    "riskFlags": {"architecture": false, "browser": true, "data": false, "external": false, "migration": false, "performance": false, "release": false, "security": false},
+    "taskCount": 1
+}

@@ -2,7 +2,13 @@
     <h1 class="ai-assistant__header">AI ассистент</h1>
 
     {{#unless hasChats}}
+        {{!-- Пустое состояние (2026-10-27-ai-chat-creation): прежняя
+           подсказка + кнопка создания ИИ-чата одним кликом. Кнопка сырая,
+           обрабатывается делегированным click страницы (узор submit/change
+           выше) — hbs-дети пересоздаются перерисовками стора --}}
         <p class="ai-assistant__hint" data-testid="ai-no-chats">Нет доступных AI-чатов. Создайте чат с включённым is_ai в own-режиме.</p>
+        <p class="ai-assistant__hint">Ассистент отвечает в отдельном ИИ-чате — создайте его одной кнопкой и задайте первый вопрос в мессенджере.</p>
+        <button class="ai-assistant__button" type="button" data-testid="ai-create-chat">Создать чат с ассистентом</button>
     {{/unless}}
 
     {{#if hasChats}}

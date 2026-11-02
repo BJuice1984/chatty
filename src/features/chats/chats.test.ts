@@ -2,6 +2,7 @@ import { expect } from 'chai'
 import sinon from 'sinon'
 import { JSDOM } from 'jsdom'
 import store from '../../utils/Store.ts'
+import { AI_CHAT_TITLE } from '../../utils/constants.ts'
 import { ChatsFeatureController, applyReactionDelta, setContactsIntegration, toggleOwnReaction } from './controller.ts'
 import { ownChatsPort } from './api/own.ts'
 import { chatSearchSlice, chatsSlice } from './store.ts'
@@ -197,6 +198,28 @@ describe('chats feature boundary', () => {
         await controller.sendMessage(3, 'ответ', 21)
 
         expect(sendMessage.calledOnceWith(3, 'ответ', 21)).to.be.true
+    })
+
+    // 2026-10-27-ai-chat-creation: create форвардит is_ai в порт как есть;
+    // дефолтный заголовок ИИ-чата — общая константа utils/constants (её
+    // берут вниз обе фичи, из контроллера чатов она не реэкспортируется)
+    it('should forward is_ai to createChat on create', async () => {
+        const createChat = sinon.stub().resolves()
+        const controller = new ChatsFeatureController(makePort({ createChat }), makeMessages())
+
+        await controller.create({ title: AI_CHAT_TITLE, is_ai: true })
+
+        expect(createChat.calledOnceWith({ title: 'AI ассистент', is_ai: true })).to.be.true
+    })
+
+    it('should keep a title-only create exactly as before', async () => {
+        const createChat = sinon.stub().resolves()
+        const controller = new ChatsFeatureController(makePort({ createChat }), makeMessages())
+
+        await controller.create({ title: 'просто чат' })
+
+        // снятый чекбокс/старые вызовы: payload без is_ai, без значения-false
+        expect(createChat.calledOnceWith({ title: 'просто чат' })).to.be.true
     })
 })
 
@@ -823,5 +846,117 @@ describe('chats ws last_message lift', () => {
         expect(storedLastMessage(3)).to.deep.eq({ content: 'моё', time: '2026-10-26T10:00:00Z' })
 
         await adapter.closeChat(3)
+    })
+})
+
+// Прогон бота в is_ai-чате (2026-11-02): путь отправки в стор не пишет —
+// своё сообщение доезжает эхом WS. Контроллер ждёт эхо (иначе плейсхолдер
+// «Ассистент печатает…» встаёт выше вопроса, а прогон уходит по
+// предыдущему message_id), хвостит ленту пульсирующим плейсхолдером на
+// всё время POST /bot/runs, снимает его по завершении и показывает сбой
+// системным сообщением — по статусу failed, по транспортному reject
+// (таймаут/сеть) и по любому непредвиденному выбросу: консоль пользователь
+// не смотрит, молчание выглядит как игнор
+describe('chats controller bot run', () => {
+    afterEach(() => {
+        store.set('messages', undefined)
+        store.set('user', undefined)
+        store.set('chats', [])
+    })
+
+    function setupAiChat(): void {
+        store.set('user', { id: 7, login: 'a@example.com' } as never)
+        store.set('chats', [{ id: 38, title: 'AI ассистент', avatar: '', unread_count: 0, is_ai: true } as never])
+        storeSetMessages(38, [{ chat_id: 38, time: 't100', type: 'message', user_id: 7, content: 'старый вопрос', id: 100 }])
+    }
+
+    // контроллер поллит стор на setTimeout-тиках — ждём реальным временем
+    async function until(condition: () => boolean): Promise<void> {
+        const deadline = Date.now() + 2_000
+
+        while (!condition() && Date.now() < deadline) {
+            await new Promise(resolve => setTimeout(resolve, 10))
+        }
+    }
+
+    // серверное эхо нового сообщения (то, что делает WS-листенер)
+    function echoOwnMessage(): void {
+        storeSetMessages(38, [
+            ...(store.getState().messages?.[38] ?? []).filter(item => item.isPending !== true),
+            { chat_id: 38, time: 't101', type: 'message', user_id: 7, content: 'вопрос', id: 101 },
+        ])
+    }
+
+    const hasPending = () => (store.getState().messages?.[38] ?? []).some(item => item.isPending === true)
+    const errorMessage = () => (store.getState().messages?.[38] ?? []).find(item => item.isError === true)
+
+    it('waits for the echo, runs the bot on the NEW message id and tails pending below it', async () => {
+        setupAiChat()
+        let resolveRun!: (value: { id: number, status: string, error_kind: string | null }) => void
+        const runBot = sinon.stub().returns(new Promise<{ id: number, status: string, error_kind: string | null }>(resolve => {
+            resolveRun = resolve
+        }))
+        const controller = new ChatsFeatureController(makePort({ runBot }), makeMessages())
+
+        const sent = controller.sendMessage(38, 'вопрос')
+
+        // до эха ни плейсхолдера, ни прогона
+        expect(hasPending()).to.be.false
+        expect(runBot.called).to.be.false
+
+        echoOwnMessage()
+        await sent
+        await until(() => hasPending())
+
+        // прогон ушёл по НОВОМУ id эха, не по предыдущему сообщению
+        expect(runBot.calledOnceWith(38, 101)).to.be.true
+
+        // плейсхолдер стоит НИЖЕ вопроса пользователя
+        const list = store.getState().messages?.[38] ?? []
+        const questionAt = list.findIndex(item => item.id === 101)
+        const pendingAt = list.findIndex(item => item.isPending === true)
+
+        expect(questionAt).to.be.greaterThan(-1)
+        expect(pendingAt).to.be.greaterThan(questionAt)
+
+        resolveRun({ id: 1, status: 'succeeded', error_kind: null })
+        await until(() => !hasPending())
+
+        expect(hasPending()).to.be.false
+        expect(errorMessage()).to.be.undefined
+    })
+
+    it('shows the failure message for a failed run status', async () => {
+        setupAiChat()
+        const controller = new ChatsFeatureController(
+            makePort({ runBot: sinon.stub().resolves({ id: 1, status: 'failed', error_kind: 'provider_unavailable' }) }),
+            makeMessages()
+        )
+
+        const sent = controller.sendMessage(38, 'вопрос')
+
+        echoOwnMessage()
+        await sent
+        await until(() => errorMessage() !== undefined)
+
+        expect(errorMessage()?.content).to.equal('⚠ Ассистент недоступен (provider_unavailable). Попробуйте позже.')
+        expect(hasPending()).to.be.false
+    })
+
+    it('shows the failure message when the run request itself rejects (timeout/network)', async () => {
+        setupAiChat()
+        const controller = new ChatsFeatureController(
+            makePort({ runBot: sinon.stub().rejects(new Error('Время ожидания запроса истекло')) }),
+            makeMessages()
+        )
+
+        const sent = controller.sendMessage(38, 'вопрос')
+
+        echoOwnMessage()
+        await sent
+        await until(() => errorMessage() !== undefined)
+
+        expect(errorMessage()?.content).to.contain('Время ожидания запроса истекло')
+        expect(hasPending()).to.be.false
     })
 })

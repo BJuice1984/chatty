@@ -40,6 +40,8 @@ export interface ChatsPort {
     // аватарах списка: адаптер стор не читает, контроллер передаёт параметром
     // eslint-disable-next-line no-unused-vars
     fetchChats(meId?: number): Promise<ChatInfo[]>
+    // createChat (2026-10-27-ai-chat-creation): is_ai из CreateChatData
+    // уезжает адаптером только выставленным — title-only вызовы не меняются
     // eslint-disable-next-line no-unused-vars
     createChat(data: CreateChatData): Promise<void>
     // eslint-disable-next-line no-unused-vars

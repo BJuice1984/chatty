@@ -81,6 +81,10 @@ export interface ChatUser {
 
 export interface CreateChatData {
     title: string
+    // ИИ-чат (2026-10-27-ai-chat-creation): чекбокс формы создания и
+    // one-click-плитки шлют флаг на POST /chats. Необязательность бережёт
+    // прежние title-only вызовы: адаптер опускает поле, бэкенд дефолтит false
+    is_ai?: boolean
     [key: string]: unknown
 }
 
@@ -176,5 +180,9 @@ export interface Message {
     // клиентский маркер системного сообщения об ошибке (провайдер бота
     // недоступен): UI подсвечивает такой пузырь жёлтым (_error у bubble)
     isError?: boolean
+    // клиентский плейсхолдер прогона бота: пока POST /bot/runs в полёте,
+    // лента хвостит «Ассистент печатает…» (_pending у bubble, пульсация);
+    // контроллер снимает плейсхолдер по завершении прогона
+    isPending?: boolean
     [key: string]: unknown
 }

@@ -18,7 +18,7 @@
 import Block from '../../../../core/Block.ts'
 import { AppState, withStore } from '../../../../utils/Store.ts'
 import type { ChatInfo, ChatSearchMatch, ContactInfo } from '../../../../utils/types.ts'
-import { emptyValidationMessage } from '../../../../utils/constants.ts'
+import { AI_CHAT_TITLE, emptyValidationMessage } from '../../../../utils/constants.ts'
 import { emptyValidator } from '../../../../utils/validators.ts'
 import ChatsController from '../../controller.ts'
 import StoriesController from '../../stories/controller.ts'
@@ -355,6 +355,12 @@ class ChatPageBase extends Block {
             onClick: () => {
                 this.refs.create.setProps({ isShown: true })
             },
+            // One-click-плитка «Чат с AI» в ChatListCreate: дефолтный
+            // заголовок — общая константа utils (обе фичи берут её вниз
+            // по слоям), флаг включает бота
+            onAiChatClick: () => {
+                void ChatsController.create({ title: AI_CHAT_TITLE, is_ai: true })
+            },
             onSelectChat: (id: number) => {
                 // Любой выбор чата открывает панель — chatListUser стреляет
                 // onSelect и на повторном клике по выбранном чате
@@ -415,7 +421,18 @@ class ChatPageBase extends Block {
                     classType: 'hidden',
                     type: 'submit',
                     handleSubmitClick: (value: { title: string }) => {
-                        void ChatsController.create(value)
+                        // Чекбокс ИИ-чата — сосед Form в ChatListCreate:
+                        // сериализация формы читает value ('on' при любом
+                        // checked) и до страницы не доходит, поэтому состояние
+                        // берём из DOM в момент сабмита через refs.create
+                        // (прецедент — открытие формы выше). Снятый чекбокс =
+                        // прежний вызов ровно с сериализованным title
+                        const isAi = this.refs.create?.element
+                            ?.querySelector<HTMLInputElement>('input[name="is_ai"]')?.checked ?? false
+
+                        void ChatsController.create(
+                            isAi ? { title: value.title, is_ai: true } : value
+                        )
                     },
                 },
             ],
