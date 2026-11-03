@@ -211,6 +211,41 @@ describe('messenger action dispatch', () => {
         }
     })
 
+    it('blocks the composer while the bot run is pending and frees it after', () => {
+        const onSendMessage = sinon.spy()
+        const messenger = new Messenger({ onSendMessage } as never)
+
+        try {
+            store.set('chats', [{ id: 5, title: 'ai', avatar: '', unread_count: 0, is_ai: true }] as never)
+            store.set('messages', { 5: [{ chat_id: 5, time: 't1', type: 'message', user_id: 2, content: '?', isPending: true }] })
+            store.set('selectedChat', 5)
+
+            submitComposer(messenger, 'второе')
+
+            const form = messenger.element?.querySelector<HTMLFormElement>('[data-testid="composer-form"]')
+            const input = form?.querySelector<HTMLInputElement>('input[name="message"]')
+
+            expect(onSendMessage.called).to.be.false
+            expect(input?.value).to.eq('второе')
+            expect(form?.querySelector('button[type="submit"]')?.hasAttribute('disabled')).to.be.true
+
+            // разблокировка — реальным путём: стор снял pending-плейсхолдер
+            store.set('messages', { 5: [{ chat_id: 5, time: 't1', type: 'message', user_id: 2, content: '?', id: 31 }] })
+
+            const freedForm = messenger.element?.querySelector<HTMLFormElement>('[data-testid="composer-form"]')
+            const freedButton = freedForm?.querySelector<HTMLButtonElement>('button[type="submit"]')
+
+            expect(freedButton?.hasAttribute('disabled')).to.be.false
+
+            submitComposer(messenger, 'третье')
+
+            expect(onSendMessage.calledOnceWith(5, 'третье')).to.be.true
+        } finally {
+            store.set('chats', undefined)
+            messenger.destroy()
+        }
+    })
+
     it('restores the composer input focus after a send (rAF after rerender)', async () => {
         // отправка пишет в стор — лента перерисовывается и пересоздаёт DOM
         // композера; фокус возвращается в следующем кадре (2026-11-02)

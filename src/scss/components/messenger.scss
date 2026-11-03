@@ -624,6 +624,11 @@
         opacity: 0.45;
       }
 
+      button[type='submit']:disabled {
+        pointer-events: none;
+        opacity: 0.45;
+      }
+
       button[type='submit'] {
         position: relative;
         width: 36px;

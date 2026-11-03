@@ -383,14 +383,28 @@ export class ChatsFeatureController {
     }
 
     sendMessage(chatId: number, message: string, replyToId?: number): Promise<void> {
-        const result = this.messages.sendMessage(chatId, message, replyToId)
-
         // is_ai-чат: после отправки запускаем ассистента. Свой broadcast с id
         // уже в сторе (WS быстрее REST-прогона); провал модели показываем
         // системным сообщением в чате — иначе для пользователя это молчание
         const chat = (store.getState().chats ?? []).find(
             item => (item as { id?: number }).id === chatId
         ) as { is_ai?: boolean } | undefined
+
+        // Один бот-ран на чат: пока ассистент отвечает (isPending-плейсхолдер
+        // «Ассистент печатает…»), второе сообщение не отправляется —
+        // параллельные раны вешают модель-провайдера (2026-11-03, live-инцидент
+        // ранов 43/44). UI блокирует композер тем же флагом — это страховка
+        // от гонки «двойной Enter до перерисовки» и прочих точек входа
+        if (chat?.is_ai === true) {
+            const pending = ((store.getState().messages?.[chatId] ?? []) as { isPending?: boolean }[])
+                .some(item => item.isPending === true)
+
+            if (pending) {
+                return Promise.resolve()
+            }
+        }
+
+        const result = this.messages.sendMessage(chatId, message, replyToId)
 
         if (chat?.is_ai === true) {
             void this.runBotForLastOwnMessage(chatId)

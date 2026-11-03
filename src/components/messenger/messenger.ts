@@ -92,6 +92,9 @@ interface MessengerProps {
     menuTarget?: ChatListUserEntry | null
     // черновик ответа: превью над инпутом, уходит с отправкой (reply_to_id)
     replyDraft?: ReplyDraft | null
+    // бот отвечает в этом чате (isPending-плейсхолдер в ленте): отправка
+    // заблокирована — один бот-ран на чат, параллельные вешают провайдера
+    botPending?: boolean
     // раскрыт ли набор эмодзи у сообщения (переключается самим message)
     reactionsOpen?: boolean
     // Гейт автозагрузки вложений (2026-11-01-settings): начальное значение —
@@ -357,6 +360,12 @@ class MessengerBase extends Block {
         const text = (input?.value ?? '').trim()
 
         if (text === '') {
+            return
+        }
+
+        // бот ещё отвечает — сабмит игнорируется целиком: текст и черновик
+        // остаются в композере, уйдут следующим сабмитом после ответа
+        if ((this.props as MessengerProps).botPending === true) {
             return
         }
 
@@ -710,11 +719,18 @@ const withMessenger = withStore((state: AppState) => {
 
     const chatInfo = state.chats?.find(chat => chat.id === selectedChatId)
 
+    // один бот-ран на чат: пока isPending-плейсхолдер жив, композер блокируется
+    const botPending = isAiChat === true
+        && state.messages[selectedChatId].some(
+            item => (item as { isPending?: boolean }).isPending === true
+        )
+
     return {
         selectedChat: state.selectedChat,
         selectedChatUsers: state.chatUsers,
         messages,
         chatInfo,
+        botPending,
     }
 })
 

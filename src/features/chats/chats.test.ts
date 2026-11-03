@@ -201,6 +201,32 @@ describe('chats feature boundary', () => {
         expect(sendMessage.calledOnceWith(3, 'ответ', 21)).to.be.true
     })
 
+    // Один бот-ран на чат (2026-11-03): пока в AI-чате жив isPending-
+    // плейсхолдер «Ассистент печатает…», повторная отправка игнорируется —
+    // параллельные раны вешают модель-провайдера; после снятия pending
+    // отправка проходит (старт рана ждёт WS-эхо своего сообщения — вне
+    // этого юнит-теста)
+    it('should ignore a send into an AI chat while the bot run is pending', async () => {
+        const sendMessage = sinon.stub().resolves()
+        const controller = new ChatsFeatureController(
+            makePort(),
+            makeMessages({ sendMessage })
+        )
+        chatsSlice.setChats([{ id: 3, title: 'ai', avatar: '', unread_count: 0, is_ai: true }] as never)
+        storeSetMessages(3, [{ chat_id: 3, time: 't1', type: 'message', user_id: 7, content: 'моё', isPending: true }])
+
+        await controller.sendMessage(3, 'второе')
+
+        expect(sendMessage.called).to.be.false
+
+        storeSetMessages(3, [{ chat_id: 3, time: 't1', type: 'message', user_id: 7, content: 'моё', id: 11 }])
+        sendMessage.resetHistory()
+
+        await controller.sendMessage(3, 'второе')
+
+        expect(sendMessage.calledOnceWith(3, 'второе')).to.be.true
+    })
+
     // 2026-10-27-ai-chat-creation: create форвардит is_ai в порт как есть;
     // дефолтный заголовок ИИ-чата — общая константа utils/constants (её
     // берут вниз обе фичи, из контроллера чатов она не реэкспортируется)

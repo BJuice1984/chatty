@@ -39,7 +39,7 @@
                     autocomplete="off"
                     aria-label="Текст сообщения"
                 />
-                <button type="submit" class="messenger__composer-send" aria-label="Отправить"></button>
+                <button type="submit" class="messenger__composer-send" aria-label="Отправить"{{#if botPending}} data-testid="composer-send-pending" disabled{{/if}}></button>
             </form>
         </div>
         {{/unless}}
