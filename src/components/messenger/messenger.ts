@@ -18,7 +18,6 @@ import { AppState, withStore } from '../../utils/Store.ts'
 import { fileUrl } from '../../utils/env.ts'
 import { getPreferences, subscribePreferences } from '../../utils/preferences.ts'
 import { messageDayKey } from '../message/message.ts'
-import { mockBotAttachments } from './bot-attachments.mock.ts'
 import {
     deleteFeedScroll,
     getFeedScroll,
@@ -221,15 +220,14 @@ export function renderChatMemberMenuContent(options: {
 // календарных дней соседних time). Невалидная метка маркера не даёт и
 // цепочку дней не рвёт: день без ключа просто пропускается.
 // 2026-11-02-ui-ux: список вложений пузыря — каждое сообщение с файлом
-// получает attachments (файловая строка с иконкой и «Скачать»); в AI-чате
-// входящие (ответы бота) несут МОК-список найденных документов
-// (bot-attachments.mock.ts — удалить при возврате бота), свои и обычные
-// чаты — один пункт с настоящим именем файла, когда контракт его несёт
+// получает attachments (файловая строка с иконкой и «Скачать»). Мок-список
+// «документов бота» снят 2026-11-03: бот работает и несёт реальное вложение
+// ответа (attachment из bot_runs) — входящие в AI-чате рендерятся как все:
+// один пункт с настоящим именем файла, когда контракт его несёт
 // (file.filename сегодня не наполняется адаптерами — фолбэк «Файл»).
 export function mapTypedMessages(
     messages: Message[],
-    currentUserId: number | undefined,
-    isAiChat?: boolean
+    currentUserId: number | undefined
 ): (Message & { isMine: boolean; fileUrl?: string; showDate: boolean; attachments?: MessageAttachment[] })[] {
     let previousDayKey: string | undefined
 
@@ -246,9 +244,7 @@ export function mapTypedMessages(
         let attachments: MessageAttachment[] | undefined
 
         if (fileUrlValue !== undefined) {
-            attachments = isAiChat === true && !isMine
-                ? mockBotAttachments(fileUrlValue, message.file?.filename)
-                : [{ name: message.file?.filename ?? 'Файл', url: fileUrlValue }]
+            attachments = [{ name: message.file?.filename ?? 'Файл', url: fileUrlValue }]
         }
 
         return {
@@ -711,11 +707,11 @@ const withMessenger = withStore((state: AppState) => {
         }
     }
 
-    // AI-чат: входящие сообщения — ответы бота, их вложения становятся
-    // мок-списком найденных документов (bot-attachments.mock.ts)
+    // AI-чат нужен только для блокировки композера на время бот-рана
+    // (botPending): мок-вложения сняты, ответы бота рендерят реальный файл
     const isAiChat = (state.chats?.find(chat => chat.id === selectedChatId) as { is_ai?: boolean } | undefined)?.is_ai === true
 
-    const messages = mapTypedMessages(state.messages[selectedChatId], state.user?.id, isAiChat)
+    const messages = mapTypedMessages(state.messages[selectedChatId], state.user?.id)
 
     const chatInfo = state.chats?.find(chat => chat.id === selectedChatId)
 

@@ -970,29 +970,9 @@ describe('messenger attachment file lists', () => {
         initPreferences()
     })
 
-    it('an AI-chat incoming message renders the mock bot document list on the real url', () => {
-        openChat(true, { chat_id: 5, time: 't1', type: 'message', user_id: 42, content: 'вот документы', file_url: '/api/v1/files/9/download', id: 21 })
-
-        const messenger = new Messenger({} as never)
-
-        try {
-            const rows = [...(messenger.element?.querySelectorAll('[data-testid="message-file"]') ?? [])]
-
-            expect(rows).to.have.length(3)
-            expect(rows[0].querySelector('.messenger__message-file-name')?.textContent?.trim())
-                .to.equal('Заявление на отпуск.pdf')
-
-            const downloads = rows.map(row => row.querySelector<HTMLAnchorElement>('[data-testid="attachment-download"]')?.getAttribute('href'))
-
-            expect(downloads).to.deep.equal(['/api/v1/files/9/download', '/api/v1/files/9/download', '/api/v1/files/9/download'])
-        } finally {
-            messenger.destroy()
-        }
-    })
-
-    it('the mock first item keeps the real file name when the contract carries one', () => {
+    it('an AI-chat bot answer renders its single real attachment (mock list removed)', () => {
         openChat(true, {
-            chat_id: 5, time: 't1', type: 'message', user_id: 42, content: '',
+            chat_id: 5, time: 't1', type: 'message', user_id: 42, content: 'вот документ',
             file_url: '/api/v1/files/9/download', id: 21,
             file: { id: 9, user_id: 42, path: 'x', filename: 'Ответ ассистента.pdf', content_type: 'application/pdf', content_size: 1, upload_date: 't' },
         })
@@ -1000,11 +980,13 @@ describe('messenger attachment file lists', () => {
         const messenger = new Messenger({} as never)
 
         try {
-            const names = [...(messenger.element?.querySelectorAll('.messenger__message-file-name') ?? [])]
-                .map(node => node.textContent?.trim())
+            const rows = [...(messenger.element?.querySelectorAll('[data-testid="message-file"]') ?? [])]
 
-            expect(names?.[0]).to.equal('Ответ ассистента.pdf')
-            expect(names).to.have.length(3)
+            expect(rows).to.have.length(1)
+            expect(rows[0].querySelector('.messenger__message-file-name')?.textContent?.trim())
+                .to.equal('Ответ ассистента.pdf')
+            expect(rows[0].querySelector<HTMLAnchorElement>('[data-testid="attachment-download"]')?.getAttribute('href'))
+                .to.equal('/api/v1/files/9/download')
         } finally {
             messenger.destroy()
         }
