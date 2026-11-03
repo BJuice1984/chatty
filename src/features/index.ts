@@ -6,12 +6,13 @@
 import authController from './auth/controller.ts'
 import { authModule } from './auth/module.ts'
 import { installAuthTransportPolicy } from './auth/transportPolicy.ts'
-import ChatsController, { setContactsIntegration } from './chats/controller.ts'
+import ChatsController, { setContactsIntegration, setDocumentSearch } from './chats/controller.ts'
 import { chatsModule } from './chats/module.ts'
 import { ProfileFeatureController, setProfileController, setProfileSeams } from './profile/controller.ts'
 import { profilePort } from './profile/api/index.ts'
 import { profileModule } from './profile/module.ts'
 import { aiAssistantModule } from './ai-assistant/module.ts'
+import { searchChatDocumentHits } from './ai-assistant/documents.ts'
 import { contactsModule } from './contacts/module.ts'
 import contactsController, { setChatOpener } from './contacts/controller.ts'
 import Router from '../utils/Router.ts'
@@ -49,6 +50,12 @@ setChatOpener((chatId) => {
 setContactsIntegration({
     addContact: (userId) => contactsController.addContact(userId),
     refreshContacts: () => contactsController.fetchContacts(),
+})
+
+// RAG-поиск принадлежит ai-assistant — чаты получают им список найденных
+// документов с настоящими именами под ответом бота (consumer-side шов)
+setDocumentSearch({
+    search: (chatId, query, topK) => searchChatDocumentHits(chatId, query, topK),
 })
 
 export const featureModules: AppModule[] = [authModule, chatsModule, profileModule, aiAssistantModule, contactsModule]

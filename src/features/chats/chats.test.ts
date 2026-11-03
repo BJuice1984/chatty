@@ -5,7 +5,7 @@ import store from '../../utils/Store.ts'
 import { TransportError } from '../../utils/HTTPTransport.ts'
 import { resetBusyOverlayForTests } from '../../utils/busyOverlay.ts'
 import { AI_CHAT_TITLE } from '../../utils/constants.ts'
-import { ChatsFeatureController, applyReactionDelta, setContactsIntegration, toggleOwnReaction } from './controller.ts'
+import { ChatsFeatureController, applyReactionDelta, setContactsIntegration, setDocumentSearch, toggleOwnReaction } from './controller.ts'
 import { ownChatsPort } from './api/own.ts'
 import { chatSearchSlice, chatsSlice } from './store.ts'
 import { notifyChatDeleted, notifyReactionEvent } from './ws/gateway.ts'
@@ -1045,5 +1045,103 @@ describe('chats controller bot run', () => {
         expect(hasPending()).to.be.false
 
         await until(() => document.getElementById('busy-overlay') === null)
+    })
+
+    // REST-fallback (2026-11-03): WS-сокет умер на нестабильной сети —
+    // broadcast ответа потерян, REST-ран 200; ответ догоняется хвостом
+    // истории по REST и не требует перезагрузки страницы
+    it('delivers the bot answer over the REST fallback when the WS broadcast was lost', async () => {
+        setupAiChat()
+        const runBot = sinon.stub().resolves({ id: 9, status: 'succeeded', error_kind: null, response_message_id: 200 })
+        const fetchMessages = sinon.stub().resolves([
+            { chat_id: 38, time: 't200', type: 'message', user_id: -1, content: 'ответ бота', id: 200 },
+        ])
+        const controller = new ChatsFeatureController(
+            makePort({ runBot, fetchMessages }),
+            makeMessages(),
+            { botRunRetryDelaysMs: [10] }
+        )
+
+        const sent = controller.sendMessage(38, 'вопрос')
+
+        echoOwnMessage()
+        await sent
+        await until(() => (store.getState().messages?.[38] ?? []).some(item => item.id === 200))
+
+        expect(fetchMessages.calledOnce).to.be.true
+        expect(hasPending()).to.be.false
+    })
+
+    it('skips the REST fallback when the answer already arrived over WS', async () => {
+        setupAiChat()
+        let resolveRun!: (value: { id: number, status: string, error_kind: string | null, response_message_id?: number }) => void
+        const runBot = sinon.stub().returns(new Promise(resolve => {
+            resolveRun = resolve
+        }))
+        const fetchMessages = sinon.stub().resolves([])
+        const controller = new ChatsFeatureController(
+            makePort({ runBot, fetchMessages }),
+            makeMessages(),
+            { botRunRetryDelaysMs: [10] }
+        )
+
+        const sent = controller.sendMessage(38, 'вопрос')
+
+        echoOwnMessage()
+        await until(() => hasPending())
+
+        // broadcast дошёл до resolve рана — ответ уже в сторе
+        storeSetMessages(38, [
+            { chat_id: 38, time: 't101', type: 'message', user_id: 7, content: 'вопрос', id: 101 },
+            { chat_id: 38, time: 't200', type: 'message', user_id: -1, content: 'ответ бота', id: 200 },
+        ])
+
+        resolveRun({ id: 9, status: 'succeeded', error_kind: null, response_message_id: 200 })
+        await sent
+
+        expect(fetchMessages.called).to.be.false
+    })
+
+    // Документы под ответом бота (2026-11-03): RAG-поиск по тексту вопроса
+    // даёт настоящий список файлов — контроллер дописывает attachments
+    it('attaches the documents found by the question under the bot answer', async () => {
+        setupAiChat()
+        const runBot = sinon.stub().resolves({ id: 9, status: 'succeeded', error_kind: null, response_message_id: 200 })
+        const fetchMessages = sinon.stub().resolves([
+            { chat_id: 38, time: 't200', type: 'message', user_id: -1, content: 'вот документы', id: 200 },
+        ])
+        const controller = new ChatsFeatureController(
+            makePort({ runBot, fetchMessages }),
+            makeMessages(),
+            { botRunRetryDelaysMs: [10] }
+        )
+        setDocumentSearch({
+            search: async () => [
+                { name: 'Заявление на отпуск.pdf', url: '/api/v1/files/5/download' },
+                { name: 'Бюджет отдела 2026.xlsx', url: '/api/v1/files/6/download' },
+            ],
+        })
+
+        try {
+            const sent = controller.sendMessage(38, 'какие есть документы на отпуск')
+
+            echoOwnMessage()
+            await sent
+            await until(() => {
+                const answer = (store.getState().messages?.[38] ?? []).find(item => item.id === 200) as { attachments?: { name: string }[] } | undefined
+
+                return answer?.attachments != null && answer.attachments.length === 2
+            })
+
+            const answer = (store.getState().messages?.[38] ?? []).find(item => item.id === 200) as { attachments?: { name: string, url: string }[] }
+
+            expect(answer.attachments?.map(item => item.name)).to.deep.equal([
+                'Заявление на отпуск.pdf',
+                'Бюджет отдела 2026.xlsx',
+            ])
+            expect(answer.attachments?.[0].url).to.equal('/api/v1/files/5/download')
+        } finally {
+            setDocumentSearch({ search: async () => [] })
+        }
     })
 })

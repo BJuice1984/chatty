@@ -992,6 +992,35 @@ describe('messenger attachment file lists', () => {
         }
     })
 
+    it('renders a ready-made bot document list as-is with per-extension icons', () => {
+        openChat(true, {
+            chat_id: 5, time: 't1', type: 'message', user_id: 42, content: 'найдено',
+            file_url: '/api/v1/files/9/download', id: 21,
+            attachments: [
+                { name: 'Заявление на отпуск.pdf', url: '/api/v1/files/5/download' },
+                { name: 'Бюджет отдела 2026.xlsx', url: '/api/v1/files/6/download' },
+            ],
+        })
+
+        const messenger = new Messenger({} as never)
+
+        try {
+            const rows = [...(messenger.element?.querySelectorAll('[data-testid="message-file"]') ?? [])]
+
+            expect(rows).to.have.length(2)
+            expect(rows[0].querySelector('.messenger__message-file-name')?.textContent?.trim())
+                .to.equal('Заявление на отпуск.pdf')
+            expect(rows[1].querySelector('.messenger__message-file-name')?.textContent?.trim())
+                .to.equal('Бюджет отдела 2026.xlsx')
+            expect(rows[0].querySelector('.messenger__message-file-icon')?.getAttribute('src')).to.contain('file-pdf.svg')
+            expect(rows[1].querySelector('.messenger__message-file-icon')?.getAttribute('src')).to.contain('file-xlsx.svg')
+            expect(rows[1].querySelector<HTMLAnchorElement>('[data-testid="attachment-download"]')?.getAttribute('href'))
+                .to.equal('/api/v1/files/6/download')
+        } finally {
+            messenger.destroy()
+        }
+    })
+
     it('an own message in an AI chat renders a single real item, not the mock list', () => {
         openChat(true, { chat_id: 5, time: 't1', type: 'message', user_id: 7, content: 'мой файл', file_url: '/api/v1/files/9/download', id: 21 })
 

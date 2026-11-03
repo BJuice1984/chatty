@@ -29,7 +29,7 @@ import WSTransport, { WSTransportEvents } from '../../../utils/WSTransport.ts'
 import { env, joinUrl } from '../../../utils/env.ts'
 import store from '../../../utils/Store.ts'
 import { getPreferences, notificationPermission } from '../../../utils/preferences.ts'
-import type { Message, MessageReplyTo, ReactionSummary } from '../../../utils/types.ts'
+import { type OwnMessageResponse, toMessage } from '../message-mapping.ts'
 import { chatHistoryController } from '../history/controller.ts'
 import type { HistoryMessage } from '../history/types.ts'
 // Регистрация хелпера ChatHistory для messenger.hbs: модуль истории попадает
@@ -37,27 +37,6 @@ import type { HistoryMessage } from '../history/types.ts'
 // guard-блокер).
 import '../history/view.ts'
 import { appendMessages, notifyChatDeleted, notifyReactionEvent } from './gateway.ts'
-
-interface OwnMessageResponse {
-    id: number
-    chat_id: number
-    user_id: number
-    content: string | null
-    file_id: number | null
-    client_message_id: string | null
-    reply_to_id?: number | null
-    reply_to?: {
-        id: number
-        user_id: number
-        snippet: string
-    } | null
-    reactions?: {
-        emoji: string
-        count: number
-        mine: boolean
-    }[]
-    created_at: string
-}
 
 interface OwnWsEvent {
     type: string
@@ -82,38 +61,11 @@ function sendOwnEvent(
     socket.send(event)
 }
 
-export function toMessage(response: OwnMessageResponse): Message {
-    // цитата-снимок сервера: пользователь не авторство, snippet достаточно
-    const replyTo: MessageReplyTo | null = response.reply_to == null
-        ? null
-        : {
-            id: response.reply_to.id,
-            user_id: response.reply_to.user_id,
-            snippet: response.reply_to.snippet,
-        }
-    const reactions: ReactionSummary[] = (response.reactions ?? []).map(item => ({
-        emoji: item.emoji,
-        count: item.count,
-        mine: item.mine,
-    }))
-
-    return {
-        // id нужен дедупликации истории и ключом реакций/реплаев
-        id: response.id,
-        chat_id: response.chat_id,
-        time: response.created_at,
-        type: 'message',
-        user_id: response.user_id,
-        content: response.content ?? '',
-        file_url: response.file_id == null
-            ? undefined
-            : joinUrl(env.filesUrl, `/${response.file_id}/download`),
-        // id-цепочка ответа: и прямой id цели, и серверный снимок цитаты
-        replyToId: response.reply_to_id ?? undefined,
-        replyTo,
-        reactions,
-    }
-}
+// toMessage и OwnMessageResponse живут в общем модуле фичи
+// (message-mapping.ts) — их используют REST- и WS-адаптеры; здесь
+// реэкспорт для стабильности прежнего пути импорта (тесты ws)
+export { toMessage } from '../message-mapping.ts'
+export type { OwnMessageResponse } from '../message-mapping.ts'
 
 // Счётчик непрочитанных в реальном времени: чужое сообщение в чате,
 // который сейчас не открыт, сразу поднимает пилюлю в списке — без ожидания

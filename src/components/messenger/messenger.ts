@@ -241,9 +241,11 @@ export function mapTypedMessages(
 
         const isMine = message.user_id === currentUserId
         const fileUrlValue = message.file_url ?? (message.file ? fileUrl(message.file.path) : undefined)
-        let attachments: MessageAttachment[] | undefined
+        // готовый список (контроллер дописал найденные документы под ответом
+        // бота) приоритетнее одиночной строки собственного вложения
+        let attachments: MessageAttachment[] | undefined = message.attachments
 
-        if (fileUrlValue !== undefined) {
+        if (attachments == null && fileUrlValue !== undefined) {
             attachments = [{ name: message.file?.filename ?? 'Файл', url: fileUrlValue }]
         }
 

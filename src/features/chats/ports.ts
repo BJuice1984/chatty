@@ -12,6 +12,7 @@ import type {
     ChatUser,
     CreateChatData,
     DeleteChatData,
+    Message,
     ReactionSummary,
     RemoveChatUsersData,
     SearchUserData,
@@ -63,9 +64,15 @@ export interface ChatsPort {
     rejoinChat(chatId: number): Promise<void>
     // eslint-disable-next-line no-unused-vars
     getChatUsers(chatId: number): Promise<ChatUser[]>
-    // Запуск ассистента по сообщению в is_ai-чате (для отображения ошибки)
+    // Запуск ассистента по сообщению в is_ai-чате (для отображения ошибки);
+    // response_message_id — REST-fallback доставки ответа при умершем WS
     // eslint-disable-next-line no-unused-vars
-    runBot?(chatId: number, messageId: number): Promise<{ id: number; status: string; error_kind: string | null }>
+    runBot?(chatId: number, messageId: number): Promise<{ id: number; status: string; error_kind: string | null, response_message_id?: number | null }>
+    // Последние сообщения чата (REST GET /chats/{id}/messages, desc):
+    // REST-fallback доставки ответа бота, когда WS-сокет умер при
+    // нестабильной сети и broadcast не дошёл
+    // eslint-disable-next-line no-unused-vars
+    fetchMessages?(chatId: number, limit?: number): Promise<Message[]>
     // eslint-disable-next-line no-unused-vars
     changeChatAvatar(data: FormData): Promise<{ avatar: string }>
     // eslint-disable-next-line no-unused-vars

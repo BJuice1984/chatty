@@ -53,6 +53,27 @@ export function setContactsIntegration(integration: ContactsIntegration): void {
     contactsIntegration = integration
 }
 
+// Шов RAG-поиска документов (2026-11-03): список найденных по вопросу файлов
+// с настоящими именами для ответа бота в ленте. Реализация — фичи
+// ai-assistant (documents.ts), связка в features/index.ts; без связки шов
+// noop и ответы бота рендерят только собственное вложение рана
+export interface DocumentSearchIntegration {
+    // eslint-disable-next-line no-unused-vars
+    search(chatId: number, query: string, topK: number): Promise<{ name: string, url: string }[]>
+}
+
+const noopDocumentSearch: DocumentSearchIntegration = {
+    search() {
+        return Promise.resolve([])
+    },
+}
+
+let documentSearchIntegration: DocumentSearchIntegration = noopDocumentSearch
+
+export function setDocumentSearch(integration: DocumentSearchIntegration): void {
+    documentSearchIntegration = integration
+}
+
 // Применяет дельту события реакции к сводке одного сообщения (чистая функция):
 // count ± 1, mine перевычисляется только для действия самого вьюера,
 // нулевой чип исчезает. Порядок существующих записей стабилен.
@@ -522,6 +543,12 @@ export class ChatsFeatureController {
 
             if (run?.status === 'failed') {
                 pushError(run.error_kind ?? 'unknown')
+            } else {
+                if (run != null) {
+                    await this.ensureBotAnswerDelivered(chatId, run)
+                }
+
+                await this.attachFoundDocuments(chatId, target)
             }
         } catch (e: unknown) {
             // транспортный провал (сеть/таймаут/5xx) и любые непредвиденные
@@ -532,6 +559,92 @@ export class ChatsFeatureController {
             console.error('Ошибка при запуске ассистента:', e)
         } finally {
             dropPending()
+        }
+    }
+
+    // REST-fallback доставки ответа бота (2026-11-03, live-инцидент):
+    // WS-сокет мог умереть на нестабильной сети — broadcast ответа не
+    // доставлен, REST-ран при этом 200 и спиннер уходит, а сообщение
+    // «появляется» только после перезагрузки. Если ответа (response_message_id
+    // рана) нет в сторе — тянем хвост истории по REST и мержим с дедупом
+    private async ensureBotAnswerDelivered(
+        chatId: number,
+        run: { response_message_id?: number | null }
+    ): Promise<void> {
+        const answerId = run.response_message_id
+
+        if (typeof answerId !== 'number') {
+            return
+        }
+
+        const delivered = (): boolean =>
+            ((store.getState().messages?.[chatId] ?? []) as { id?: number }[])
+                .some(item => item.id === answerId)
+
+        if (delivered()) {
+            return
+        }
+
+        try {
+            const tail = await this.port.fetchMessages?.(chatId, 30) ?? []
+
+            if (tail.length === 0 || delivered()) {
+                return
+            }
+
+            const known = new Set(
+                ((store.getState().messages?.[chatId] ?? []) as { id?: number }[])
+                    .map(item => item.id)
+            )
+            const missing = tail.filter(item => item.id !== undefined && !known.has(item.id))
+
+            if (missing.length === 0) {
+                return
+            }
+
+            store.set(`messages.${chatId}`, [
+                ...(store.getState().messages?.[chatId] ?? []),
+                ...missing,
+            ])
+        } catch (e: unknown) {
+            console.error('REST-fallback доставки ответа бота не удался:', e)
+        }
+    }
+
+    // Список найденных документов под ответом бота (2026-11-03): ран несёт
+    // один файл-победитель без имени, а RAG-поиск по тексту вопроса знает
+    // все топ-файлы с настоящими original_name. Ответ бота — последнее
+    // входящее сообщение чата (один ран на чат — блокировка композера);
+    // ошибка поиска не трогает ответ: остаётся одиночное вложение рана
+    private async attachFoundDocuments(chatId: number, questionId: number): Promise<void> {
+        try {
+            const userId = store.getState().user?.id
+            const list = (store.getState().messages?.[chatId] ?? []) as (Message & { id?: number, isPending?: boolean })[]
+            const question = list.find(item => item.id === questionId)
+            const answer = [...list]
+                .reverse()
+                .find(item => typeof item.id === 'number' && item.user_id !== userId && item.isPending !== true) as { id?: number } | undefined
+            const query = (question?.content ?? '').trim()
+
+            if (question == null || answer?.id == null || query === '') {
+                return
+            }
+
+            const hits = await documentSearchIntegration.search(chatId, query, 5)
+
+            if (hits.length === 0) {
+                return
+            }
+
+            const fresh = (store.getState().messages?.[chatId] ?? []) as (Message & { id?: number })[]
+
+            store.set(`messages.${chatId}`, fresh.map(item =>
+                item.id === answer.id
+                    ? { ...item, attachments: hits }
+                    : item
+            ))
+        } catch (e: unknown) {
+            console.error('Поиск документов для ответа бота не удался:', e)
         }
     }
 
