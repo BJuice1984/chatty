@@ -17,6 +17,7 @@ MAX_ATTEMPTS = 'CHATTY_BOT_MAX_ATTEMPTS'
 STALE_AFTER_SECONDS = 'CHATTY_BOT_STALE_AFTER_SECONDS'
 USER_EMAIL = 'CHATTY_BOT_USER_EMAIL'
 RAG_TOP_K = 'CHATTY_BOT_RAG_TOP_K'
+RAG_MIN_SCORE = 'CHATTY_BOT_RAG_MIN_SCORE'
 MAX_ANSWER_CHARS = 'CHATTY_BOT_MAX_ANSWER_CHARS'
 
 DEFAULT_PROVIDER_API = 'ollama'
@@ -28,6 +29,11 @@ DEFAULT_MAX_ATTEMPTS = 2
 DEFAULT_STALE_AFTER_SECONDS = 180.0
 DEFAULT_USER_EMAIL = 'bot@chatty.local'
 DEFAULT_RAG_TOP_K = 3
+# Порог отсечения нерелевантных чанков (cosine, bge-m3): ниже — чанк не идёт
+# ни в промпт, ни в attachment (live-замер 2026-11-03: релевантные запросы
+# дают top-1 0.62-0.69, нерелевантные 0.38-0.41; фронтовое зеркало —
+# RAG_RELEVANT_MIN_SCORE в src/features/ai-assistant/documents.ts)
+DEFAULT_RAG_MIN_SCORE = 0.5
 DEFAULT_MAX_ANSWER_CHARS = 4000
 
 
@@ -41,6 +47,7 @@ class BotSettings:
     stale_after_seconds: float
     user_email: str
     rag_top_k: int
+    rag_min_score: float
     max_answer_chars: int
 
 
@@ -66,6 +73,10 @@ def bot_settings_from_env(environ: dict[str, str] | None = None) -> BotSettings:
     except ValueError:
         rag_top_k = DEFAULT_RAG_TOP_K
     try:
+        rag_min_score = float(env.get(RAG_MIN_SCORE, DEFAULT_RAG_MIN_SCORE))
+    except ValueError:
+        rag_min_score = DEFAULT_RAG_MIN_SCORE
+    try:
         max_answer_chars = int(env.get(MAX_ANSWER_CHARS, DEFAULT_MAX_ANSWER_CHARS))
     except ValueError:
         max_answer_chars = DEFAULT_MAX_ANSWER_CHARS
@@ -78,6 +89,9 @@ def bot_settings_from_env(environ: dict[str, str] | None = None) -> BotSettings:
         stale_after_seconds=stale_after if stale_after > 0 else DEFAULT_STALE_AFTER_SECONDS,
         user_email=env.get(USER_EMAIL, DEFAULT_USER_EMAIL).strip().lower() or DEFAULT_USER_EMAIL,
         rag_top_k=rag_top_k if rag_top_k > 0 else DEFAULT_RAG_TOP_K,
+        rag_min_score=(
+            rag_min_score if 0.0 < rag_min_score <= 1.0 else DEFAULT_RAG_MIN_SCORE
+        ),
         max_answer_chars=(
             max_answer_chars if 0 < max_answer_chars <= 20_000 else DEFAULT_MAX_ANSWER_CHARS
         ),

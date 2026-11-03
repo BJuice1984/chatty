@@ -146,7 +146,7 @@ class BotService:
         self.session.commit()
 
         try:
-            chunks = self.rag_search(
+            found = self.rag_search(
                 chat_id=chat.id,
                 user_id=bot_user.id,
                 query=message.content,
@@ -156,6 +156,12 @@ class BotService:
             if exc.status_code == status.HTTP_503_SERVICE_UNAVAILABLE:
                 return fail('embedding_provider_unavailable')
             raise
+
+        # Нерелевантные чанки (score ниже порога) не идут ни в промпт, ни в
+        # attachment: на посторонний вопрос бот честно отвечает «информации
+        # нет» и НЕ присылает ближайший по косинусу файл (live-инцидент
+        # 2026-11-03: «график отпусков» прилетал к любому вопросу)
+        chunks = [hit for hit in found if hit.score >= self.bot.rag_min_score]
         attachment_file_id = chunks[0].chunk.file_id if chunks else None
 
         try:
