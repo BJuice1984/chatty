@@ -5,6 +5,7 @@
 
 import authController from './auth/controller.ts'
 import { authModule } from './auth/module.ts'
+import { installAuthTransportPolicy } from './auth/transportPolicy.ts'
 import ChatsController, { setContactsIntegration } from './chats/controller.ts'
 import { chatsModule } from './chats/module.ts'
 import { ProfileFeatureController, setProfileController, setProfileSeams } from './profile/controller.ts'
@@ -16,6 +17,11 @@ import contactsController, { setChatOpener } from './contacts/controller.ts'
 import Router from '../utils/Router.ts'
 import { MESSENGER } from '../utils/constants.ts'
 import type { AppModule } from '../core/module/types.ts'
+
+// Глобальная политика повторов транспорта (2026-11-03-auth-refresh-retry):
+// 401 → single-flight refresh + повтор, неудачный refresh → локальный выход,
+// 5xx → лестница повторов; оверлей владеется только политикой
+installAuthTransportPolicy()
 
 // Контроллер профиля зависит только от своего порта.
 setProfileController(new ProfileFeatureController(profilePort))
