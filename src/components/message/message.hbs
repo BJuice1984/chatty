@@ -8,12 +8,16 @@
     <div class="messenger__message-row">
         <div class="messenger__message-bubble {{#if isMine}}messenger__message-bubble_mine{{else}}messenger__message-bubble_theirs{{/if}}{{#if isError}} messenger__message-bubble_error{{/if}}{{#if isPending}} messenger__message-bubble_pending{{/if}}">
             <h4 class="messenger__message-content">{{content}}</h4>
-            {{#if fileUrl}}
-                {{#if attachmentDownload}}
-                    <a class="messenger__message-attachment" href="{{fileUrl}}" target="_blank" rel="noopener noreferrer" data-testid="attachment-download">Скачать</a>
-                {{else}}
-                    <a class="messenger__message-attachment" href="{{fileUrl}}" target="_blank" rel="noopener noreferrer">Вложение</a>
-                {{/if}}
+            {{#if attachmentViews.length}}
+                <ul class="messenger__message-files" data-testid="message-files">
+                    {{#each attachmentViews}}
+                        <li class="messenger__message-file" data-testid="message-file">
+                            <img class="messenger__message-file-icon" src="/images/file-{{this.icon}}.svg" alt="">
+                            <span class="messenger__message-file-name">{{this.name}}</span>
+                            <a class="messenger__message-file-download" href="{{this.url}}" download data-testid="attachment-download">Скачать</a>
+                        </li>
+                    {{/each}}
+                </ul>
             {{/if}}
             {{#if formattedTime}}
                 <time class="messenger__message-time" datetime="{{time}}">{{formattedTime}}</time>

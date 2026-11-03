@@ -1,0 +1,27 @@
+{
+    "capabilityHints": [
+        "typescript",
+        "handlebars",
+        "scss",
+        "mocha",
+        "sinon"
+    ],
+    "executableOwners": [
+        "worker-frontend-settings",
+        "worker-frontend-messenger",
+        "worker-frontend-page-ux"
+    ],
+    "externalSpecification": false,
+    "requirementsBytes": 9200,
+    "riskFlags": {
+        "architecture": false,
+        "browser": true,
+        "data": false,
+        "external": false,
+        "migration": false,
+        "performance": false,
+        "release": false,
+        "security": false
+    },
+    "taskCount": 3
+}

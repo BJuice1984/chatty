@@ -13,11 +13,21 @@
 
 import Block from '../../core/Block.ts'
 import Handlebars from 'handlebars'
-import { Button, Input, Message } from '../../utils/types.ts'
+import { Button, Input, Message, MessageAttachment } from '../../utils/types.ts'
 import { AppState, withStore } from '../../utils/Store.ts'
 import { fileUrl } from '../../utils/env.ts'
 import { getPreferences, subscribePreferences } from '../../utils/preferences.ts'
 import { messageDayKey } from '../message/message.ts'
+import { mockBotAttachments } from './bot-attachments.mock.ts'
+import {
+    deleteFeedScroll,
+    getFeedScroll,
+    installFeedScrollSync,
+    markFeedScrollPlan,
+    resolveFeedScrollTarget,
+    setFeedScroll,
+    setFeedScrollKey,
+} from './feed-scroll.ts'
 import template from './messenger.hbs'
 
 // Дебаунс @-поиска: поиск стартует, когда пользователь перестал печатать
@@ -207,10 +217,17 @@ export function renderChatMemberMenuContent(options: {
 // вложения и showDate — маркер вешается на первое сообщение дня (сравнение
 // календарных дней соседних time). Невалидная метка маркера не даёт и
 // цепочку дней не рвёт: день без ключа просто пропускается.
+// 2026-11-02-ui-ux: список вложений пузыря — каждое сообщение с файлом
+// получает attachments (файловая строка с иконкой и «Скачать»); в AI-чате
+// входящие (ответы бота) несут МОК-список найденных документов
+// (bot-attachments.mock.ts — удалить при возврате бота), свои и обычные
+// чаты — один пункт с настоящим именем файла, когда контракт его несёт
+// (file.filename сегодня не наполняется адаптерами — фолбэк «Файл»).
 export function mapTypedMessages(
     messages: Message[],
-    currentUserId: number | undefined
-): (Message & { isMine: boolean; fileUrl?: string; showDate: boolean })[] {
+    currentUserId: number | undefined,
+    isAiChat?: boolean
+): (Message & { isMine: boolean; fileUrl?: string; showDate: boolean; attachments?: MessageAttachment[] })[] {
     let previousDayKey: string | undefined
 
     return messages.map(message => {
@@ -221,10 +238,21 @@ export function mapTypedMessages(
             previousDayKey = dayKey
         }
 
+        const isMine = message.user_id === currentUserId
+        const fileUrlValue = message.file_url ?? (message.file ? fileUrl(message.file.path) : undefined)
+        let attachments: MessageAttachment[] | undefined
+
+        if (fileUrlValue !== undefined) {
+            attachments = isAiChat === true && !isMine
+                ? mockBotAttachments(fileUrlValue, message.file?.filename)
+                : [{ name: message.file?.filename ?? 'Файл', url: fileUrlValue }]
+        }
+
         return {
             ...message,
-            isMine: message.user_id === currentUserId,
-            fileUrl: message.file_url ?? (message.file ? fileUrl(message.file.path) : undefined),
+            isMine,
+            fileUrl: fileUrlValue,
+            attachments,
             showDate,
         }
     })
@@ -233,53 +261,11 @@ export function mapTypedMessages(
 class MessengerBase extends Block {
     // таймер дебаунса @-поиска: живёт на инстансе — перерисовки его не рвут
     private userSearchDebounce: ReturnType<typeof setTimeout> | null = null
-    // Автоскролл: перерисовки пересоздают список (сброс scrollTop) и даже
-    // сам инстанс Messenger. Механика: на входе CDU ещё живой узел даёт
-    // актуальную позицию (FLOW_RENDER после CDU); узловой указатель отличает
-    // первый CDU каскада от последующих; модульная память по chatId спасает
-    // позицию при пересоздании инстанса (CDM нового продолжает чтение).
-    private static scrollMemory = new Map<number, { top: number, pinned: boolean }>()
-    // модульный scroll-синк: событие — единственный всегда-верный источник
-    // позиции (DOM-снятие на CDU-входе не ловит перерисовки инстанса)
-    private static currentScrollKey = -1
-    private static scrollSyncInstalled = false
-    // метка времени последнего планового кадра скролла: перерисовка,
-    // сбрасывая scrollTop в ноль, порождает scroll-событие с top=0, которое
-    // без этой метки затирало бы сохранённую позицию чтения
-    private static lastPlanAt = 0
-
-    private static installScrollSync(): void {
-        if (MessengerBase.scrollSyncInstalled || typeof document === 'undefined') {
-            return
-        }
-
-        MessengerBase.scrollSyncInstalled = true
-
-        document.addEventListener('scroll', (event: Event) => {
-            const el = event.target as { className?: unknown, scrollTop?: number, scrollHeight?: number, clientHeight?: number }
-
-            if (typeof el.className !== 'string' || !el.className.includes('messenger__container')) {
-                return
-            }
-
-            if (typeof el.scrollHeight !== 'number') {
-                return
-            }
-
-            const top = el.scrollTop ?? 0
-
-            // сброс-эхо сразу после планового кадра игнорируем
-            if (top === 0 && Date.now() - MessengerBase.lastPlanAt < 300) {
-                return
-            }
-
-            const pinned = el.scrollHeight - top - (el.clientHeight ?? 0) < 120
-
-            MessengerBase.scrollMemory.set(MessengerBase.currentScrollKey, { top, pinned })
-        }, true)
-    }
-
-    private scrollPlan: 'bottom' | 'preserve' | null = null
+    // План прокрутки ленты на кадр (2026-11-02-ui-ux): память и document-
+    // capture синк живут в общем модуле feed-scroll (ими же пользуется
+    // страница чата), этот флаг — ЛИЧНАЯ rAF-коалесценция инстанса: план
+    // применяется к собственному this.element (контракт review F-5), план
+    // брошенного инстанса разрешается в detached-узле и молчит
     private scrollPlanScheduled = false
     // отписка от preferences: тумблер автозагрузки в настройках должен
     // перерисовать вложения открытого чата, а утечка подписки — нет
@@ -292,40 +278,39 @@ class MessengerBase extends Block {
     }
 
     componentDidMount() {
-        MessengerBase.installScrollSync()
-        MessengerBase.currentScrollKey = this.memoryKey()
+        installFeedScrollSync()
+        setFeedScrollKey(this.memoryKey())
 
         // пересоздание инстанса: продолжаем сохранённое чтение, если читали
         // не у низа; иначе — последние сообщения
-        const memory = MessengerBase.scrollMemory.get(this.memoryKey())
+        const memory = getFeedScroll(this.memoryKey())
 
         this.planMessagesScroll(memory !== undefined && !memory.pinned ? 'preserve' : 'bottom')
     }
 
     protected componentDidUpdate(oldProps: Record<string, unknown>, newProps: Record<string, unknown>): boolean {
-        MessengerBase.currentScrollKey = this.memoryKey()
+        setFeedScrollKey(this.memoryKey())
 
         const chatChanged = (oldProps as MessengerProps).selectedChat !== (newProps as MessengerProps).selectedChat
-        const oldLen = ((oldProps as MessengerProps).messages ?? []).length
-        const newLen = ((newProps as MessengerProps).messages ?? []).length
 
         if (chatChanged) {
-            MessengerBase.scrollMemory.delete(this.memoryKey())
+            deleteFeedScroll(this.memoryKey())
             this.planMessagesScroll('bottom')
         } else {
-            // рост (новое сообщение) докручивает, если читали низ; перерисовка
-            // без роста (реакция, черновик) возвращает позицию чтения
-            this.planMessagesScroll(newLen > oldLen ? 'preserve' : 'preserve')
+            // собственные перерисовки (модалки, черновик, реакции) возвращают
+            // позицию чтения; стор-управляемые планы никогда не доходят до
+            // живого узла (страница пересоздаёт инстанс раньше) — движок
+            // страницы (WS-FE-FEED-SCROLL) владеет ими через тот же модуль
+            this.planMessagesScroll('preserve')
         }
 
         return true
     }
 
     // Один план на кадр: последовательные CDU не перебивают друг друга
-    // мгновенными (уже сброшенными) значениями.
+    // мгновенными (уже сброшенными) значениями. Цель считает общий модуль,
+    // применение — только к собственному элементу инстанса.
     private planMessagesScroll(plan: 'bottom' | 'preserve'): void {
-        this.scrollPlan = plan
-
         if (this.scrollPlanScheduled) {
             return
         }
@@ -333,29 +318,26 @@ class MessengerBase extends Block {
         this.scrollPlanScheduled = true
         const run = () => {
             this.scrollPlanScheduled = false
-            MessengerBase.lastPlanAt = Date.now()
+            markFeedScrollPlan()
             const container = this.element?.querySelector('.messenger__container') as
                 { scrollTop?: number, scrollHeight?: number } | null
-            const action = this.scrollPlan
             const key = this.memoryKey()
 
-            MessengerBase.currentScrollKey = key
-
-            const memory = MessengerBase.scrollMemory.get(key)
-
-            this.scrollPlan = null
+            setFeedScrollKey(key)
 
             // утиная проверка: jsdom-тесты не дают HTMLElement; элемента
-            // может не быть вовсе (изолированные тесты)
+            // может не быть вовсе (изолированные тесты, брошенные инстансы)
             if (container == null || typeof container.scrollHeight !== 'number') {
                 return
             }
 
-            if (action === 'bottom' || memory === undefined || memory.pinned) {
+            const target = resolveFeedScrollTarget(key, plan)
+
+            if (target === 'bottom') {
                 container.scrollTop = container.scrollHeight
-                MessengerBase.scrollMemory.set(key, { top: container.scrollTop, pinned: true })
+                setFeedScroll(key, { top: container.scrollTop, pinned: true })
             } else {
-                container.scrollTop = memory.top
+                container.scrollTop = target.top
             }
 
         }
@@ -583,7 +565,11 @@ class MessengerBase extends Block {
                     }
 
                     if (query.trim() === '') {
+                        // полная очистка: немедленный setProps перерисовывает
+                        // модалку и пересоздаёт инпут — возвращаем фокус и
+                        // каретку, пользователь продолжает печатать
                         this.setProps({ addUserQuery: '', addUserResults: [], addUserFeedback: '' })
+                        this.refocusSearchInput()
 
                         return
                     }
@@ -614,7 +600,13 @@ class MessengerBase extends Block {
                 {
                     extraClass: 'cross',
                     handleClick: () => {
-                        this.setProps({ addUserOpen: true, addUserResults: [], addUserFeedback: '' })
+                        // открытие модалки поиска: черновой запрос прошлого
+                        // сеанса не тянется в новый, ввод начинается сразу —
+                        // фокус в поле в следующем кадре (перерисовка
+                        // пересоздаёт инпут, живой фокус мгновенно потерять
+                        // не успеваем, но DOM уже новый)
+                        this.setProps({ addUserOpen: true, addUserQuery: '', addUserResults: [], addUserFeedback: '' })
+                        this.refocusSearchInput()
                     },
                 },
             ],
@@ -626,17 +618,26 @@ class MessengerBase extends Block {
         })
     }
 
-    // фокус в поле поиска после перерисовки по ответу поиска: DOM заменён,
-    // возвращаем пользователя туда, где он печатал
+    // фокус в поле поиска после перерисовки (открытие модалки, очистка
+    // запроса, ответ поиска): DOM заменён, возвращаем пользователя туда,
+    // где он печатал; кадр — перерисовка должна сойти до фокуса
     private refocusSearchInput(): void {
-        const input = this.element?.querySelector<HTMLInputElement>('[data-testid="user-search-input"]')
+        const run = () => {
+            const input = this.element?.querySelector<HTMLInputElement>('[data-testid="user-search-input"]')
 
-        if (input != null) {
-            input.focus()
+            if (input != null) {
+                input.focus()
 
-            const end = input.value.length
+                const end = input.value.length
 
-            input.setSelectionRange(end, end)
+                input.setSelectionRange(end, end)
+            }
+        }
+
+        if (typeof requestAnimationFrame === 'function') {
+            requestAnimationFrame(run)
+        } else {
+            setTimeout(run, 0)
         }
     }
 
@@ -701,7 +702,11 @@ const withMessenger = withStore((state: AppState) => {
         }
     }
 
-    const messages = mapTypedMessages(state.messages[selectedChatId], state.user?.id)
+    // AI-чат: входящие сообщения — ответы бота, их вложения становятся
+    // мок-списком найденных документов (bot-attachments.mock.ts)
+    const isAiChat = (state.chats?.find(chat => chat.id === selectedChatId) as { is_ai?: boolean } | undefined)?.is_ai === true
+
+    const messages = mapTypedMessages(state.messages[selectedChatId], state.user?.id, isAiChat)
 
     const chatInfo = state.chats?.find(chat => chat.id === selectedChatId)
 

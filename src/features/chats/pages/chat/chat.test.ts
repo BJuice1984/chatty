@@ -22,6 +22,7 @@ import type Block from '../../../../core/Block.ts'
 import { registerComponent } from '../../../../core/registerComponent.ts'
 import * as Components from '../../../../components/components.ts'
 import { SearchBar } from '../../../../components/searchBar/searchBar.ts'
+import { getFeedScroll, resetFeedScrollForTests, setFeedScroll } from '../../../../components/messenger/feed-scroll.ts'
 import { AI_CHAT_TITLE } from '../../../../utils/constants.ts'
 
 // Живой поиск: юнит-рендер страницы требует настоящих хелперов SearchBar
@@ -1081,5 +1082,156 @@ describe('chat page search list', () => {
         expect(revived!.selectionEnd).to.equal(1)
 
         page.destroy()
+    })
+})
+
+// Автоскролл ленты (2026-11-02-ui-ux): стор-управляемые решения принимает
+// страница (стабильный инстанс) на общей памяти feed-scroll — смена чата
+// чистит память и едет в низ; рост ХВОСТА при прижатом низе (или с
+// pending-плейсхолдером бота) докручивает; рост ГОЛОВЫ («загрузить ещё»)
+// и чтение выше низа возвращают сохранённую позицию. jsdom без layout:
+// scrollHeight/clientHeight подменяются дескрипторами на ЖИВОЙ узел после
+// синхронного ре-рендера (нода пересоздаётся), проверяются РЕШЕНИЯ
+// (планируемый bottom против сохранённого top), не пиксели.
+describe('chat page feed autoscroll decisions', () => {
+    const message = (id: number, isPending?: boolean) =>
+        ({ chat_id: 5, time: `t${id}`, type: 'message', user_id: 7, content: `m${id}`, id, ...(isPending ? { isPending: true } : {}) })
+
+    const withGeometry = (page: { element?: Element | null }, scrollHeight: number, clientHeight: number) => {
+        const container = page.element?.querySelector('.messenger__container')
+
+        expect(container, 'messenger container mounted').to.exist
+
+        Object.defineProperty(container, 'scrollHeight', { value: scrollHeight, configurable: true })
+        Object.defineProperty(container, 'clientHeight', { value: clientHeight, configurable: true })
+
+        return container as { scrollTop: number }
+    }
+
+    const settle = () => new Promise(resolve => setTimeout(resolve, 20))
+
+    beforeEach(() => {
+        resetFeedScrollForTests()
+        store.set('chats', [{ id: 5, title: 'чат', avatar: '', unread_count: 0 }, { id: 6, title: 'второй', avatar: '', unread_count: 0 }])
+        store.set('messages', { 5: [message(1), message(2), message(3)] })
+        store.set('selectedChat', 5)
+    })
+
+    afterEach(() => {
+        store.set('messages', undefined)
+        store.set('selectedChat', undefined)
+        store.set('chats', undefined)
+        resetFeedScrollForTests()
+    })
+
+    it('a chat change scrolls to the bottom and clears that chat memory', async () => {
+        const page = new ChatPage({} as never)
+
+        try {
+            withGeometry(page, 1000, 400)
+            await settle()
+
+            store.set('messages', { 5: [message(1), message(2), message(3)], 6: [message(1), message(2), message(3)] })
+            store.set('selectedChat', 6)
+            withGeometry(page, 1000, 400)
+            await settle()
+
+            expect(getFeedScroll(6)?.pinned).to.be.true
+
+            const container = page.element?.querySelector('.messenger__container') as { scrollTop: number }
+
+            expect(container.scrollTop).to.equal(1000)
+        } finally {
+            page.destroy()
+        }
+    })
+
+    it('a tail append while pinned scrolls to the bottom', async () => {
+        const page = new ChatPage({} as never)
+
+        try {
+            withGeometry(page, 1000, 400)
+            await settle()
+
+            store.set('messages', { 5: [message(1), message(2), message(3), message(4)] })
+            withGeometry(page, 1200, 400)
+            await settle()
+
+            const container = page.element?.querySelector('.messenger__container') as { scrollTop: number }
+
+            expect(container.scrollTop).to.equal(1200)
+        } finally {
+            page.destroy()
+        }
+    })
+
+    it('a tail append while reading history keeps the saved top', async () => {
+        const page = new ChatPage({} as never)
+
+        try {
+            const container = withGeometry(page, 1000, 400)
+
+            await settle()
+
+            // читатель не у низа: документ-синк модуля записал позицию
+            container.scrollTop = 100
+            setFeedScroll(5, { top: 100, pinned: false })
+
+            store.set('messages', { 5: [message(1), message(2), message(3), message(4)] })
+            withGeometry(page, 1200, 400)
+            await settle()
+
+            const after = page.element?.querySelector('.messenger__container') as { scrollTop: number }
+
+            expect(after.scrollTop).to.equal(100)
+        } finally {
+            page.destroy()
+        }
+    })
+
+    it('a head growth (load older) restores the saved top, never the bottom', async () => {
+        const page = new ChatPage({} as never)
+
+        try {
+            const container = withGeometry(page, 1000, 400)
+
+            await settle()
+
+            container.scrollTop = 100
+            setFeedScroll(5, { top: 100, pinned: false })
+
+            store.set('messages', { 5: [message(0), message(1), message(2), message(3)] })
+            withGeometry(page, 2000, 400)
+            await settle()
+
+            const after = page.element?.querySelector('.messenger__container') as { scrollTop: number }
+
+            expect(after.scrollTop).to.equal(100)
+        } finally {
+            page.destroy()
+        }
+    })
+
+    it('a pending typing tail pins the bottom even while reading history', async () => {
+        const page = new ChatPage({} as never)
+
+        try {
+            const container = withGeometry(page, 1000, 400)
+
+            await settle()
+
+            container.scrollTop = 100
+            setFeedScroll(5, { top: 100, pinned: false })
+
+            store.set('messages', { 5: [message(1), message(2), message(3), message(4, true)] })
+            withGeometry(page, 1300, 400)
+            await settle()
+
+            const after = page.element?.querySelector('.messenger__container') as { scrollTop: number }
+
+            expect(after.scrollTop).to.equal(1300)
+        } finally {
+            page.destroy()
+        }
     })
 })

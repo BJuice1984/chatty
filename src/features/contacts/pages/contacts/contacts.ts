@@ -74,17 +74,26 @@ class ContactsPageBase extends Block {
     // таймер дебаунса поиска: живёт на инстансе — перерисовки его не рвут
     private searchDebounce: ReturnType<typeof setTimeout> | null = null
 
-    // фокус в поле поиска после перерисовки по ответу поиска: DOM заменён,
-    // возвращаем пользователя туда, где он печатал (идиома Messenger)
+    // фокус в поле поиска после перерисовки (открытие модалки, очистка
+    // запроса, ответ поиска): DOM заменён, возвращаем пользователя туда, где
+    // он печатал; кадр — перерисовка должна сойти до фокуса
     private refocusSearchInput(): void {
-        const input = this.element?.querySelector<HTMLInputElement>('[data-testid="user-search-input"]')
+        const run = () => {
+            const input = this.element?.querySelector<HTMLInputElement>('[data-testid="user-search-input"]')
 
-        if (input != null) {
-            input.focus()
+            if (input != null) {
+                input.focus()
 
-            const end = input.value.length
+                const end = input.value.length
 
-            input.setSelectionRange(end, end)
+                input.setSelectionRange(end, end)
+            }
+        }
+
+        if (typeof requestAnimationFrame === 'function') {
+            requestAnimationFrame(run)
+        } else {
+            setTimeout(run, 0)
         }
     }
 
@@ -131,7 +140,11 @@ class ContactsPageBase extends Block {
                     const target = event.target as HTMLElement | null
 
                     if (target?.closest('[data-testid="contacts-add"]') != null) {
-                        this.setProps({ addOpen: true, addResults: [], addFeedback: '' })
+                        // открытие модалки: черновой запрос прошлого сеанса не
+                        // тянется в новый, ввод начинается сразу (фокус — в
+                        // кадре, перерисовка должна сойти; узор Messenger)
+                        this.setProps({ addOpen: true, addQuery: '', addResults: [], addFeedback: '' })
+                        this.refocusSearchInput()
 
                         return
                     }
@@ -213,7 +226,10 @@ class ContactsPageBase extends Block {
                     }
 
                     if (query.trim() === '') {
+                        // полная очистка: немедленная перерисовка пересоздаёт
+                        // инпут — фокус и каретка возвращаются (2026-11-02-ui-ux)
                         this.setProps({ addQuery: '', addResults: [], addFeedback: '' })
+                        this.refocusSearchInput()
 
                         return
                     }
