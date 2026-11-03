@@ -11,6 +11,7 @@
 
 import store from '../../utils/Store.ts'
 import { TransportError } from '../../utils/HTTPTransport.ts'
+import { hideBusyOverlay, showBusyOverlay } from '../../utils/busyOverlay.ts'
 import type { ChatInfo, Message, ReactionSummary } from '../../utils/types.ts'
 import { chatsPort } from './api/index.ts'
 import type { ChatMessagesPort, ChatReactionEvent, ChatsPort, ChatsUserSearchResult } from './ports.ts'
@@ -416,27 +417,42 @@ export class ChatsFeatureController {
     // Сетевой обрыв POST /bot/runs — не приговор прогону: запрос мог дойти
     // (ран выполняется, ответ придёт WS-broadcast'ом) или не дойти вовсе.
     // Идемпотентный ретрай закрывает оба случая; http-ошибки (4xx/5xx) и
-    // непредвиденные выбросы не ретраятся
+    // непредвиденные выбросы не ретраятся. Пока идут сетевые ретраи, экран
+    // закрывает reconnect-оверлей — иначе восстановление происходит молча
+    // и обрыв виден только в консоли (live-инцидент 2026-11-03: ран 48
+    // долечился за 134с, пользователь видел «CORS did not succeed»)
     private async runBotWithNetworkRetry(chatId: number, messageId: number) {
+        let overlayShown = false
         let lastError: unknown
 
-        for (const delay of [0, ...this.botRunRetryDelaysMs]) {
-            if (delay > 0) {
-                await new Promise(resolve => setTimeout(resolve, delay))
-            }
+        try {
+            for (const delay of [0, ...this.botRunRetryDelaysMs]) {
+                if (delay > 0) {
+                    await new Promise(resolve => setTimeout(resolve, delay))
+                }
 
-            try {
-                return await this.port.runBot?.(chatId, messageId)
-            } catch (error) {
-                lastError = error
+                try {
+                    return await this.port.runBot?.(chatId, messageId)
+                } catch (error) {
+                    lastError = error
 
-                if (!(error instanceof TransportError) || (error.kind !== 'network' && error.kind !== 'timeout')) {
-                    throw error
+                    if (!(error instanceof TransportError) || (error.kind !== 'network' && error.kind !== 'timeout')) {
+                        throw error
+                    }
+
+                    if (!overlayShown) {
+                        overlayShown = true
+                        showBusyOverlay('reconnect')
+                    }
                 }
             }
-        }
 
-        throw lastError
+            throw lastError
+        } finally {
+            if (overlayShown) {
+                hideBusyOverlay()
+            }
+        }
     }
 
     private async runBotForLastOwnMessage(chatId: number): Promise<void> {

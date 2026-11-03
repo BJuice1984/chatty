@@ -3,6 +3,7 @@ import sinon from 'sinon'
 import { JSDOM } from 'jsdom'
 import store from '../../utils/Store.ts'
 import { TransportError } from '../../utils/HTTPTransport.ts'
+import { resetBusyOverlayForTests } from '../../utils/busyOverlay.ts'
 import { AI_CHAT_TITLE } from '../../utils/constants.ts'
 import { ChatsFeatureController, applyReactionDelta, setContactsIntegration, toggleOwnReaction } from './controller.ts'
 import { ownChatsPort } from './api/own.ts'
@@ -889,6 +890,7 @@ describe('chats controller bot run', () => {
         store.set('messages', undefined)
         store.set('user', undefined)
         store.set('chats', [])
+        resetBusyOverlayForTests()
     })
 
     function setupAiChat(): void {
@@ -1006,8 +1008,16 @@ describe('chats controller bot run', () => {
         echoOwnMessage()
         await sent
         await until(() => hasPending())
+        await until(() => runBot.calledOnce)
+
+        // сетевой ретрай не молчит: между попытками reconnect-оверлей открыт
+        expect(document.getElementById('busy-overlay')).to.be.not.null
+
         await until(() => runBot.calledTwice)
         await until(() => !hasPending())
+
+        // после восстановления оверлей снят (grace-удаление — тик)
+        await until(() => document.getElementById('busy-overlay') === null)
 
         expect(runBot.calledTwice).to.be.true
         expect(runBot.secondCall.calledWith(38, 101)).to.be.true
@@ -1033,5 +1043,7 @@ describe('chats controller bot run', () => {
         expect(runBot.calledTwice).to.be.true
         expect(errorMessage()?.content).to.contain('Ошибка сети')
         expect(hasPending()).to.be.false
+
+        await until(() => document.getElementById('busy-overlay') === null)
     })
 })
