@@ -87,13 +87,13 @@
 
     &__search-bar {
       @include reset;
-      @include size(36px, 90%);
+      @include size(36px, 91%);
 
       background-color: var(--second-color);
       border-radius: 4px;
       border: none;
       margin-top: 24px;
-      margin-left: 8px;
+      margin-right: 12px;
       margin-bottom: 24px;
       box-sizing: border-box;
     }
@@ -170,6 +170,7 @@
           @include size(150px, 150px);
 
           background-size: 30px;
+          align-self: center;
         }
       }
 
@@ -329,6 +330,14 @@
 
         &_pane-open &__container-chats {
             display: block;
+        }
+
+        &__container-profile-changing {
+            display: none;
+        }
+
+        &_pane-open &__container-profile-changing {
+            display: flex;
         }
     }
 }

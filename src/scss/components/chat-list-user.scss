@@ -71,7 +71,7 @@
         justify-content: center;
         gap: 4px;
         flex-shrink: 0;
-        padding-left: 6px;
+        padding: 0 6px;
       }
     }
 
@@ -116,7 +116,7 @@
     &__title {
       @include reset;
       @include text;
-      @include text-format(400, 10px, 16px);
+      @include text-format(400, 14px, 16px);
 
       color: var(--main-text-color);
       width: 100%;
@@ -124,6 +124,7 @@
       text-overflow: ellipsis;
       white-space: nowrap;
       text-align: left;
+      padding: 5px;
     }
 
     /* Сниппет под заголовком (2026-10-26-chat-search): последняя реплика
@@ -142,6 +143,7 @@
         text-overflow: ellipsis;
         white-space: nowrap;
         text-align: left;
+        padding-left: 5px;
     }
 
     /* Подсветка совпадения поиска: акцент той же палитры, что выделение

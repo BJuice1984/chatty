@@ -10,6 +10,9 @@
 // включении, stub-safe); Privacy — серверный флаг send_read_receipts одно-
 // полевым PUT; Data Usage — GET /files/usage при входе в секцию + тумблер
 // автозагрузки. Контент модалки строит escapeHtml-билдер (узор Messenger).
+// 2026-11-02-ui-ux: мобильная навигация — выбор пункта открывает панель
+// секции (chat_pane-open на корне, <768), кнопка «назад» возвращает к
+// списку пунктов, сохраняя текущую секцию; на десктопе модификатор инертен.
 
 import Block from '../../../../core/Block.ts'
 import Handlebars from 'handlebars'
@@ -46,6 +49,11 @@ interface ProfilePageUser {
 
 interface ProfilePageProps {
     section: SettingsSection
+    // мобильное переключение (<768): панель секции открыта (chat_pane-open)
+    settingsPaneOpen?: boolean
+    // возврат к списку пунктов (кнопка «назад» в панели секции)
+
+    onSettingsBack?: () => void
     user: ProfilePageUser
     archivedChats: ChatInfo[]
     inputs: Input[]
@@ -127,6 +135,9 @@ class ProfilePageBase extends Block<ProfilePageProps> {
             ...(propsFromStore as unknown as ProfilePageProps),
             // UI-состояние секций и тумблеров — controller-free пропсы страницы
             section: 'account',
+            // мобильное переключение (<768): true — показана панель секции,
+            // список пунктов скрыт (модификатор корня chat_pane-open в hbs)
+            settingsPaneOpen: false,
             themeChoice: getTheme(),
             soundEnabled: getPreferences().sound,
             notificationsEnabled: getPreferences().browserNotifications,
@@ -231,12 +242,27 @@ class ProfilePageBase extends Block<ProfilePageProps> {
             onCloseLogoutAll: () => {
                 this.setProps({ logoutAllOpen: false })
             },
+            // возврат к списку пунктов в мобильном переключении (<768):
+            // секция сохраняется — повторный тап того же пункта мгновенно
+            // переоткрывает панель
+            onSettingsBack: () => {
+                this.setProps({ settingsPaneOpen: false })
+            },
             // делегирование с корня страницы (узор Messenger/Contacts): сырые
             // узлы секций (тумблеры, «Вернуться», кнопки модалки) не дотягиваются
             // пропсами — слушатели переживают перерисовки
             events: {
                 click: (event: Event) => {
                     const target = event.target as HTMLElement | null
+
+                    // кнопка «назад» мобильной панели — сырой <button> в
+                    // profile.hbs, колбэк читается из this.props на момент
+                    // клика (узор messenger-back)
+                    if (target?.closest('[data-testid="settings-back"]') != null) {
+                        (this.props).onSettingsBack?.()
+
+                        return
+                    }
 
                     if (target?.closest('[data-testid="logout-all-open"]') != null) {
                         this.setProps({ logoutAllOpen: true })
@@ -321,7 +347,9 @@ class ProfilePageBase extends Block<ProfilePageProps> {
     }
 
     private selectSection(section: SettingsSection): void {
-        this.setProps({ section })
+        // выбор пункта открывает панель секции (мобильное переключение);
+        // на десктопе флаг инертен — правила pane-open живут в media <768
+        this.setProps({ section, settingsPaneOpen: true })
     }
 
     // Тумблер браузерных уведомлений: включение сначала спрашивает разрешение

@@ -119,6 +119,29 @@ describe('contacts page', () => {
         }
     })
 
+    // Автофокус модалки (2026-11-02-ui-ux): открытие сразу фокусирует поле
+    // (зеркало messenger-фикса) и не тащит черновой запрос прошлого сеанса
+    it('focuses the search input when the add modal opens', async () => {
+        const page = new ContactsPage({} as never)
+
+        try {
+            document.body.appendChild(page.element as HTMLElement)
+
+            stateOf(page)
+            click(page.element?.querySelector('[data-testid="contacts-add"]'))
+
+            await new Promise(resolve => setTimeout(resolve, 20))
+
+            const input = page.element?.querySelector<HTMLInputElement>('[data-testid="user-search-input"]')
+
+            expect(input?.value).to.equal('')
+            expect(input).to.equal(document.activeElement)
+        } finally {
+            page.element?.remove()
+            page.destroy()
+        }
+    })
+
     it('debounces the search and badges already-contacts «уже в контактах»', async () => {
         const clock = sinon.useFakeTimers()
         const searchUsers = sinon.stub(ContactsController, 'searchUsers').resolves([

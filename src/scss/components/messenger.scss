@@ -141,6 +141,70 @@
     overflow-wrap: anywhere;
   }
 
+  &__message-files {
+    @include reset;
+
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    list-style: none;
+    width: 100%;
+    margin-top: 6px;
+  }
+
+  &__message-file {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    min-width: 0;
+    padding: 6px 8px;
+    border: var(--border-chat-bottom);
+    border-radius: 8px;
+  }
+
+  &__message-file-icon {
+    flex-shrink: 0;
+    width: 20px;
+    height: 20px;
+    color: var(--main-text-color);
+  }
+
+  &__message-file-name {
+    @include text-format(400, 13px, 18px);
+
+    min-width: 0;
+    color: var(--main-text-color);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    cursor: default;
+  }
+
+  &__message-file-download {
+    @include reset;
+    @include text;
+    @include text-format(500, 13px, 18px);
+
+    flex-shrink: 0;
+    margin-left: auto;
+    padding: 2px 8px;
+    border: none;
+    border-radius: 999px;
+    background-color: var(--third-text-color);
+    color: var(--main-color);
+    text-decoration: none;
+    cursor: pointer;
+    transition: background-color 0.15s ease-in-out, transform 0.15s ease-in-out;
+
+    &:hover {
+      background-color: var(--send-button-hover);
+    }
+
+    &:active {
+      transform: scale(0.96);
+    }
+  }
+
   &__message-day {
     @include reset;
     @include text;

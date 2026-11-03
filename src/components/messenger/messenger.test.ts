@@ -46,6 +46,7 @@ interface MessengerTestProps {
     buttons: SubmitButton[]
     headerButtons: HeaderButton[]
     addUserOpen?: boolean
+    autoDownload?: boolean
     deleteModalOpen?: boolean
     menuTarget?: { id?: number, display_name?: string } | null
     onReplyToMessage?: (draft: { id?: number; snippet: string }) => void
@@ -398,6 +399,66 @@ describe('messenger add-user modal', () => {
             expect(messenger.element?.querySelector('[data-testid="user-search-result"]')).to.not.exist
             expect(onSearchUsers.called).to.be.false
         } finally {
+            messenger.destroy()
+        }
+    })
+
+    // Автофокус модалки (2026-11-02-ui-ux): открытие сразу фокусирует поле и
+    // не тащит черновой запрос прошлого сеанса; полная очистка текста
+    // возвращает фокус с кареткой — пользователь продолжает печатать
+    it('focuses the search input on open and clears the stale query', async () => {
+        const messenger = new Messenger({} as never)
+
+        try {
+            document.body.appendChild(messenger.element as HTMLElement)
+
+            // черновой запрос прошлого сеанса не должен попасть в новый
+            messenger.setProps({ addUserOpen: true, addUserQuery: 'старое', addUserResults: [] })
+            messenger.setProps({ addUserOpen: false })
+
+            openAddUser(messenger)
+
+            // фокус — в следующем кадре (перерисовка должна сойти)
+            await new Promise(resolve => setTimeout(resolve, 20))
+
+            const input = messenger.element?.querySelector<HTMLInputElement>('[data-testid="user-search-input"]')
+
+            expect(input?.value).to.equal('')
+            expect(input).to.equal(document.activeElement)
+        } finally {
+            messenger.element?.remove()
+            messenger.destroy()
+        }
+    })
+
+    it('keeps focus in the input after the text is fully cleared', async () => {
+        const messenger = new Messenger({} as never)
+
+        try {
+            document.body.appendChild(messenger.element as HTMLElement)
+
+            openAddUser(messenger)
+
+            await new Promise(resolve => setTimeout(resolve, 20))
+
+            const input = messenger.element?.querySelector<HTMLInputElement>('[data-testid="user-search-input"]')
+
+            input!.value = 'ab'
+            input!.dispatchEvent(new MouseEvent('input', { bubbles: true }))
+
+            // полная очистка: немедленная перерисовка пересоздаёт инпут —
+            // фокус обязан вернуться
+            input!.value = ''
+            input!.dispatchEvent(new MouseEvent('input', { bubbles: true }))
+
+            await new Promise(resolve => setTimeout(resolve, 20))
+
+            const revived = messenger.element?.querySelector<HTMLInputElement>('[data-testid="user-search-input"]')
+
+            expect(revived?.value).to.equal('')
+            expect(revived).to.equal(document.activeElement)
+        } finally {
+            messenger.element?.remove()
             messenger.destroy()
         }
     })
@@ -845,16 +906,22 @@ describe('messenger member menu', () => {
     })
 })
 
-// Гейт автозагрузки вложений (2026-11-01-settings): мессенджер несёт
-// autoDownload из preferences и живо перерисовывает вложения открытого чата
-// при переключении тумблера (подписка, не только начальное значение).
-describe('messenger attachment auto-download wiring', () => {
-    beforeEach(() => {
-        store.set('chats', [{ id: 5, title: 'файлы', avatar: '', unread_count: 0 }])
-        store.set('messages', {
-            5: [{ chat_id: 5, time: 't1', type: 'message', user_id: 7, content: 'файл', file_url: '/api/v1/files/9/download', id: 21 }],
-        })
+// Вложения ленты (2026-11-02-ui-ux): маппинг строит attachments для каждого
+// сообщения с файлом — в AI-чате входящие (ответы бота) несут МОК-список
+// найденных документов (bot-attachments.mock.ts, первый пункт — реальное
+// имя файла, когда контракт его несёт), свои и обычные чаты — один пункт с
+// фолбэком «Файл» (file.filename в рантайме не наполняется). autoDownload
+// из preferences по-прежнему приезжает пропсом (зарезервирован под будущие
+// превью) и живая подписка перерисовывает ленту — рендер от него не зависит.
+describe('messenger attachment file lists', () => {
+    const openChat = (isAi: boolean, message: Record<string, unknown>) => {
+        store.set('chats', [{ id: 5, title: 'чат', avatar: '', unread_count: 0, ...(isAi ? { is_ai: true } : {}) }])
+        store.set('messages', { 5: [message] })
+        store.set('user', { id: 7, display_name: 'bob', first_name: '', second_name: '', login: 'bob@chatty.local', email: 'bob@chatty.local', phone: '', avatar: '', send_read_receipts: true })
         store.set('selectedChat', 5)
+    }
+
+    beforeEach(() => {
         window.localStorage.removeItem('chatty-preferences')
         initPreferences()
     })
@@ -863,43 +930,101 @@ describe('messenger attachment auto-download wiring', () => {
         store.set('messages', undefined)
         store.set('selectedChat', undefined)
         store.set('chats', undefined)
+        store.set('user', undefined)
         window.localStorage.removeItem('chatty-preferences')
         initPreferences()
     })
 
-    it('renders the inline attachment by default and re-renders on the live toggle', () => {
+    it('an AI-chat incoming message renders the mock bot document list on the real url', () => {
+        openChat(true, { chat_id: 5, time: 't1', type: 'message', user_id: 42, content: 'вот документы', file_url: '/api/v1/files/9/download', id: 21 })
+
         const messenger = new Messenger({} as never)
 
         try {
-            expect(messenger.element?.querySelector('.messenger__message-attachment')?.textContent?.trim())
-                .to.equal('Вложение')
+            const rows = [...(messenger.element?.querySelectorAll('[data-testid="message-file"]') ?? [])]
 
-            setPreference('autoDownload', false)
+            expect(rows).to.have.length(3)
+            expect(rows[0].querySelector('.messenger__message-file-name')?.textContent?.trim())
+                .to.equal('Заявление на отпуск.pdf')
 
-            const download = messenger.element?.querySelector<HTMLAnchorElement>('[data-testid="attachment-download"]')
+            const downloads = rows.map(row => row.querySelector<HTMLAnchorElement>('[data-testid="attachment-download"]')?.getAttribute('href'))
 
-            expect(download).to.exist
-            expect(download?.getAttribute('href')).to.equal('/api/v1/files/9/download')
-            expect(messenger.element?.querySelector('[data-testid="attachment-download"]')?.textContent?.trim())
-                .to.equal('Скачать')
-
-            setPreference('autoDownload', true)
-
-            expect(messenger.element?.querySelector('[data-testid="attachment-download"]')).to.not.exist
-            expect(messenger.element?.querySelector('.messenger__message-attachment')?.textContent?.trim())
-                .to.equal('Вложение')
+            expect(downloads).to.deep.equal(['/api/v1/files/9/download', '/api/v1/files/9/download', '/api/v1/files/9/download'])
         } finally {
             messenger.destroy()
         }
     })
 
-    it('starts with the preview suppressed when the preference is already off', () => {
-        setPreference('autoDownload', false)
+    it('the mock first item keeps the real file name when the contract carries one', () => {
+        openChat(true, {
+            chat_id: 5, time: 't1', type: 'message', user_id: 42, content: '',
+            file_url: '/api/v1/files/9/download', id: 21,
+            file: { id: 9, user_id: 42, path: 'x', filename: 'Ответ ассистента.pdf', content_type: 'application/pdf', content_size: 1, upload_date: 't' },
+        })
 
         const messenger = new Messenger({} as never)
 
         try {
-            expect(messenger.element?.querySelector('[data-testid="attachment-download"]')).to.exist
+            const names = [...(messenger.element?.querySelectorAll('.messenger__message-file-name') ?? [])]
+                .map(node => node.textContent?.trim())
+
+            expect(names?.[0]).to.equal('Ответ ассистента.pdf')
+            expect(names).to.have.length(3)
+        } finally {
+            messenger.destroy()
+        }
+    })
+
+    it('an own message in an AI chat renders a single real item, not the mock list', () => {
+        openChat(true, { chat_id: 5, time: 't1', type: 'message', user_id: 7, content: 'мой файл', file_url: '/api/v1/files/9/download', id: 21 })
+
+        const messenger = new Messenger({} as never)
+
+        try {
+            const rows = messenger.element?.querySelectorAll('[data-testid="message-file"]')
+
+            expect(rows).to.have.length(1)
+            expect(messenger.element?.querySelector('.messenger__message-file-name')?.textContent?.trim())
+                .to.equal('Файл')
+        } finally {
+            messenger.destroy()
+        }
+    })
+
+    it('a non-AI chat renders a single item for a file message and none without a file', () => {
+        openChat(false, { chat_id: 5, time: 't1', type: 'message', user_id: 7, content: 'файл', file_url: '/api/v1/files/9/download', id: 21 })
+
+        const withFile = new Messenger({} as never)
+
+        try {
+            expect(withFile.element?.querySelectorAll('[data-testid="message-file"]')).to.have.length(1)
+        } finally {
+            withFile.destroy()
+        }
+
+        openChat(false, { chat_id: 5, time: 't2', type: 'message', user_id: 7, content: 'текст', id: 22 })
+
+        const withoutFile = new Messenger({} as never)
+
+        try {
+            expect(withoutFile.element?.querySelector('[data-testid="message-files"]')).to.not.exist
+        } finally {
+            withoutFile.destroy()
+        }
+    })
+
+    it('the autoDownload preference keeps flowing as a prop through the live subscription', () => {
+        openChat(false, { chat_id: 5, time: 't1', type: 'message', user_id: 7, content: 'файл', file_url: '/api/v1/files/9/download', id: 21 })
+
+        const messenger = new Messenger({} as never)
+
+        try {
+            expect(propsOf(messenger).autoDownload).to.equal(true)
+
+            setPreference('autoDownload', false)
+
+            expect(propsOf(messenger).autoDownload).to.equal(false)
+            expect(messenger.element?.querySelectorAll('[data-testid="message-file"]')).to.have.length(1)
         } finally {
             messenger.destroy()
         }

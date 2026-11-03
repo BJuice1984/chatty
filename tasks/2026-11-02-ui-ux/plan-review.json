@@ -1,0 +1,97 @@
+{
+    "schemaVersion": "agent-plan-review.v1",
+    "packageId": "2026-11-02-ui-ux",
+    "planRevision": 3,
+    "reviewId": "review-2026-11-02-ui-ux-freeze-r2",
+    "fullReview": true,
+    "verdict": "READY_TO_FREEZE",
+    "reviewedPlanHash": "a3fe9b7529a4ac85f1146a643d34360ae67bf13914982f2724ef014241be689e",
+    "reviewer": {
+        "id": "claude-code-independent-subagent",
+        "independent": true,
+        "runId": "audit-run-20261102-ui-ux-plan-r2",
+        "surface": "audit-agent-plan"
+    },
+    "findings": [
+        {
+            "id": "F-4",
+            "severity": "minor",
+            "title": "Stale 'machinery removal' phrasing survives in five package spots and contradicts the revised extraction design",
+            "detail": "Revision 2 correctly replaces deletion with extraction everywhere operative (requirement (c), plannedItems feed-scroll.ts item, plan.md 'Scroll-memory extraction' section, AC statements, developer-overview boundaries), but grep over the package still finds 'machinery removal'/'scroll-machinery removal'/'dead scroll-machinery removal' in: plan.manifest.json:53 (REQ-FE-MESSENGER-SURFACE description opening — 'the attachment mapping seam, the modal focus handlers and the scroll-machinery removal all live in messenger.ts', while item (c) of the same requirement correctly says extraction), plan.manifest.json:338 (AC-FE-MESSENGER-SURFACE title 'Attachment lists + modal focus + machinery removal proven by mocha' — the AC statement at :346 is correct), plan.manifest.json:421 (finalAuditGates line '...modal focus + machinery removal — mocha, verify green'), plan.md:53 (workstream preamble), developer-overview.md:81 (execution model). plan-review-request.md:21 carries the same stale phrase but is the round-1 request artifact. Risk: the final auditor keying on the finalAuditGates line or the AC title would verify 'removal' the plan deliberately does not do (the Messenger preserve path must STAY); the one-owner rationale itself remains valid since the extraction, the focus handlers and the mapping seam all still live in messenger.ts.",
+            "files": [
+                "tasks/2026-11-02-ui-ux/plan.manifest.json",
+                "tasks/2026-11-02-ui-ux/plan.md",
+                "tasks/2026-11-02-ui-ux/developer-overview.md"
+            ],
+            "requiredFix": "Not blocking. Reword the five spots to 'scroll-memory extraction' (e.g. AC title 'Attachment lists + modal focus + scroll-memory extraction proven by mocha'; finalAuditGates '+ scroll-memory extraction'; preamble 'the scroll-memory extraction'). Acceptable as a verified freeze-bookkeeping fold-in exactly like the 2026-11-01-email-search F-1 fold-in; the reviewer must re-check the delta edit-by-edit and re-hash at freeze."
+        },
+        {
+            "id": "F-5",
+            "severity": "minor",
+            "title": "'Disjoint triggers, never fight' safety claim is imprecise: store emits also fire Messenger CDU on undestroyed former instances, safe only under per-caller plan execution",
+            "detail": "plan.md WS-FE-FEED-SCROLL item 1 ('the Messenger-internal preserve plans ... never fight the page engine (disjoint triggers, one memory)'), developer-overview and the AC-FE-FEED-SCROLL statement repeat the same justification. The conclusion is correct but the mechanism is incomplete: triggers are NOT fully disjoint — hbs-children are replaced by every page re-render WITHOUT destroy() (documented at chat.ts:12-16), so every former Messenger instance keeps its live withStore subscription and its storeHandler fires setProps -> CDU -> plan request on EVERY store emit, alongside the page engine's plan. These zombie plans are harmless only because plan execution is per-caller: today's planMessagesScroll resolves this.element?.querySelector('.messenger__container') (messenger.ts:337), which for a detached instance is a detached node. If the extracted 'coalesced plan helper' were implemented as a module-global single slot (one plan per frame across all callers) and/or resolved the target via document.querySelector, a zombie's late 'preserve' request could displace the page engine's plan on the live container — the divergence case being a pending typing-placeholder tail while the reader is unpinned (page plans bottom, zombie preserve restores top; all other store-emit cases coincide: no-growth -> restore memory top, append-pinned -> bottom, prepend-unpinned -> top, chat-change -> bottom+memory delete). The plan's own constraints already imply the safe shape ('messenger.ts sources all of it ... zero behavior change; the Messenger CDU preserve path stays byte-for-byte in effect' = per-instance semantics; the page plan is 'applied to the live .messenger__container' by the page), and the chat.test.ts decision table drives the REAL page whose re-renders create real subscribing Messenger children, so a global-slot misimplementation turns the pending-tail decision red — hence minor, not major.",
+            "files": [
+                "tasks/2026-11-02-ui-ux/plan.md",
+                "src/components/messenger/messenger.ts",
+                "src/features/chats/pages/chat/chat.ts"
+            ],
+            "requiredFix": "Not blocking. Pin the helper contract in plan.md WS-FE-MESSENGER item (feed-scroll.ts): the module owns the shared per-chat memory, the one-time document-capture installScrollSync and the plan-RESOLUTION logic; each caller keeps its own rAF coalescing and applies its plan to its OWN element (page -> its live .messenger__container, Messenger -> this.element), never document-resolved — with one sentence noting that store-driven Messenger plans land on detached former instances and must never be able to displace the page engine's plan."
+        }
+    ],
+    "reviewVerdict": {
+        "schemaVersion": "agent-review-verdict.v1",
+        "overall": "ACCEPTED",
+        "dimensions": {
+            "requirementFit": {
+                "status": "PASS",
+                "reasonCode": "REVISION_ADDRESSES_FINDINGS",
+                "summary": "All round-1 verifications carry over (src/ untouched between rounds: HEAD still 7dbd7aa, only tasks/2026-11-02-ui-ux untracked) — root causes 1/3/4 fully verified, root cause 2's store-driven chain verified link-by-link. F-1 (major) is resolved by redesign, not re-argued: the revised requirement (c), plannedItems and plan.md 'Scroll-memory extraction' section state the corrected causal story (internal preserve path ALIVE for modal/draft/menu/search/autoDownload re-renders; only the store-driven half dead via subscription order + page re-render detaching the live Messenger), keep the Messenger preserve path byte-for-byte, and move only the genuinely dead page artifacts into scope for deletion (the never-mapped messages-compare branch chat.ts:558-566 and the per-node CDM listener chat.ts:610-618 — both verified dead in round 1). The reading-position regression identified in round 1 is eliminated by construction. F-2 resolved: honest naming notes in plan.md item 5, the manifest requirement and the AC statement (file.filename fixture-only at runtime, real non-AI file messages render the 'Файл' fallback — verified: ws/own.ts:108-110 maps file_id->file_url only, 'filename' exists only in types.ts:140). F-3 resolved: recorded keep-decision for messenger.hbs autoDownload (plan.md + manifest requirement)."
+            },
+            "implementationQuality": {
+                "status": "PASS",
+                "reasonCode": "EXTRACTION_SOUND_MINOR_NOTES",
+                "summary": "The extraction design is sound and the round-1 regression risk is gone: feed-scroll.ts (shared per-chat memory + one-time document-capture sync + plan helper) is created in WS-FE-MESSENGER with zero Messenger behavior change, and WS-FE-FEED-SCROLL's store-driven engine consumes the same module (pages->components is a legal downward import; precedent contacts.ts:13 imports components/messenger/messenger.ts), so both writers share one memory instead of racing two maps. Collision analysis for check (1): a store emit and a Messenger-internal setProps cannot interleave within one task (single-threaded JS); when both schedule plans in one frame, both resolve against the one shared memory and agree in every combination (preserve respects memory.pinned, restore-top restores memory.top for pinned and unpinned readers alike; chat-change detaches the old Messenger before its rAF lands) — the only divergent path is the zombie-interference case pinned as F-5, which the decision-table tests exercise through the real page. Ownership unchanged and clean: feed-scroll.ts appears only in WS-FE-MESSENGER writes (not readOnly anywhere; dependsOn expresses sequencing), write-sets remain pairwise disjoint across all three workstreams, wave-1 pair shares no file, forbiddenWrites unchanged, docs last-wave-only, WS-FE-SETTINGS-MOBILE untouched."
+            },
+            "evidenceQuality": {
+                "status": "PASS",
+                "reasonCode": "GATES_EXECUTABLE_BASELINE_REPRODUCED",
+                "summary": "Round-2 gates re-run by the reviewer on revision 2: completeness-check PASS with zero blockers (planDigest 174d10c491d0273ed5c5793638d7cb5c7da0a2a0f76c9e47c5dbf207d96250f6, matching the revision manifest) and acceptance-check PASS (4 criteria, no duplicates/mismatches/link errors); src/ identical to round 1 (git status: only tasks/2026-11-02-ui-ux untracked, HEAD 7dbd7aa), so the reproduced round-1 baselines remain valid — mocha 568 passing / 0 failing, guard-architecture --all --strict 0 violations. AC statements stay measurable and now pin the extraction ('scroll memory/sync extracted ... with the Messenger preserve path intact (zero behavior change)') and the shared-module engine ('disjoint triggers, one memory') alongside the round-1-verified decision table; the pinned 'Вложение' expectations (message.test.ts:135-190, messenger.test.ts:848-907) remain correctly owned by WS-FE-MESSENGER and the list/notification placeholders remain untouched outside the write-sets."
+            },
+            "residualRisk": {
+                "status": "PASS",
+                "reasonCode": "MINOR_NOTES_NON_BLOCKING",
+                "summary": "Two minor, non-blocking findings remain: F-4 (stale 'machinery removal' wording in five package spots, including the AC title and a finalAuditGates line — wording only, every operative instruction is correct) and F-5 (the 'disjoint triggers, never fight' justification should pin the per-caller plan-execution contract, since undestroyed former Messenger instances keep firing store-driven CDU plans that are harmless only under per-caller element resolution). No open blocker/major findings; the round-1 regression risk is closed. Backend/store/WS-protocol risk remains absent (frontend-only, backend forbidden); orchestration, budgets and tier resolution unchanged from the round-1-verified state."
+            }
+        },
+        "routing": {
+            "target": "plan-freeze",
+            "nextAction": "accept"
+        }
+    },
+    "rounds": [
+        {
+            "round": 1,
+            "verdict": "REWORK",
+            "findings": 3,
+            "summary": "Independent adversarial pre-freeze review at base 7dbd7aa. Root causes 1 (mobile /settings: no mobile rule for chat__container-profile-changing — chat.scss:312-333 vs desktop 256; six handlers profile.ts:213-230), 3 (modal focus: open-without-focus + empty-branch-without-refocus in messenger.ts:614-619/585-589 and contacts.ts:133-135/215-219, response refocus present) and 4 (single generic attachment link message.hbs:11-17; pinned expectations exactly message.test.ts:135-190 and messenger.test.ts:848-907, both owned; list/notification placeholders outside the change surface) fully verified against source. Root cause 2's store-driven chain verified link-by-link (fresh chats array chat.ts:85-98 -> shallowEqual never suppresses; hbs-children recreated per render without CDM — registerComponent.ts:24, Block.ts:142-158/242-252, Router.ts:43; store-driven CDU plans land on detached nodes via subscription order + EventBus forEach semantics; page CDM listener dies with its node chat.ts:610-618; messages never mapped into page props chat.ts:654-664 -> dead growth branch 558-566). One major (F-1): the 'dead code, behavior unchanged' premise for deleting the Messenger scroll machinery was overbroad — the CDU preserve plan runs on the LIVE node for messenger-internal setProps (modals, reply draft, autoDownload subscription) and preserves the feed across those re-renders; deletion regresses this with no gate able to catch it; plan revision required. Two minors: F-2 file.filename paths runtime-dead (no adapter populates Message.file), F-3 messenger.hbs keeps passing the retired autoDownload prop harmlessly. Gates reproduced: completeness-check PASS (digest 8b5ac603...), acceptance-check PASS, mocha 568/0, guard --all --strict 0."
+        },
+        {
+            "round": 2,
+            "verdict": "READY_TO_FREEZE",
+            "findings": 2,
+            "summary": "Re-review of planRevision 2. Round-1 findings all resolved: F-1 (major) resolved by redesign — the deletion is replaced by a behavior-identical extraction (new shared src/components/messenger/feed-scroll.ts: per-chat memory Map, one-time document-capture installScrollSync, plan helper; messenger.ts sources all of it with the Messenger-internal preserve path byte-for-byte in effect) and the WS-FE-FEED-SCROLL store-driven engine consumes the same module, deleting only the page's verified-dead artifacts (never-mapped messages-compare branch, per-node CDM listener); the corrected causal story is now stated in the requirement, plannedItems, plan.md, AC and developer-overview. F-2 resolved (fixture-only naming honesty in plan.md/manifest/AC). F-3 resolved (recorded autoDownload keep-decision). Collision analysis for the revised design: store-emit and internal-setProps plans cannot interleave in one task; within a frame both writers resolve from the one shared memory and agree in all combinations (preserve respects pinned; restore-top is memory.top for any reader position; chat-change detaches the old Messenger before its rAF), with the single divergence path (undestroyed zombie Messenger store-handlers displacing a page bottom plan under a global-slot/document-resolved helper) pinned as F-5 — bounded and decision-table-visible because chat.test.ts drives the real page with real subscribing Messenger children. F-4 records the leftover 'machinery removal' wording (manifest:53/:338/:421, plan.md:53, developer-overview.md:81) to be reworded or verified as a freeze fold-in. Ownership re-verified: feed-scroll.ts only in WS-FE-MESSENGER writes, write-sets pairwise disjoint, dependsOn correct, guard-legal pages->components import (contacts.ts:13 precedent). Gates re-run on revision 2: completeness-check PASS, 0 blockers, planDigest 174d10c491d0273ed5c5793638d7cb5c7da0a2a0f76c9e47c5dbf207d96250f6; acceptance-check PASS (4 criteria); src/ unchanged since round 1 (HEAD 7dbd7aa, only tasks/ untracked) so the reproduced baselines mocha 568 passing / 0 failing and guard --all --strict 0 remain valid. Zero open blocker/major findings — freeze may proceed; the F-4 rewording (and optionally the F-5 contract sentence) may ride the freeze bookkeeping with an edit-by-edit verified delta and re-hash, per the 2026-11-01-email-search precedent."
+        },
+        {
+            "round": 3,
+            "verdict": "READY_TO_FREEZE",
+            "findings": 0,
+            "summary": "Post-verdict freeze fold-in verification (pre-authorized in F-4's requiredFix). The delta since round 2 was verified edit-by-edit against the reviewer's round-2 reading and is EXACTLY the declared set, nothing else semantic: (F-4) 'scroll-machinery removal' -> 'scroll-memory extraction' at plan.manifest.json:53 (requirement description opening), :338 (AC-FE-MESSENGER-SURFACE title), :421 (finalAuditGates line), plan.md:53 and developer-overview.md:81 — grep now finds the old phrase only in this review file and the historical round-1 plan-review-request.md; (F-5) helper contract pinned in plan.md:188-197 (module owns memory + document-capture sync + plan RESOLUTION values only; each caller keeps its own rAF coalescing and applies its plan to its OWN element via this.element; never a module-global plan slot or document-resolved target; zombie Messenger instances' plans no-op against detached elements) and folded into the manifest plannedItems feed-scroll.ts item (:249, which also correctly narrows the module's export from 'coalesced plan helper' to 'plan resolution values'); freeze bookkeeping only — status DRAFT->FROZEN (:3), planReview.reviewedRevision 2 + verdict READY_TO_FREEZE (:473-474), plan-review.json added to planFiles (:480). REQ-FE-FEED-SCROLL, goal/constraints/scope, all three workstream write-sets/dependsOn/launchGates/plannedItems (other than the declared F-5 fold), budgets, gates and orchestration are byte-identical to the round-2 review. Reviewer re-ran completeness-check on the frozen manifest: PASS, zero blockers, planDigest 60a2e622034b6cca1412014a9521aab91f327a97eed9665dbc76ede994b3685b; reviewedPlanHash updated from 174d10c4... to this digest; verdict and dimensions unchanged. F-4 and F-5 are now RESOLVED (folded in); zero open findings."
+        },
+        {
+            "round": 4,
+            "verdict": "READY_TO_FREEZE",
+            "findings": 0,
+            "summary": "Amendment review (settings-run precedent, one bounded delta). The executing worker's write-set gap claim is technically correct: registerComponent constructs each hbs child from the explicit helper hash only (registerComponent.ts:24 new Component(hash)), and messenger.hbs:22's {{{ Message ... }}} invocation passes fileUrl/autoDownload/time/etc. but no attachments — without a template edit the mapped attachments prop could never reach the Message component, so the staleness gate was right to reject the claim. The rev-3 delta was verified against the actual manifest and is EXACTLY the declared set: planRevision 2 -> 3 (:4); WS-FE-MESSENGER writes + src/components/messenger/messenger.hbs (:199, inserted in sorted position, 14 -> 15 entries, nothing else moved); the mapping plannedItem gains the appended 'messenger.hbs hands attachments through to the Message helper (rev-3 amendment...)' sentence (:248). All other manifest content (status FROZEN, requirements, other workstreams, budgets, gates, orchestration, planFiles) is identical to the round-3 verified state; the digest move 60a2e622... -> 16c2136c... is fully attributable to these three edits. Ownership impact checked: messenger.hbs is written by no other workstream and appears in no readOnly list, so the write-sets remain pairwise disjoint and the wave-1 pair still shares no file; the file sits inside the already-one-owner components/messenger surface, and the addition is consistent with round-1 F-3's recorded alternative ('or add messenger.hbs to the write-set'). Reviewer re-ran completeness-check on the amended frozen manifest: PASS, zero blockers, planDigest 16c2136c9841f7482d63102dcc692b238c2c89c17466d63c1f4aa73bd82eaeb8; reviewedPlanHash updated to this digest; verdict and dimensions unchanged; zero open findings."
+        }
+    ]
+}
