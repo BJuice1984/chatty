@@ -4,6 +4,8 @@
 // уход с маршрута уничтожает инстанс, возврат монтирует свежий.
 // chat-ui-polish: мобильное переключение chatPaneOpen — выбор чата (включая
 // повторный) открывает панель, onBack возвращает список.
+// 2026-11-04-mobile-back-deselect: onBack сбрасывает selectedChat в сторе
+// через ChatsController.closeChatFeed() — свежий монтаж даёт список.
 // chats-social: chat_deleted очищает selectedChat в сторе — панель обязана
 // вернуться к списку; страница пробрасывает колбэки @-поиска/реакций в
 // мессенджер через контроллер фичи.
@@ -133,6 +135,12 @@ describe('chat page mobile pane switch', () => {
             expect(selectChat.calledOnceWith(3)).to.be.true
             expect(getChatUsers.calledOnceWith(3)).to.be.true
 
+            // onBack сбрасывает selectedChat через контроллер: selectChat
+            // здесь замокан и стор пуст — праймим живым выбором (паттерн
+            // chat_deleted-пина), иначе undefined поверх undefined не
+            // эмитит и гвард не стреляет
+            store.set('selectedChat', 3)
+
             props.onBack()
 
             expect(props.chatPaneOpen).to.be.false
@@ -142,6 +150,7 @@ describe('chat page mobile pane switch', () => {
             getChatUsers.restore()
             selectChat.restore()
             fetchChats.restore()
+            store.set('selectedChat', undefined)
         }
     })
 
@@ -168,6 +177,47 @@ describe('chat page mobile pane switch', () => {
             getChatUsers.restore()
             selectChat.restore()
             fetchChats.restore()
+        }
+    })
+
+    // 2026-11-04-mobile-back-deselect: «назад» обязан сбрасывать выбор в
+    // сторе — свежий монтаж страницы (bottom-bar «Чаты») ре-дедуцирует
+    // chatPaneOpen из selectedChat и без сброса открывает прежний чат
+    it('back clears the selected chat in the store; a fresh mount shows the list', () => {
+        const fetchChats = sinon.stub(ChatsController, 'fetchChats').resolves()
+        const selectChat = sinon.stub(ChatsController, 'selectChat')
+        const getChatUsers = sinon.stub(ChatsController, 'getChatUsers').resolves()
+
+        try {
+            const page = new ChatPage({} as never)
+            const props = callbacksOf(page)
+
+            props.onSelectChat(7)
+
+            // реальный selectChat пишет выбор в стор — здесь он замокан,
+            // праймим руками тем же id, что ушёл в колбэк
+            store.set('selectedChat', 7)
+            expect(callbacksOf(page).chatPaneOpen).to.be.true
+
+            props.onBack()
+
+            expect(store.getState().selectedChat).to.be.undefined
+            expect(callbacksOf(page).chatPaneOpen).to.be.false
+
+            page.destroy()
+
+            // повторный заход: свежий инстанс ре-дедуцирует панель из
+            // стора — список, а не прежний чат
+            const revisit = new ChatPage({} as never)
+
+            expect(callbacksOf(revisit).chatPaneOpen).to.be.false
+
+            revisit.destroy()
+        } finally {
+            getChatUsers.restore()
+            selectChat.restore()
+            fetchChats.restore()
+            store.set('selectedChat', undefined)
         }
     })
 })

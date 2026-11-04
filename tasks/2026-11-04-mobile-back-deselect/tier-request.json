@@ -1,0 +1,23 @@
+{
+    "capabilityHints": [
+        "typescript",
+        "mocha",
+        "jsdom"
+    ],
+    "executableOwners": [
+        "worker-mobile-back-deselect"
+    ],
+    "externalSpecification": false,
+    "requirementsBytes": 1800,
+    "riskFlags": {
+        "architecture": false,
+        "browser": false,
+        "data": false,
+        "external": false,
+        "migration": false,
+        "performance": false,
+        "release": false,
+        "security": false
+    },
+    "taskCount": 1
+}
