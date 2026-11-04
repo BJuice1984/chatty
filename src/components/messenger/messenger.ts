@@ -12,6 +12,7 @@
 // URL вложения вычисляется из env (fileUrl) — безопасные схемы гарантирует joinUrl.
 
 import Block from '../../core/Block.ts'
+import { pruneComponentCache } from '../../core/registerComponent.ts'
 import Handlebars from 'handlebars'
 import { Button, Input, Message, MessageAttachment } from '../../utils/types.ts'
 import { AppState, withStore } from '../../utils/Store.ts'
@@ -31,6 +32,24 @@ import template from './messenger.hbs'
 
 // Дебаунс @-поиска: поиск стартует, когда пользователь перестал печатать
 export const USER_SEARCH_DEBOUNCE_MS = 300
+
+// Фиксированный ключ pending-плейсхолдера бота (2026-11-04 render-perf):
+// один плейсхолдер на ленту — контроллер гарантирует максимум один
+// isPending-хвост на чат (композер блокируется на время прогона), поэтому
+// привязки к вопросу не нужно (review F-1)
+export const PENDING_TAIL_CACHE_KEY = 'pending:tail'
+
+// Ключ переиспользования Message-инстанса: реальному сообщению — id:<n>;
+// isPending-хвосту без id — фиксированный pending:tail; сообщению без
+// идентичности — undefined (кэш не участвует, инстанс строится каждым
+// рендером заново, как до keyed-кэша)
+function messageCacheKey(message: Message): string | undefined {
+    if (typeof message.id === 'number') {
+        return `id:${message.id}`
+    }
+
+    return message.isPending === true ? PENDING_TAIL_CACHE_KEY : undefined
+}
 
 // Черновик ответа: id цели (REST требует message_id) и сниппет для превью
 export interface ReplyDraft {
@@ -228,7 +247,7 @@ export function renderChatMemberMenuContent(options: {
 export function mapTypedMessages(
     messages: Message[],
     currentUserId: number | undefined
-): (Message & { isMine: boolean; fileUrl?: string; showDate: boolean; attachments?: MessageAttachment[] })[] {
+): (Message & { isMine: boolean; fileUrl?: string; showDate: boolean; attachments?: MessageAttachment[]; cacheKey?: string })[] {
     let previousDayKey: string | undefined
 
     return messages.map(message => {
@@ -255,6 +274,7 @@ export function mapTypedMessages(
             fileUrl: fileUrlValue,
             attachments,
             showDate,
+            cacheKey: messageCacheKey(message),
         }
     })
 }
@@ -703,6 +723,10 @@ const withMessenger = withStore((state: AppState) => {
         state.messages === undefined ||
         state.messages[selectedChatId] === undefined
     ) {
+        // ленты нет — кэш Message-инстансов тоже пуст: осевшие записи
+        // роняются (уход со страницы/снятие выбора не оставляют хвостов)
+        pruneComponentCache(new Set())
+
         return {
             selectedChat: undefined,
             messages: [],
@@ -714,6 +738,12 @@ const withMessenger = withStore((state: AppState) => {
     const isAiChat = (state.chats?.find(chat => chat.id === selectedChatId) as { is_ai?: boolean } | undefined)?.is_ai === true
 
     const messages = mapTypedMessages(state.messages[selectedChatId], state.user?.id)
+
+    // кэш живёт размером с текущую ленту: смена чата и удаление сообщения
+    // роняют и destroy'ят осевшие ключи (неограниченного роста нет)
+    pruneComponentCache(new Set(
+        messages.flatMap(item => (item.cacheKey != null ? [item.cacheKey] : []))
+    ))
 
     const chatInfo = state.chats?.find(chat => chat.id === selectedChatId)
 
