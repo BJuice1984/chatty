@@ -28,6 +28,7 @@
 import WSTransport, { WSTransportEvents } from '../../../utils/WSTransport.ts'
 import { env, joinUrl } from '../../../utils/env.ts'
 import store from '../../../utils/Store.ts'
+import type { Message } from '../../../utils/types.ts'
 import { getPreferences, notificationPermission } from '../../../utils/preferences.ts'
 import { type OwnMessageResponse, toMessage } from '../message-mapping.ts'
 import { chatHistoryController } from '../history/controller.ts'
@@ -36,7 +37,7 @@ import type { HistoryMessage } from '../history/types.ts'
 // в бандл через импорт ws-адаптера (components фичи не импортируют —
 // guard-блокер).
 import '../history/view.ts'
-import { appendMessages, notifyChatDeleted, notifyReactionEvent } from './gateway.ts'
+import { appendMessages, notifyChatDeleted, notifyReactionEvent, notifyWsConnected, notifyWsUnexpectedClose } from './gateway.ts'
 
 interface OwnWsEvent {
     type: string
@@ -183,6 +184,14 @@ export function deliverBackgroundNotice(chatId: number, payload: OwnMessageRespo
 export class OwnWsAdapter {
     private sockets: Map<number, WSTransport> = new Map()
 
+    // Марки намеренных закрытий (2026-11-04 offline, review F-3): Close
+    // транспорта без payload одинаков для явного close() и исчерпания
+    // реконнектов, поэтому каждый собственный путь закрытия ставит марку
+    // ДО socket.close(), а Close-обработчик нотифицирует индикатор ТОЛЬКО
+    // по немаркированному закрытию; марка одноразова (погашается событием),
+    // Connected чистит осевшие марки нового соединения
+    private readonly intentionalCloses = new Set<number>()
+
     async connect(id: number): Promise<void> {
         if (this.sockets.has(id)) {
             return
@@ -196,6 +205,8 @@ export class OwnWsAdapter {
         // на open — подписка после await connect() пропустила бы первое
         // открытие сокета.
         wsTransport.on(WSTransportEvents.Connected, () => {
+            this.intentionalCloses.delete(id)
+            notifyWsConnected(id)
             // HD-R2: первичная история запрашивается из единственного места —
             // здесь. Connected срабатывает и на первом open, и на внутреннем
             // backoff-реконнекте, поэтому после обрыва страница пере-запрашивается.
@@ -250,6 +261,40 @@ export class OwnWsAdapter {
                 return
             }
 
+            // bot_delta (2026-11-04 bot-stream, контракт WS-BE-BOT-STREAM):
+            // {'message_id': <id вопроса>, 'delta': <текст>} — стрим ответа
+            // бота. Дельта дописывается в контент pending-хвоста ОДНИМ
+            // store-эмитом и только когда хвост существует и его pending_for
+            // равен message_id дельты; всё прочее (нет хвоста, чужой
+            // pending_for, поздняя дельта после финального сообщения) —
+            // молчаливый дроп: финальное сообщение заменяет хвост
+            // существующим путём (дедуп/dropPending/REST-fallback)
+            if (wsEvent.type === 'bot_delta' && wsEvent.content != null) {
+                const content = wsEvent.content as { message_id?: unknown, delta?: unknown }
+
+                if (typeof content.message_id !== 'number' || typeof content.delta !== 'string') {
+                    return
+                }
+
+                const list = (store.getState().messages?.[id] ?? []) as (Message & { isPending?: boolean, pending_for?: number })[]
+                const tailIndex = list.findIndex(item =>
+                    item.isPending === true && item.pending_for === content.message_id)
+
+                if (tailIndex === -1) {
+                    return
+                }
+
+                const tail = list[tailIndex]
+
+                store.set(`messages.${id}`, [
+                    ...list.slice(0, tailIndex),
+                    { ...tail, content: `${tail.content}${content.delta}` },
+                    ...list.slice(tailIndex + 1),
+                ])
+
+                return
+            }
+
             // Реакция: сводку не верим (mine в broadcast относителен
             // отправителя действия) — пересылаем событие контроллеру,
             // тот пересчитывает чипы viewer-side
@@ -283,7 +328,18 @@ export class OwnWsAdapter {
                 notifyChatDeleted(chatId)
             }
         })
-        wsTransport.on(WSTransportEvents.Close, () => this.sockets.delete(id))
+        wsTransport.on(WSTransportEvents.Close, () => {
+            this.sockets.delete(id)
+
+            // Немаркированное закрытие — исчерпание реконнектов (обрыв без
+            // восстановления): индикатор показывает его; намеренные пути
+            // закрытия марку уже погасили (review F-3)
+            if (this.intentionalCloses.delete(id)) {
+                return
+            }
+
+            notifyWsUnexpectedClose(id)
+        })
 
         await wsTransport.connect()
     }
@@ -320,15 +376,41 @@ export class OwnWsAdapter {
         return Promise.resolve()
     }
 
-    // Явное закрытие сокета чата (chat_deleted): транспорт не реконнектит
+    // Явное закрытие сокета чата (chat_deleted/выход): транспорт не
+    // реконнектит; марка до close() гасит индикатор на Close (намеренно)
     closeChat(id: number): Promise<void> {
-        this.sockets.get(id)?.close()
+        const socket = this.sockets.get(id)
+
+        if (socket != null) {
+            this.intentionalCloses.add(id)
+            socket.close()
+        }
 
         return Promise.resolve()
     }
 
     closeAll(): void {
+        for (const id of this.sockets.keys()) {
+            this.intentionalCloses.add(id)
+        }
+
         this.sockets.forEach(socket => socket.close())
         this.sockets.clear()
+    }
+
+    // Принудительный реконнект (2026-11-04 offline, review F-7): закрывает и
+    // роняет каждую НЕ-OPEN запись — застрявший в backoff чат снова становится
+    // открываемым (гард sockets.has больше не мешает), OPEN-сокеты не трогаем.
+    // Дропы маркируются намеренными: индикатор не мигает на онлайн-пути
+    reconnectAll(): void {
+        for (const [id, socket] of [...this.sockets]) {
+            if (socket.isOpen) {
+                continue
+            }
+
+            this.intentionalCloses.add(id)
+            socket.close()
+            this.sockets.delete(id)
+        }
     }
 }

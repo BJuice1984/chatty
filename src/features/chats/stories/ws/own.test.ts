@@ -7,7 +7,7 @@
 import { expect } from 'chai'
 import sinon from 'sinon'
 import { ownStoriesUrl } from './own.ts'
-import { connectStoriesSocket, closeStoriesSocket } from './own.ts'
+import { connectStoriesSocket, closeStoriesSocket, reconnectStoriesSocket } from './own.ts'
 import { setStoriesSocketListener, type StoriesSocketEvent } from './gateway.ts'
 
 type SocketListener = (event: { data?: string }) => void
@@ -176,5 +176,40 @@ describe('stories ws adapter', () => {
         created[0].triggerMessage(JSON.stringify({ type: 'story_created', content: { id: 1 } }))
 
         expect(events).to.have.lengthOf(0)
+    })
+
+    // 2026-11-04 offline (review F-7): гвард socket !== null молчит в
+    // mid-backoff окне — обычный connectStoriesSocket не пинает застрявший
+    // сокет. Force-вариант сам роняет ссылку, глушит backoff и открывает
+    // свежий сокет одним вызовом (онлайн-путь connectivity-наблюдателя)
+    it('reconnectStoriesSocket force-drops a live-but-backoffing socket and opens a fresh one', async () => {
+        const first = connectStoriesSocket()
+
+        created[0].triggerOpen()
+        await first
+
+        // обрыв: транспорт ушёл в backoff-паузу, ссылка модуля живёт
+        created[0].triggerClose()
+        await clock.tickAsync(500)
+
+        expect(created).to.have.lengthOf(1)
+
+        // обычный коннект упирается в гвард — сокет не меняется
+        connectStoriesSocket()
+
+        expect(created).to.have.lengthOf(1)
+
+        reconnectStoriesSocket()
+
+        // ссылка уронена и транспорт закрыт принудительно: мимо гарда
+        // открылся свежий сокет того же URL
+        expect(created).to.have.lengthOf(2)
+        expect(created[1].url).to.eq(ownStoriesUrl())
+
+        created[1].triggerOpen()
+        await clock.tickAsync(60_000)
+
+        // старый backoff-таймер погашен close(): зомби-сокетов нет
+        expect(created).to.have.lengthOf(2)
     })
 })

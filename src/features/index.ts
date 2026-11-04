@@ -8,6 +8,7 @@ import { authModule } from './auth/module.ts'
 import { installAuthTransportPolicy } from './auth/transportPolicy.ts'
 import ChatsController, { setContactsIntegration, setDocumentSearch } from './chats/controller.ts'
 import { chatsModule } from './chats/module.ts'
+import { installConnectivityWatchers } from './chats/ws/connectivity.ts'
 import { ProfileFeatureController, setProfileController, setProfileSeams } from './profile/controller.ts'
 import { profilePort } from './profile/api/index.ts'
 import { profileModule } from './profile/module.ts'
@@ -23,6 +24,12 @@ import type { AppModule } from '../core/module/types.ts'
 // 401 → single-flight refresh + повтор, неудачный refresh → локальный выход,
 // 5xx → лестница повторов; оверлей владеется только политикой
 installAuthTransportPolicy()
+
+// Браузерный offline/online (2026-11-04-bot-wait-offline): offline —
+// reconnect-оверлей, online — гашение + force-дроп застрявших backoff'ов
+// (чаты + stories) + рефетч списка с Connected-ресинком. Auth-прогрев
+// сознательно нет (review F-4): stale access лечит глобальная 401-политика
+installConnectivityWatchers()
 
 // Контроллер профиля зависит только от своего порта.
 setProfileController(new ProfileFeatureController(profilePort))

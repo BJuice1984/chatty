@@ -59,6 +59,14 @@ export default class WSTransport extends EventBus {
         this.socket.send(JSON.stringify(data))
     }
 
+    // Публичная read-only проба открытости (2026-11-04 offline): адаптерам
+    // нужно различать живой сокет и застрявший в connect/backoff, не читая
+    // приватное поле; OPEN — единственное «живое» состояние, всё остальное
+    // (CONNECTING/CLOSING/CLOSED/пауза backoff без сокета) — не открыто
+    public get isOpen(): boolean {
+        return this.socket !== null && this.socket.readyState === WebSocket.OPEN
+    }
+
     public connect(): Promise<void> {
         this.intentionalClose = false
         this.reconnectAttempts = 0

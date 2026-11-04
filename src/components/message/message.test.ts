@@ -68,6 +68,25 @@ describe('message bubble', () => {
         normal.destroy()
     })
 
+    // Анимация «печатает» до первой дельты (2026-11-04-bot-wait-offline):
+    // маркер — целиком CSS (пульс пузыря + три точки ::after на _pending в
+    // messenger.scss), никакого JS/DOM-носителя и ни одного store-тика —
+    // пузырь остаётся ровно тем же узлом, что и без анимации
+    it('typing marker: the pending modifier is the pure-CSS carrier, no extra DOM or store ticks', () => {
+        const pending = new Message({ content: 'Ассистент печатает…', user_id: -1, isMine: false, isPending: true, time: localIso(new Date()) })
+        const bubble = pending.element?.querySelector('.messenger__message-bubble') as HTMLElement
+
+        expect(bubble.classList.contains('messenger__message-bubble_pending')).to.be.true
+        expect(bubble.querySelector('.messenger__message-content')?.textContent).to.equal('Ассистент печатает…')
+
+        // носитель анимации — класс модификатора, не узлы: внутри пузыря
+        // только контент и время, никаких маркеров-элементов
+        expect(bubble.children.length).to.equal(2)
+        expect(bubble.querySelector('[data-testid*="typing"]')).to.not.exist
+
+        pending.destroy()
+    })
+
     it('renders HH:MM from the ISO time', () => {
         const message = new Message({ content: 'привет', user_id: 1, time: '2026-10-19T09:07:00' })
 

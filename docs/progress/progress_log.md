@@ -1,3 +1,55 @@
+# 2026-11-04 — Feat(chats): браузерный offline/online, стрим ответа бота в ленте и честная ошибка эха (ALK 2026-11-04-bot-wait-offline, WS-FE-RESILIENCE)
+
+Фронтовая часть прогона закрыта (после WS-FE-RENDER-PERF и WS-BE-BOT-STREAM;
+ветка feature/2026-11-03-auth-refresh-retry). **Offline/online**:
+`src/features/chats/ws/connectivity.ts` — идемпотентный
+`installConnectivityWatchers()` (биндинг в `features/index.ts` рядом с
+транспортной политикой): `window offline` → `showBusyOverlay('reconnect')`;
+`online` → `hideBusyOverlay()` + `reconnectAllChatSockets()` +
+`reconnectStoriesSocket()` + `ChatsController.fetchChats()` (переоткрытие
+чатов + Connected-ресинк хвостов). Auth-«прогрев» сознательно НЕ добавлен
+(review F-4): протухший access лечит глобальная 401→refresh-политика,
+`features/auth` не тронута. **Force-реконнект**: `WSTransport` получил
+публичный read-only `isOpen` (additive, backoff/ceiling/close не менялись);
+`OwnWsAdapter.reconnectAll()` закрывает и роняет каждую НЕ-OPEN запись —
+застрявший в backoff чат снова открываем (гард `sockets.has` больше не
+мешает до F5), OPEN не трогаются; `reconnectStoriesSocket()` — симметрия
+для stories (force мимо `socket !== null`, review F-7), оба экспорта —
+gateway-функции. **Индикатор смерти WS** (review F-3): Close транспорта
+без payload неотличим от исчерпания — намеренность различает АДАПТЕР
+марками: каждый собственный путь закрытия (`closeChat`, `chat_deleted`,
+`closeAll`, дропы `reconnectAll`) маркирует chat id ДО `socket.close()`;
+Close-обработчик нотифицирует watcher только по немаркированному закрытию,
+Connected гасит индикатор. Контроллер держит set мёртвых чатов: оверлей на
+первом падении, гашение на последнем восстановлении (парность show/hide
+per-эпизод; удалённый/покинутый чат снимает свой эпизод — оверлей не
+залипает). **Стрим ответа бота**: pending-плейсхолдер получил опциональное
+`pending_for` (id вопроса, единственный создатель — контроллер; единственное
+изменение формы стора, review F-1); WS-адаптер по `bot_delta`
+`{'message_id','delta'}` (контракт заморожен WS-BE-BOT-STREAM) дописывает
+дельту в контент хвоста ОДНИМ store-эмитом и только при точном совпадении
+`pending_for === message_id` — нет хвоста/чужой id/поздняя дельта после
+финального сообщения: молчаливый дроп; финальное сообщение заменяет хвост
+существующим путём (дедуп/dropPending/REST-fallback не тронуты). **UX
+ожидания**: `waitForOwnEcho` при исчерпании 5с больше не молчит — честная
+пользовательская ошибка через существующий pushError («⚠ Ассистент
+недоступен (эхо сообщения не получено). Попробуйте позже.»), композер
+разблокируется в finally; pending-пузырь получил чисто-CSS анимацию «печатает»
+(три точки `::after` на `messenger__message-bubble_pending` + keyframes,
+без store-тиков и новых DOM-узлов; дословный текст «Ассистент печатает…»
+сохранён). Тесты: connectivity (jsdom offline/online, идемпотентность,
+негативы намеренных закрытий), reconnectAll drop/keep, stories force-drop,
+isOpen, bot_delta append/drop/replace, echo-таймаут, разблокировка
+композера, CSS-маркер — mocha 632 → **654**, `npm run verify` exit 0,
+guard `--all --strict` 0. **Замер времени появления своего сообщения
+отложен**: compose-стек own-бэкенда поднят не был (docker-демон выключен,
+операторский env недоступен — стек не поднимали), live-замер перенесён
+вместе с DEFERRED-смоуком в docs/NEXT.md; jsdom-покрытие экономики рендера
+(ровно один рендер на store-эмит) уже запинено задачей WS-FE-RENDER-PERF.
+Остаточная стоимость: перерисовка ленты остаётся O(n) на эмит (без
+виртуализации) — осознанный non-goal (review N-2), на текущих размерах
+лент незаметно.
+
 # 2026-11-03 — Chore(messenger): снят мок-список документов из ответов бота
 
 `bot-attachments.mock.ts` удалён (2026-11-02-ui-ux вводил демо-имена

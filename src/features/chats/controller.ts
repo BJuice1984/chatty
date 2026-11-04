@@ -158,6 +158,12 @@ export class ChatsFeatureController {
     // только ответ последнего вызова
     private searchSequence = 0
 
+    // Чаты, чей WS умер исчерпанием реконнектов (2026-11-04 offline, review
+    // F-3): адаптер нотифицирует только немаркированные закрытия; оверлей
+    // «пробуем переподключиться» показывается на первом падении и гасится
+    // последним восстановлением — пары show/hide сбалансированы per-эпизод
+    private readonly wsDeadChats = new Set<number>()
+
     private readonly botRunRetryDelaysMs: readonly number[]
 
     constructor(
@@ -174,6 +180,8 @@ export class ChatsFeatureController {
         setChatsEventListeners({
             onReaction: event => this.handleReactionEvent(event),
             onChatDeleted: chatId => this.handleChatDeleted(chatId),
+            onWsUnexpectedClose: chatId => this.handleWsDied(chatId),
+            onWsConnected: chatId => this.handleWsReconnected(chatId),
         })
     }
 
@@ -364,8 +372,44 @@ export class ChatsFeatureController {
     // сокета чата без реконнекта, обновление списка чатов
     private handleChatDeleted(chatId: number): void {
         store.set('selectedChat', undefined)
+        this.forgetWsDeath(chatId)
         void this.messages.closeChat(chatId)
         void this.fetchChats()
+    }
+
+    // Сокет чата исчерпал реконнекты (обрыв без восстановления): первый
+    // эпизод показывает оверлей переподключения
+    private handleWsDied(chatId: number): void {
+        if (this.wsDeadChats.size === 0) {
+            showBusyOverlay('reconnect')
+        }
+
+        this.wsDeadChats.add(chatId)
+    }
+
+    // Сокет чата (пере)подключился: гасим оверлей, когда восстановились все
+    // умершие — Connected первого коннекта сюда тоже попадает и молчит
+    private handleWsReconnected(chatId: number): void {
+        if (!this.wsDeadChats.delete(chatId)) {
+            return
+        }
+
+        if (this.wsDeadChats.size === 0) {
+            hideBusyOverlay()
+        }
+    }
+
+    // Чат, который больше не будет переподключаться (удалён владельцем,
+    // собственный выход), не должен вечно держать оверлей: снимаем его
+    // эпизод смерти, если был
+    private forgetWsDeath(chatId: number): void {
+        if (!this.wsDeadChats.delete(chatId)) {
+            return
+        }
+
+        if (this.wsDeadChats.size === 0) {
+            hideBusyOverlay()
+        }
     }
 
     async changeChatAvatar(userData: FormData): Promise<void> {
@@ -516,17 +560,17 @@ export class ChatsFeatureController {
             // путь отправки в стор НЕ пишет: своё сообщение доезжает эхом
             // WS с серверным id (обычно десятки мс). Без ожидания
             // плейсхолдер встал бы ВЫШЕ вопроса, а прогон ушёл бы по
-            // предыдущему message_id
+            // предыдущему message_id. Эхо не пришло за бюджет — честная
+            // ошибка пользователю (не молчаливый пропуск прогона):
+            // выброс уходит в общий catch → pushError
             const target = await this.waitForOwnEcho(chatId, userId, knownIds)
-
-            if (target === undefined) {
-                return
-            }
 
             // индикатор «Ассистент печатает…»: прогон бота идёт минутами —
             // без хвоста в ленте это выглядит как молчание; плейсхолдер
             // живёт в сторе и снимается в finally по флагу (параллельные
-            // прогоны снимаются одним дропом)
+            // прогоны снимаются одним дропом). pending_for — id сообщения-
+            // вопроса (единственный создатель хвоста): WS-адаптер вяжет
+            // bot_delta стрима к этому хвосту и только к нему (review F-1)
             store.set(`messages.${chatId}`, [
                 ...(store.getState().messages?.[chatId] ?? []),
                 {
@@ -536,6 +580,7 @@ export class ChatsFeatureController {
                     user_id: -1,
                     content: 'Ассистент печатает…',
                     isPending: true,
+                    pending_for: target,
                 },
             ])
 
@@ -649,12 +694,14 @@ export class ChatsFeatureController {
     }
 
     // Эхо отправленного сообщения: первое собственное с серверным id,
-    // не входившим в knownIds на момент отправки
+    // не входившим в knownIds на момент отправки. Бюджет исчерпан — выброс:
+    // молчаливый пропуск прогона выглядел для пользователя игнором (WS не
+    // отвечает, а бот «не услышал» вопрос)
     private async waitForOwnEcho(
         chatId: number,
         userId: number | undefined,
         knownIds: Set<number>
-    ): Promise<number | undefined> {
+    ): Promise<number> {
         const deadline = Date.now() + BOT_ECHO_WAIT_MS
 
         for (;;) {
@@ -671,7 +718,7 @@ export class ChatsFeatureController {
             }
 
             if (Date.now() >= deadline) {
-                return undefined
+                throw new Error('эхо сообщения не получено')
             }
 
             await new Promise(resolve => setTimeout(resolve, BOT_ECHO_WAIT_TICK_MS))
@@ -715,6 +762,7 @@ export class ChatsFeatureController {
             await this.port.leaveChat(chatId)
 
             store.set('selectedChat', undefined)
+            this.forgetWsDeath(chatId)
             void this.messages.closeChat(chatId)
             void this.fetchChats()
         } catch (e: unknown) {

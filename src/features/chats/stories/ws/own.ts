@@ -68,3 +68,16 @@ export function closeStoriesSocket(): void {
     socket = null
     transport?.close()
 }
+
+// Принудительный реконнект stories-сокета (2026-11-04 offline, review F-7):
+// close + drop + connect одним вызовом. Гард socket !== null в
+// connectStoriesSocket молчит в mid-backoff окне (ссылка жива, транспорт
+// циклит паузы) — force-вариант сама роняет ссылку и открывает свежий сокет;
+// вызывается онлайн-путём connectivity-наблюдателя
+export function reconnectStoriesSocket(): void {
+    const transport = socket
+
+    socket = null
+    transport?.close()
+    connectStoriesSocket()
+}

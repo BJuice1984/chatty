@@ -298,4 +298,47 @@ describe('WSTransport', () => {
         expect(created).to.have.length(2)
         expect(created[1].sent).to.deep.eq([])
     })
+
+    // 2026-11-04 offline: публичный read-only isOpen — адаптеры различают
+    // живой сокет и застрявший в connect/backoff, не читая приватное поле
+    it('isOpen: false before open and while connecting, true when OPEN, false after close', async () => {
+        const transport = new WSTransport('ws://localhost:1234')
+
+        expect(transport.isOpen).to.be.false
+
+        const promise = transport.connect()
+
+        expect(transport.isOpen).to.be.false
+
+        created[0].triggerOpen()
+        await promise
+
+        expect(transport.isOpen).to.be.true
+
+        transport.close()
+
+        expect(transport.isOpen).to.be.false
+    })
+
+    it('isOpen is false across the backoff cycle after a remote close', async () => {
+        const transport = new WSTransport('ws://localhost:1234')
+
+        const promise = transport.connect()
+
+        created[0].triggerOpen()
+        await promise
+
+        expect(transport.isOpen).to.be.true
+
+        // обрыв: пауза backoff без сокета и новая CONNECTING-попытка —
+        // оба состояния «не открыт»
+        created[0].triggerRemoteClose()
+
+        expect(transport.isOpen).to.be.false
+
+        await clock.tickAsync(1000)
+
+        expect(created).to.have.length(2)
+        expect(transport.isOpen).to.be.false
+    })
 })
