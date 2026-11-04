@@ -13,6 +13,8 @@ PROVIDER_API = 'CHATTY_BOT_PROVIDER_API'
 PROVIDER_URL = 'CHATTY_BOT_PROVIDER_URL'
 MODEL = 'CHATTY_BOT_MODEL'
 TIMEOUT_SECONDS = 'CHATTY_BOT_TIMEOUT_SECONDS'
+ENABLE_THINKING = 'CHATTY_BOT_ENABLE_THINKING'
+STREAMING = 'CHATTY_BOT_STREAMING'
 MAX_ATTEMPTS = 'CHATTY_BOT_MAX_ATTEMPTS'
 STALE_AFTER_SECONDS = 'CHATTY_BOT_STALE_AFTER_SECONDS'
 USER_EMAIL = 'CHATTY_BOT_USER_EMAIL'
@@ -25,6 +27,12 @@ PROVIDER_APIS = ('ollama', 'openai')
 DEFAULT_PROVIDER_URL = 'http://127.0.0.1:11434'
 DEFAULT_MODEL = 'qwen3:14b'
 DEFAULT_TIMEOUT_SECONDS = 60.0
+# Стриминг ответа (kill-switch) и thinking-ручка: дефолты сохраняют текущее
+# поведение — целый ответ и thinking-модель как есть
+DEFAULT_ENABLE_THINKING = True
+DEFAULT_STREAMING = True
+TRUE_FLAGS = ('1', 'true', 'yes', 'on')
+FALSE_FLAGS = ('0', 'false', 'no', 'off')
 DEFAULT_MAX_ATTEMPTS = 2
 DEFAULT_STALE_AFTER_SECONDS = 180.0
 DEFAULT_USER_EMAIL = 'bot@chatty.local'
@@ -49,6 +57,20 @@ class BotSettings:
     rag_top_k: int
     rag_min_score: float
     max_answer_chars: int
+    enable_thinking: bool = True
+    streaming: bool = True
+
+
+def _env_flag(env: dict[str, str], name: str, default: bool) -> bool:
+    raw = env.get(name)
+    if raw is None:
+        return default
+    value = raw.strip().lower()
+    if value in TRUE_FLAGS:
+        return True
+    if value in FALSE_FLAGS:
+        return False
+    return default
 
 
 def bot_settings_from_env(environ: dict[str, str] | None = None) -> BotSettings:
@@ -95,4 +117,6 @@ def bot_settings_from_env(environ: dict[str, str] | None = None) -> BotSettings:
         max_answer_chars=(
             max_answer_chars if 0 < max_answer_chars <= 20_000 else DEFAULT_MAX_ANSWER_CHARS
         ),
+        enable_thinking=_env_flag(env, ENABLE_THINKING, DEFAULT_ENABLE_THINKING),
+        streaming=_env_flag(env, STREAMING, DEFAULT_STREAMING),
     )

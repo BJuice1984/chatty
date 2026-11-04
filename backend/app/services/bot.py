@@ -10,7 +10,9 @@ stage 6 message contract, whose file authorization is the enforcement point.
 
 from __future__ import annotations
 
-from collections.abc import Callable
+import logging
+import time
+from collections.abc import Callable, Iterator
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
@@ -35,6 +37,12 @@ from app.services.chats import ChatService
 from app.services.documents import DocumentService
 from app.services.messages import MessageService
 
+logger = logging.getLogger(__name__)
+
+# Окно коалесценции дельт: чаще нет смысла (финальное сообщение всё равно
+# несёт полный текст), реже — заметное «дёргание» плейсхолдера
+DELTA_EMIT_WINDOW_SECONDS = 0.25
+
 
 def _as_utc(moment: datetime) -> datetime:
     return moment if moment.tzinfo is not None else moment.replace(tzinfo=UTC)
@@ -52,6 +60,7 @@ class BotService:
         rag_provider: EmbeddingProvider | None = None,
         rag_search: Callable[..., list[Any]] | None = None,
         clock: Callable[[], datetime] | None = None,
+        stream_clock: Callable[[], float] | None = None,
     ):
         self.session = session
         self.settings = settings
@@ -61,6 +70,7 @@ class BotService:
         self.rag_provider = rag_provider
         self.rag_search = rag_search if rag_search is not None else self._default_rag_search
         self.clock = clock if clock is not None else (lambda: datetime.now(UTC))
+        self.stream_clock = stream_clock if stream_clock is not None else time.monotonic
         self.runs = BotRunRepository(session)
         self.messages = MessageRepository(session)
         self.users = UserRepository(session)
@@ -71,7 +81,14 @@ class BotService:
         service = DocumentService(self.session, self.settings, self.rag, provider=self.rag_provider)
         return service.search(chat_id=chat_id, user_id=user_id, query=query, top_k=top_k)
 
-    def run(self, *, chat_id: int, user_id: int, message_id: int) -> BotRun:
+    def run(
+        self,
+        *,
+        chat_id: int,
+        user_id: int,
+        message_id: int,
+        on_delta: Callable[[str], None] | None = None,
+    ) -> BotRun:
         # write guard: a bot run posts an answer into the chat, so an
         # archived membership (read-only) is rejected like a missing one
         chat = self.chats.require_active_member(chat_id, user_id)
@@ -86,7 +103,7 @@ class BotService:
         if not self._claim(run):
             self.session.refresh(run)
             return run
-        return self._execute(run, chat, message, bot_user, requester_id=user_id)
+        return self._execute(run, chat, message, bot_user, requester_id=user_id, on_delta=on_delta)
 
     def _source_message(self, chat_id: int, message_id: int) -> Message:
         message = self.messages.get_by_id(message_id)
@@ -131,7 +148,62 @@ class BotService:
             return self.runs.reclaim_stale(run, now=now)
         return self.runs.claim_fresh(run, now=now)
 
-    def _execute(self, run: BotRun, chat: Chat, message: Message, bot_user, *, requester_id: int) -> BotRun:
+    def _answer(self, prompt: list[dict[str, str]], *, on_delta: Callable[[str], None] | None) -> str:
+        """Full answer through the provider seam.
+
+        Стриминг включается только при ``CHATTY_BOT_STREAMING=true`` И наличии
+        ``complete_stream`` у провайдера: структурные фейки (классические
+        scripted-провайдеры) идут старым целым ответом, а выключенный флаг —
+        операторский kill-switch обратно к байт-в-байт прежнему ``complete()``.
+        """
+        complete_stream = getattr(self.provider, 'complete_stream', None)
+        if self.bot.streaming and complete_stream is not None:
+            return self._consume_stream(complete_stream(prompt), on_delta)
+        return self.provider.complete(prompt)
+
+    def _consume_stream(self, deltas: Iterator[str], on_delta: Callable[[str], None] | None) -> str:
+        """Аккумулировать полный ответ, коалесцируя дельты в on_delta.
+
+        Дельты склеиваются окном ~250мс; хвост не флашится (финальное
+        сообщение несёт полный текст); после неудачи колбэк не вызывается —
+        буфер отбрасывается вместе с раном, ошибки моста глотаются и
+        логируются: стриминговый прогресс не должен ронять или блокировать ран.
+        """
+        parts: list[str] = []
+        window: list[str] = []
+        emitted_at = self.stream_clock()
+        for delta in deltas:
+            if not delta:
+                continue
+            parts.append(delta)
+            if on_delta is None:
+                continue
+            window.append(delta)
+            moment = self.stream_clock()
+            if moment - emitted_at < DELTA_EMIT_WINDOW_SECONDS:
+                continue
+            text = ''.join(window)
+            window.clear()
+            emitted_at = moment
+            self._emit_delta(on_delta, text)
+        return ''.join(parts)
+
+    def _emit_delta(self, on_delta: Callable[[str], None], text: str) -> None:
+        try:
+            on_delta(text)
+        except Exception:
+            logger.warning('bot delta bridge failed', exc_info=True)
+
+    def _execute(
+        self,
+        run: BotRun,
+        chat: Chat,
+        message: Message,
+        bot_user,
+        *,
+        requester_id: int,
+        on_delta: Callable[[str], None] | None = None,
+    ) -> BotRun:
         def fail(kind: str) -> BotRun:
             run.status = 'failed'
             run.error_kind = kind
@@ -165,8 +237,9 @@ class BotService:
         attachment_file_id = chunks[0].chunk.file_id if chunks else None
 
         try:
-            answer = self.provider.complete(
-                build_messages(message.content, [hit.chunk.content for hit in chunks])
+            answer = self._answer(
+                build_messages(message.content, [hit.chunk.content for hit in chunks]),
+                on_delta=on_delta,
             )
         except BotProviderError as exc:
             return fail(exc.kind)

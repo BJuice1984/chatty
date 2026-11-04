@@ -3,6 +3,9 @@
 from __future__ import annotations
 
 import asyncio
+import concurrent.futures
+import logging
+from collections.abc import Callable
 
 from fastapi import APIRouter, Depends, Request
 from sqlalchemy.orm import Session
@@ -23,6 +26,46 @@ from app.services.messages import MessageService
 from app.ws.hub import hub
 
 router = APIRouter(tags=['bot'])
+
+logger = logging.getLogger(__name__)
+
+
+def _log_bridge_failure(future: concurrent.futures.Future) -> None:
+    """Observe the scheduled broadcast so its failure is logged, never raised
+    into (nor silently lost by) the worker thread."""
+    try:
+        exc = future.exception()
+    except concurrent.futures.CancelledError:
+        return
+    if exc is not None:
+        logger.warning('bot delta broadcast failed: %s', exc)
+
+
+def _delta_bridge(chat_id: int, message_id: int, db: Session) -> Callable[[str], None]:
+    """Worker-thread → request-loop bridge for streaming bot deltas.
+
+    The service invokes the returned callback synchronously from its worker
+    thread; each delta is scheduled onto the request's event loop with
+    ``run_coroutine_threadsafe`` — never blocking the thread, never raising
+    into it (bridge failures are observed and logged only). Дельты — чистый
+    прогресс-UI: финальный broadcast сообщения ниже не меняется, фильтр
+    членства наследуется от ``hub.broadcast``.
+    """
+    loop = asyncio.get_running_loop()
+    active_user_ids = ChatService(db).active_member_ids(chat_id)
+
+    def on_delta(text: str) -> None:
+        future = asyncio.run_coroutine_threadsafe(
+            hub.broadcast(
+                chat_id,
+                {'type': 'bot_delta', 'content': {'message_id': message_id, 'delta': text}},
+                active_user_ids=active_user_ids,
+            ),
+            loop,
+        )
+        future.add_done_callback(_log_bridge_failure)
+
+    return on_delta
 
 
 def register_domain() -> None:
@@ -69,11 +112,17 @@ async def create_bot_run(
     # connected feed.
     existing = BotRunRepository(db).get_by_message_id(payload.message_id)
     already_succeeded = existing is not None and existing.status == 'succeeded'
+    on_delta = (
+        _delta_bridge(chat_id, payload.message_id, db)
+        if bot.streaming and not already_succeeded
+        else None
+    )
     run = await asyncio.to_thread(
         service.run,
         chat_id=chat_id,
         user_id=current_user.id,
         message_id=payload.message_id,
+        on_delta=on_delta,
     )
     if not already_succeeded and run.status == 'succeeded' and run.response_message_id is not None:
         message = MessageRepository(db).get_by_id(run.response_message_id)
