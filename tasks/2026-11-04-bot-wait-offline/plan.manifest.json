@@ -1,0 +1,627 @@
+{
+    "schemaVersion": "agent-plan-manifest.v1",
+    "status": "FROZEN",
+    "planRevision": 3,
+    "package": {
+        "id": "2026-11-04-bot-wait-offline",
+        "title": "Bot-wait performance/UX (render economics + answer streaming) and browser offline/online recovery",
+        "workspaceRoot": ".",
+        "artifactRoot": "work/2026-11-04-bot-wait-offline",
+        "planArtifactRoot": "tasks/2026-11-04-bot-wait-offline"
+    },
+    "packageIntegrity": {
+        "required": true,
+        "lockSchemaVersion": "agent-plan-lock.v2",
+        "inventorySource": "planFiles",
+        "undeclaredTopLevelFiles": "reject",
+        "allowedUnlistedFiles": [
+            "plan.lock.json",
+            "plan-review.json"
+        ]
+    },
+    "author": {
+        "id": "claude-code",
+        "surface": "agent-first-planning",
+        "runId": "2026-11-04-bot-wait-offline-draft"
+    },
+    "baseRevision": {
+        "ref": "feature/2026-11-03-auth-refresh-retry",
+        "sha": "4edbd99002fa96de29bf4730dc634511df5a1a3d"
+    },
+    "specification": {
+        "tier": "S2",
+        "intent": "Close the two tech-debt items recorded in docs/NEXT.md by commit 4edbd99, born from live operation. Item 1 (bot-wait performance/UX): own message takes seconds to appear (feed re-renders per store emit: per-key FLOW_CDU in Block.setProps, registerComponent constructs every Message per render, abandoned withStore hbs-children leak subscriptions that each re-render on every emit), a timeout error pops on a live long POST /bot/runs, and the UI stands on a static placeholder 30-40s because the answer arrives only whole (no streaming; Qwen3.5-9B thinking). Item 2 (browser offline/online): nobody listens to window offline/online; WSTransport exhausts its bounded reconnect budget during long offline and stays dead until F5. Operator constraint 2026-11-04: llama-server inference host is UNAVAILABLE — all streaming evidence is fake-provider/mock based; live smoke (first token < 3s, thinking knob on the real server, offline-during-bot-answer) is DEFERRED acceptance recorded in docs/NEXT.md. Operator decisions: both items, continue on branch feature/2026-11-03-auth-refresh-retry (one PR to dev for the whole contour), full ALK lifecycle. Review-driven decisions (round 1): the pending placeholder gains ONE optional creator-written store field pending_for (the question message id) owned by the same workstream as the bot_delta consumer; the auth warm-up is DROPPED (the global 401→refresh policy already heals a stale access after offline and a race-window reset is a no-op after 30s+ offline — reviews F-1/F-4); stories sockets get the same force-drop as chats (F-7).",
+        "status": "DRAFT",
+        "requirements": [
+            {
+                "id": "REQ-FE-RENDER-PERF",
+                "title": "Core render economics: one-emit setProps, destroy-replaced-hbs-children with retained exemption, keyed instance reuse",
+                "description": "Three GENERIC mechanics in src/core with zero feature knowledge. (1) Block.setProps batches: assign into the RAW props target bypassing the proxy set trap, then emit FLOW_CDU ONCE per call with old/new snapshots (direct this.props.x writes keep the per-key emit; CDM/CDU semantics and ordering unchanged; componentDidUpdate still receives old/new props). (2) Block.compile() destroys replaced _hbsChildren entries ABSENT from the new render's list (by instance reference) — ends the abandoned Messenger/ChatHistory withStore subscription leak (chat.ts:12-16 comment). RETAINED EXEMPTION (review F-2 — mainline, not an edge): a cache-retained instance (mechanic 3) is marked at registration; Block.destroy() and the compile() replacement sweep SKIP retained instances — their lifetime belongs to the feature cache (prune). Without the exemption the leak fix itself would destroy the cached Message instances shared with the new render and gut the feed. (3) registerComponent's helper accepts cacheKey in the hash: on hit it setProps-refreshes the cached instance instead of constructing one (embed MOVES the existing element into the new render); the messenger mapper (mapTypedMessages / withMessenger) supplies cacheKey per message (id:<n> for real messages, the FIXED key pending:tail for the at-most-one pending placeholder per feed — no question-id coupling here, review F-1) and PRUNES the cache to the current feed's keys — entries whose key left the feed are destroyed (chat switch, message removal), no unbounded growth. messenger.hbs passes cacheKey through the existing Message helper call. Residual (review N-2, documented in Risks): each emit still re-renders the feed template O(n); batching + reuse remove the reconstruction cost and the per-key multiplier — the <500ms target is calibrated for current feed sizes and the measured number lands in the progress log. Tests: Block.test.ts (one CDU per multi-key setProps + per-key emit preserved for direct proxy writes; absent-hbs-child destroyed with its store subscription removed; present children survive; RETAINED instances survive BOTH the compile sweep AND a full parent destroy with their element still live in the new parent's DOM), registerComponent-level reuse tests (same instance id across two renders, element moved not re-created; prune destroys dropped keys), messenger.test.ts (mapper emits cacheKeys incl. pending:tail; feed re-render reuses instances), render-count-sensitive suites (chat.test.ts autoscroll) updated inside the write-set — none deleted. Existing suites stay green.",
+                "priority": "P1",
+                "source": "docs/NEXT.md item 1 symptom (a), recon 2026-11-04, review round 1 F-2/N-2",
+                "acceptanceIds": [
+                    "AC-FE-RENDER-PERF"
+                ],
+                "evidenceIds": [
+                    "EV-FE-1"
+                ],
+                "owner": "WS-FE-RENDER-PERF"
+            },
+            {
+                "id": "REQ-BE-BOT-STREAM",
+                "title": "Backend: provider streaming, thinking knob, throttled bot_delta bridge over the chat WS hub",
+                "description": "backend/app/bot/provider.py: the BotProvider protocol gains complete_stream(messages) -> Iterator[str]; BOTH concrete providers implement it explicitly (review N-1 — structural implementers do not inherit Protocol defaults): OllamaBotProvider delegates as ONE chunk from complete(), OpenAIChatProvider streams — posts /v1/chat/completions with stream: true, parses SSE lines and yields ONLY choices[0].delta.content (reasoning_content excluded; error kinds provider_timeout/provider_malformed preserved; httpx timeout becomes per-chunk so CHATTY_BOT_TIMEOUT_SECONDS applies between chunks). backend/app/bot/config.py: CHATTY_BOT_ENABLE_THINKING (default true — current behavior; false adds chat_template_kwargs: {'enable_thinking': false} to the request body) and CHATTY_BOT_STREAMING (default true; false bypasses streaming end to end — kill-switch, whole-answer path byte-identical). backend/app/services/bot.py: the execute loop consumes complete_stream, accumulates the full answer (unchanged finalization: message creation, present_one, response_message_id), and forwards coalesced deltas (~250ms window) to an OPTIONAL on_delta(text) callback — never after failure, never blocking/raising into the worker thread. backend/app/api/v1/endpoints/bot.py: builds the bridge (asyncio.run_coroutine_threadsafe onto the request's event loop; bridge failures swallowed+logged) broadcasting {'type': 'bot_delta', 'content': {'message_id': <question message id>, 'delta': <text>}} via the EXISTING hub.broadcast (membership filter inherited); the final message broadcast, redelivery skip and idempotency stay byte-identical. backend/.env.example: document both new envs AND the forgotten CHATTY_BOT_RAG_MIN_SCORE. docs/deployment/own-backend.md: knobs + recommendation to drop the operator CHATTY_BOT_TIMEOUT_SECONDS 300 → ~60 once streaming is on (code default 60 unchanged). Tests (fakes only, host-independent): SSE parsing (multi-chunk join, reasoning exclusion, malformed/timeout kinds), chat_template_kwargs presence/absence, BOTH providers' complete_stream (explicit ollama single chunk; the protocol default remains for fakes that subclass), CHATTY_BOT_STREAMING=false bypass, service delta coalescing + failure semantics, endpoint bridge bot_delta shape through a fake hub, final-path regression (existing bot suites stay green).",
+                "priority": "P1",
+                "source": "docs/NEXT.md item 1 symptom (c) + operator constraint 2026-11-04 (host down) + review N-1",
+                "acceptanceIds": [
+                    "AC-BE-BOT-STREAM"
+                ],
+                "evidenceIds": [
+                    "EV-BE-1"
+                ],
+                "owner": "WS-BE-BOT-STREAM"
+            },
+            {
+                "id": "REQ-FE-CONNECTIVITY",
+                "title": "Offline/online watcher, force-reconnect (chats AND stories), intent-differentiated WS-death indicator",
+                "description": "NEW src/features/chats/ws/connectivity.ts: idempotent installConnectivityWatchers() binds window offline/online listeners — offline → showBusyOverlay('reconnect'); online → hideBusyOverlay() + reconnectAllChatSockets() + reconnectStoriesSocket() + ChatsController.fetchChats() (reopens every dropped chat with the EXISTING Connected-resync: history before_id null limit 50, dedup append, cursor re-init); navigator.onLine === false at bind time does not fire the online path. NO auth warm-up (review F-4 — dropped: the global 401→refresh policy already heals a stale access after offline; resetting the 2000ms recently-refreshed window is a no-op after 30s+ offline and would REMOVE the anti-kickout guard after a short post-refresh flap; the debt note itself records «протухший access → refresh уже лечится глобально»). WSTransport gains a PUBLIC readonly isOpen probe (additive only — backoff/ceiling/close semantics untouched; the Close event stays payload-free). OwnWsAdapter gains reconnectAll(): close+drop every sockets entry whose transport is NOT open (a stuck-backoff entry becomes re-openable — the sockets.has(id) guard otherwise blocks it); OPEN sockets untouched; gateway exports reconnectAllChatSockets() mirroring closeAllChatSockets. Stories symmetry (review F-7): stories/ws/own.ts gains reconnectStoriesSocket() (close+drop+connect — the existing socket!==null guard silently skips a socket stuck mid-backoff for its whole 5-30s window); gateway re-exports it. INTENT DIFFERENTIATION (review F-3 — WSTransport emits the SAME payload-less Close for manual close() and exhaustion): the ADAPTER tracks intent — closeChat, chat_deleted handling, leaveChat, closeAll and every reconnectAll drop mark the chat id as intentionally closed BEFORE socket.close(); the socket Close handler consults the mark: marked → cleanup only, NO indicator; unmarked Close (reconnect budget exhausted while the transport thought it should be alive) → notify the watcher → indicator shows; a subsequent Connected hides it. Composition root src/features/index.ts binds installConnectivityWatchers() next to the existing seams. Tests: connectivity.test.ts (jsdom dispatches window offline/online; overlay pairs; controller/gateway stubs; double-install idempotent; NEGATIVE — intentional closes produce NO indicator), ws.test.ts (reconnectAll drops non-OPEN and keeps OPEN; intent marks gate the Close notification; Connected hides the indicator), stories own.test.ts (reconnectStoriesSocket force-drops a live-but-backoffing socket), WSTransport.test.ts (isOpen).",
+                "priority": "P1",
+                "source": "docs/NEXT.md item 2, recon 2026-11-04, review round 1 F-3/F-4/F-7",
+                "acceptanceIds": [
+                    "AC-FE-OFFLINE"
+                ],
+                "evidenceIds": [
+                    "EV-FE-2"
+                ],
+                "owner": "WS-FE-RESILIENCE"
+            },
+            {
+                "id": "REQ-FE-BOT-DELTA",
+                "title": "Pending placeholder linkage + WS adapter bot_delta consumption",
+                "description": "LINKAGE FIRST (review F-1): the pending placeholder entry in the store messages slice gains ONE optional field pending_for: number — the question message id — written by its ONLY creator (the placeholder append in ChatsController.runBotForLastOwnMessage, controller.ts:530-540) and consumed downstream; this is the single store-shape change of the plan and it lives in the SAME workstream as its consumer, so no wave ever improvises the matching. src/features/chats/ws/own.ts: bot_delta handler in the existing Message dispatch — when the chat has a pending tail whose pending_for EQUALS content.message_id, APPEND the delta text to the placeholder content in ONE store emit (batched by the WS-FE-RENDER-PERF economics); a delta without a matching tail is DROPPED silently (no feed mutation — replayed/foreign deltas and deltas for OTHER members' questions cannot enter the feed; note review N-3: a member's tab that did not ask the question has no tail, sees deltas dropped and receives only the final message — documented limitation); the final answer message replaces the tail through the EXISTING message path (no duplicate text; existing dedup + dropPending + REST fallback untouched). Contract (frozen here, pinned by WS-BE-BOT-STREAM tests): {'type': 'bot_delta', 'content': {'message_id': <question message id>, 'delta': <text>}}. Tests in ws.test.ts: append (one store emit per delta), drop without matching tail (incl. a tail with a DIFFERENT pending_for), final replacement without duplicate.",
+                "priority": "P1",
+                "source": "docs/NEXT.md item 1 symptom (c) frontend side + review round 1 F-1/N-3",
+                "acceptanceIds": [
+                    "AC-FE-BOT-DELTA"
+                ],
+                "evidenceIds": [
+                    "EV-FE-3"
+                ],
+                "owner": "WS-FE-RESILIENCE"
+            },
+            {
+                "id": "REQ-FE-BOT-UX",
+                "title": "Bot wait UX: honest echo timeout, typing animation, run records",
+                "description": "src/features/chats/controller.ts: waitForOwnEcho exceeding its 5s budget surfaces an honest user-visible error (existing pushError channel) instead of silently skipping the bot run. src/scss/components/messenger.scss (pending block at :450): pure-CSS typing animation for the pending bubble until the first delta arrives (no store ticks; verbatim «Ассистент печатает…» base copy preserved). Docs: docs/progress/progress_log.md run record on top (incl. the MEASURED own-message appearance time against the local compose stack — no inference host needed — and the residual O(n)-per-emit note, review N-2); docs/NEXT.md marks BOTH debt items closed with results and the DEFERRED live-smoke note (host down: first-token < 3s, thinking knob on the real llama-server, offline-during-bot-answer; multi-tab visibility limitation, review N-3). Tests: chats.test.ts (echo-timeout honest error; composer unblocks after the final message), message.test.ts (pending bubble animated marker).",
+                "priority": "P1",
+                "source": "docs/NEXT.md item 1 symptoms (a,c) UX tail + review N-2/N-3",
+                "acceptanceIds": [
+                    "AC-FE-BOT-UX",
+                    "AC-PROCESS"
+                ],
+                "evidenceIds": [
+                    "EV-FE-4",
+                    "EV-PROCESS-1"
+                ],
+                "owner": "WS-FE-RESILIENCE"
+            },
+            {
+                "id": "REQ-PROCESS",
+                "title": "Gates and bookkeeping",
+                "description": "Deterministic gates green with grown counts on BOTH platform forms; guard strict 0; ownership audit clean (no file outside the manifest write-sets); progress log and NEXT.md records in place; deferred live acceptance recorded. Rides feature/2026-11-03-auth-refresh-retry @ 4edbd99 (operator decision to continue on this branch).",
+                "priority": "P1",
+                "source": "repository gate contract (tasks/README.md) + review F-5/F-6",
+                "acceptanceIds": [
+                    "AC-PROCESS"
+                ],
+                "evidenceIds": [
+                    "EV-PROCESS-1"
+                ],
+                "owner": "WS-FE-RESILIENCE"
+            }
+        ],
+        "goal": "Own message appears in <500ms (one store emit = one render per component, unchanged messages reuse instances, no subscription leak growth; measured number recorded); the bot answer streams into the pending placeholder over the existing chat WS (bot_delta matched by the placeholder's pending_for linkage, membership-filtered, kill-switchable, thinking knob documented) with the final message replacing it exactly as today; the browser recovers from offline without F5 (online → overlay hides, stuck chat AND stories sockets force-dropped, all chats reconnected and tail-resynced), with a WS-death indicator that distinguishes intentional closes from exhaustion. All streaming evidence is fake-provider based (host down); live smoke is deferred acceptance.",
+        "constraints": [
+            "Layers only downward; src/core learns three GENERIC mechanics (batched setProps emit, destroy-replaced-hbs-children with the retained exemption, opt-in cacheKey reuse) with zero messenger/bot knowledge; the messenger feature opts in and owns cache pruning; guard-architecture --all --strict stays 0.",
+            "Store change is EXACTLY ONE optional creator-written field on the placeholder entry (pending_for?: number); no other store-shape, routing or WS-protocol-breaking changes; the JSON-snapshot compare in Store.set stays.",
+            "WSTransport gains ONLY the readonly isOpen probe; the Close event stays payload-free — intent differentiation lives in the adapter (marks set by its own close paths).",
+            "bot_delta is a NEW WS event type over the EXISTING hub broadcast (membership filter inherited); the final answer message path (creation, single broadcast on NEW success, redelivery skip, response_message_id, REST fallback, idempotency by message_id) stays byte-identical.",
+            "New envs default to current behavior: CHATTY_BOT_ENABLE_THINKING=true, CHATTY_BOT_STREAMING=true; code default CHATTY_BOT_TIMEOUT_SECONDS stays 60 (300→~60 is an operator env recommendation in own-backend.md).",
+            "NO auth warm-up on online (review F-4 — dropped; the global 401→refresh policy already covers a stale access; the race-window guard must stay intact).",
+            "Deltas without a matching pending tail (pending_for === content.message_id) are dropped on the floor (no feed mutation); no delta handling may create or mutate a real message.",
+            "No comments in new/edited scss (stylelint); imports with .ts extension; eslint:fix/stylelint:fix before commit.",
+            "Existing suites stay green; mocha counts grow from the 623 base (review F-5); the backend gate is reported in the Windows form (baseline 259 passed + 4 known ingestion failures, 263 collected) with zero NEW failures and all new tests passing — the canonical PYTHON_BIN form stays for Unix/CI."
+        ],
+        "nonGoals": [
+            "no Store API change beyond the single pending_for placeholder field (no setMany/coalescing; per-set JSON-snapshot compare stays)",
+            "no GET/polling endpoint for bot runs (idempotent POST retry + REST tail fetch already cover lost broadcasts)",
+            "no list virtualization/windowing of the feed (residual O(n)-per-emit re-render documented, review N-2)",
+            "no streaming for the /assistant REST loop (ai-assistant surface)",
+            "no run-scoped placeholders for OTHER members' tabs — only the asking tab streams (review N-3 limitation, follow-up candidate)",
+            "no pgvector/RAG changes (python cosine stays)",
+            "no auth warm-up / proactive refresh on online (dropped, review F-4)",
+            "no WSTransport backoff/ceiling/payload changes (drop-and-reopen + adapter intent marks instead)",
+            "no live-model acceptance in this run (host down — deferred, recorded in docs/NEXT.md)"
+        ],
+        "scope": "core render mechanics + messenger mapper/template wiring with unit tests (src/core, src/components/messenger, chat page tests); provider streaming + thinking/streaming knobs + delta bridge + backend tests + env/docs (backend/app bot+service+endpoint, .env.example, own-backend.md); the whole frontend beyond core in ONE owner — connectivity watcher + chats/stories force-reconnect + intent-differentiated indicator + pending_for linkage + bot_delta dispatch + honest echo error + typing animation + run records (features/chats ws+stories+controller, features/index.ts, utils/WSTransport probe, messenger.scss, message tests, docs) — evidence under work/2026-11-04-bot-wait-offline/."
+    },
+    "readOnly": [
+        "AGENTS.md",
+        "tasks/README.md",
+        "tasks/2026-11-03-auth-refresh-retry/plan.md"
+    ],
+    "forbiddenWrites": [
+        ".env",
+        ".env.development",
+        ".env.own",
+        "docs/project-principles.json",
+        "src/utils/Store.ts",
+        "src/utils/Router.ts",
+        "src/utils/HTTPTransport.ts",
+        "src/utils/busyOverlay.ts",
+        "src/features/auth",
+        "src/scss/libs",
+        "src/scss/utils",
+        "backend/alembic",
+        "backend/app/ws",
+        ".github/workflows",
+        "netlify.toml",
+        "server/server.js"
+    ],
+    "leadOwned": [
+        {
+            "path": "tasks/2026-11-04-bot-wait-offline",
+            "owner": "controller",
+            "reason": "Controller owns plan-package artifacts."
+        }
+    ],
+    "workstreams": [
+        {
+            "id": "WS-FE-RENDER-PERF",
+            "title": "Core render economics (batched setProps, child destroy with retained exemption, keyed reuse)",
+            "owner": "worker-frontend-render-perf",
+            "reviewer": "independent-release-reviewer",
+            "dependsOn": [],
+            "writes": [
+                "src/core/Block.ts",
+                "src/core/Block.test.ts",
+                "src/core/registerComponent.ts",
+                "src/components/messenger/messenger.ts",
+                "src/components/messenger/messenger.hbs",
+                "src/components/messenger/messenger.test.ts",
+                "src/features/chats/pages/chat/chat.test.ts"
+            ],
+            "readOnly": [
+                "src/utils/Store.ts",
+                "src/components/messenger/feed-scroll.ts",
+                "src/features/chats/pages/chat/chat.ts"
+            ],
+            "forbiddenWrites": [],
+            "launchGate": "branch feature/2026-11-03-auth-refresh-retry at 4edbd99; npm run verify green at base (mocha 623); guard strict 0.",
+            "capabilityHints": [
+                "typescript",
+                "handlebars",
+                "mocha",
+                "jsdom"
+            ],
+            "requiredTools": [
+                "node",
+                "npm"
+            ],
+            "contextRefs": [
+                "plan.md",
+                "acceptance-criteria.md",
+                "developer-overview.md"
+            ],
+            "acceptanceIds": [
+                "AC-FE-RENDER-PERF"
+            ],
+            "evidenceIds": [
+                "EV-FE-1"
+            ],
+            "executionPolicy": {
+                "maxAttempts": 3,
+                "maxWallSeconds": 5400
+            },
+            "artifactPaths": {
+                "result": "work/2026-11-04-bot-wait-offline/evidence/WS-FE-RENDER-PERF/task-result-{attempt}.json",
+                "review": "work/2026-11-04-bot-wait-offline/evidence/WS-FE-RENDER-PERF/task-review-{attempt}.json"
+            },
+            "required": true,
+            "plannedItems": [
+                "Block.setProps batching: raw-target assign + ONE FLOW_CDU per call with old/new snapshots; direct proxy writes keep the per-key emit; lifecycle order unchanged",
+                "Block.compile: destroy replaced _hbsChildren absent from the new list (by reference) EXCEPT cache-retained instances; Block.destroy() likewise SKIPS retained instances (review F-2 — without the exemption the leak fix destroys the cached Messages shared with the new render)",
+                "registerComponent: opt-in cacheKey hash option — hit → setProps refresh + element MOVE via the existing embed; miss → construct and register; retained-mark at registration; exported prune helper destroys keys that left the feed",
+                "messenger mapper: cacheKey per mapped message (id:<n>; FIXED pending:tail for the at-most-one placeholder per feed — no question-id coupling in this workstream, review F-1) + prune to the current feed after each map; messenger.hbs passes cacheKey through the Message helper",
+                "tests: one-CDU-per-setProps (multi-key) + per-key emit preserved for direct writes; absent-hbs-child destroyed with subscription removed (store listener count baseline); present children survive; RETAINED instances survive the compile sweep AND a full parent destroy with their element still live in the new parent's DOM; instance reuse across renders (same id, element moved); prune semantics; render-count-sensitive chat.test.ts updates",
+                "gate: npm run verify green with mocha counts grown from 623; guard strict 0"
+            ],
+            "qualityFloor": "npm run verify green; guard strict 0; no file outside the write-set touched; no test deleted."
+        },
+        {
+            "id": "WS-BE-BOT-STREAM",
+            "title": "Provider streaming + thinking knob + throttled bot_delta bridge",
+            "owner": "worker-backend-bot-stream",
+            "reviewer": "independent-release-reviewer",
+            "dependsOn": [],
+            "writes": [
+                "backend/app/bot/provider.py",
+                "backend/app/bot/config.py",
+                "backend/app/services/bot.py",
+                "backend/app/api/v1/endpoints/bot.py",
+                "backend/.env.example",
+                "backend/tests/integration/bot/test_bot_streaming.py",
+                "docs/deployment/own-backend.md"
+            ],
+            "readOnly": [
+                "backend/app/bot/prompts.py",
+                "backend/app/ws/hub.py",
+                "backend/app/api/v1/endpoints/files.py",
+                "backend/tests/integration/bot/test_bot_api.py",
+                "backend/tests/integration/bot/test_bot_ws_broadcast.py"
+            ],
+            "forbiddenWrites": [],
+            "launchGate": "branch feature/2026-11-03-auth-refresh-retry at 4edbd99 (or later accepted head); backend gate green at base in the Windows form (259 passed + 4 known ingestion failures, 263 collected) or the canonical PYTHON_BIN form.",
+            "capabilityHints": [
+                "fastapi",
+                "pytest",
+                "httpx",
+                "asyncio"
+            ],
+            "requiredTools": [
+                "python",
+                "npm"
+            ],
+            "contextRefs": [
+                "plan.md",
+                "acceptance-criteria.md",
+                "developer-overview.md"
+            ],
+            "acceptanceIds": [
+                "AC-BE-BOT-STREAM"
+            ],
+            "evidenceIds": [
+                "EV-BE-1"
+            ],
+            "executionPolicy": {
+                "maxAttempts": 3,
+                "maxWallSeconds": 5400
+            },
+            "artifactPaths": {
+                "result": "work/2026-11-04-bot-wait-offline/evidence/WS-BE-BOT-STREAM/task-result-{attempt}.json",
+                "review": "work/2026-11-04-bot-wait-offline/evidence/WS-BE-BOT-STREAM/task-review-{attempt}.json"
+            },
+            "required": true,
+            "plannedItems": [
+                "protocol + BOTH providers: complete_stream(messages) -> Iterator[str] explicit on OllamaBotProvider (ONE chunk from complete — structural implementers do not inherit Protocol defaults, review N-1) and streaming on OpenAIChatProvider; the protocol default remains for fakes that subclass",
+                "OpenAIChatProvider.complete_stream: stream true, SSE line parsing, yield ONLY choices[0].delta.content (reasoning excluded); provider_timeout/provider_malformed kinds preserved; per-chunk httpx timeout",
+                "config: CHATTY_BOT_ENABLE_THINKING (default true; false → chat_template_kwargs {'enable_thinking': false} in the body) + CHATTY_BOT_STREAMING (default true; false → whole-answer path byte-identical)",
+                "service: consume complete_stream, accumulate the full answer (finalization byte-identical), coalesce deltas ~250ms into the optional on_delta callback — never after failure, never blocking/raising into the worker thread",
+                "endpoint: bridge via asyncio.run_coroutine_threadsafe onto the request loop; hub.broadcast {'type':'bot_delta','content':{'message_id': <question id>,'delta': <text>}}; bridge failures swallowed+logged; final broadcast/redelivery skip/idempotency untouched",
+                "backend/.env.example: both new envs + the forgotten CHATTY_BOT_RAG_MIN_SCORE; own-backend.md: knobs + 300→~60 timeout recommendation (code default unchanged)",
+                "tests (fakes only): SSE parse join/reasoning-exclusion/malformed/timeout; kwargs presence/absence; explicit ollama single chunk; STREAMING=false bypass; delta coalescing + failure semantics; bridge shape via fake hub; existing bot suites green",
+                "gate: backend gate green (Windows form or canonical) with zero new failures and all new tests passing"
+            ],
+            "qualityFloor": "backend gate green with zero new failures; no file outside the write-set touched; no inference-host dependency in any test."
+        },
+        {
+            "id": "WS-FE-RESILIENCE",
+            "title": "Frontend resilience + bot wait UX: connectivity, force-reconnect, bot_delta, honest echo, run records",
+            "owner": "worker-frontend-resilience",
+            "reviewer": "independent-release-reviewer",
+            "dependsOn": [
+                "WS-BE-BOT-STREAM"
+            ],
+            "writes": [
+                "src/features/chats/ws/connectivity.ts",
+                "src/features/chats/ws/connectivity.test.ts",
+                "src/features/chats/ws/gateway.ts",
+                "src/features/chats/ws/own.ts",
+                "src/features/chats/ws/ws.test.ts",
+                "src/features/chats/stories/ws/own.ts",
+                "src/features/chats/stories/ws/own.test.ts",
+                "src/features/chats/controller.ts",
+                "src/features/chats/chats.test.ts",
+                "src/features/index.ts",
+                "src/utils/WSTransport.ts",
+                "src/utils/WSTransport.test.ts",
+                "src/components/message/message.test.ts",
+                "src/scss/components/messenger.scss",
+                "docs/progress/progress_log.md",
+                "docs/NEXT.md"
+            ],
+            "readOnly": [
+                "src/utils/busyOverlay.ts",
+                "src/components/message/message.hbs",
+                "src/features/chats/api/own.ts",
+                "tasks/2026-11-04-bot-wait-offline/acceptance-criteria.md"
+            ],
+            "forbiddenWrites": [],
+            "launchGate": "WS-BE-BOT-STREAM accepted (frozen bot_delta contract pinned by its tests); npm run verify + backend gate green at its head; guard strict 0.",
+            "capabilityHints": [
+                "typescript",
+                "scss",
+                "mocha",
+                "sinon",
+                "jsdom"
+            ],
+            "requiredTools": [
+                "node",
+                "npm"
+            ],
+            "contextRefs": [
+                "plan.md",
+                "acceptance-criteria.md",
+                "developer-overview.md"
+            ],
+            "acceptanceIds": [
+                "AC-FE-OFFLINE",
+                "AC-FE-BOT-DELTA",
+                "AC-FE-BOT-UX",
+                "AC-PROCESS"
+            ],
+            "evidenceIds": [
+                "EV-FE-2",
+                "EV-FE-3",
+                "EV-FE-4",
+                "EV-PROCESS-1"
+            ],
+            "executionPolicy": {
+                "maxAttempts": 3,
+                "maxWallSeconds": 7200
+            },
+            "artifactPaths": {
+                "result": "work/2026-11-04-bot-wait-offline/evidence/WS-FE-RESILIENCE/task-result-{attempt}.json",
+                "review": "work/2026-11-04-bot-wait-offline/evidence/WS-FE-RESILIENCE/task-review-{attempt}.json"
+            },
+            "required": true,
+            "plannedItems": [
+                "WSTransport: public readonly isOpen probe (additive only — backoff/ceiling/close semantics untouched, Close stays payload-free)",
+                "OwnWsAdapter.reconnectAll(): close+drop every non-OPEN entry (stuck-backoff becomes re-openable past the sockets.has guard); OPEN untouched; gateway exports reconnectAllChatSockets() mirroring closeAllChatSockets",
+                "stories symmetry (review F-7): stories/ws/own.ts reconnectStoriesSocket() force variant (close+drop+connect past the socket!==null guard); gateway re-export",
+                "INTENT DIFFERENTIATION (review F-3): adapter marks chat ids as intentionally closed in ITS OWN close paths (closeChat, chat_deleted, leaveChat, closeAll, reconnectAll drops) BEFORE socket.close(); the Close handler notifies the watcher ONLY for unmarked (exhausted) closes; Connected hides the indicator",
+                "connectivity.ts: idempotent installConnectivityWatchers() — offline → showBusyOverlay('reconnect'); online → hide + reconnectAllChatSockets + reconnectStoriesSocket + fetchChats; NO auth warm-up (dropped, review F-4); navigator.onLine false at bind does not fire online path; features/index.ts binding",
+                "LINKAGE (review F-1): pending placeholder gains pending_for (question message id) written by its only creator in controller.ts; adapter bot_delta appends ONLY when pending_for === content.message_id (ONE store emit per delta); no matching tail → drop silently; final message replaces the tail via the EXISTING path (dedup/dropPending/REST fallback untouched)",
+                "controller.ts: waitForOwnEcho 5s budget exceeded → honest user-visible error via the existing pushError channel (no silent bot-run skip)",
+                "messenger.scss pending block: pure-CSS typing animation until the first delta (no store ticks); verbatim «Ассистент печатает…» base copy preserved; zero comments",
+                "docs: progress_log.md run record on top (incl. measured own-message timing vs local compose + residual O(n)-per-emit note N-2); docs/NEXT.md marks BOTH debt items closed + DEFERRED live-smoke note (first-token < 3s, thinking knob, offline-during-bot-answer; multi-tab limitation N-3)",
+                "tests: jsdom offline/online with stubs; overlay pairs; double-install idempotence; NEGATIVE — intentional closes produce NO indicator; reconnectAll drop/keep; stories force-drop; isOpen; bot_delta append/drop(incl. different pending_for)/replace; echo-timeout honest error; composer unblocks; pending bubble animated marker",
+                "gates: npm run verify + backend gate (Windows form or canonical) + guard strict green; mocha grown from 623; zero new backend failures; ownership audit clean"
+            ],
+            "qualityFloor": "npm run verify + backend gate green end to end; guard strict 0; docs updated; no file outside the write-set touched."
+        }
+    ],
+    "acceptance": {
+        "criteria": [
+            {
+                "id": "AC-FE-RENDER-PERF",
+                "title": "Render economics proven by mocha",
+                "requirementIds": [
+                    "REQ-FE-RENDER-PERF"
+                ],
+                "evidenceIds": [
+                    "EV-FE-1"
+                ],
+                "independentEvidenceIds": [],
+                "statement": "Suites prove: a multi-key setProps triggers EXACTLY ONE FLOW_CDU/render (snapshots still delivered), direct proxy writes keep the per-key emit; a parent re-render destroys hbs-children absent from the new list (store subscription removed — listener count back to baseline) while present children survive; RETAINED instances survive BOTH the compile sweep AND a full parent destroy with their element still live in the new parent's DOM (review F-2); a cacheKey hit reuses the instance (same id, setProps refresh, element moved; pending placeholder keyed by the FIXED pending:tail) and the prune destroys keys that left the feed with no unbounded growth. npm run verify exits 0 with mocha counts grown from the 623 base; no test deleted.",
+                "description": "Frontend unit tests.",
+                "source": "acceptance-criteria.md",
+                "priority": "P1"
+            },
+            {
+                "id": "AC-FE-OFFLINE",
+                "title": "Offline/online recovery + intent-differentiated indicator proven by mocha",
+                "requirementIds": [
+                    "REQ-FE-CONNECTIVITY"
+                ],
+                "evidenceIds": [
+                    "EV-FE-2"
+                ],
+                "independentEvidenceIds": [],
+                "statement": "Suites prove: window offline shows the reconnect overlay and online hides it and invokes fetchChats + reconnectAllChatSockets + reconnectStoriesSocket (stubs); reconnectAll closes+drops non-OPEN chat sockets (stuck backoff becomes re-openable) and keeps OPEN ones; reconnectStoriesSocket force-drops a live-but-backoffing stories socket (review F-7); ONLY an unmarked (exhausted) WS Close shows the indicator and a Connected hides it, while closeChat/chat_deleted/leaveChat/closeAll/reconnectAll drops produce NO indicator (review F-3 negative pins); install is idempotent; NO auth warm-up exists (dropped, review F-4 — features/auth untouched).",
+                "description": "Frontend unit tests.",
+                "source": "acceptance-criteria.md",
+                "priority": "P1"
+            },
+            {
+                "id": "AC-BE-BOT-STREAM",
+                "title": "Provider streaming + delta bridge proven by pytest (fakes)",
+                "requirementIds": [
+                    "REQ-BE-BOT-STREAM"
+                ],
+                "evidenceIds": [
+                    "EV-BE-1"
+                ],
+                "independentEvidenceIds": [],
+                "statement": "Fake-provider/fake-hub suites prove: SSE deltas parsed and joined with reasoning excluded and error kinds preserved; chat_template_kwargs emitted exactly when thinking is disabled; BOTH providers implement complete_stream explicitly (ollama = one chunk, review N-1); CHATTY_BOT_STREAMING=false keeps the whole-answer path byte-identical; the service coalesces deltas (~250ms) into on_delta and never calls it after failure; the endpoint bridge broadcasts the bot_delta shape through the hub while the final message path stays byte-identical; .env.example carries both new envs and CHATTY_BOT_RAG_MIN_SCORE. The backend gate exits 0 in the Windows form (259 passed + 4 known ingestion failures baseline, zero NEW failures) or the canonical PYTHON_BIN form, with all new tests passing.",
+                "description": "Backend unit/integration tests with fakes.",
+                "source": "acceptance-criteria.md",
+                "priority": "P1"
+            },
+            {
+                "id": "AC-FE-BOT-DELTA",
+                "title": "pending_for linkage + bot_delta dispatch proven by mocha",
+                "requirementIds": [
+                    "REQ-FE-BOT-DELTA"
+                ],
+                "evidenceIds": [
+                    "EV-FE-3"
+                ],
+                "independentEvidenceIds": [],
+                "statement": "Suites prove: the placeholder carries pending_for set by its only creator; a bot_delta whose content.message_id EQUALS the tail's pending_for appends the text in ONE store emit; a delta with no tail or a DIFFERENT pending_for is dropped silently; the final message replaces the tail with no duplicate text. npm run verify exits 0 with mocha counts grown from the 623 base.",
+                "description": "Frontend unit tests.",
+                "source": "acceptance-criteria.md",
+                "priority": "P1"
+            },
+            {
+                "id": "AC-FE-BOT-UX",
+                "title": "Honest echo error + typing animation proven by mocha",
+                "requirementIds": [
+                    "REQ-FE-BOT-UX"
+                ],
+                "evidenceIds": [
+                    "EV-FE-4"
+                ],
+                "independentEvidenceIds": [],
+                "statement": "Suites prove: waitForOwnEcho timeout surfaces an honest user-visible error; the composer unblocks after the final message; the pending bubble carries the CSS typing marker with no store ticks. npm run verify exits 0 with mocha counts grown from the 623 base.",
+                "description": "Frontend unit tests.",
+                "source": "acceptance-criteria.md",
+                "priority": "P1"
+            },
+            {
+                "id": "AC-PROCESS",
+                "title": "Gates and bookkeeping",
+                "requirementIds": [
+                    "REQ-PROCESS"
+                ],
+                "evidenceIds": [
+                    "EV-PROCESS-1"
+                ],
+                "independentEvidenceIds": [],
+                "statement": "npm run verify exit 0 (mocha ≥ 623 base grown); the backend gate exit 0 in the Windows form (baseline 259 passed + 4 known ingestion failures, 263 collected, zero NEW failures) or the canonical PYTHON_BIN form; node .claude/hooks/scripts/guard-architecture.mjs --all --strict exit 0; no file outside the manifest write-sets changes (ownership audit clean); docs/progress/progress_log.md carries the run record on top incl. the measured own-message timing; docs/NEXT.md marks both debt items closed with the DEFERRED live-smoke note (first-token < 3s, thinking knob on the real llama-server, offline-during-bot-answer; multi-tab limitation); docs/deployment/own-backend.md documents the new knobs; rides feature/2026-11-03-auth-refresh-retry @ 4edbd99.",
+                "description": "Gate runs captured as evidence.",
+                "source": "acceptance-criteria.md",
+                "priority": "P1"
+            }
+        ]
+    },
+    "validation": {
+        "commands": [
+            "npm run verify",
+            "PYTHON_BIN=~/.venvs/chatty-backend/Scripts/python.exe bash backend/verify.sh",
+            "PYTHON_BIN=~/.venvs/chatty-backend/bin/python npm run verify:backend",
+            "node .claude/hooks/scripts/guard-architecture.mjs --all --strict"
+        ]
+    },
+    "orchestration": {
+        "startMode": "reviewed-plan",
+        "remediationMode": "ask",
+        "maxPlanReviewRounds": 3,
+        "maxTaskAttempts": 3,
+        "maxParallelTasks": 1,
+        "maxValidationRunsPerTask": 2,
+        "stateFile": "work/2026-11-04-bot-wait-offline/run.state.json",
+        "eventLog": "work/2026-11-04-bot-wait-offline/events.jsonl",
+        "stepReviewRequired": true,
+        "finalAuditRequired": true
+    },
+    "implementationAudit": {
+        "required": true,
+        "finalRequired": true
+    },
+    "developerOverview": "tasks/2026-11-04-bot-wait-offline/developer-overview.md",
+    "releaseTarget": {
+        "kind": "local-only",
+        "environment": "Vite own mode + compose own-backend",
+        "productionPromotionClaimed": false
+    },
+    "releaseImpact": "src/core gains three generic render mechanics (one-emit setProps, destroy-replaced-hbs-children with the retained exemption, opt-in cacheKey reuse) wired into the messenger feed; the frontend beyond core lands in ONE owner: a connectivity watcher (offline overlay, online force-drop of stuck chat AND stories sockets with the existing Connected-resync), an intent-differentiated WS-death indicator, the pending_for placeholder linkage with bot_delta streaming into the placeholder, an honest echo-timeout error, a CSS typing animation and the run records; WSTransport gains a readonly isOpen probe; the backend bot provider streams SSE behind an explicitly-implemented protocol method with CHATTY_BOT_ENABLE_THINKING/CHATTY_BOT_STREAMING knobs and a throttled membership-filtered bot_delta bridge over the existing hub. No Store API beyond the single pending_for field, no WS backoff/payload changes, no final-message path, routing or dependency changes.",
+    "finalAuditGates": [
+        "[AC-FE-RENDER-PERF|EV-FE-1] one-emit setProps + destroy-replaced-hbs-children WITH the retained exemption + keyed instance reuse with prune — mocha, verify green, no test deleted",
+        "[AC-FE-OFFLINE|EV-FE-2] offline/online watcher + chats AND stories force-reconnect + intent-differentiated indicator with negative pins — mocha, verify green",
+        "[AC-BE-BOT-STREAM|EV-BE-1] SSE streaming (both providers explicit) + thinking/streaming knobs + throttled bot_delta bridge with byte-identical final path — pytest fakes, backend gate green with zero new failures",
+        "[AC-FE-BOT-DELTA|EV-FE-3] pending_for linkage + bot_delta append/drop/replace — mocha, verify green",
+        "[AC-FE-BOT-UX|EV-FE-4] honest echo error + CSS typing marker + composer unblock — mocha, verify green",
+        "[AC-PROCESS|EV-PROCESS-1] all gates green (mocha 623→; backend Windows form zero new failures); guard strict 0; ownership audit clean; progress_log (incl. measured own-message timing) + NEXT.md closure records with the deferred live-smoke note"
+    ],
+    "securityGates": [
+        {
+            "id": "SEC-BOT-DELTA-MEMBERSHIP",
+            "statement": "bot_delta rides the EXISTING hub.broadcast with its active-membership filter — no new delivery path; pytest pins the fake hub receives the event through the same filtered broadcast used by final messages.",
+            "evidenceIds": [
+                "EV-BE-1"
+            ]
+        },
+        {
+            "id": "SEC-DELTA-NO-FEED-INJECTION",
+            "statement": "The frontend appends a delta ONLY to a pending tail whose pending_for EQUALS content.message_id; deltas without a matching tail (foreign questions, replays after the final message) are dropped silently and can never create or mutate a real message; mocha pins the drop (incl. a different pending_for) and the no-duplicate replacement.",
+            "evidenceIds": [
+                "EV-FE-3"
+            ]
+        },
+        {
+            "id": "SEC-NO-WARMUP",
+            "statement": "NO auth warm-up ships: online recovery never touches the transport policy or the auth feature (features/auth is a forbidden write) — the global 401→refresh policy heals stale access reactively and the recently-refreshed anti-kickout guard stays intact (review F-4).",
+            "evidenceIds": [
+                "EV-FE-2"
+            ]
+        },
+        {
+            "id": "SEC-CLOSE-INTENT",
+            "statement": "The WS-death indicator fires ONLY for unmarked exhaustion closes: every intentional close path (closeChat, chat_deleted, leaveChat, closeAll, reconnectAll drops) marks the chat id BEFORE socket.close() and produces NO indicator — negative-pinned by mocha (review F-3); a subsequent Connected always hides the indicator.",
+            "evidenceIds": [
+                "EV-FE-2"
+            ]
+        },
+        {
+            "id": "SEC-BLOCK-SEMANTICS",
+            "statement": "Core batching must not change lifecycle semantics: FLOW_CDU still carries old/new props and CDM/CDU ordering is unchanged; the retained-exemption keeps cache-owned instances alive across parent re-renders AND parent destroy; the full existing mocha suite green (no deletions) is the regression gate.",
+            "evidenceIds": [
+                "EV-FE-1"
+            ]
+        }
+    ],
+    "budgetPolicy": {
+        "units": "tokens-and-resources",
+        "reroute": "pause-and-review",
+        "maxTotalTokens": 100000,
+        "maxParallelWorkstreams": 1,
+        "maxRunWallSeconds": 21600,
+        "criticalPathWallSeconds": 18000,
+        "aggregateWorkstreamWallSeconds": 18000,
+        "retryReserveWallSeconds": 3600
+    },
+    "budgets": {
+        "defaultWorkstreamTokens": 28000,
+        "maxEvidenceBytesPerRun": 4194304
+    },
+    "contextLimits": {
+        "profile": "small-context-profile.v1",
+        "maxPlanContextBytes": 120000,
+        "maxRenderedPacketBytes": 40000,
+        "smallContextPacketBytes": 30000,
+        "maxReferenceFilesPerPacket": 12,
+        "includeOnlyOwnedWrites": true,
+        "excludeRuntimeWorkArtifacts": true
+    },
+    "tierResolution": {
+        "status": "RESOLVED",
+        "tier": "S2",
+        "requestedTier": "S2",
+        "reason": "multiple-executable-owners + architecture-risk + browser-risk + performance-risk + security-risk resolved by agent-lifecycle tier resolve",
+        "independentReviewRequired": true,
+        "requestPath": "tasks/2026-11-04-bot-wait-offline/tier-request.json",
+        "resolutionPath": "tasks/2026-11-04-bot-wait-offline/tier-resolution.json",
+        "requestDigest": "fa65033daa3464e6474766c38f5cac024c661e620a6135d6919b68b99ea4fcbc"
+    },
+    "planReview": {
+        "required": true,
+        "reviewerClass": "independent-plan-reviewer",
+        "maxRounds": 3,
+        "implementationAuthorized": false,
+        "report": "tasks/2026-11-04-bot-wait-offline/plan-review.json",
+        "reviewedRevision": 3,
+        "verdict": "READY_TO_FREEZE"
+    },
+    "nonGoals": [
+        "Store API changes beyond the single pending_for placeholder field",
+        "run polling GET endpoint",
+        "feed virtualization",
+        "assistant REST loop streaming",
+        "run-scoped placeholders for other members' tabs (N-3 limitation)",
+        "pgvector/RAG changes",
+        "auth warm-up / proactive refresh on online (dropped, F-4)",
+        "WSTransport backoff/payload changes",
+        "live-model acceptance in this run (deferred, host down)"
+    ],
+    "planFiles": [
+        "tasks/2026-11-04-bot-wait-offline/acceptance-criteria.md",
+        "tasks/2026-11-04-bot-wait-offline/developer-overview.md",
+        "tasks/2026-11-04-bot-wait-offline/plan-review-request.md",
+        "tasks/2026-11-04-bot-wait-offline/plan-review.json",
+        "tasks/2026-11-04-bot-wait-offline/plan.manifest.json",
+        "tasks/2026-11-04-bot-wait-offline/plan.md",
+        "tasks/2026-11-04-bot-wait-offline/tier-request.json",
+        "tasks/2026-11-04-bot-wait-offline/tier-resolution.json"
+    ]
+}
