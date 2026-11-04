@@ -1,0 +1,250 @@
+{
+    "schemaVersion": "agent-plan-manifest.v1",
+    "status": "FROZEN",
+    "planRevision": 1,
+    "package": {
+        "id": "2026-11-04-mobile-back-deselect",
+        "title": "Mobile back button clears the chat selection (stale selectedChat reopens the old chat)",
+        "workspaceRoot": ".",
+        "artifactRoot": "work/2026-11-04-mobile-back-deselect",
+        "planArtifactRoot": "tasks/2026-11-04-mobile-back-deselect"
+    },
+    "packageIntegrity": {
+        "required": true,
+        "lockSchemaVersion": "agent-plan-lock.v2",
+        "inventorySource": "planFiles",
+        "undeclaredTopLevelFiles": "reject",
+        "allowedUnlistedFiles": [
+            "plan.lock.json",
+            "plan-review.json"
+        ]
+    },
+    "author": {
+        "id": "claude-code",
+        "surface": "agent-first-planning",
+        "runId": "2026-11-04-mobile-back-deselect-quick-change"
+    },
+    "baseRevision": {
+        "ref": "feature/2026-11-04-mobile-back-deselect",
+        "sha": "1cbdbc8"
+    },
+    "specification": {
+        "tier": "S1",
+        "intent": "Mobile bug (operator, 2026-11-04): enter a chat, press back to the list, visit Contacts or Settings via the bottom bar, tap «Чаты» — you land in the previously opened chat instead of the chat list. Root cause: the mobile pane is derived from the store (chatPaneOpen = selectedChat != null, chat.ts:408) while the back button clears only the LOCAL prop (chat.ts:454-456), leaving selectedChat alive in the Store; the next page mount re-derives chatPaneOpen=true. Fix: onBack clears the selection in the store via a new ChatsController.closeChatFeed() (mirroring the existing store.set('selectedChat', undefined) writes at controller.ts:374/764); the page's existing CDU guard (chat.ts:631-636) collapses the pane on the defined→undefined transition, so the redundant local setProps is replaced by the controller call. Quick-change run on the quick-change preset obligations (one task, one owner, maxTaskAttempts 2, one review round).",
+        "status": "FROZEN",
+        "requirements": [
+            {
+                "id": "REQ-MOBILE-BACK-DESELECT",
+                "title": "Mobile back clears selectedChat in the store",
+                "description": "ChatsController gains closeChatFeed(): store.set('selectedChat', undefined) — the ONLY new production write of that key besides the existing chat_deleted/leaveChat paths. The messenger back handler (chat.ts onBack) calls ChatsController.closeChatFeed() INSTEAD of the local this.setProps({chatPaneOpen: false}) — the existing CDU guard (selectedChat defined→undefined while chatPaneOpen===true → setProps({chatPaneOpen:false})) performs the visual collapse in the same store-emit cycle. Test pin in chat.test.ts next to the existing chatPaneOpen suites: with a chat selected and the pane open, invoking the page's onBack clears store.getState().selectedChat to undefined and the page props end with chatPaneOpen === false; a subsequent fresh mount derives the list view (chatPaneOpen false at construction). No other behavior changes: repeated chat selection (onSelectChat), the openDm-from-contacts entry with a preselected chat (starts at the feed bottom), chat_deleted and leaveChat paths stay untouched.",
+                "priority": "P1",
+                "source": "operator bug report 2026-11-04 (mobile)",
+                "acceptanceIds": [
+                    "AC-MOBILE-BACK-DESELECT"
+                ],
+                "evidenceIds": [
+                    "EV-MOBILE-1"
+                ],
+                "owner": "WS-MOBILE-BACK-DESELECT"
+            }
+        ],
+        "goal": "Tapping «Чаты» on the mobile bottom bar after leaving a chat via its back button shows the chat list, not the stale chat: back now deselects the chat in the store and the pane collapse rides the existing CDU guard.",
+        "constraints": [
+            "The only new production write of selectedChat is closeChatFeed(); chat_deleted (controller.ts:374) and leaveChat (controller.ts:764) paths stay byte-identical.",
+            "No Router, store-slice, WS or messenger.hbs changes; guard-architecture --all --strict stays 0.",
+            "Existing suites stay green; mocha grows from the 654 base; no test deleted."
+        ],
+        "nonGoals": [
+            "no per-chat routes (/messenger/:id) — separate optional feature",
+            "no change to the bottom-bar return semantics without pressing back (returning to an open chat is the existing deliberate behavior powering the openDm flow)",
+            "no desktop changes (the pane modifier applies below 768px only)"
+        ],
+        "scope": "ChatsController.closeChatFeed + onBack rewiring + one chat.test.ts pin + progress_log record; evidence under work/2026-11-04-mobile-back-deselect/."
+    },
+    "readOnly": [
+        "AGENTS.md",
+        "tasks/README.md"
+    ],
+    "forbiddenWrites": [
+        ".env",
+        ".env.development",
+        ".env.own",
+        "docs/project-principles.json",
+        "src/utils",
+        "src/core",
+        "src/features/auth",
+        "src/components/messenger",
+        "backend",
+        ".github/workflows",
+        "netlify.toml",
+        "server/server.js"
+    ],
+    "leadOwned": [
+        {
+            "path": "tasks/2026-11-04-mobile-back-deselect",
+            "owner": "controller",
+            "reason": "Controller owns plan-package artifacts."
+        }
+    ],
+    "workstreams": [
+        {
+            "id": "WS-MOBILE-BACK-DESELECT",
+            "title": "Back button deselects the chat",
+            "owner": "worker-mobile-back-deselect",
+            "reviewer": "independent-release-reviewer",
+            "dependsOn": [],
+            "writes": [
+                "src/features/chats/controller.ts",
+                "src/features/chats/pages/chat/chat.ts",
+                "src/features/chats/pages/chat/chat.test.ts",
+                "docs/progress/progress_log.md"
+            ],
+            "readOnly": [
+                "src/features/chats/store.ts",
+                "src/components/messenger/messenger.ts"
+            ],
+            "forbiddenWrites": [],
+            "launchGate": "branch feature/2026-11-04-mobile-back-deselect at 1cbdbc8; npm run verify green at base (mocha 654); guard strict 0.",
+            "capabilityHints": [
+                "typescript",
+                "mocha",
+                "jsdom"
+            ],
+            "requiredTools": [
+                "node",
+                "npm"
+            ],
+            "contextRefs": [
+                "plan.md"
+            ],
+            "acceptanceIds": [
+                "AC-MOBILE-BACK-DESELECT"
+            ],
+            "evidenceIds": [
+                "EV-MOBILE-1"
+            ],
+            "executionPolicy": {
+                "maxAttempts": 2,
+                "maxWallSeconds": 1800
+            },
+            "artifactPaths": {
+                "result": "work/2026-11-04-mobile-back-deselect/evidence/WS-MOBILE-BACK-DESELECT/task-result-{attempt}.json",
+                "review": "work/2026-11-04-mobile-back-deselect/evidence/WS-MOBILE-BACK-DESELECT/task-review-{attempt}.json"
+            },
+            "required": true,
+            "plannedItems": [
+                "ChatsController.closeChatFeed(): store.set('selectedChat', undefined) — the only new production write of the key",
+                "chat.ts onBack: replace this.setProps({chatPaneOpen: false}) with void-free ChatsController.closeChatFeed(); the existing CDU guard collapses the pane in the same store-emit cycle",
+                "chat.test.ts pin: with a selected chat and open pane, onBack clears store selectedChat to undefined and ends with chatPaneOpen === false; fresh construction after that derives the list view",
+                "docs/progress/progress_log.md run record on top",
+                "gate: npm run verify green with mocha grown from 654; guard strict 0"
+            ],
+            "qualityFloor": "npm run verify green; guard strict 0; no file outside the write-set touched; no test deleted."
+        }
+    ],
+    "acceptance": {
+        "criteria": [
+            {
+                "id": "AC-MOBILE-BACK-DESELECT",
+                "title": "Back deselects the chat, return shows the list",
+                "requirementIds": [
+                    "REQ-MOBILE-BACK-DESELECT"
+                ],
+                "evidenceIds": [
+                    "EV-MOBILE-1"
+                ],
+                "independentEvidenceIds": [],
+                "statement": "mocha proves: with a chat selected and the mobile pane open, invoking onBack clears store.getState().selectedChat to undefined and the page props end with chatPaneOpen === false (the CDU-guard collapse); a fresh mount after that derives the list view; chat_deleted, leaveChat and openDm preselection behaviors stay untouched. npm run verify exits 0 with mocha counts grown from the 654 base; no test deleted.",
+                "description": "Frontend unit tests.",
+                "source": "plan.md",
+                "priority": "P1"
+            }
+        ]
+    },
+    "validation": {
+        "commands": [
+            "npm run verify",
+            "node .claude/hooks/scripts/guard-architecture.mjs --all --strict"
+        ]
+    },
+    "orchestration": {
+        "startMode": "reviewed-plan",
+        "remediationMode": "ask",
+        "maxPlanReviewRounds": 1,
+        "maxTaskAttempts": 2,
+        "maxParallelTasks": 1,
+        "maxValidationRunsPerTask": 1,
+        "stateFile": "work/2026-11-04-mobile-back-deselect/run.state.json",
+        "eventLog": "work/2026-11-04-mobile-back-deselect/events.jsonl",
+        "stepReviewRequired": true,
+        "finalAuditRequired": false
+    },
+    "implementationAudit": {
+        "required": true,
+        "finalRequired": false
+    },
+    "developerOverview": "tasks/2026-11-04-mobile-back-deselect/plan.md",
+    "releaseTarget": {
+        "kind": "local-only",
+        "environment": "Vite own mode + compose own-backend",
+        "productionPromotionClaimed": false
+    },
+    "releaseImpact": "ChatsController gains closeChatFeed() (the only new production write of selectedChat); the mobile messenger back button calls it instead of flipping a local prop, so the selection dies in the store and the existing CDU guard collapses the pane; one regression pin. No routing, store-slice, WS, template or backend changes.",
+    "securityGates": [],
+    "finalAuditGates": [],
+    "budgetPolicy": {
+        "units": "tokens-and-resources",
+        "reroute": "pause-and-review",
+        "maxTotalTokens": 24000,
+        "maxParallelWorkstreams": 1,
+        "maxRunWallSeconds": 5400,
+        "criticalPathWallSeconds": 3600,
+        "aggregateWorkstreamWallSeconds": 3600,
+        "retryReserveWallSeconds": 1800
+    },
+    "budgets": {
+        "defaultWorkstreamTokens": 12000,
+        "maxEvidenceBytesPerRun": 2097152
+    },
+    "contextLimits": {
+        "profile": "small-context-profile.v1",
+        "maxPlanContextBytes": 60000,
+        "maxRenderedPacketBytes": 24000,
+        "smallContextPacketBytes": 20000,
+        "maxReferenceFilesPerPacket": 6,
+        "includeOnlyOwnedWrites": true,
+        "excludeRuntimeWorkArtifacts": true
+    },
+    "tierResolution": {
+        "status": "RESOLVED",
+        "tier": "S1",
+        "requestedTier": "S1",
+        "reason": "single-executable-owner, no elevated risk resolved by agent-lifecycle tier resolve (quick-change one-off)",
+        "independentReviewRequired": false,
+        "requestPath": "tasks/2026-11-04-mobile-back-deselect/tier-request.json",
+        "resolutionPath": "tasks/2026-11-04-mobile-back-deselect/tier-resolution.json",
+        "requestDigest": "43c67a3bae71beeda5e2018eee27c7fb619849401feea53daf3c954fc4c08b34"
+    },
+    "planReview": {
+        "required": true,
+        "reviewerClass": "independent-plan-reviewer",
+        "maxRounds": 1,
+        "implementationAuthorized": false,
+        "report": "tasks/2026-11-04-mobile-back-deselect/plan-review.json",
+        "reviewedRevision": 1,
+        "verdict": "READY_TO_FREEZE"
+    },
+    "nonGoals": [
+        "per-chat routes",
+        "bottom-bar return semantics without back",
+        "desktop changes"
+    ],
+    "planFiles": [
+        "tasks/2026-11-04-mobile-back-deselect/plan-review-request.md",
+        "tasks/2026-11-04-mobile-back-deselect/plan-review.json",
+        "tasks/2026-11-04-mobile-back-deselect/plan.manifest.json",
+        "tasks/2026-11-04-mobile-back-deselect/plan.md",
+        "tasks/2026-11-04-mobile-back-deselect/tier-request.json",
+        "tasks/2026-11-04-mobile-back-deselect/tier-resolution.json"
+    ]
+}
