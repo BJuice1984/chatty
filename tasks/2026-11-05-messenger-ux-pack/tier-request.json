@@ -1,0 +1,26 @@
+{
+    "schemaVersion": "agent-tier-request.v1",
+    "package": "2026-11-05-messenger-ux-pack",
+    "requestedTier": "S2",
+    "requestedBy": "claude-code",
+    "requestedAt": "2026-11-05",
+    "taskCount": 4,
+    "executableOwners": [
+        "worker-backend-api",
+        "worker-ops-stack",
+        "worker-frontend-chat",
+        "worker-frontend-search"
+    ],
+    "signals": {
+        "multipleExecutable_owners": true,
+        "architecture_risk": false,
+        "security_risk": true,
+        "performance_risk": false,
+        "browser_risk": true,
+        "data_risk": true,
+        "release_risk": false,
+        "migration_risk": true,
+        "external_environment_risk": true
+    },
+    "rationale": "Four executable owners across backend/frontend/ops; additive DB migration (messages.kind, 012) with segment-test obligations; WS protocol addition (chat_renamed + kind-bearing message events); browser UX change (dblclick inline rename with non-standard Escape-saves semantics); external-environment action (operator-approved compose stack rebuild against the live local backend)."
+}
