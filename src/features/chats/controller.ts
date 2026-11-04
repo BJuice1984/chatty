@@ -739,6 +739,15 @@ export class ChatsFeatureController {
         store.set('chats', chats)
     }
 
+    // Мобильный «назад» (2026-11-04-mobile-back-deselect): возврат к списку
+    // сбрасывает именно выбор в сторе — панель схлопывает CDU-гвард страницы
+    // в этом же store-эмите; иначе повторный заход на /messenger
+    // ре-дедуцирует chatPaneOpen из живого selectedChat и открывает прежний
+    // чат (прецеденты сброса: chat_deleted, leaveChat)
+    closeChatFeed(): void {
+        store.set('selectedChat', undefined)
+    }
+
     // Кик участников (2026-11-01-chat-leave): owner-only на бэкенде; после
     // удаления обновляем и состав участников, и список чатов (у кикнутого
     // чат исчезает целиком, но наш список мы просто рефетчим). Заменил

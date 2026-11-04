@@ -452,8 +452,13 @@ class ChatPageBase extends Block {
                 void ChatsController.getChatUsers(id)
             },
             onBack: () => {
-                // Кнопка «назад» в шапке messenger (<768): возврат к списку
-                this.setProps({ chatPaneOpen: false })
+                // Кнопка «назад» в шапке messenger (<768): возврат к списку.
+                // Сбрасываем ВЫБОР в сторе, а не локальный флаг — иначе
+                // повторный заход ре-дедуцирует chatPaneOpen из живого
+                // selectedChat и открывает прежний чат
+                // (2026-11-04-mobile-back-deselect); панель схлопывает
+                // CDU-гвард в этом же store-эмите
+                ChatsController.closeChatFeed()
             },
             // Живой поиск по чатам: бар дебаунсит ввод, страница только
             // прокидывает запрос контроллеру (компонент фич не импортирует)

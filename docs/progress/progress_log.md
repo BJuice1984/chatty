@@ -1,3 +1,26 @@
+# 2026-11-05 — Fix(chats): мобильный «назад» сбрасывает выбранный чат (ALK 2026-11-04-mobile-back-deselect, WS-MOBILE-BACK-DESELECT)
+
+Баг (<768px): вход в чат → «назад» → уход по нижнему бару (Контакты/
+Настройки) → возврат по «Чаты» открывал прежний чат вместо списка. Причина:
+`chatPaneOpen` страницы — производное от стора (`selectedChat != null`),
+а `onBack` гасил только локальный пропс — выбор жил в сторе, и свежий монтаж
+ре-дедуцировал панель открытой. Фикс: новый `ChatsController.closeChatFeed()`
+(`store.set('selectedChat', undefined)` — третий продакшн-сброс рядом с
+chat_deleted/leaveChat, `src/features/chats/controller.ts`) вызывается из
+`onBack` (`src/features/chats/pages/chat/chat.ts`); визуальный коллапс панели
+делает существующий CDU-гвард в том же store-эмите, локальный
+`setProps({chatPaneOpen: false})` удалён; openDm-предвыбор (вход с уже
+выбранным чатом) и chat_deleted/leaveChat не тронуты. Тесты
+(`src/features/chats/pages/chat/chat.test.ts`): новый пин — «назад» чистит
+`store.getState().selectedChat` до undefined, итоговый `chatPaneOpen ===
+false`, свежая конструкция страницы после этого даёт список; существующий пин
+«opens the pane… closes it on back» запраймен стора перед onBack (selectChat
+замокан, undefined поверх undefined не эмитит — гвард не стрелял бы), сиблинг
+«re-opens the pane on a repeated click» без правок. Гейты: `npm run verify`
+PASS (typecheck, mocha 654 → 655, eslint, stylelint), guard
+`--all --strict` — 0 нарушений. Evidence:
+`work/2026-11-04-mobile-back-deselect/evidence/WS-MOBILE-BACK-DESELECT/`.
+
 # 2026-11-04 — Feat(chats): браузерный offline/online, стрим ответа бота в ленте и честная ошибка эха (ALK 2026-11-04-bot-wait-offline, WS-FE-RESILIENCE)
 
 Фронтовая часть прогона закрыта (после WS-FE-RENDER-PERF и WS-BE-BOT-STREAM;
