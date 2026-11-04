@@ -17,9 +17,9 @@ import sinon from 'sinon'
 import Handlebars from 'handlebars'
 import '../../features/ai-assistant/hbs-test-loader.ts'
 import type Block from '../../core/Block.ts'
-import { registerComponent } from '../../core/registerComponent.ts'
+import { pruneComponentCache, registerComponent } from '../../core/registerComponent.ts'
 import * as Components from '../components.ts'
-import { mapTypedMessages, Messenger, USER_SEARCH_DEBOUNCE_MS } from './messenger.ts'
+import { mapTypedMessages, Messenger, PENDING_TAIL_CACHE_KEY, USER_SEARCH_DEBOUNCE_MS } from './messenger.ts'
 import store from '../../utils/Store.ts'
 import { initPreferences, setPreference } from '../../utils/preferences.ts'
 import type { Message } from '../../utils/types.ts'
@@ -157,6 +157,23 @@ describe('mapTypedMessages day markers', () => {
         expect(typed[1].isMine).to.be.false
         expect(typed[0].time).to.equal(nowIso)
     })
+
+    // Keyed-кэш Message-инстансов (2026-11-04-bot-wait-offline): мэппер
+    // выдаёт ключи переиспользования — реальные сообщения id:<n>, единственный
+    // pending-плейсхолдер ленты — фиксированный pending:tail, сообщения без
+    // идентичности ключа не получают (инстанс строится каждым рендером)
+    it('keys mapped messages: id:<n> for real, pending:tail for the placeholder, none for id-less', () => {
+        const typed = mapTypedMessages([
+            { chat_id: 1, time: 't1', type: 'message', user_id: 7, content: 'a', id: 5 },
+            { chat_id: 1, time: 't2', type: 'message', user_id: -1, content: '…', isPending: true },
+            { chat_id: 1, time: 't3', type: 'message', user_id: -1, content: '⚠', isError: true },
+        ], 7)
+
+        expect(typed[0]?.cacheKey).to.eq('id:5')
+        expect(typed[1]?.cacheKey).to.eq(PENDING_TAIL_CACHE_KEY)
+        expect(typed[1]?.cacheKey).to.eq('pending:tail')
+        expect(typed[2]?.cacheKey).to.eq(undefined)
+    })
 })
 
 
@@ -207,6 +224,41 @@ describe('messenger action dispatch', () => {
 
             expect(onSendMessage.calledOnceWith(5, 'привет')).to.be.true
         } finally {
+            messenger.destroy()
+        }
+    })
+
+    it('blocks the composer while the bot run is pending and frees it after', () => {
+        const onSendMessage = sinon.spy()
+        const messenger = new Messenger({ onSendMessage } as never)
+
+        try {
+            store.set('chats', [{ id: 5, title: 'ai', avatar: '', unread_count: 0, is_ai: true }] as never)
+            store.set('messages', { 5: [{ chat_id: 5, time: 't1', type: 'message', user_id: 2, content: '?', isPending: true }] })
+            store.set('selectedChat', 5)
+
+            submitComposer(messenger, 'второе')
+
+            const form = messenger.element?.querySelector<HTMLFormElement>('[data-testid="composer-form"]')
+            const input = form?.querySelector<HTMLInputElement>('input[name="message"]')
+
+            expect(onSendMessage.called).to.be.false
+            expect(input?.value).to.eq('второе')
+            expect(form?.querySelector('button[type="submit"]')?.hasAttribute('disabled')).to.be.true
+
+            // разблокировка — реальным путём: стор снял pending-плейсхолдер
+            store.set('messages', { 5: [{ chat_id: 5, time: 't1', type: 'message', user_id: 2, content: '?', id: 31 }] })
+
+            const freedForm = messenger.element?.querySelector<HTMLFormElement>('[data-testid="composer-form"]')
+            const freedButton = freedForm?.querySelector<HTMLButtonElement>('button[type="submit"]')
+
+            expect(freedButton?.hasAttribute('disabled')).to.be.false
+
+            submitComposer(messenger, 'третье')
+
+            expect(onSendMessage.calledOnceWith(5, 'третье')).to.be.true
+        } finally {
+            store.set('chats', undefined)
             messenger.destroy()
         }
     })
@@ -935,29 +987,9 @@ describe('messenger attachment file lists', () => {
         initPreferences()
     })
 
-    it('an AI-chat incoming message renders the mock bot document list on the real url', () => {
-        openChat(true, { chat_id: 5, time: 't1', type: 'message', user_id: 42, content: 'вот документы', file_url: '/api/v1/files/9/download', id: 21 })
-
-        const messenger = new Messenger({} as never)
-
-        try {
-            const rows = [...(messenger.element?.querySelectorAll('[data-testid="message-file"]') ?? [])]
-
-            expect(rows).to.have.length(3)
-            expect(rows[0].querySelector('.messenger__message-file-name')?.textContent?.trim())
-                .to.equal('Заявление на отпуск.pdf')
-
-            const downloads = rows.map(row => row.querySelector<HTMLAnchorElement>('[data-testid="attachment-download"]')?.getAttribute('href'))
-
-            expect(downloads).to.deep.equal(['/api/v1/files/9/download', '/api/v1/files/9/download', '/api/v1/files/9/download'])
-        } finally {
-            messenger.destroy()
-        }
-    })
-
-    it('the mock first item keeps the real file name when the contract carries one', () => {
+    it('an AI-chat bot answer renders its single real attachment (mock list removed)', () => {
         openChat(true, {
-            chat_id: 5, time: 't1', type: 'message', user_id: 42, content: '',
+            chat_id: 5, time: 't1', type: 'message', user_id: 42, content: 'вот документ',
             file_url: '/api/v1/files/9/download', id: 21,
             file: { id: 9, user_id: 42, path: 'x', filename: 'Ответ ассистента.pdf', content_type: 'application/pdf', content_size: 1, upload_date: 't' },
         })
@@ -965,11 +997,42 @@ describe('messenger attachment file lists', () => {
         const messenger = new Messenger({} as never)
 
         try {
-            const names = [...(messenger.element?.querySelectorAll('.messenger__message-file-name') ?? [])]
-                .map(node => node.textContent?.trim())
+            const rows = [...(messenger.element?.querySelectorAll('[data-testid="message-file"]') ?? [])]
 
-            expect(names?.[0]).to.equal('Ответ ассистента.pdf')
-            expect(names).to.have.length(3)
+            expect(rows).to.have.length(1)
+            expect(rows[0].querySelector('.messenger__message-file-name')?.textContent?.trim())
+                .to.equal('Ответ ассистента.pdf')
+            expect(rows[0].querySelector<HTMLAnchorElement>('[data-testid="attachment-download"]')?.getAttribute('href'))
+                .to.equal('/api/v1/files/9/download')
+        } finally {
+            messenger.destroy()
+        }
+    })
+
+    it('renders a ready-made bot document list as-is with per-extension icons', () => {
+        openChat(true, {
+            chat_id: 5, time: 't1', type: 'message', user_id: 42, content: 'найдено',
+            file_url: '/api/v1/files/9/download', id: 21,
+            attachments: [
+                { name: 'Заявление на отпуск.pdf', url: '/api/v1/files/5/download' },
+                { name: 'Бюджет отдела 2026.xlsx', url: '/api/v1/files/6/download' },
+            ],
+        })
+
+        const messenger = new Messenger({} as never)
+
+        try {
+            const rows = [...(messenger.element?.querySelectorAll('[data-testid="message-file"]') ?? [])]
+
+            expect(rows).to.have.length(2)
+            expect(rows[0].querySelector('.messenger__message-file-name')?.textContent?.trim())
+                .to.equal('Заявление на отпуск.pdf')
+            expect(rows[1].querySelector('.messenger__message-file-name')?.textContent?.trim())
+                .to.equal('Бюджет отдела 2026.xlsx')
+            expect(rows[0].querySelector('.messenger__message-file-icon')?.getAttribute('src')).to.contain('file-pdf.svg')
+            expect(rows[1].querySelector('.messenger__message-file-icon')?.getAttribute('src')).to.contain('file-xlsx.svg')
+            expect(rows[1].querySelector<HTMLAnchorElement>('[data-testid="attachment-download"]')?.getAttribute('href'))
+                .to.equal('/api/v1/files/6/download')
         } finally {
             messenger.destroy()
         }
@@ -1028,5 +1091,167 @@ describe('messenger attachment file lists', () => {
         } finally {
             messenger.destroy()
         }
+    })
+})
+
+// Keyed-кэш Message-инстансов (2026-11-04-bot-wait-offline): повторный
+// рендер с тем же cacheKey переиспользует живой инстанс (тот же
+// component.id, обновление через setProps, embed переносит существующий
+// элемент), prune уничтожает и выметает ключи, ушедшие из ленты (смена
+// чата, удаление сообщения) — кэш не растёт неограниченно
+describe('messenger message instance cache', () => {
+    beforeEach(() => {
+        store.set('messages', { 5: [] })
+        store.set('selectedChat', 5)
+    })
+
+    afterEach(() => {
+        store.set('messages', undefined)
+        store.set('selectedChat', undefined)
+    })
+
+    const dto = (id: number, content: string, variant = ''): Message => ({
+        chat_id: 5, time: `t${id}${variant}`, type: 'message', user_id: 7, content, id,
+    })
+
+    // Счётчик ПОСТРОЕНИЯ Message-инстансов: init стреляет ровно один раз из
+    // конструктора Block (пустой в базе); count — чистое чтение, restore
+    // снимает патч прототипа (в конце теста)
+    function trackMessageConstructions(): { count: () => number, restore: () => void } {
+        const proto = Components.Message.prototype as unknown as Record<string, () => void>
+        let count = 0
+
+        // eslint-disable-next-line func-names
+        proto.init = function () {
+            count += 1
+        }
+
+        return {
+            count: () => count,
+            restore: () => {
+                delete proto.init
+            },
+        }
+    }
+
+    // Прямой вызов зарегистрированного хелпера Message: возвращает встроенный
+    // в root.__children инстанс — наблюдаемая точка кэша вне рендера ленты
+    const invokeMessageHelper = (cacheKey: string | undefined, content: string) => {
+        const root: { __children?: { component: Block }[] } = {}
+        const helper = Handlebars.helpers.Message as unknown as (options: {
+            hash: Record<string, unknown>
+            data: { root: { __children?: { component: Block }[] } }
+        }) => string
+
+        helper({
+            hash: { cacheKey, content, user_id: 7, chat_id: 5, time: 't' },
+            data: { root },
+        })
+
+        const component = root.__children?.[root.__children.length - 1]?.component
+
+        if (component == null) {
+            throw new Error('хелпер Message не встроил инстанс')
+        }
+
+        return component
+    }
+
+    it('reuses the instance for a repeated cacheKey and refreshes it via setProps', () => {
+        const first = invokeMessageHelper('id:901', 'первый')
+        const reused = invokeMessageHelper('id:901', 'обновлённый')
+
+        // Тот же инстанс (тот же component.id), контент приехал setProps-ом
+        expect(reused).to.equal(first)
+        expect(reused.id).to.eq(first.id)
+        expect((reused as unknown as { props: { content?: string } }).props.content).to.eq('обновлённый')
+
+        // Другой ключ — другой инстанс; без ключа кэш не участвует вовсе
+        const other = invokeMessageHelper('id:902', 'второй')
+
+        expect(other.id).to.not.eq(first.id)
+
+        const unkeyedA = invokeMessageHelper(undefined, 'x')
+        const unkeyedB = invokeMessageHelper(undefined, 'x')
+
+        expect(unkeyedA.id).to.not.eq(unkeyedB.id)
+
+        // Гигиена: тестовые ключи не остаются в общем кэше
+        pruneComponentCache(new Set())
+    })
+
+    it('prune destroys and drops keys that left the feed, a pruned key reconstructs', () => {
+        const departed = invokeMessageHelper('id:911', 'ушёл')
+        const stays = invokeMessageHelper('id:912', 'остался')
+
+        pruneComponentCache(new Set(['id:912']))
+
+        // Ключа нет в живом множестве — запись уничтожена и выметана
+        expect((departed as unknown as { element: HTMLElement | null }).element).to.be.null
+        expect((stays as unknown as { element: HTMLElement | null }).element).to.not.be.null
+
+        // Выметанный ключ строится заново — это новый инстанс
+        const revived = invokeMessageHelper('id:911', 'восстановленный')
+
+        expect(revived.id).to.not.eq(departed.id)
+
+        pruneComponentCache(new Set())
+    })
+
+    it('reuses live instances across store re-renders and constructs only newcomers', () => {
+        const constructed = trackMessageConstructions()
+        const messenger = new Messenger({} as never)
+
+        store.set('messages', { 5: [dto(1, 'alpha'), dto(2, 'beta')] })
+        expect(constructed.count()).to.eq(2)
+
+        // Та же лента новой записью в сторе: перерисовка была, построений нет
+        store.set('messages', { 5: [dto(1, 'alpha', 'v2'), dto(2, 'beta', 'v2')] })
+        expect(constructed.count()).to.eq(2)
+
+        // Хвост вырос: построен только новичок
+        store.set('messages', { 5: [dto(1, 'alpha', 'v3'), dto(2, 'beta', 'v3'), dto(3, 'gamma')] })
+        expect(constructed.count()).to.eq(3)
+
+        // Контент обновился через setProps переиспользованного инстанса
+        store.set('messages', { 5: [dto(1, 'ALPHA', 'v4'), dto(2, 'beta', 'v4'), dto(3, 'gamma', 'v4')] })
+        expect(constructed.count()).to.eq(3)
+        expect(messenger.element?.textContent).to.contain('ALPHA')
+
+        // Сообщение удалено: prune уничтожил осевшую запись, новых построек нет
+        store.set('messages', { 5: [dto(2, 'beta', 'v5'), dto(3, 'gamma', 'v5')] })
+        expect(constructed.count()).to.eq(3)
+        expect(messenger.element?.textContent).to.not.contain('ALPHA')
+
+        constructed.restore()
+        messenger.destroy()
+    })
+
+    it('reuses the single bot placeholder under the fixed pending:tail key', () => {
+        const constructed = trackMessageConstructions()
+        const messenger = new Messenger({} as never)
+
+        const pendingDto = (variant = ''): Message => ({
+            chat_id: 5, time: `tp${variant}`, type: 'message', user_id: -1,
+            content: 'Ассистент печатает…', isPending: true,
+        })
+
+        store.set('messages', { 5: [dto(1, 'вопрос'), pendingDto()] })
+        expect(constructed.count()).to.eq(2)
+        expect(messenger.element?.querySelector('.messenger__message-bubble_pending')).to.exist
+
+        // Плейсхолдер перезаписан в сторе (новая запись ленты) — тот же инстанс
+        store.set('messages', { 5: [dto(1, 'вопрос', 'v2'), pendingDto('v2')] })
+        expect(constructed.count()).to.eq(2)
+
+        // Ответ приехал: pending:tail ушёл из ленты — prune уничтожил запись,
+        // финальное сообщение построено под своим ключом id:<n>
+        store.set('messages', { 5: [dto(1, 'вопрос', 'v3'), dto(2, 'ответ')] })
+        expect(constructed.count()).to.eq(3)
+        expect(messenger.element?.querySelector('.messenger__message-bubble_pending')).to.not.exist
+        expect(messenger.element?.textContent).to.contain('ответ')
+
+        constructed.restore()
+        messenger.destroy()
     })
 })

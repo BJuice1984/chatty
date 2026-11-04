@@ -7,6 +7,23 @@ export interface Props {
     [key: string]: unknown
 }
 
+// Retained-метка (2026-11-04-bot-wait-offline, механика keyed-кэша
+// registerComponent): помеченный инстанс НЕ уничтожается ни сметой
+// compile() (замена _hbsChildren), ни destroy() родителя — его временем
+// жизни владеет фичевый кэш через prune. Ядро не знает о фичах: метка —
+// WeakSet в core, ставит registerComponent при кэш-регистрации.
+const retainedBlocks = new WeakSet<object>()
+
+// Помечает инстанс как cache-retained (владелец метки управляет жизнью)
+export function markBlockRetained(block: Block): void {
+    retainedBlocks.add(block)
+}
+
+// retained-проверка для compile-сметы и destroy() родителя
+export function isBlockRetained(block: Block): boolean {
+    return retainedBlocks.has(block)
+}
+
 interface WithChildren {
     __children?: {
         component?: Block
@@ -25,6 +42,11 @@ class Block<T extends Props = Props> {
 
     public id = nanoid(6)
     protected props: T
+    // Исходный объект пропсов под прокси: setProps пишет сюда МИМО
+    // сет-ловушки и эмитит ОДИН FLOW_CDU на вызов (батчинг,
+    // 2026-11-04-bot-wait-offline); пер-ключевой эмит остаётся только у
+    // прямых записей this.props.x = ... через прокси
+    private _rawProps: T
     protected refs: Record<string, Block> = {}
     public children: Record<string, Block>
     private eventBus: () => EventBus
@@ -53,6 +75,7 @@ class Block<T extends Props = Props> {
         // }
 
         this.children = children
+        this._rawProps = propsWithChildren
         this.props = this._makePropsProxy(propsWithChildren)
 
         this.eventBus = () => eventBus
@@ -176,8 +199,16 @@ class Block<T extends Props = Props> {
             return
         }
 
-        // this.props = { ...this.props, ...(nextProps as object) }
-        Object.assign(this.props, nextProps)
+        // Батчинг (2026-11-04-bot-wait-offline): запись идёт в RAW-объект
+        // МИМО прокси-сеттера, затем ОДИН FLOW_CDU на вызов со снапшотами
+        // до/после. Прямые записи this.props.x = ... сохраняют пер-ключевой
+        // эмит (сет-ловушка ниже не тронута); порядок жизненного цикла и
+        // контракт componentDidUpdate(old, new) не меняются — падает только
+        // число эмитов с N-ключей до одного на вызов.
+        const oldProps = { ...this._rawProps }
+
+        Object.assign(this._rawProps, nextProps)
+        this.eventBus().emit(Block.EVENTS.FLOW_CDU, oldProps, this._rawProps)
     }
 
     destroy() {
@@ -191,8 +222,15 @@ class Block<T extends Props = Props> {
 
         // hbs-встроенные дети (customData.root.__children у registerComponent)
         // дискретны от this.children — уничтожаем отдельно. Двойное уничтожение
-        // исключено: _destroyed-флаг у каждого ребёнка свой.
-        this._hbsChildren.forEach(child => child.destroy())
+        // исключено: _destroyed-флаг у каждого ребёнка свой. Исключение —
+        // cache-retained инстансы (review F-2): их не трогаем НИКОГДА, жизнью
+        // владеет фичевый кэш через prune — иначе destroy родителя ронял бы
+        // Message-инстансы, которые новый рендер только что переиспользовал.
+        this._hbsChildren.forEach(child => {
+            if (!isBlockRetained(child)) {
+                child.destroy()
+            }
+        })
         this._hbsChildren = []
 
         this._removeEvents()
@@ -239,13 +277,30 @@ class Block<T extends Props = Props> {
 
         temp.innerHTML = html
 
-        if (contextAndStubs.__children && Array.isArray(contextAndStubs.__children)) {
-            // Захват встроенных детей текущего рендера: их embed-функции
-            // кладут DOM, а component нужен destroy() (см. destroy()).
-            this._hbsChildren = contextAndStubs.__children
+        // Дети нового рендера: пустой список, если хелперы не звались вовсе
+        // (условные ветки шаблона) — смета ниже обязана увидеть и этот случай
+        const nextChildren = contextAndStubs.__children && Array.isArray(contextAndStubs.__children)
+            ? contextAndStubs.__children
                 .map(({ component }) => component)
                 .filter((child): child is Block => child != null)
+            : []
 
+        // Смета заменённых детей (2026-11-04-bot-wait-offline): записи
+        // СТАРОГО списка, отсутствующие в НОВОМ по ссылке на инстанс,
+        // уничтожаются — брошенные withStore-обёртки больше не текут
+        // подписками на каждый перерендер родителя. Исключение —
+        // cache-retained инстансы: их владеет фичевый кэш (prune).
+        this._hbsChildren.forEach(child => {
+            if (!nextChildren.includes(child) && !isBlockRetained(child)) {
+                child.destroy()
+            }
+        })
+
+        // Захват встроенных детей текущего рендера: их embed-функции
+        // кладут DOM, а component нужен destroy() (см. destroy()).
+        this._hbsChildren = nextChildren
+
+        if (contextAndStubs.__children && Array.isArray(contextAndStubs.__children)) {
             contextAndStubs.__children.forEach(({ embed }) => {
                 embed(temp.content)
             })

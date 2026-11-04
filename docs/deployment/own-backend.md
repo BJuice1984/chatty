@@ -95,7 +95,7 @@ access is configured). Layout as probed live on 2026-10-27 — ports 8080 and
 
 | Port | Model (gguf id) | Role |
 | --- | --- | --- |
-| `8082` | `Qwen3.5-9B-Q4_K_M` | the chat model — point `CHATTY_BOT_PROVIDER_URL` here; a thinking model (long `reasoning_content`), keep `CHATTY_BOT_TIMEOUT_SECONDS` generous (300) |
+| `8082` | `Qwen3.5-9B-Q4_K_M` | the chat model — point `CHATTY_BOT_PROVIDER_URL` here; a thinking model (long `reasoning_content`), with streaming on a per-chunk `CHATTY_BOT_TIMEOUT_SECONDS` of ~60 suffices (300 only for `CHATTY_BOT_STREAMING=false`) |
 | `8083` | `bge-m3-q8_0` | dedicated RAG embeddings (dim 1024, `--embeddings --pooling cls`, since 2026-10-27) — point `CHATTY_RAG_EMBEDDING_URL` here |
 | `8080` | `Qwen3-VL-4B-Instruct-Q4_K_M` | multimodal (VL); NOT a chat-model substitute for the bot |
 | `8081` | `Hy-MT2-1.8B-Q4_K_M` | weak translation model; not for the bot |
@@ -109,6 +109,30 @@ Known llama.cpp quirks found during the 2026-10-27 acceptance: the Qwen3.5 chat 
 answers 500 to two consecutive `system` messages (the bot prompt merges context into a
 single system block, `app/bot/prompts.py`); with a single busy slot the server may answer
 503 immediately.
+
+Streaming, the thinking knob and the timeout (2026-11-04):
+
+- `CHATTY_BOT_STREAMING` (default `true`) streams the answer over the chat
+  websocket as throttled `bot_delta` events (~250ms coalescing;
+  `{'type': 'bot_delta', 'content': {'message_id': <question id>, 'delta':
+  <text>}}`). Deltas are progress-only — the final answer message, its
+  broadcast and the idempotent redelivery stay unchanged. `false` is the
+  operator kill-switch back to the whole-answer request (e.g. against a
+  misbehaving llama-server stream).
+- `CHATTY_BOT_ENABLE_THINKING` (default `true`) preserves current behavior;
+  `false` sends `chat_template_kwargs: {"enable_thinking": false}` with every
+  OpenAI-protocol chat request — on the thinking `Qwen3.5-9B` (`:8082`) this
+  removes the long `reasoning_content` phase and the first token arrives fast
+  (the reasoning deltas are ignored by the stream either way). The knob has no
+  effect in native `ollama` protocol mode.
+- With streaming on, `CHATTY_BOT_TIMEOUT_SECONDS` becomes a PER-CHUNK read
+  timeout: lower the operator value from 300 to ~60 (the code default stays
+  60, do not change it). Keep a large value only for
+  `CHATTY_BOT_STREAMING=false` runs against a thinking model.
+- `CHATTY_BOT_RAG_MIN_SCORE` (default `0.5`, cosine floor for `bge-m3`
+  chunks): chunks below the score go neither into the prompt nor into the
+  attachment — an off-topic question answers honestly without dragging the
+  nearest file along.
 
 Historical note: before 2026-10-27 the chat model lived on `:8080` —
 operator env files older than that date point `CHATTY_BOT_PROVIDER_URL` at

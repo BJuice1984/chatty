@@ -19,7 +19,7 @@
         <ul class="messenger__container">
           {{{ ChatHistory }}}
           {{#each messages}}
-            {{{ Message content=this.content user_id=this.user_id chat_id=this.chat_id id=this.id isMine=this.isMine isError=this.isError isPending=this.isPending fileUrl=this.fileUrl attachments=this.attachments autoDownload=../this.autoDownload time=this.time showDate=this.showDate replyTo=this.replyTo reactions=this.reactions onSetReaction=../this.onSetReaction onReply=../this.onReplyToMessage }}}
+            {{{ Message content=this.content user_id=this.user_id chat_id=this.chat_id id=this.id isMine=this.isMine isError=this.isError isPending=this.isPending fileUrl=this.fileUrl attachments=this.attachments autoDownload=../this.autoDownload time=this.time showDate=this.showDate replyTo=this.replyTo reactions=this.reactions onSetReaction=../this.onSetReaction onReply=../this.onReplyToMessage cacheKey=this.cacheKey }}}
           {{/each}}
         </ul>
         {{#if replyDraft}}
@@ -39,7 +39,7 @@
                     autocomplete="off"
                     aria-label="Текст сообщения"
                 />
-                <button type="submit" class="messenger__composer-send" aria-label="Отправить"></button>
+                <button type="submit" class="messenger__composer-send" aria-label="Отправить"{{#if botPending}} data-testid="composer-send-pending" disabled{{/if}}></button>
             </form>
         </div>
         {{/unless}}

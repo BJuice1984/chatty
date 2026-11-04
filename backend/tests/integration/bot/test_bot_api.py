@@ -420,6 +420,56 @@ def test_bot_routes_are_mounted_exactly_once(app):
     assert paths == ['/api/v1/chats/{chat_id}/bot/runs']
 
 
+async def test_irrelevant_search_attaches_no_file_and_feeds_no_context(app, session_factory, test_settings):
+    """Chunks below rag_min_score go neither into the prompt nor the
+    attachment: an off-topic question must answer honestly without dragging
+    the nearest-by-cosine file along (live incident 2026-11-03)."""
+
+    from app.bot.config import bot_settings_from_env
+    from app.ingestion.config import rag_settings_from_env
+    from app.models.user import User as UserModel
+    from app.schemas.chat import ChatCreate
+    from app.schemas.message import MessageCreate
+    from app.services.bot import BotService
+    from app.services.chats import ChatService
+    from app.services.messages import MessageService
+
+    with session_factory() as session:
+        session.add(UserModel(email=BOT_EMAIL, password_hash='not-a-real-login-hash'))
+        session.commit()
+        bot_user_id = session.scalars(select(UserModel)).first().id
+        owner = SimpleNamespace(id=bot_user_id + 1)
+        chat = ChatService(session).create(owner.id, ChatCreate(title='AI', is_ai=True))
+        message = MessageService(session).create(chat.id, owner.id, MessageCreate(content='погода на марсе'))
+
+        def irrelevant_search(*, chat_id, user_id, query, top_k):
+            from app.services.documents import ChunkHit
+
+            near = SimpleNamespace(file_id=1, content='график отпусков на 2026 год')
+            return [ChunkHit(chunk=near, score=0.383, file_name='график отпусков 2026.xlsx')]
+
+        provider = FakeBotProvider(answers=['В предоставленных документах нет информации по этому вопросу.'])
+        service = BotService(
+            session,
+            test_settings,
+            bot_settings_from_env(),
+            rag_settings_from_env(),
+            provider=provider,
+            rag_search=irrelevant_search,
+        )
+        run = service.run(chat_id=chat.id, user_id=owner.id, message_id=message.id)
+
+        assert run.status == 'succeeded'
+        assert run.attachment_file_id is None
+
+        answer = session.get(type(message), run.response_message_id)
+
+        assert answer.file_id is None
+        # контекст в промпте пуст: нерелевантный чанк не дошёл до модели
+        assert provider.calls != []
+        assert provider.calls[0][-1]['content'].find('график отпусков') == -1
+
+
 async def test_foreign_attachment_cannot_enter_a_response(app, session_factory, test_settings):
     """Service-level seam check: a hostile search result is stopped by the message contract."""
 

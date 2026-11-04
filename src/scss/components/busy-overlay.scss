@@ -1,0 +1,66 @@
+.busy-overlay {
+    position: fixed;
+    inset: 0;
+    z-index: 1200;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 18px;
+    background: var(--modal-backdrop-color);
+
+    &__spinner {
+        width: 46px;
+        height: 46px;
+        border: 4px solid rgb(255 255 255 / 18%);
+        border-top-color: #fff;
+        border-radius: 50%;
+        animation: busy-overlay-spin 0.8s linear infinite;
+    }
+
+    &__caption {
+        max-width: 85%;
+        color: #fff;
+        font-size: 17px;
+        line-height: 1.45;
+        text-align: center;
+        text-shadow: 0 1px 2px rgb(0 0 0 / 40%);
+    }
+
+    &__dot {
+        display: inline-block;
+        animation: busy-overlay-dot 1.2s ease-in-out infinite;
+
+        &:nth-child(2) {
+            animation-delay: 0.2s;
+        }
+
+        &:nth-child(3) {
+            animation-delay: 0.4s;
+        }
+    }
+
+    &_kind_reconnect &__dots {
+        display: none;
+    }
+}
+
+@keyframes busy-overlay-spin {
+
+    to {
+        transform: rotate(360deg);
+    }
+}
+
+@keyframes busy-overlay-dot {
+
+    0%,
+    60%,
+    100% {
+        opacity: 0.25;
+    }
+
+    30% {
+        opacity: 1;
+    }
+}

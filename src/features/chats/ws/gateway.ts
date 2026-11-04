@@ -28,16 +28,30 @@ export function appendMessages(current: Message[], incoming: Message | Message[]
 type ReactionListener = (event: ChatReactionEvent) => void
 // eslint-disable-next-line no-unused-vars
 type ChatDeletedListener = (chatId: number) => void
+// eslint-disable-next-line no-unused-vars
+type WsUnexpectedCloseListener = (chatId: number) => void
+// eslint-disable-next-line no-unused-vars
+type WsConnectedListener = (chatId: number) => void
 
 export interface ChatsEventListeners {
 
     onReaction?: ReactionListener
 
     onChatDeleted?: ChatDeletedListener
+
+    // Индикатор смерти WS (2026-11-04 offline, review F-3): Close транспорта
+    // без payload неотличим от исчерпания реконнектов — адаптер дифференцирует
+    // намеренность собственными марками и нотифицирует ТОЛЬКО немаркированные
+    // (исчерпавшиеся) закрытия; Connected гасит индикатор
+    onWsUnexpectedClose?: WsUnexpectedCloseListener
+
+    onWsConnected?: WsConnectedListener
 }
 
 let reactionListener: ReactionListener | null = null
 let chatDeletedListener: ChatDeletedListener | null = null
+let wsUnexpectedCloseListener: WsUnexpectedCloseListener | null = null
+let wsConnectedListener: WsConnectedListener | null = null
 
 // Адаптеры зовут notify-* из своих WS-обработчиков; слушатели назначает
 // контроллер фичи через setChatsEventListeners (конструкторская регистрация)
@@ -49,6 +63,14 @@ export function setChatsEventListeners(listeners: ChatsEventListeners): void {
     if (listeners.onChatDeleted !== undefined) {
         chatDeletedListener = listeners.onChatDeleted
     }
+
+    if (listeners.onWsUnexpectedClose !== undefined) {
+        wsUnexpectedCloseListener = listeners.onWsUnexpectedClose
+    }
+
+    if (listeners.onWsConnected !== undefined) {
+        wsConnectedListener = listeners.onWsConnected
+    }
 }
 
 export function notifyReactionEvent(event: ChatReactionEvent): void {
@@ -57,6 +79,14 @@ export function notifyReactionEvent(event: ChatReactionEvent): void {
 
 export function notifyChatDeleted(chatId: number): void {
     chatDeletedListener?.(chatId)
+}
+
+export function notifyWsUnexpectedClose(chatId: number): void {
+    wsUnexpectedCloseListener?.(chatId)
+}
+
+export function notifyWsConnected(chatId: number): void {
+    wsConnectedListener?.(chatId)
 }
 
 const adapter = new OwnWsAdapter()
@@ -79,4 +109,13 @@ chatHistoryController.attachPort(chatMessagesPort)
 // Наблюдаемое чистое закрытие сокетов для smoke-флоу CUTOVER-WS-CLOSE
 export function closeAllChatSockets(): void {
     adapter.closeAll()
+}
+
+// Принудительный реконнект чат-сокетов (2026-11-04 offline, review F-7):
+// дропает всё, что не OPEN — застрявший в backoff чат снова открываем
+// (иначе гард sockets.has молчит до F5); открытые сокеты не трогаем.
+// Вызывает онлайн-путь connectivity-наблюдателя; список переоткроет и
+// ресинкнет fetchChats (Connected-ресync адаптера)
+export function reconnectAllChatSockets(): void {
+    adapter.reconnectAll()
 }

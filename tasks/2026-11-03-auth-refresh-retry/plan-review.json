@@ -1,0 +1,37 @@
+{
+    "schemaVersion": "agent-plan-review.v1",
+    "packageId": "2026-11-03-auth-refresh-retry",
+    "planRevision": 3,
+    "reviewId": "plan-review-2026-11-03-auth-refresh-retry-r1-r3",
+    "fullReview": true,
+    "verdict": "READY_TO_FREEZE",
+    "reviewedPlanHash": "e03f7a8896806012da20b36805f65383246e415542dd0304a9f7b797d94edb67",
+    "reviewer": {
+        "id": "claude-code-independent-subagent",
+        "independent": true,
+        "runId": "audit-run-20261103-auth-refresh-retry-plan-r3",
+        "surface": "audit-agent-plan"
+    },
+    "findings": [],
+    "reviewVerdict": "READY_TO_FREEZE",
+    "rounds": [
+        {
+            "round": 1,
+            "planRevision": 1,
+            "kind": "full",
+            "summary": "Full independent review against the actual code: verified the one-shot rotation (token_version bump), all backend contract claims (status codes and detail strings), CORS/sameSite/path-scoping compatibility, base counts (mocha 568, pytest 253), PYTHON_BIN wiring and guard-strict legality of every planned import. Verdict NEEDS_REVISION with 4 MAJOR (F-1 overlay begin/end unbalanced incl. the 401 success path and the 401→500 double-begin; F-2 two overlay drivers with no hide on the kick-out branch; F-3 blanket /auth/ exclusion silently dropping /auth/profile and /auth/password healing; F-4 static-policy leak across alphabetical mocha suites), 2 MINOR (F-5 missing dependsOn for the pytest-count claim, F-6 budget arithmetic), 2 NOTE (F-7 readOnly disposition, F-8 stale-401 rotation race)."
+        },
+        {
+            "round": 2,
+            "planRevision": 2,
+            "kind": "confirm",
+            "summary": "Confirm round over the revision: all eight round-1 findings RESOLVED (F-7 disposition accepted — adding HTTPTransport.ts to readOnly would itself violate the no-overlap rule; the interface is fully specified in the manifest and the dependency orders the code before the consumer); re-verified the five-endpoint ends-with exclusion is mechanically correct, own.ts/api.test.ts ownership disjoint, binding installs before boot requests, Router.go-before-start safe, budget arithmetic consistent. Verdict NEEDS_REVISION solely on editorial residue: N-1 duplicated stale workstream bullet + superseded blanket exclusion in plan.md (a contextRef), N-2 stale goal sentence and top-level nonGoals contradicting the revised requirements, plus NOTE N-3 (me shorthand bypassing toAuthUser under Promise<never>) and N-4 (undocumented cold-boot behavior changes)."
+        },
+        {
+            "round": 3,
+            "planRevision": 3,
+            "kind": "confirm",
+            "summary": "Freeze-gating round: all four editorial fixes verified in the actual files — single workstream-3 entry with the corrected dependsOn and meWithRefresh removal, five-endpoint exclusion in plan.md item 2, corrected goal sentence and both nonGoals arrays, me replacement spelled out with the toAuthUser mapping in REQ and plannedItem (bare-shorthand occurrences: zero), cold-boot consequences documented in Risks. Package-wide sweep finds no remaining blanket-/auth/ or meWithRefresh-contradiction phrasing. Verdict READY_TO_FREEZE: internally consistent, ownership-exact, layering-clean, faithfully delivers the operator contract including the verbatim animated-dot captions and the 2s/6s/12s all-method retry."
+        }
+    ]
+}

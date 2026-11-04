@@ -1,0 +1,505 @@
+{
+    "schemaVersion": "agent-plan-manifest.v1",
+    "status": "FROZEN",
+    "planRevision": 3,
+    "package": {
+        "id": "2026-11-03-auth-refresh-retry",
+        "title": "Auth resilience: global 401 refresh+replay with kick-out, 5xx retry with busy overlay (frontend + backend contract tests)",
+        "workspaceRoot": ".",
+        "artifactRoot": "work/2026-11-03-auth-refresh-retry",
+        "planArtifactRoot": "tasks/2026-11-03-auth-refresh-retry"
+    },
+    "packageIntegrity": {
+        "required": true,
+        "lockSchemaVersion": "agent-plan-lock.v2",
+        "inventorySource": "planFiles",
+        "undeclaredTopLevelFiles": "reject",
+        "allowedUnlistedFiles": [
+            "plan.lock.json",
+            "plan-review.json"
+        ]
+    },
+    "author": {
+        "id": "claude-code",
+        "surface": "agent-first-planning",
+        "runId": "2026-11-03-auth-refresh-retry-draft"
+    },
+    "baseRevision": {
+        "ref": "feature/2026-11-03-auth-refresh-retry",
+        "sha": "7dbd7aa247014a727ef6f9b367f4009a85436462"
+    },
+    "specification": {
+        "tier": "S2",
+        "intent": "The 15-minute access cookie currently breaks every runtime request with a raw 401 until a page reload (only cold-boot /auth/me knows how to refresh), and 5xx responses just fail. Operator request: on a stale token transparently refresh and REPLAY the originally failed request; if refresh fails, kick the user out to the sign-in page; show a full-screen dimming overlay with a spinner and «Пожалуйста, ожидайте» plus three ANIMATED dots while refreshing; on 500 retry the request under the same overlay reading «Возможно, проблемы на сервере.. Мы пробуем переподключиться»; check frontend AND backend. Clarified 2026-11-03: 5xx retry covers ALL methods with 3 retries at 2s/6s/12s.",
+        "status": "DRAFT",
+        "requirements": [
+            {
+                "id": "REQ-BE-REFRESH-CONTRACT",
+                "title": "Backend: pin the refresh contract with integration tests",
+                "description": "The backend ALREADY implements the contract (POST /auth/refresh with CSRF double-submit and one-shot rotation via token_version; get_current_user 401 details). This workstream adds the missing integration suite backend/tests/integration/auth/test_auth_refresh_api.py in the existing httpx/ASGITransport style: (1) login issues access/refresh/csrf cookies; (2) refresh with the csrf header returns 200 UserResponse and reissues all three cookies; (3) the PREVIOUS refresh cookie replayed answers 401 refresh_token_rotated (one-shot rotation pinned); (4) refresh without a cookie answers 401 refresh_required; (5) refresh without the csrf header answers 403 csrf_failed; (6) GET /chats without the access cookie answers 401 authentication_required and with a corrupted access cookie 401 invalid_token; (7) after a successful refresh the fresh access cookie authorizes GET /chats (200); (8) POST /auth/logout retires the refresh cookie (subsequent refresh 401). NO backend application code change is in scope; a discovered defect is a plan gap routed to the controller.",
+                "priority": "P1",
+                "source": "operator request 2026-11-03 (check the backend side)",
+                "acceptanceIds": [
+                    "AC-BE-REFRESH-CONTRACT"
+                ],
+                "evidenceIds": [
+                    "EV-BE-1"
+                ],
+                "owner": "WS-BE-REFRESH-TESTS"
+            },
+            {
+                "id": "REQ-FE-TRANSPORT-RETRY",
+                "title": "HTTPTransport policy hooks (401 replay, 5xx retry) + busy overlay module",
+                "description": "src/utils/HTTPTransport.ts gains a static injectable TransportPolicy — onUnauthorized?(url): Promise<boolean> (true = refresh succeeded, replay once), onServerErrorDelay?(url, attempt): number | null (pure lookup), onRetryOverlay?(phase: 'begin'|'end', kind: 'unauthorized'|'server-error'): void, beforeUnauthorizedRetry?(options): void — installed via HTTPTransport.setTransportPolicy(). EXCLUSION (review F-3, narrowed): only the specific auth endpoints whose 401/403 are semantic or recursive are never intercepted — a URL ending in /auth/refresh, /auth/login, /auth/register, /auth/logout or /auth/logout-all. Everything else IS intercepted, including /auth/me, /auth/profile and /auth/password (the profile feature rides the same /auth prefix and its saves MUST be healed on stale access). OVERLAY LIFECYCLE (review F-1, balanced pairs): the transport emits onRetryOverlay('begin', kind) exactly ONCE per interception PHASE and 'end' exactly once when that phase settles — 401 phase: begin → onUnauthorized → (true: end, then replay) / (false, missing policy or hook rejection: end, reject the ORIGINAL error); 5xx phase: begin → retry loop → end on resolve, delay-null stop or exhaustion. A replay that 500s after a healed 401 opens a NEW balanced 5xx pair; every begin is paired with exactly one end on every terminal path. NEW src/utils/busyOverlay.ts: imperative lazy DOM module — show(kind: 'wait'|'reconnect') refcounts up and creates the node on first call (fixed full-screen dimming layer, spinner ring, role=status aria-live=polite, caption per kind VERBATIM: wait = «Пожалуйста, ожидайте» + THREE separate animated dot spans (CSS pulse with staggered delays), reconnect = «Возможно, проблемы на сервере.. Мы пробуем переподключиться» including the «..» and the space); hide() decrements and removes the node at zero — with a GRACE TEARDOWN (review F-1: the removal is deferred by a macrotask and cancelled by the next show, so the 401→5xx phase transition never flashes); the caption follows the most recent show. NEW src/scss/components/busy-overlay.scss registered in src/scss/components/_all.scss (no comments). Tests: HTTPTransport.test.ts (fake XHR + fake timers: 401 replay once incl. options mutation; false → original 401; the five excluded endpoints never trigger policy hooks while /auth/me, /auth/profile and /auth/password DO; 5xx delays 2/6/12s then 4th failure rejects; intermediate 200 resolves; null delay stops; 401-replay→500 composition; hook rejection degrades to false; begin/end BALANCED on every path incl. success and composition; every suite that installs a policy resets it via HTTPTransport.setTransportPolicy(null) in afterEach — review F-4) and busyOverlay.test.ts (node lifecycle, verbatim captions, three dot spans present, refcount, kind switch, removal at zero, grace teardown cancels on re-show).",
+                "priority": "P1",
+                "source": "operator request 2026-11-03 (401 refresh+replay, 500 retry, overlay with animated dots)",
+                "acceptanceIds": [
+                    "AC-FE-TRANSPORT-RETRY"
+                ],
+                "evidenceIds": [
+                    "EV-FE-1"
+                ],
+                "owner": "WS-FE-TRANSPORT"
+            },
+            {
+                "id": "REQ-FE-AUTH-POLICY",
+                "title": "Auth feature transport policy (single-flight refresh, kick-out) + binding + docs",
+                "description": "NEW src/features/auth/transportPolicy.ts exports createAuthTransportPolicy(): TransportPolicy and installAuthTransportPolicy() (calls HTTPTransport.setTransportPolicy(createAuthTransportPolicy()) — the seam features/index.ts invokes next to the existing consumer-side setters). ONE OVERLAY OWNER (review F-2): only onRetryOverlay touches busyOverlay — onUnauthorized NEVER calls show/hide directly; its refresh POST runs inside try/finally with NO overlay concerns. onRetryOverlay impl: begin → showBusyOverlay(kind === 'unauthorized' ? 'wait' : 'reconnect') DEFERRED by a macrotask and cancelled if the paired end arrives first (an instantly-resolved interception — e.g. the csrf-empty fast-fail — must not flash the overlay; review F-2), end → hideBusyOverlay() (only when the deferred show actually fired). onUnauthorized: (1) RECENTLY-REFRESHED WINDOW (review F-8 race): if a refresh succeeded within the last 2000ms, resolve true IMMEDIATELY with no network — a 401 arriving just after a completed rotation replays with the fresh access cookie instead of firing a second rotation that would answer refresh_token_rotated and wrongly kick the user out; (2) SINGLE-FLIGHT: one shared refresh promise created once, cleared in finally — rotation is one-shot, two parallel refreshes would guarantee refresh_token_rotated and an unwanted kick-out; (3) absent csrf cookie (readCsrfToken() === '') resolves false IMMEDIATELY with no network call; (4) otherwise POST /auth/refresh via the auth http client with the current csrf token → true on success, remembering the success timestamp for the window; (5) on ANY failure clear the session locally (authSlice.setUser(null)), fire best-effort POST /auth/logout (errors swallowed), Router.go(SIGNIN), resolve false. onServerErrorDelay: SERVER_ERROR_RETRY_DELAYS_MS = [2000, 6000, 12000], attempts beyond → null. beforeUnauthorizedRetry: options.csrfToken = readCsrfToken() (rotation reissued chatty_csrf; a non-GET replay with the stale token would 403). SINGLE REFRESH MECHANISM (review F-3 consequence): with /auth/me now intercepted globally, meWithRefresh in features/auth/api/own.ts becomes dead code and is REMOVED (replaced by me: async () => toAuthUser((await http.get('/me')) as OwnUserResponse) — the toAuthUser mapping is spelled out because the literal shorthand would silently bypass the display_name/avatar fallbacks under the Promise<never> signature, review N-3); its api tests are updated accordingly — cold boot heals through the same policy (deferred show keeps the common case flash-free; on a fully dead session the fast-fail path makes no network call). Docs: docs/progress/progress_log.md entry on top. Tests: transportPolicy.test.ts (two concurrent onUnauthorized share ONE refresh POST — single-flight stub; recently-refreshed window → true with zero http calls; success → true; failure → setUser(null) + Router.go(SIGNIN) + false and NO overlay leak — deferred show cancelled by the paired end; empty csrf → false with zero http calls; delay ladder 2000/6000/12000/null; onRetryOverlay kind→caption mapping incl. the deferred-show cancellation; beforeUnauthorizedRetry re-reads the cookie; installAuthTransportPolicy binding asserted with a sinon stub on HTTPTransport.setTransportPolicy; every suite installing a policy resets it with setTransportPolicy(null) in afterEach — review F-4).",
+                "priority": "P1",
+                "source": "operator request 2026-11-03 (kick-out when refresh fails; wire the overlay)",
+                "acceptanceIds": [
+                    "AC-FE-AUTH-POLICY",
+                    "AC-PROCESS"
+                ],
+                "evidenceIds": [
+                    "EV-FE-2",
+                    "EV-PROCESS-1"
+                ],
+                "owner": "WS-FE-AUTH-POLICY"
+            }
+        ],
+        "goal": "An expired access cookie no longer breaks the session: any 401 except on the five semantic auth endpoints is transparently healed by one shared refresh and the failed request is replayed; a failed refresh kicks the user to sign-in; 5xx responses retry under a full-screen dimming spinner overlay with the two verbatim captions; the backend refresh contract is pinned by integration tests.",
+        "constraints": [
+            "Layers only downward; HTTPTransport (utils) learns the TransportPolicy interface only and never imports features/Store/Router; the policy implementation lives in features/auth; the overlay is a utils DOM module; binding is a consumer-side seam in features/index.ts; guard-architecture --all --strict stays 0.",
+            "Only /auth/refresh, /auth/login, /auth/register, /auth/logout and /auth/logout-all are excluded from interception (no refresh recursion, no retry storms on the login/register forms); /auth/me, /auth/profile and /auth/password ARE intercepted like every other request (review F-3).",
+            "Overlay begin/end are balanced per interception phase on every terminal path; busyOverlay is the ONLY refcounted visual and has exactly one driver (the policy's onRetryOverlay) — onUnauthorized never touches it (reviews F-1, F-2).",
+            "Every test suite that installs a transport policy resets it via HTTPTransport.setTransportPolicy(null) in afterEach (review F-4 — static global state under alphabetical mocha ordering).",
+            "Backend application code (backend/app/**) is a forbidden write; the backend workstream adds tests only.",
+            "Overlay captions are verbatim operator copy including punctuation; the three dots of the wait caption are separate animated spans.",
+            "No comments in new/edited scss (stylelint); imports with .ts extension; eslint:fix/stylelint:fix before commit.",
+            "Existing suites stay green; mocha counts grow from the 568 base, pytest from the 253 base; no store-shape, WS-protocol, routing or dependency changes."
+        ],
+        "nonGoals": [
+            "no preemptive refresh timer (refresh stays reactive on 401)",
+            "no WS-connection or bot-run retry changes (the existing network/timeout bot retry stays; bot/runs 5xx simply inherits the global retry)",
+            "no auth store shape or guard behavior changes (meWithRefresh is removed as dead code — its behavior is subsumed by the global policy)",
+            "no backend application code changes (tests only; a discovered defect is a plan gap)",
+            "no overlay on the login/register surfaces and no i18n layer"
+        ],
+        "scope": "transport policy hooks + busy overlay module/scss with unit tests (utils); auth-feature policy implementation with single-flight refresh, kick-out and csrf re-read + binding + progress log (features/auth, features/index.ts); backend refresh-contract integration suite (backend/tests/integration/auth); evidence under work/2026-11-03-auth-refresh-retry/."
+    },
+    "readOnly": [
+        "AGENTS.md",
+        "tasks/README.md"
+    ],
+    "forbiddenWrites": [
+        "backend/app",
+        "src/core",
+        "src/scss/libs",
+        "src/scss/utils",
+        "src/utils/Store.ts",
+        "src/utils/Router.ts",
+        "src/utils/WSTransport.ts",
+        "docs/project-principles.json",
+        ".github/workflows",
+        "netlify.toml",
+        "server/server.js",
+        ".env",
+        ".env.development",
+        ".env.own"
+    ],
+    "leadOwned": [
+        {
+            "path": "tasks/2026-11-03-auth-refresh-retry",
+            "owner": "controller",
+            "reason": "Controller owns plan-package artifacts."
+        }
+    ],
+    "workstreams": [
+        {
+            "id": "WS-BE-REFRESH-TESTS",
+            "title": "Backend refresh-contract integration tests",
+            "owner": "worker-backend-refresh-tests",
+            "reviewer": "independent-release-reviewer",
+            "dependsOn": [],
+            "writes": [
+                "backend/tests/integration/auth/test_auth_refresh_api.py"
+            ],
+            "readOnly": [
+                "backend/app/api/v1/endpoints/auth.py",
+                "backend/app/core/security.py",
+                "backend/app/services/auth.py",
+                "backend/app/core/config.py",
+                "backend/tests/integration/auth/test_settings_api.py"
+            ],
+            "forbiddenWrites": [],
+            "launchGate": "branch feature/2026-11-03-auth-refresh-retry at 7dbd7aa; PYTHON_BIN=~/.venvs/chatty-backend/bin/python npm run verify:backend green at base (pytest 253).",
+            "capabilityHints": [
+                "fastapi",
+                "pytest",
+                "httpx"
+            ],
+            "requiredTools": [
+                "python",
+                "npm"
+            ],
+            "contextRefs": [
+                "plan.md",
+                "acceptance-criteria.md",
+                "developer-overview.md"
+            ],
+            "acceptanceIds": [
+                "AC-BE-REFRESH-CONTRACT"
+            ],
+            "evidenceIds": [
+                "EV-BE-1"
+            ],
+            "executionPolicy": {
+                "maxAttempts": 3,
+                "maxWallSeconds": 3600
+            },
+            "artifactPaths": {
+                "result": "work/2026-11-03-auth-refresh-retry/evidence/WS-BE-REFRESH-TESTS/task-result-{attempt}.json",
+                "review": "work/2026-11-03-auth-refresh-retry/evidence/WS-BE-REFRESH-TESTS/task-review-{attempt}.json"
+            },
+            "required": true,
+            "plannedItems": [
+                "test_auth_refresh_api.py in the existing httpx/ASGITransport + anyio style (register/csrf_header helpers follow test_settings_api.py)",
+                "login issues access/refresh/csrf cookies (names from app.state.settings)",
+                "refresh with csrf header → 200 UserResponse + reissued cookies; PREVIOUS refresh cookie replayed → 401 refresh_token_rotated (one-shot rotation)",
+                "refresh without cookie → 401 refresh_required; without csrf header → 403 csrf_failed",
+                "GET /chats: no access cookie → 401 authentication_required; corrupted access cookie → 401 invalid_token; after successful refresh → 200",
+                "POST /auth/logout → the old refresh cookie answers 401 on the next refresh",
+                "gate: PYTHON_BIN=~/.venvs/chatty-backend/bin/python npm run verify:backend green with pytest counts grown from 253"
+            ],
+            "qualityFloor": "npm run verify:backend green; no file outside the write-set touched; no backend application code changed."
+        },
+        {
+            "id": "WS-FE-TRANSPORT",
+            "title": "Transport policy hooks (401 replay, 5xx retry) + busy overlay",
+            "owner": "worker-frontend-transport",
+            "reviewer": "independent-release-reviewer",
+            "dependsOn": [],
+            "writes": [
+                "src/scss/components/_all.scss",
+                "src/scss/components/busy-overlay.scss",
+                "src/utils/HTTPTransport.ts",
+                "src/utils/HTTPTransport.test.ts",
+                "src/utils/busyOverlay.test.ts",
+                "src/utils/busyOverlay.ts"
+            ],
+            "readOnly": [
+                "src/utils/csrf.ts",
+                "src/utils/env.ts"
+            ],
+            "forbiddenWrites": [],
+            "launchGate": "branch feature/2026-11-03-auth-refresh-retry at 7dbd7aa; npm run verify green at base (mocha 568); guard strict 0.",
+            "capabilityHints": [
+                "typescript",
+                "scss",
+                "mocha",
+                "sinon"
+            ],
+            "requiredTools": [
+                "node",
+                "npm"
+            ],
+            "contextRefs": [
+                "plan.md",
+                "acceptance-criteria.md",
+                "developer-overview.md"
+            ],
+            "acceptanceIds": [
+                "AC-FE-TRANSPORT-RETRY"
+            ],
+            "evidenceIds": [
+                "EV-FE-1"
+            ],
+            "executionPolicy": {
+                "maxAttempts": 3,
+                "maxWallSeconds": 5400
+            },
+            "artifactPaths": {
+                "result": "work/2026-11-03-auth-refresh-retry/evidence/WS-FE-TRANSPORT/task-result-{attempt}.json",
+                "review": "work/2026-11-03-auth-refresh-retry/evidence/WS-FE-TRANSPORT/task-review-{attempt}.json"
+            },
+            "required": true,
+            "plannedItems": [
+                "HTTPTransport.ts: TransportPolicy interface (onUnauthorized/onServerErrorDelay/onRetryOverlay/beforeUnauthorizedRetry, all optional) + static setTransportPolicy(); zero behavior change without an installed policy",
+                "401 branch: only for URLs NOT ending in one of /auth/refresh, /auth/login, /auth/register, /auth/logout, /auth/logout-all, and first attempt only — BALANCED overlay pair (review F-1): begin('unauthorized') → onUnauthorized; true → end + beforeUnauthorizedRetry(options) + single replay of the same url/options; false/missing policy/hook rejection/second 401 → end + reject the ORIGINAL error",
+                "5xx branch: same endpoint exclusion — balanced pair begin('server-error') → loop attempt=0..2 { delay = onServerErrorDelay(url, attempt); null → stop } sleep(delay) → replay; exhausted → end + reject last error; success anywhere → end + resolve; a healed-401 replay that then 500s opens its own balanced 5xx pair; one 401 replay and three 5xx retries per request in total",
+                "busyOverlay.ts (new): lazy imperative DOM module — show(kind 'wait'|'reconnect') refcounts up and creates the fixed full-screen dimming node with spinner ring (role=status, aria-live=polite) and the verbatim caption (wait = «Пожалуйста, ожидайте» + three separate dot spans; reconnect = «Возможно, проблемы на сервере.. Мы пробуем переподключиться»); hide() decrements; removal at zero is GRACE-DEFERRED by a macrotask and cancelled by the next show (no flash on the 401→5xx phase transition); caption follows the latest show",
+                "busy-overlay.scss (new) + @import entry in scss/components/_all.scss: dimming layer, spinner ring keyframes, dot pulse keyframes with staggered delays, existing theme tokens; zero comments",
+                "HTTPTransport.test.ts: fake XHR + fake timers suites — 401 replay once (options mutated via beforeUnauthorizedRetry), false → original 401, the five excluded auth endpoints never trigger hooks while /auth/me, /auth/profile and /auth/password DO get healed, 5xx delays 2000/6000/12000 + 4th failure rejects, intermediate 200 resolves, null delay stops, 401-replay→500 composition, hook rejection degrades to false, begin/end BALANCED on every terminal path, policy reset via setTransportPolicy(null) in afterEach (review F-4)",
+                "busyOverlay.test.ts: node lifecycle (created on first show, grace-removed at refcount zero, teardown cancelled on re-show), verbatim captions, three dot spans present, parallel shows refcounted, kind switch updates the caption",
+                "gate: npm run verify green with mocha counts grown from 568; stylelint clean"
+            ],
+            "qualityFloor": "npm run verify green; guard strict 0; verbatim captions; no file outside the write-set touched."
+        },
+        {
+            "id": "WS-FE-AUTH-POLICY",
+            "title": "Auth transport policy (single-flight refresh, kick-out) + binding + docs",
+            "owner": "worker-frontend-auth-policy",
+            "reviewer": "independent-release-reviewer",
+            "dependsOn": [
+                "WS-FE-TRANSPORT",
+                "WS-BE-REFRESH-TESTS"
+            ],
+            "writes": [
+                "docs/progress/progress_log.md",
+                "src/features/auth/api/api.test.ts",
+                "src/features/auth/api/own.ts",
+                "src/features/auth/transportPolicy.test.ts",
+                "src/features/auth/transportPolicy.ts",
+                "src/features/index.ts"
+            ],
+            "readOnly": [
+                "src/features/auth/store.ts",
+                "src/utils/constants.ts"
+            ],
+            "forbiddenWrites": [],
+            "launchGate": "WS-FE-TRANSPORT and WS-BE-REFRESH-TESTS accepted; npm run verify + verify:backend green at their head; guard strict 0.",
+            "capabilityHints": [
+                "typescript",
+                "mocha",
+                "sinon"
+            ],
+            "requiredTools": [
+                "node",
+                "npm"
+            ],
+            "contextRefs": [
+                "plan.md",
+                "acceptance-criteria.md",
+                "developer-overview.md"
+            ],
+            "acceptanceIds": [
+                "AC-FE-AUTH-POLICY",
+                "AC-PROCESS"
+            ],
+            "evidenceIds": [
+                "EV-FE-2",
+                "EV-PROCESS-1"
+            ],
+            "executionPolicy": {
+                "maxAttempts": 3,
+                "maxWallSeconds": 5400
+            },
+            "artifactPaths": {
+                "result": "work/2026-11-03-auth-refresh-retry/evidence/WS-FE-AUTH-POLICY/task-result-{attempt}.json",
+                "review": "work/2026-11-03-auth-refresh-retry/evidence/WS-FE-AUTH-POLICY/task-review-{attempt}.json"
+            },
+            "required": true,
+            "plannedItems": [
+                "transportPolicy.ts (new): createAuthTransportPolicy() implementing the WS-FE-TRANSPORT TransportPolicy + installAuthTransportPolicy() seam; onUnauthorized NEVER touches the overlay (review F-2 — one owner: onRetryOverlay)",
+                "onUnauthorized: recently-refreshed window (a refresh succeeded <2000ms ago → true immediately, no network — review F-8 race), then single-flight (shared promise, cleared in finally), empty csrf → false with no network, POST /auth/refresh with the current csrf; failure → authSlice.setUser(null) + best-effort logout + Router.go(SIGNIN) → false",
+                "onRetryOverlay: begin → deferred showBusyOverlay(kind map) cancelled by an immediately paired end (no flash for instantly-resolved interceptions); end → hideBusyOverlay() only when the deferred show fired",
+                "onServerErrorDelay: SERVER_ERROR_RETRY_DELAYS_MS [2000, 6000, 12000], attempts beyond → null; beforeUnauthorizedRetry re-reads readCsrfToken()",
+                "features/index.ts: installAuthTransportPolicy() next to the existing consumer-side seams; features/auth/api/own.ts drops the now-dead meWithRefresh (/auth/me is globally intercepted — single refresh mechanism, review F-3) and spells the replacement as me: async () => toAuthUser((await http.get('/me')) as OwnUserResponse) (review N-3), api.test.ts updated accordingly",
+                "transportPolicy.test.ts: single-flight (two concurrent calls → ONE refresh POST stub), recently-refreshed window → true with zero http calls, success → true, failure → setUser(null)+SIGNIN+false with NO overlay leak, empty csrf → false with zero http calls, delay ladder 2000/6000/12000/null, deferred-show mapping + cancellation, csrf re-read, installAuthTransportPolicy binding via a sinon stub on HTTPTransport.setTransportPolicy; setTransportPolicy(null) reset in afterEach (review F-4)",
+                "docs: progress_log.md entry on top (run record)",
+                "gates: npm run verify + verify:backend + guard strict green with grown counts; ownership audit clean"
+            ],
+            "qualityFloor": "npm run verify + verify:backend green end to end; guard strict 0; docs updated; no file outside the write-set touched."
+        }
+    ],
+    "acceptance": {
+        "criteria": [
+            {
+                "id": "AC-BE-REFRESH-CONTRACT",
+                "title": "Refresh contract pinned by pytest",
+                "requirementIds": [
+                    "REQ-BE-REFRESH-CONTRACT"
+                ],
+                "evidenceIds": [
+                    "EV-BE-1"
+                ],
+                "independentEvidenceIds": [],
+                "statement": "The httpx integration suite proves: login issues all three cookies; refresh with csrf rotates (reissued cookies; replay of the previous refresh cookie → 401 refresh_token_rotated); missing refresh cookie → 401 refresh_required; missing csrf header → 403 csrf_failed; GET /chats 401 authentication_required without the access cookie and 401 invalid_token with a corrupted one, 200 after refresh; logout retires the refresh cookie. npm run verify:backend exits 0 with pytest counts grown from the 253 base.",
+                "description": "Backend integration tests.",
+                "source": "acceptance-criteria.md",
+                "priority": "P1"
+            },
+            {
+                "id": "AC-FE-TRANSPORT-RETRY",
+                "title": "401 replay + 5xx retry + overlay proven by mocha",
+                "requirementIds": [
+                    "REQ-FE-TRANSPORT-RETRY"
+                ],
+                "evidenceIds": [
+                    "EV-FE-1"
+                ],
+                "independentEvidenceIds": [],
+                "statement": "Fake-XHR/fake-timer suites prove: 401 with policy true replays the request exactly once and resolves with the replayed response; policy false rejects the original 401; the five excluded auth endpoints (refresh/login/register/logout/logout-all) never trigger policy hooks while /auth/me, /auth/profile and /auth/password ARE healed; 5xx retries with 2000/6000/12000 delays and a fourth failure rejects while an intermediate 200 resolves; null delay stops immediately; a 401 replay that 500s still consumes the 5xx budget; beforeUnauthorizedRetry mutates outgoing options; hook rejections degrade to false; overlay begin/end pairs are BALANCED on every terminal path (success, false, rejection, exhaustion, 401→500 composition); every suite resets an installed policy in afterEach. busyOverlay tests prove the verbatim captions (three animated dot spans on the wait kind), refcounting, grace-deferred node removal cancelled by re-show. npm run verify exits 0 with mocha counts grown from the 568 base.",
+                "description": "Frontend unit tests.",
+                "source": "acceptance-criteria.md",
+                "priority": "P1"
+            },
+            {
+                "id": "AC-FE-AUTH-POLICY",
+                "title": "Single-flight refresh policy + kick-out proven by mocha",
+                "requirementIds": [
+                    "REQ-FE-AUTH-POLICY"
+                ],
+                "evidenceIds": [
+                    "EV-FE-2"
+                ],
+                "independentEvidenceIds": [],
+                "statement": "The policy implementation suites prove: two concurrent onUnauthorized calls share ONE refresh POST (single-flight); a 401 arriving within the 2000ms recently-refreshed window resolves true with zero network calls (rotation race contained); success → true; failure → user slice cleared + best-effort logout + Router.go(SIGNIN) + false with NO overlay leak (deferred show cancelled); absent csrf cookie → false with zero network calls; the delay ladder answers 2000/6000/12000 then null; onRetryOverlay is the sole overlay driver with deferred-show/cancel semantics; beforeUnauthorizedRetry re-reads the csrf cookie; installAuthTransportPolicy binds via HTTPTransport.setTransportPolicy; meWithRefresh is gone from own.ts (single refresh mechanism) with its api tests updated.",
+                "description": "Frontend unit tests.",
+                "source": "acceptance-criteria.md",
+                "priority": "P1"
+            },
+            {
+                "id": "AC-PROCESS",
+                "title": "Gates and bookkeeping",
+                "requirementIds": [
+                    "REQ-FE-AUTH-POLICY"
+                ],
+                "evidenceIds": [
+                    "EV-PROCESS-1"
+                ],
+                "independentEvidenceIds": [],
+                "statement": "npm run verify exit 0 with mocha counts grown from the 568 base; PYTHON_BIN=~/.venvs/chatty-backend/bin/python npm run verify:backend exit 0 with pytest counts grown from the 253 base; node .claude/hooks/scripts/guard-architecture.mjs --all --strict exit 0; no file outside the manifest write-sets changes (ownership audit clean); docs/progress/progress_log.md carries the run record on top; backend application code untouched; rides feature/2026-11-03-auth-refresh-retry (base dev 7dbd7aa).",
+                "description": "Gate runs captured as evidence.",
+                "source": "acceptance-criteria.md",
+                "priority": "P1"
+            }
+        ]
+    },
+    "validation": {
+        "commands": [
+            "npm run verify",
+            "PYTHON_BIN=~/.venvs/chatty-backend/bin/python npm run verify:backend",
+            "node .claude/hooks/scripts/guard-architecture.mjs --all --strict"
+        ]
+    },
+    "orchestration": {
+        "startMode": "reviewed-plan",
+        "remediationMode": "ask",
+        "maxPlanReviewRounds": 2,
+        "maxTaskAttempts": 3,
+        "maxParallelTasks": 1,
+        "maxValidationRunsPerTask": 2,
+        "stateFile": "work/2026-11-03-auth-refresh-retry/run.state.json",
+        "eventLog": "work/2026-11-03-auth-refresh-retry/events.jsonl",
+        "stepReviewRequired": true,
+        "finalAuditRequired": true
+    },
+    "implementationAudit": {
+        "required": true,
+        "finalRequired": true
+    },
+    "developerOverview": "tasks/2026-11-03-auth-refresh-retry/developer-overview.md",
+    "releaseTarget": {
+        "kind": "local-only",
+        "environment": "Vite own mode + compose own-backend",
+        "productionPromotionClaimed": false
+    },
+    "releaseImpact": "HTTPTransport gains injectable transport-policy hooks (401 single replay + 5xx retry ×3 at 2/6/12s; only the five semantic auth endpoints excluded) with no behavior change until a policy is installed; new busy-overlay utils module + scss (full-screen dimming, spinner, verbatim animated captions, grace teardown); auth feature gains the single-flight refresh policy with failed-refresh kick-out, csrf re-read and a recently-refreshed race window, bound in features/index.ts; own.ts drops the dead meWithRefresh (single refresh mechanism); backend gains the refresh-contract integration suite. No backend application, store-shape, WS-protocol, routing or dependency changes.",
+    "finalAuditGates": [
+        "[AC-BE-REFRESH-CONTRACT|EV-BE-1] refresh contract (rotation one-shot, csrf enforcement, 401 details, logout retirement) — pytest, verify:backend green",
+        "[AC-FE-TRANSPORT-RETRY|EV-FE-1] 401 replay + 5xx retry ladder + five-endpoint exclusion (me/profile/password healed) + balanced overlay pairs + verbatim captions — mocha, verify green",
+        "[AC-FE-AUTH-POLICY|EV-FE-2] single-flight refresh, race window, failed-refresh kick-out with no overlay leak, csrf re-read, install seam, meWithRefresh removal — mocha, verify green",
+        "[AC-PROCESS|EV-PROCESS-1] all gates green with grown counts (mocha 568→, pytest 253→); guard strict 0; ownership audit clean; progress_log record; backend app code untouched"
+    ],
+    "securityGates": [
+        {
+            "id": "SEC-REFRESH-SINGLE-FLIGHT",
+            "statement": "Rotation is one-shot: two parallel refreshes would answer refresh_token_rotated and kick the user out. The policy MUST share one refresh promise across concurrent 401s (created once, cleared in finally); mocha pins one refresh POST for two concurrent calls.",
+            "evidenceIds": [
+                "EV-FE-2"
+            ]
+        },
+        {
+            "id": "SEC-AUTH-ENDPOINT-EXCLUSION",
+            "statement": "Only /auth/refresh, /auth/login, /auth/register, /auth/logout and /auth/logout-all are excluded from interception: no refresh recursion, no 5xx retry storms on the login/register forms (which could mass-create accounts or mask invalid_credentials); /auth/me, /auth/profile and /auth/password stay healed (review F-3); mocha pins zero policy-hook calls for the five excluded endpoints and healing for the other three.",
+            "evidenceIds": [
+                "EV-FE-1"
+            ]
+        },
+        {
+            "id": "SEC-FAILED-REFRESH-LOGOUT",
+            "statement": "A failed runtime refresh clears the local session (setUser(null)), fires a best-effort logout and redirects to SIGNIN; the caller still receives the ORIGINAL 401 error (refresh internals never leak); an absent csrf cookie short-circuits to false without network traffic; the overlay is guaranteed to be dismissed on this path (single owner + balanced pairs + deferred show, reviews F-1/F-2); the 2000ms recently-refreshed window prevents a stale-401 race from triggering a second rotation and a wrongful kick-out (review F-8).",
+            "evidenceIds": [
+                "EV-FE-2"
+            ]
+        },
+        {
+            "id": "SEC-CSRF-REPLAY",
+            "statement": "Before the 401 replay the outgoing options re-read the csrf cookie (rotation reissued chatty_csrf; a non-GET replay with the stale token would 403); mocha pins the mutation via beforeUnauthorizedRetry.",
+            "evidenceIds": [
+                "EV-FE-1"
+            ]
+        }
+    ],
+    "budgetPolicy": {
+        "units": "tokens-and-resources",
+        "reroute": "pause-and-review",
+        "maxTotalTokens": 80000,
+        "maxParallelWorkstreams": 1,
+        "maxRunWallSeconds": 18000,
+        "criticalPathWallSeconds": 14400,
+        "aggregateWorkstreamWallSeconds": 14400,
+        "retryReserveWallSeconds": 3600
+    },
+    "budgets": {
+        "defaultWorkstreamTokens": 24000,
+        "maxEvidenceBytesPerRun": 4194304
+    },
+    "contextLimits": {
+        "profile": "small-context-profile.v1",
+        "maxPlanContextBytes": 120000,
+        "maxRenderedPacketBytes": 40000,
+        "smallContextPacketBytes": 30000,
+        "maxReferenceFilesPerPacket": 12,
+        "includeOnlyOwnedWrites": true,
+        "excludeRuntimeWorkArtifacts": true
+    },
+    "tierResolution": {
+        "status": "RESOLVED",
+        "tier": "S2",
+        "requestedTier": "S2",
+        "reason": "multiple-executable-owners + browser-risk + security-risk resolved by agent-lifecycle tier resolve",
+        "independentReviewRequired": true,
+        "requestPath": "tasks/2026-11-03-auth-refresh-retry/tier-request.json",
+        "resolutionPath": "tasks/2026-11-03-auth-refresh-retry/tier-resolution.json",
+        "requestDigest": "68df4db848fe134dfd1dcb67c588a90ffcf2ca1c5db737d8296786c6cb24c9f5"
+    },
+    "planReview": {
+        "required": true,
+        "reviewerClass": "independent-plan-reviewer",
+        "maxRounds": 2,
+        "implementationAuthorized": false,
+        "report": "tasks/2026-11-03-auth-refresh-retry/plan-review.json",
+        "reviewedRevision": 3,
+        "verdict": "READY_TO_FREEZE"
+    },
+    "nonGoals": [
+        "preemptive refresh timer",
+        "WS and bot-run retry changes",
+        "auth store shape and guard behavior changes (meWithRefresh is removed as dead code, subsumed by the global policy)",
+        "backend application code changes",
+        "overlay on the login/register surfaces; i18n"
+    ],
+    "planFiles": [
+        "tasks/2026-11-03-auth-refresh-retry/acceptance-criteria.md",
+        "tasks/2026-11-03-auth-refresh-retry/developer-overview.md",
+        "tasks/2026-11-03-auth-refresh-retry/plan-review-request.md",
+        "tasks/2026-11-03-auth-refresh-retry/plan-review.json",
+        "tasks/2026-11-03-auth-refresh-retry/plan.manifest.json",
+        "tasks/2026-11-03-auth-refresh-retry/plan.md",
+        "tasks/2026-11-03-auth-refresh-retry/tier-request.json",
+        "tasks/2026-11-03-auth-refresh-retry/tier-resolution.json"
+    ]
+}

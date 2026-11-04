@@ -1,0 +1,30 @@
+{
+    "capabilityHints": [
+        "typescript",
+        "scss",
+        "mocha",
+        "sinon",
+        "fastapi",
+        "pytest",
+        "httpx",
+        "websocket"
+    ],
+    "executableOwners": [
+        "worker-frontend-render-perf",
+        "worker-backend-bot-stream",
+        "worker-frontend-resilience"
+    ],
+    "externalSpecification": false,
+    "requirementsBytes": 12400,
+    "riskFlags": {
+        "architecture": true,
+        "browser": true,
+        "data": false,
+        "external": true,
+        "migration": false,
+        "performance": true,
+        "release": false,
+        "security": true
+    },
+    "taskCount": 3
+}

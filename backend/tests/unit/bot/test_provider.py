@@ -27,6 +27,7 @@ def bot(provider_api: str = 'ollama') -> BotSettings:
         stale_after_seconds=180.0,
         user_email='bot@chatty.local',
         rag_top_k=3,
+        rag_min_score=0.5,
         max_answer_chars=4000,
     )
 

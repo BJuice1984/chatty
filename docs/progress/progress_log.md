@@ -1,3 +1,101 @@
+# 2026-11-04 — Feat(chats): браузерный offline/online, стрим ответа бота в ленте и честная ошибка эха (ALK 2026-11-04-bot-wait-offline, WS-FE-RESILIENCE)
+
+Фронтовая часть прогона закрыта (после WS-FE-RENDER-PERF и WS-BE-BOT-STREAM;
+ветка feature/2026-11-03-auth-refresh-retry). **Offline/online**:
+`src/features/chats/ws/connectivity.ts` — идемпотентный
+`installConnectivityWatchers()` (биндинг в `features/index.ts` рядом с
+транспортной политикой): `window offline` → `showBusyOverlay('reconnect')`;
+`online` → `hideBusyOverlay()` + `reconnectAllChatSockets()` +
+`reconnectStoriesSocket()` + `ChatsController.fetchChats()` (переоткрытие
+чатов + Connected-ресинк хвостов). Auth-«прогрев» сознательно НЕ добавлен
+(review F-4): протухший access лечит глобальная 401→refresh-политика,
+`features/auth` не тронута. **Force-реконнект**: `WSTransport` получил
+публичный read-only `isOpen` (additive, backoff/ceiling/close не менялись);
+`OwnWsAdapter.reconnectAll()` закрывает и роняет каждую НЕ-OPEN запись —
+застрявший в backoff чат снова открываем (гард `sockets.has` больше не
+мешает до F5), OPEN не трогаются; `reconnectStoriesSocket()` — симметрия
+для stories (force мимо `socket !== null`, review F-7), оба экспорта —
+gateway-функции. **Индикатор смерти WS** (review F-3): Close транспорта
+без payload неотличим от исчерпания — намеренность различает АДАПТЕР
+марками: каждый собственный путь закрытия (`closeChat`, `chat_deleted`,
+`closeAll`, дропы `reconnectAll`) маркирует chat id ДО `socket.close()`;
+Close-обработчик нотифицирует watcher только по немаркированному закрытию,
+Connected гасит индикатор. Контроллер держит set мёртвых чатов: оверлей на
+первом падении, гашение на последнем восстановлении (парность show/hide
+per-эпизод; удалённый/покинутый чат снимает свой эпизод — оверлей не
+залипает). **Стрим ответа бота**: pending-плейсхолдер получил опциональное
+`pending_for` (id вопроса, единственный создатель — контроллер; единственное
+изменение формы стора, review F-1); WS-адаптер по `bot_delta`
+`{'message_id','delta'}` (контракт заморожен WS-BE-BOT-STREAM) дописывает
+дельту в контент хвоста ОДНИМ store-эмитом и только при точном совпадении
+`pending_for === message_id` — нет хвоста/чужой id/поздняя дельта после
+финального сообщения: молчаливый дроп; финальное сообщение заменяет хвост
+существующим путём (дедуп/dropPending/REST-fallback не тронуты). **UX
+ожидания**: `waitForOwnEcho` при исчерпании 5с больше не молчит — честная
+пользовательская ошибка через существующий pushError («⚠ Ассистент
+недоступен (эхо сообщения не получено). Попробуйте позже.»), композер
+разблокируется в finally; pending-пузырь получил чисто-CSS анимацию «печатает»
+(три точки `::after` на `messenger__message-bubble_pending` + keyframes,
+без store-тиков и новых DOM-узлов; дословный текст «Ассистент печатает…»
+сохранён). Тесты: connectivity (jsdom offline/online, идемпотентность,
+негативы намеренных закрытий), reconnectAll drop/keep, stories force-drop,
+isOpen, bot_delta append/drop/replace, echo-таймаут, разблокировка
+композера, CSS-маркер — mocha 632 → **654**, `npm run verify` exit 0,
+guard `--all --strict` 0. **Замер времени появления своего сообщения
+отложен**: compose-стек own-бэкенда поднят не был (docker-демон выключен,
+операторский env недоступен — стек не поднимали), live-замер перенесён
+вместе с DEFERRED-смоуком в docs/NEXT.md; jsdom-покрытие экономики рендера
+(ровно один рендер на store-эмит) уже запинено задачей WS-FE-RENDER-PERF.
+Остаточная стоимость: перерисовка ленты остаётся O(n) на эмит (без
+виртуализации) — осознанный non-goal (review N-2), на текущих размерах
+лент незаметно.
+
+# 2026-11-03 — Chore(messenger): снят мок-список документов из ответов бота
+
+`bot-attachments.mock.ts` удалён (2026-11-02-ui-ux вводил демо-имена
+«найденных документов» для ответов бота, пока бот был отключён): бот
+работает и несёт реальное вложение ответа (`attachment_file_id` из
+`bot_runs`), входящие в AI-чате рендерятся как все прочие — одна файловая
+строка с именем из контракта или фолбэком «Файл». `mapTypedMessages`
+лишён параметра `isAiChat` (is_ai остался только у блокировки композера
+`botPending`); мок-тесты заменены пином одиночного реального вложения.
+
+# 2026-11-03 — merge dev (PR #49 ui-ux) в прогон auth-refresh
+
+# 2026-11-03 — Feat(auth): устойчивость сессии — глобальный refresh по 401, повторы на 5xx и оверлей ожидания
+
+Протухшая 15-минутная access-cookie больше не роняет запросы до
+перезагрузки страницы. **Транспорт** (`src/utils/HTTPTransport.ts`):
+инъектируемая `TransportPolicy` (четыре необязательных хука,
+`setTransportPolicy`) — 401 на любом URL вне пяти семантических
+auth-эндпоинтов (refresh/login/register/logout/logout-all) лечится
+одним вызовом `onUnauthorized` и повтором исходного запроса (csrf
+перечитывается перед повтором; повторный 401 отвергается исходной
+ошибкой; пост-излечении 422/5xx идут как есть), 5xx ретраится по
+лестнице политики с бюджетом 3 и сбалансированными парами
+begin/end оверлея на каждую фазу перехвата (включая переходы
+401→5xx и 5xx→401). **Оверлей** (`utils/busyOverlay.ts` +
+`busy-overlay.scss`): полноэкранное затемнение, спиннер-кольцо,
+дословные подписи «Пожалуйста, ожидайте» с тремя анимированными
+точками и «Возможно, проблемы на сервере.. Мы пробуем
+переподключиться», refcount и grace-удаление. **Политика фичи auth**
+(`features/auth/transportPolicy.ts`): single-flight refresh
+(ротация одноразовая — параллельные 401 делят один POST /auth/refresh),
+окно 2000 мс против гонки ротации, быстрый отказ без csrf-cookie,
+при неудачном refresh — локальный выход (setUser(null) + лучший-effort
+logout + Router.go(SIGNIN)); отложенный показ оверлея отменяется
+мгновенно закрывшейся парой. `meWithRefresh` удалён — холодная
+загрузка /auth/me идёт через ту же механику; связка —
+`installAuthTransportPolicy()` в `features/index.ts`. **Бэкенд**:
+контракт refresh закреплён интеграционным сьютом
+(`tests/integration/auth/test_auth_refresh_api.py`, 9 кейсов:
+ротация, смерть старого refresh-cookie, csrf-enforcement, 401-детали
+защищённых роутов, logout). ALK-прогон `2026-11-03-auth-refresh-retry`
+(S2, rev 3, 3 раунда независимого план-ревью; задача WS-FE-TRANSPORT
+принята с третьей попытки — ревьюер поймал утечку end-оверлея на
+[500,401] и маскирование пост-излечения ошибок исходным 401).
+Гейты: фронт 600 passing (база 568, +32), бэкенд 262 (база 253, +9),
+guard strict 0.
 # 2026-11-04 — Агентская среда: ALK 2.37.0 → 2.38.0 (плагин + CLI синхронно, восстановление залоченного профиля)
 
 Обновлён agent-lifecycle-kit в двух согласованных частях — по правилу репозитория версия CLI строго равна версии плагина. Локальный marketplace-репозиторий `~/dev/agent-lifecycle-kit` подтянут fast-forward с 9644fa3b (2.37.0) до 3ee12e02 (main, релиз 2.38.0 от 2026-11-04); локальный патч `.claude-plugin/marketplace.json` (`source: "./"` вместо github-ref + description маркета) переприменён после разрешения ожидаемого конфликта (апстрим бампнул version и ref), состояние прежнее: незакоммиченная модификация в working tree. Затем `claude plugin update agent-lifecycle-kit@agent-lifecycle-kit` (кеш плагина 2.37.0 → 2.38.0, gitCommitSha 3ee12e02) и `py -3.12 -m pip install --upgrade agent-lifecycle-kit==2.38.0`; согласованность подтверждена `agent_lifecycle version` → 2.38.0, записью user-scope в `installed_plugins.json` и smoke `--help` (в CLI появилась группа `research`). Темы релиза 2.38.0: необязательный decision-research bound у замороженной задачи (preflight отказывает в missing/stale/unsafe research перед нативным task start; legacy-дайджесты и поведение без нового поля неизменны), sealed accepted audit reports переживают совместимые изменения плана и исходников, массовое укрепление Windows/POSIX CI-тестов; два открытых known limitation (BUG-R238-STDIN-DEADLINE, BUG-R238-NODE-SMOKE-DEADLINE) на контур chatty не влияют. Инцидент окружения: `.alk/project-profile.json` оказался недоступен на уровне ACL (deny для всех, включая `icacls`/`takeown`/удаление без прав администратора; причина неизвестна, mtime файла 2026-09-27, при этом 2026-11-01 check по нему проходил) — владение/удаление без elevation невозможны, поэтому каталог переименован в `.alk.locked-20261104/` (залоченный файл сохранён внутри для разбора оператором; каталог исключён локально через `.git/info/exclude`), профиль пересобран с нуля: `project preset render --preset feature-implementation --adapter claude` + principles-ссылка на `docs/project-principles.json` с пересчётом digest по процедуре tasks/README.md (08c98978…); `project profile check` из корня chatty → PASS без блокеров, `principlesDigest` подтянут. Изменений в коде chatty нет; для применения новой версии плагина нужен перезапуск Claude Code.

@@ -1,0 +1,28 @@
+{
+    "capabilityHints": [
+        "typescript",
+        "scss",
+        "mocha",
+        "sinon",
+        "fastapi",
+        "pytest"
+    ],
+    "executableOwners": [
+        "worker-frontend-transport",
+        "worker-frontend-auth-policy",
+        "worker-backend-refresh-tests"
+    ],
+    "externalSpecification": false,
+    "requirementsBytes": 9200,
+    "riskFlags": {
+        "architecture": false,
+        "browser": true,
+        "data": false,
+        "external": false,
+        "migration": false,
+        "performance": false,
+        "release": false,
+        "security": true
+    },
+    "taskCount": 3
+}

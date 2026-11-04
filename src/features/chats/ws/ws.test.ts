@@ -2,12 +2,13 @@ import { expect } from 'chai'
 import sinon from 'sinon'
 import { JSDOM } from 'jsdom'
 import { env, joinUrl } from '../../../utils/env.ts'
-import store from '../../../utils/Store.ts'
+import store, { StoreEvents } from '../../../utils/Store.ts'
 import { initPreferences, setPreference } from '../../../utils/preferences.ts'
 import {
     appendMessages,
     chatMessagesPort,
     closeAllChatSockets,
+    reconnectAllChatSockets,
     setChatsEventListeners,
 } from './gateway.ts'
 import { OwnWsAdapter, ownChatUrl, toMessage } from './own.ts'
@@ -45,6 +46,7 @@ describe('chats ws gateway', () => {
         expect(chatMessagesPort).to.have.property('loadHistory')
         expect(chatMessagesPort).to.have.property('closeChat')
         expect(closeAllChatSockets).to.be.a('function')
+        expect(reconnectAllChatSockets).to.be.a('function')
     })
 
     it('should keep the message identity for history deduplication', () => {
@@ -413,6 +415,20 @@ describe('own ws adapter social events', () => {
         await clock.tickAsync(10_000)
 
         expect(created).to.have.length(1)
+    })
+
+    // 2026-11-04 offline (review F-3): chat_deleted закрывает сокет адаптера
+    // собственным путём — марка намеренного закрытия стоит, индикатор молчит
+    it('chat_deleted close raises NO ws-death indicator (intentional)', async () => {
+        const onWsUnexpectedClose = sinon.spy()
+
+        setChatsEventListeners({ onWsUnexpectedClose })
+
+        const { socket } = await connectedSocket()
+
+        socket.triggerMessage(JSON.stringify({ type: 'chat_deleted', content: { chat_id: 3 } }))
+
+        expect(onWsUnexpectedClose.called).to.be.false
     })
 
     it('sends a reply with reply_to_id in the message event', async () => {
@@ -837,5 +853,431 @@ describe('own ws adapter delivery gates', () => {
         socket.triggerMessage(incomingMessage({ user_id: 7 }))
 
         expect(notificationCalls).to.deep.eq([])
+    })
+})
+
+// 2026-11-04 offline: принудительный реконнект и дифференциация намеренности
+// закрытий. reconnectAll роняет НЕ-OPEN записи (застрявший в backoff чат
+// снова открываем — гард sockets.has больше не мешает), OPEN не трогает.
+// Индикатор смерти WS (review F-3) получают ТОЛЬКО немаркированные закрытия:
+// все собственные пути адаптера (closeChat/chat_deleted/closeAll/дропы
+// reconnectAll) ставят марку ДО socket.close(); Connected гасит индикатор.
+describe('own ws adapter offline recovery', () => {
+    type SocketListener = (event: { data?: string }) => void
+
+    const created: FakeWebSocket[] = []
+
+    class FakeWebSocket {
+        static readonly CONNECTING = 0
+        static readonly OPEN = 1
+        static readonly CLOSING = 2
+        static readonly CLOSED = 3
+
+        url: string
+        readyState = FakeWebSocket.CONNECTING
+        closed = false
+        listeners = new Map<string, SocketListener[]>()
+
+        constructor(url: string) {
+            this.url = url
+            created.push(this)
+        }
+
+        addEventListener(type: string, listener: SocketListener) {
+            this.listeners.set(type, [...(this.listeners.get(type) ?? []), listener])
+        }
+
+        removeEventListener() {}
+
+        send(): void {}
+
+        close() {
+            this.readyState = FakeWebSocket.CLOSED
+            this.closed = true
+        }
+
+        triggerOpen() {
+            this.readyState = FakeWebSocket.OPEN
+            for (const listener of [...(this.listeners.get('open') ?? [])]) {
+                listener({})
+            }
+        }
+
+        triggerRemoteClose() {
+            this.readyState = FakeWebSocket.CLOSED
+            for (const listener of [...(this.listeners.get('close') ?? [])]) {
+                listener({})
+            }
+        }
+
+        triggerMessage(data: string) {
+            for (const listener of [...(this.listeners.get('message') ?? [])]) {
+                listener({ data })
+            }
+        }
+    }
+
+    let clock: sinon.SinonFakeTimers
+    let originalWebSocket: typeof WebSocket
+
+    beforeEach(() => {
+        clock = sinon.useFakeTimers()
+        created.length = 0
+        originalWebSocket = globalThis.WebSocket
+        globalThis.WebSocket = FakeWebSocket as unknown as typeof WebSocket
+        store.set('messages', { 3: [] })
+        chatHistorySlice.resetHistory(3)
+        // предыдущие сьюты могли оставить контроллерский слушатель — чистый
+        // набор на сценарий
+        setChatsEventListeners({ onChatDeleted: () => undefined })
+    })
+
+    afterEach(() => {
+        globalThis.WebSocket = originalWebSocket
+        clock.restore()
+        store.set('messages', { 3: [] })
+        chatHistorySlice.resetHistory(3)
+        setChatsEventListeners({ onChatDeleted: () => undefined })
+    })
+
+    async function openSocket(adapter: OwnWsAdapter, chatId: number): Promise<FakeWebSocket> {
+        const connected = adapter.connect(chatId)
+
+        created[created.length - 1].triggerOpen()
+        await connected
+
+        return created[created.length - 1]
+    }
+
+    it('reconnectAll drops non-OPEN entries (re-openable past the guard) and keeps the OPEN one', async () => {
+        const adapter = new OwnWsAdapter()
+
+        await openSocket(adapter, 3)
+
+        // чат 4: connect без open — транспорт висит в CONNECTING
+        adapter.connect(4).catch(() => undefined)
+
+        // чат 5: открыт и оборван — транспорт в паузе backoff без сокета
+        adapter.connect(5).catch(() => undefined)
+        created[2].triggerOpen()
+        created[2].triggerRemoteClose()
+        await clock.tickAsync(500)
+
+        expect(created).to.have.length(3)
+
+        adapter.reconnectAll()
+
+        // OPEN-сокет чата 3 не тронут; CONNECTING-сокет чата 4 закрыт явно
+        expect(created[0].closed).to.be.false
+        expect(created[0].readyState).to.eq(FakeWebSocket.OPEN)
+        expect(created[1].closed).to.be.true
+
+        // backoff-таймер чата 5 убит: далёкий тик не поднимает зомби-сокет
+        await clock.tickAsync(60_000)
+
+        expect(created).to.have.length(3)
+
+        // гард sockets.has больше не мешает: оба чата снова открываемы
+        const reopen4 = adapter.connect(4)
+        const reopen5 = adapter.connect(5)
+
+        expect(created).to.have.length(5)
+
+        created[3].triggerOpen()
+        created[4].triggerOpen()
+        await Promise.all([reopen4, reopen5])
+
+        expect(created[3].closed).to.be.false
+        expect(created[4].closed).to.be.false
+
+        await adapter.closeChat(3)
+        await adapter.closeChat(4)
+        await adapter.closeChat(5)
+    })
+
+    it('reconnectAll drops are intentional: NO ws-death indicator fires', async () => {
+        const onWsUnexpectedClose = sinon.spy()
+
+        setChatsEventListeners({ onWsUnexpectedClose })
+
+        const adapter = new OwnWsAdapter()
+
+        await openSocket(adapter, 3)
+        adapter.connect(4).catch(() => undefined)
+
+        adapter.reconnectAll()
+
+        expect(onWsUnexpectedClose.called).to.be.false
+
+        await adapter.closeChat(3)
+    })
+
+    it('closeChat and closeAll are intentional: NO ws-death indicator fires', async () => {
+        const onWsUnexpectedClose = sinon.spy()
+
+        setChatsEventListeners({ onWsUnexpectedClose })
+
+        const first = new OwnWsAdapter()
+        const second = new OwnWsAdapter()
+
+        await openSocket(first, 3)
+        await openSocket(second, 5)
+
+        await first.closeChat(3)
+        second.closeAll()
+
+        expect(onWsUnexpectedClose.called).to.be.false
+    })
+
+    it('an exhausted (unmarked) close fires the indicator; a revived Connected clears it', async () => {
+        const onWsUnexpectedClose = sinon.spy()
+        const onWsConnected = sinon.spy()
+
+        setChatsEventListeners({ onWsUnexpectedClose })
+
+        const adapter = new OwnWsAdapter()
+
+        adapter.connect(3).catch(() => undefined)
+
+        // пять безответных попыток — бюджет реконнекта исчерпан, Close наружу
+        created[0].triggerRemoteClose()
+        for (let attempt = 0; attempt < 5; attempt += 1) {
+            await clock.tickAsync(2 ** attempt * 1000 + 1)
+            created[created.length - 1].triggerRemoteClose()
+        }
+
+        await clock.tickAsync(1)
+
+        expect(onWsUnexpectedClose.calledOnce).to.be.true
+        expect(onWsUnexpectedClose.firstCall.args).to.deep.eq([3])
+
+        // чат оживает повторным connect: Connected нотифицируется (гасит
+        // индикатор), осевшая марка не глотает событие
+        setChatsEventListeners({ onWsConnected })
+        const reopen = adapter.connect(3)
+
+        created[created.length - 1].triggerOpen()
+        await reopen
+
+        expect(onWsConnected.calledOnceWith(3)).to.be.true
+
+        await adapter.closeChat(3)
+    })
+})
+
+// bot_delta (2026-11-04 bot-stream, контракт WS-BE-BOT-STREAM):
+// {'message_id': <id вопроса>, 'delta': <текст>} дописывается в pending-хвост
+// ОДНИМ store-эмитом и только при точном совпадении pending_for; финальное
+// сообщение заменяет хвост существующим путём (дедуб по id + dropPending
+// контроллера), поздние дельты молча падают
+describe('own ws adapter bot_delta', () => {
+    type SocketListener = (event: { data?: string }) => void
+
+    const created: FakeWebSocket[] = []
+
+    class FakeWebSocket {
+        static readonly CONNECTING = 0
+        static readonly OPEN = 1
+        static readonly CLOSING = 2
+        static readonly CLOSED = 3
+
+        readyState = FakeWebSocket.CONNECTING
+        sent: string[] = []
+        listeners = new Map<string, SocketListener[]>()
+
+        constructor() {
+            created.push(this)
+        }
+
+        addEventListener(type: string, listener: SocketListener) {
+            this.listeners.set(type, [...(this.listeners.get(type) ?? []), listener])
+        }
+
+        removeEventListener() {}
+
+        send(data: string) {
+            this.sent.push(data)
+        }
+
+        close() {
+            this.readyState = FakeWebSocket.CLOSED
+        }
+
+        triggerOpen() {
+            this.readyState = FakeWebSocket.OPEN
+            for (const listener of [...(this.listeners.get('open') ?? [])]) {
+                listener({})
+            }
+        }
+
+        triggerMessage(data: string) {
+            for (const listener of [...(this.listeners.get('message') ?? [])]) {
+                listener({ data })
+            }
+        }
+    }
+
+    let clock: sinon.SinonFakeTimers
+    let originalWebSocket: typeof WebSocket
+    let adapter: OwnWsAdapter
+
+    beforeEach(() => {
+        clock = sinon.useFakeTimers()
+        created.length = 0
+        originalWebSocket = globalThis.WebSocket
+        globalThis.WebSocket = FakeWebSocket as unknown as typeof WebSocket
+        store.set('messages', { 3: [] })
+        chatHistorySlice.resetHistory(3)
+        adapter = new OwnWsAdapter()
+    })
+
+    afterEach(() => {
+        adapter.closeAll()
+        globalThis.WebSocket = originalWebSocket
+        clock.restore()
+        store.set('messages', { 3: [] })
+        chatHistorySlice.resetHistory(3)
+    })
+
+    async function connectedSocket(): Promise<FakeWebSocket> {
+        const connected = adapter.connect(3)
+
+        created[0].triggerOpen()
+        await connected
+
+        return created[0]
+    }
+
+    function stored(): (Message & { id?: number, isPending?: boolean, pending_for?: number })[] {
+        return (store.getState().messages?.[3] ?? []) as (Message & { id?: number, isPending?: boolean, pending_for?: number })[]
+    }
+
+    function seedQuestion(): void {
+        store.set('messages', { 3: [{ chat_id: 3, time: 't101', type: 'message', user_id: 7, content: 'вопрос', id: 101 }] })
+    }
+
+    function putTail(pendingFor: number): void {
+        store.set('messages', { 3: [...stored(), {
+            chat_id: 3,
+            time: 't900',
+            type: 'message',
+            user_id: -1,
+            content: 'Ассистент печатает…',
+            isPending: true,
+            pending_for: pendingFor,
+        }] })
+    }
+
+    function botDelta(messageId: number, delta: string): void {
+        created[0].triggerMessage(JSON.stringify({ type: 'bot_delta', content: { message_id: messageId, delta } }))
+    }
+
+    it('appends a matched delta to the pending tail in exactly ONE store emit', async () => {
+        await connectedSocket()
+        seedQuestion()
+        putTail(101)
+
+        const emits = sinon.spy()
+
+        store.on(StoreEvents.Updated, emits)
+
+        try {
+            botDelta(101, 'Готовлю ответ')
+
+            const list = stored()
+
+            expect(list).to.have.length(2)
+            expect(list[1]?.content).to.eq('Ассистент печатает…Готовлю ответ')
+            // pending_for сохранён — следующие дельты того же рана всё ещё вяжутся
+            expect(list[1]?.pending_for).to.eq(101)
+            expect(emits.calledOnce).to.be.true
+        } finally {
+            store.off(StoreEvents.Updated, emits)
+        }
+    })
+
+    it('drops a delta silently when no pending tail exists', async () => {
+        await connectedSocket()
+        store.set('messages', { 3: [{ chat_id: 3, time: 't101', type: 'message', user_id: 7, content: 'вопрос', id: 101 }] })
+
+        const emits = sinon.spy()
+
+        store.on(StoreEvents.Updated, emits)
+
+        try {
+            expect(() => botDelta(101, 'чужой текст')).to.not.throw()
+
+            expect(stored()).to.have.length(1)
+            expect(emits.called).to.be.false
+        } finally {
+            store.off(StoreEvents.Updated, emits)
+        }
+    })
+
+    it('drops a delta whose message_id does not equal the tail pending_for', async () => {
+        await connectedSocket()
+        seedQuestion()
+        putTail(101)
+
+        const emits = sinon.spy()
+
+        store.on(StoreEvents.Updated, emits)
+
+        try {
+            expect(() => botDelta(999, 'другой ран')).to.not.throw()
+
+            const list = stored()
+
+            expect(list).to.have.length(2)
+            expect(list[1]?.content).to.eq('Ассистент печатает…')
+            expect(emits.called).to.be.false
+        } finally {
+            store.off(StoreEvents.Updated, emits)
+        }
+    })
+
+    it('the final message replaces the streamed tail via the existing path; a late delta is dropped', async () => {
+        await connectedSocket()
+        seedQuestion()
+        putTail(101)
+
+        botDelta(101, 'часть ')
+
+        expect(stored()[1]?.content).to.eq('Ассистент печатает…часть ')
+
+        // финальный ответ приходит обычным message-broadcast и ложится
+        // существующим путём (дедуб по серверному id)
+        created[0].triggerMessage(JSON.stringify({
+            type: 'message',
+            content: {
+                id: 200,
+                chat_id: 3,
+                user_id: -1,
+                content: 'полный ответ ассистента',
+                file_id: null,
+                client_message_id: null,
+                created_at: '2026-11-04T00:00:00Z',
+            },
+        }))
+
+        let list = stored()
+
+        expect(list).to.have.length(3)
+        expect(list[2]?.id).to.eq(200)
+        expect(list[2]?.content).to.eq('полный ответ ассистента')
+
+        // finally контроллера снимает pending-хвост (dropPending)
+        store.set('messages', { 3: list.filter(item => item.isPending !== true) })
+
+        list = stored()
+
+        expect(list).to.have.length(2)
+
+        // поздняя дельта (после замены) не находит хвоста — молчаливый дроп,
+        // текст стрима не попадает в финальную ленту второй раз
+        expect(() => botDelta(101, 'хвост')).to.not.throw()
+
+        expect(stored()).to.have.length(2)
+        expect(stored().map(item => item.content)).to.deep.eq(['вопрос', 'полный ответ ассистента'])
     })
 })

@@ -2,7 +2,8 @@
 // (/auth/register, /auth/login, /auth/refresh, /auth/logout, /auth/me).
 // Cookie-аутентификация (withCredentials в HTTPTransport) + CSRF double-submit
 // (cookie chatty_csrf → заголовок env.csrfHeaderName) на refresh/logout.
-// /auth/me при 401 делает refresh и повторяет запрос один раз.
+// 401 на /auth/me лечится ГЛОБАЛЬНОЙ политикой транспорта
+// (features/auth/transportPolicy.ts) — локальный refresh-хук удалён.
 //
 // Маппинг креденциалов: бэкенд требует email (с '@') и пароль ≥ 12; поле login
 // формы входа маппится в email. UserResponse несёт id/email/role/is_active/
@@ -13,7 +14,7 @@
 // детерминированный из пула статики (бэкенд аватары пользователей не
 // хранит, см. utils/avatarPool.ts).
 
-import HTTPTransport, { TransportError } from '../../../utils/HTTPTransport.ts'
+import HTTPTransport from '../../../utils/HTTPTransport.ts'
 import { readCsrfToken } from '../../../utils/csrf.ts'
 import { avatarPoolUrl } from '../../../utils/avatarPool.ts'
 import type { AuthPort, AuthUser, SignInRequest, SignUpRequest } from '../ports.ts'
@@ -70,21 +71,6 @@ export function toRegisterBody(data: SignUpRequest): { email: string; password: 
     return { email: data.email, password: data.password }
 }
 
-async function meWithRefresh(): Promise<AuthUser> {
-    try {
-        return toAuthUser(await (http.get('/me')))
-    } catch (e: unknown) {
-        if (e instanceof TransportError && e.status === 401) {
-            // refresh сам возвращает свежий UserResponse — повторный /auth/me не нужен
-            const refreshed = await (http.post('/refresh', { csrfToken: readCsrfToken() }) as unknown as Promise<OwnUserResponse>)
-
-            return toAuthUser(refreshed)
-        }
-
-        throw e
-    }
-}
-
 export const ownAuthPort: AuthPort = {
     async signin(data) {
         await http.post('/login', { data: toLoginBody(data) })
@@ -93,7 +79,15 @@ export const ownAuthPort: AuthPort = {
         // Credentials бэкенда: email + password (≥ 12)
         await http.post('/register', { data: toRegisterBody(data) })
     },
-    me: meWithRefresh,
+    // 401 на /auth/me перехватывает глобальная политика транспорта: refresh
+    // и повтор запроса происходят в HTTPTransport, маппинг — здесь.
+    // Ответ типизируется явной аннотацией: транспортный Promise<never>
+    // присваивается всему без предупреждений (review N-3 плана)
+    async me() {
+        const response: OwnUserResponse = await http.get('/me')
+
+        return toAuthUser(response)
+    },
     async logout() {
         await http.post('/logout', { csrfToken: readCsrfToken() })
     },

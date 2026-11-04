@@ -12,13 +12,13 @@
 // URL вложения вычисляется из env (fileUrl) — безопасные схемы гарантирует joinUrl.
 
 import Block from '../../core/Block.ts'
+import { pruneComponentCache } from '../../core/registerComponent.ts'
 import Handlebars from 'handlebars'
 import { Button, Input, Message, MessageAttachment } from '../../utils/types.ts'
 import { AppState, withStore } from '../../utils/Store.ts'
 import { fileUrl } from '../../utils/env.ts'
 import { getPreferences, subscribePreferences } from '../../utils/preferences.ts'
 import { messageDayKey } from '../message/message.ts'
-import { mockBotAttachments } from './bot-attachments.mock.ts'
 import {
     deleteFeedScroll,
     getFeedScroll,
@@ -32,6 +32,24 @@ import template from './messenger.hbs'
 
 // Дебаунс @-поиска: поиск стартует, когда пользователь перестал печатать
 export const USER_SEARCH_DEBOUNCE_MS = 300
+
+// Фиксированный ключ pending-плейсхолдера бота (2026-11-04 render-perf):
+// один плейсхолдер на ленту — контроллер гарантирует максимум один
+// isPending-хвост на чат (композер блокируется на время прогона), поэтому
+// привязки к вопросу не нужно (review F-1)
+export const PENDING_TAIL_CACHE_KEY = 'pending:tail'
+
+// Ключ переиспользования Message-инстанса: реальному сообщению — id:<n>;
+// isPending-хвосту без id — фиксированный pending:tail; сообщению без
+// идентичности — undefined (кэш не участвует, инстанс строится каждым
+// рендером заново, как до keyed-кэша)
+function messageCacheKey(message: Message): string | undefined {
+    if (typeof message.id === 'number') {
+        return `id:${message.id}`
+    }
+
+    return message.isPending === true ? PENDING_TAIL_CACHE_KEY : undefined
+}
 
 // Черновик ответа: id цели (REST требует message_id) и сниппет для превью
 export interface ReplyDraft {
@@ -92,6 +110,9 @@ interface MessengerProps {
     menuTarget?: ChatListUserEntry | null
     // черновик ответа: превью над инпутом, уходит с отправкой (reply_to_id)
     replyDraft?: ReplyDraft | null
+    // бот отвечает в этом чате (isPending-плейсхолдер в ленте): отправка
+    // заблокирована — один бот-ран на чат, параллельные вешают провайдера
+    botPending?: boolean
     // раскрыт ли набор эмодзи у сообщения (переключается самим message)
     reactionsOpen?: boolean
     // Гейт автозагрузки вложений (2026-11-01-settings): начальное значение —
@@ -218,16 +239,15 @@ export function renderChatMemberMenuContent(options: {
 // календарных дней соседних time). Невалидная метка маркера не даёт и
 // цепочку дней не рвёт: день без ключа просто пропускается.
 // 2026-11-02-ui-ux: список вложений пузыря — каждое сообщение с файлом
-// получает attachments (файловая строка с иконкой и «Скачать»); в AI-чате
-// входящие (ответы бота) несут МОК-список найденных документов
-// (bot-attachments.mock.ts — удалить при возврате бота), свои и обычные
-// чаты — один пункт с настоящим именем файла, когда контракт его несёт
+// получает attachments (файловая строка с иконкой и «Скачать»). Мок-список
+// «документов бота» снят 2026-11-03: бот работает и несёт реальное вложение
+// ответа (attachment из bot_runs) — входящие в AI-чате рендерятся как все:
+// один пункт с настоящим именем файла, когда контракт его несёт
 // (file.filename сегодня не наполняется адаптерами — фолбэк «Файл»).
 export function mapTypedMessages(
     messages: Message[],
-    currentUserId: number | undefined,
-    isAiChat?: boolean
-): (Message & { isMine: boolean; fileUrl?: string; showDate: boolean; attachments?: MessageAttachment[] })[] {
+    currentUserId: number | undefined
+): (Message & { isMine: boolean; fileUrl?: string; showDate: boolean; attachments?: MessageAttachment[]; cacheKey?: string })[] {
     let previousDayKey: string | undefined
 
     return messages.map(message => {
@@ -240,12 +260,12 @@ export function mapTypedMessages(
 
         const isMine = message.user_id === currentUserId
         const fileUrlValue = message.file_url ?? (message.file ? fileUrl(message.file.path) : undefined)
-        let attachments: MessageAttachment[] | undefined
+        // готовый список (контроллер дописал найденные документы под ответом
+        // бота) приоритетнее одиночной строки собственного вложения
+        let attachments: MessageAttachment[] | undefined = message.attachments
 
-        if (fileUrlValue !== undefined) {
-            attachments = isAiChat === true && !isMine
-                ? mockBotAttachments(fileUrlValue, message.file?.filename)
-                : [{ name: message.file?.filename ?? 'Файл', url: fileUrlValue }]
+        if (attachments == null && fileUrlValue !== undefined) {
+            attachments = [{ name: message.file?.filename ?? 'Файл', url: fileUrlValue }]
         }
 
         return {
@@ -254,6 +274,7 @@ export function mapTypedMessages(
             fileUrl: fileUrlValue,
             attachments,
             showDate,
+            cacheKey: messageCacheKey(message),
         }
     })
 }
@@ -357,6 +378,12 @@ class MessengerBase extends Block {
         const text = (input?.value ?? '').trim()
 
         if (text === '') {
+            return
+        }
+
+        // бот ещё отвечает — сабмит игнорируется целиком: текст и черновик
+        // остаются в композере, уйдут следующим сабмитом после ответа
+        if ((this.props as MessengerProps).botPending === true) {
             return
         }
 
@@ -696,25 +723,42 @@ const withMessenger = withStore((state: AppState) => {
         state.messages === undefined ||
         state.messages[selectedChatId] === undefined
     ) {
+        // ленты нет — кэш Message-инстансов тоже пуст: осевшие записи
+        // роняются (уход со страницы/снятие выбора не оставляют хвостов)
+        pruneComponentCache(new Set())
+
         return {
             selectedChat: undefined,
             messages: [],
         }
     }
 
-    // AI-чат: входящие сообщения — ответы бота, их вложения становятся
-    // мок-списком найденных документов (bot-attachments.mock.ts)
+    // AI-чат нужен только для блокировки композера на время бот-рана
+    // (botPending): мок-вложения сняты, ответы бота рендерят реальный файл
     const isAiChat = (state.chats?.find(chat => chat.id === selectedChatId) as { is_ai?: boolean } | undefined)?.is_ai === true
 
-    const messages = mapTypedMessages(state.messages[selectedChatId], state.user?.id, isAiChat)
+    const messages = mapTypedMessages(state.messages[selectedChatId], state.user?.id)
+
+    // кэш живёт размером с текущую ленту: смена чата и удаление сообщения
+    // роняют и destroy'ят осевшие ключи (неограниченного роста нет)
+    pruneComponentCache(new Set(
+        messages.flatMap(item => (item.cacheKey != null ? [item.cacheKey] : []))
+    ))
 
     const chatInfo = state.chats?.find(chat => chat.id === selectedChatId)
+
+    // один бот-ран на чат: пока isPending-плейсхолдер жив, композер блокируется
+    const botPending = isAiChat === true
+        && state.messages[selectedChatId].some(
+            item => (item as { isPending?: boolean }).isPending === true
+        )
 
     return {
         selectedChat: state.selectedChat,
         selectedChatUsers: state.chatUsers,
         messages,
         chatInfo,
+        botPending,
     }
 })
 

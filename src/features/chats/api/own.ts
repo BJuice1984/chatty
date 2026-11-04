@@ -20,7 +20,8 @@
 import HTTPTransport from '../../../utils/HTTPTransport.ts'
 import { readCsrfToken } from '../../../utils/csrf.ts'
 import { avatarPoolUrl } from '../../../utils/avatarPool.ts'
-import type { ChatInfo, ReactionSummary } from '../../../utils/types.ts'
+import { toMessage } from '../message-mapping.ts'
+import type { ChatInfo, Message, ReactionSummary } from '../../../utils/types.ts'
 import type { ChatsPort, ChatsUserSearchResult, ReactionToggleResult } from '../ports.ts'
 
 export interface OwnChatMemberResponse {
@@ -257,5 +258,15 @@ export const ownChatsPort: ChatsPort = {
         // дефолтных 30с HTTPTransport — ждём как бэкенд (300с), иначе
         // фронт отваливается по таймауту при живом прогоне
         return http.post(`/${chatId}/bot/runs`, { data: { message_id: messageId }, csrfToken: readCsrfToken(), timeout: 300_000 })
+    },
+
+    async fetchMessages(chatId: number, limit?: number): Promise<Message[]> {
+        const query = limit !== undefined ? { limit: String(limit) } : undefined
+        const response = await (http.get(`/${chatId}/messages`, query !== undefined ? { data: query } : undefined)) as {
+            messages: Parameters<typeof toMessage>[0][]
+        }
+
+        // бэкенд отдаёт desc (курсорная страница) — лента растёт в asc
+        return response.messages.map(toMessage).reverse()
     },
 }

@@ -11,6 +11,7 @@
 
 import store from '../../utils/Store.ts'
 import { TransportError } from '../../utils/HTTPTransport.ts'
+import { hideBusyOverlay, showBusyOverlay } from '../../utils/busyOverlay.ts'
 import type { ChatInfo, Message, ReactionSummary } from '../../utils/types.ts'
 import { chatsPort } from './api/index.ts'
 import type { ChatMessagesPort, ChatReactionEvent, ChatsPort, ChatsUserSearchResult } from './ports.ts'
@@ -50,6 +51,27 @@ let contactsIntegration: ContactsIntegration = noopContactsIntegration
 // Композиция (features/index.ts) вызывает это до первого рендера.
 export function setContactsIntegration(integration: ContactsIntegration): void {
     contactsIntegration = integration
+}
+
+// Шов RAG-поиска документов (2026-11-03): список найденных по вопросу файлов
+// с настоящими именами для ответа бота в ленте. Реализация — фичи
+// ai-assistant (documents.ts), связка в features/index.ts; без связки шов
+// noop и ответы бота рендерят только собственное вложение рана
+export interface DocumentSearchIntegration {
+    // eslint-disable-next-line no-unused-vars
+    search(chatId: number, query: string, topK: number): Promise<{ name: string, url: string }[]>
+}
+
+const noopDocumentSearch: DocumentSearchIntegration = {
+    search() {
+        return Promise.resolve([])
+    },
+}
+
+let documentSearchIntegration: DocumentSearchIntegration = noopDocumentSearch
+
+export function setDocumentSearch(integration: DocumentSearchIntegration): void {
+    documentSearchIntegration = integration
 }
 
 // Применяет дельту события реакции к сводке одного сообщения (чистая функция):
@@ -136,6 +158,12 @@ export class ChatsFeatureController {
     // только ответ последнего вызова
     private searchSequence = 0
 
+    // Чаты, чей WS умер исчерпанием реконнектов (2026-11-04 offline, review
+    // F-3): адаптер нотифицирует только немаркированные закрытия; оверлей
+    // «пробуем переподключиться» показывается на первом падении и гасится
+    // последним восстановлением — пары show/hide сбалансированы per-эпизод
+    private readonly wsDeadChats = new Set<number>()
+
     private readonly botRunRetryDelaysMs: readonly number[]
 
     constructor(
@@ -152,6 +180,8 @@ export class ChatsFeatureController {
         setChatsEventListeners({
             onReaction: event => this.handleReactionEvent(event),
             onChatDeleted: chatId => this.handleChatDeleted(chatId),
+            onWsUnexpectedClose: chatId => this.handleWsDied(chatId),
+            onWsConnected: chatId => this.handleWsReconnected(chatId),
         })
     }
 
@@ -342,8 +372,44 @@ export class ChatsFeatureController {
     // сокета чата без реконнекта, обновление списка чатов
     private handleChatDeleted(chatId: number): void {
         store.set('selectedChat', undefined)
+        this.forgetWsDeath(chatId)
         void this.messages.closeChat(chatId)
         void this.fetchChats()
+    }
+
+    // Сокет чата исчерпал реконнекты (обрыв без восстановления): первый
+    // эпизод показывает оверлей переподключения
+    private handleWsDied(chatId: number): void {
+        if (this.wsDeadChats.size === 0) {
+            showBusyOverlay('reconnect')
+        }
+
+        this.wsDeadChats.add(chatId)
+    }
+
+    // Сокет чата (пере)подключился: гасим оверлей, когда восстановились все
+    // умершие — Connected первого коннекта сюда тоже попадает и молчит
+    private handleWsReconnected(chatId: number): void {
+        if (!this.wsDeadChats.delete(chatId)) {
+            return
+        }
+
+        if (this.wsDeadChats.size === 0) {
+            hideBusyOverlay()
+        }
+    }
+
+    // Чат, который больше не будет переподключаться (удалён владельцем,
+    // собственный выход), не должен вечно держать оверлей: снимаем его
+    // эпизод смерти, если был
+    private forgetWsDeath(chatId: number): void {
+        if (!this.wsDeadChats.delete(chatId)) {
+            return
+        }
+
+        if (this.wsDeadChats.size === 0) {
+            hideBusyOverlay()
+        }
     }
 
     async changeChatAvatar(userData: FormData): Promise<void> {
@@ -383,14 +449,28 @@ export class ChatsFeatureController {
     }
 
     sendMessage(chatId: number, message: string, replyToId?: number): Promise<void> {
-        const result = this.messages.sendMessage(chatId, message, replyToId)
-
         // is_ai-чат: после отправки запускаем ассистента. Свой broadcast с id
         // уже в сторе (WS быстрее REST-прогона); провал модели показываем
         // системным сообщением в чате — иначе для пользователя это молчание
         const chat = (store.getState().chats ?? []).find(
             item => (item as { id?: number }).id === chatId
         ) as { is_ai?: boolean } | undefined
+
+        // Один бот-ран на чат: пока ассистент отвечает (isPending-плейсхолдер
+        // «Ассистент печатает…»), второе сообщение не отправляется —
+        // параллельные раны вешают модель-провайдера (2026-11-03, live-инцидент
+        // ранов 43/44). UI блокирует композер тем же флагом — это страховка
+        // от гонки «двойной Enter до перерисовки» и прочих точек входа
+        if (chat?.is_ai === true) {
+            const pending = ((store.getState().messages?.[chatId] ?? []) as { isPending?: boolean }[])
+                .some(item => item.isPending === true)
+
+            if (pending) {
+                return Promise.resolve()
+            }
+        }
+
+        const result = this.messages.sendMessage(chatId, message, replyToId)
 
         if (chat?.is_ai === true) {
             void this.runBotForLastOwnMessage(chatId)
@@ -402,27 +482,42 @@ export class ChatsFeatureController {
     // Сетевой обрыв POST /bot/runs — не приговор прогону: запрос мог дойти
     // (ран выполняется, ответ придёт WS-broadcast'ом) или не дойти вовсе.
     // Идемпотентный ретрай закрывает оба случая; http-ошибки (4xx/5xx) и
-    // непредвиденные выбросы не ретраятся
+    // непредвиденные выбросы не ретраятся. Пока идут сетевые ретраи, экран
+    // закрывает reconnect-оверлей — иначе восстановление происходит молча
+    // и обрыв виден только в консоли (live-инцидент 2026-11-03: ран 48
+    // долечился за 134с, пользователь видел «CORS did not succeed»)
     private async runBotWithNetworkRetry(chatId: number, messageId: number) {
+        let overlayShown = false
         let lastError: unknown
 
-        for (const delay of [0, ...this.botRunRetryDelaysMs]) {
-            if (delay > 0) {
-                await new Promise(resolve => setTimeout(resolve, delay))
-            }
+        try {
+            for (const delay of [0, ...this.botRunRetryDelaysMs]) {
+                if (delay > 0) {
+                    await new Promise(resolve => setTimeout(resolve, delay))
+                }
 
-            try {
-                return await this.port.runBot?.(chatId, messageId)
-            } catch (error) {
-                lastError = error
+                try {
+                    return await this.port.runBot?.(chatId, messageId)
+                } catch (error) {
+                    lastError = error
 
-                if (!(error instanceof TransportError) || (error.kind !== 'network' && error.kind !== 'timeout')) {
-                    throw error
+                    if (!(error instanceof TransportError) || (error.kind !== 'network' && error.kind !== 'timeout')) {
+                        throw error
+                    }
+
+                    if (!overlayShown) {
+                        overlayShown = true
+                        showBusyOverlay('reconnect')
+                    }
                 }
             }
-        }
 
-        throw lastError
+            throw lastError
+        } finally {
+            if (overlayShown) {
+                hideBusyOverlay()
+            }
+        }
     }
 
     private async runBotForLastOwnMessage(chatId: number): Promise<void> {
@@ -465,17 +560,17 @@ export class ChatsFeatureController {
             // путь отправки в стор НЕ пишет: своё сообщение доезжает эхом
             // WS с серверным id (обычно десятки мс). Без ожидания
             // плейсхолдер встал бы ВЫШЕ вопроса, а прогон ушёл бы по
-            // предыдущему message_id
+            // предыдущему message_id. Эхо не пришло за бюджет — честная
+            // ошибка пользователю (не молчаливый пропуск прогона):
+            // выброс уходит в общий catch → pushError
             const target = await this.waitForOwnEcho(chatId, userId, knownIds)
-
-            if (target === undefined) {
-                return
-            }
 
             // индикатор «Ассистент печатает…»: прогон бота идёт минутами —
             // без хвоста в ленте это выглядит как молчание; плейсхолдер
             // живёт в сторе и снимается в finally по флагу (параллельные
-            // прогоны снимаются одним дропом)
+            // прогоны снимаются одним дропом). pending_for — id сообщения-
+            // вопроса (единственный создатель хвоста): WS-адаптер вяжет
+            // bot_delta стрима к этому хвосту и только к нему (review F-1)
             store.set(`messages.${chatId}`, [
                 ...(store.getState().messages?.[chatId] ?? []),
                 {
@@ -485,6 +580,7 @@ export class ChatsFeatureController {
                     user_id: -1,
                     content: 'Ассистент печатает…',
                     isPending: true,
+                    pending_for: target,
                 },
             ])
 
@@ -492,6 +588,12 @@ export class ChatsFeatureController {
 
             if (run?.status === 'failed') {
                 pushError(run.error_kind ?? 'unknown')
+            } else {
+                if (run != null) {
+                    await this.ensureBotAnswerDelivered(chatId, run)
+                }
+
+                await this.attachFoundDocuments(chatId, target)
             }
         } catch (e: unknown) {
             // транспортный провал (сеть/таймаут/5xx) и любые непредвиденные
@@ -505,13 +607,101 @@ export class ChatsFeatureController {
         }
     }
 
+    // REST-fallback доставки ответа бота (2026-11-03, live-инцидент):
+    // WS-сокет мог умереть на нестабильной сети — broadcast ответа не
+    // доставлен, REST-ран при этом 200 и спиннер уходит, а сообщение
+    // «появляется» только после перезагрузки. Если ответа (response_message_id
+    // рана) нет в сторе — тянем хвост истории по REST и мержим с дедупом
+    private async ensureBotAnswerDelivered(
+        chatId: number,
+        run: { response_message_id?: number | null }
+    ): Promise<void> {
+        const answerId = run.response_message_id
+
+        if (typeof answerId !== 'number') {
+            return
+        }
+
+        const delivered = (): boolean =>
+            ((store.getState().messages?.[chatId] ?? []) as { id?: number }[])
+                .some(item => item.id === answerId)
+
+        if (delivered()) {
+            return
+        }
+
+        try {
+            const tail = await this.port.fetchMessages?.(chatId, 30) ?? []
+
+            if (tail.length === 0 || delivered()) {
+                return
+            }
+
+            const known = new Set(
+                ((store.getState().messages?.[chatId] ?? []) as { id?: number }[])
+                    .map(item => item.id)
+            )
+            const missing = tail.filter(item => item.id !== undefined && !known.has(item.id))
+
+            if (missing.length === 0) {
+                return
+            }
+
+            store.set(`messages.${chatId}`, [
+                ...(store.getState().messages?.[chatId] ?? []),
+                ...missing,
+            ])
+        } catch (e: unknown) {
+            console.error('REST-fallback доставки ответа бота не удался:', e)
+        }
+    }
+
+    // Список найденных документов под ответом бота (2026-11-03): ран несёт
+    // один файл-победитель без имени, а RAG-поиск по тексту вопроса знает
+    // все топ-файлы с настоящими original_name. Ответ бота — последнее
+    // входящее сообщение чата (один ран на чат — блокировка композера);
+    // ошибка поиска не трогает ответ: остаётся одиночное вложение рана
+    private async attachFoundDocuments(chatId: number, questionId: number): Promise<void> {
+        try {
+            const userId = store.getState().user?.id
+            const list = (store.getState().messages?.[chatId] ?? []) as (Message & { id?: number, isPending?: boolean })[]
+            const question = list.find(item => item.id === questionId)
+            const answer = [...list]
+                .reverse()
+                .find(item => typeof item.id === 'number' && item.user_id !== userId && item.isPending !== true) as { id?: number } | undefined
+            const query = (question?.content ?? '').trim()
+
+            if (question == null || answer?.id == null || query === '') {
+                return
+            }
+
+            const hits = await documentSearchIntegration.search(chatId, query, 5)
+
+            if (hits.length === 0) {
+                return
+            }
+
+            const fresh = (store.getState().messages?.[chatId] ?? []) as (Message & { id?: number })[]
+
+            store.set(`messages.${chatId}`, fresh.map(item =>
+                item.id === answer.id
+                    ? { ...item, attachments: hits }
+                    : item
+            ))
+        } catch (e: unknown) {
+            console.error('Поиск документов для ответа бота не удался:', e)
+        }
+    }
+
     // Эхо отправленного сообщения: первое собственное с серверным id,
-    // не входившим в knownIds на момент отправки
+    // не входившим в knownIds на момент отправки. Бюджет исчерпан — выброс:
+    // молчаливый пропуск прогона выглядел для пользователя игнором (WS не
+    // отвечает, а бот «не услышал» вопрос)
     private async waitForOwnEcho(
         chatId: number,
         userId: number | undefined,
         knownIds: Set<number>
-    ): Promise<number | undefined> {
+    ): Promise<number> {
         const deadline = Date.now() + BOT_ECHO_WAIT_MS
 
         for (;;) {
@@ -528,7 +718,7 @@ export class ChatsFeatureController {
             }
 
             if (Date.now() >= deadline) {
-                return undefined
+                throw new Error('эхо сообщения не получено')
             }
 
             await new Promise(resolve => setTimeout(resolve, BOT_ECHO_WAIT_TICK_MS))
@@ -572,6 +762,7 @@ export class ChatsFeatureController {
             await this.port.leaveChat(chatId)
 
             store.set('selectedChat', undefined)
+            this.forgetWsDeath(chatId)
             void this.messages.closeChat(chatId)
             void this.fetchChats()
         } catch (e: unknown) {

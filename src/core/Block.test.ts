@@ -3,7 +3,8 @@ import sinon from 'sinon'
 import { JSDOM } from 'jsdom'
 import Handlebars from 'handlebars'
 import Block, { Props } from './Block'
-import { registerComponent } from './registerComponent.ts'
+import EventBus from './EventBus.ts'
+import { pruneComponentCache, registerComponent } from './registerComponent.ts'
 import store, { AppState, ComponentProps, withStore } from '../utils/Store.ts'
 
 const dom = new JSDOM()
@@ -51,6 +52,56 @@ describe('Block', () => {
         pageComponent.setProps({ text })
         const spanText = pageComponent.element?.querySelector('#test-text')?.innerHTML
         expect(spanText).to.be.eq(text)
+    })
+
+    // Батчинг setProps (2026-11-04-bot-wait-offline): мультиключевой вызов
+    // эмитит РОВНО ОДИН FLOW_CDU и делает ОДИН рендер; снапшоты до/после
+    // по-прежнему доезжают до componentDidUpdate
+    it('batches a multi-key setProps into exactly one FLOW_CDU and one render', () => {
+        const pageComponent = new PageClass({ text: 'a', marker: 1 })
+        const bus = (pageComponent as unknown as { eventBus: () => EventBus }).eventBus()
+        const snapshots: { oldProps?: Record<string, unknown>, newProps?: Record<string, unknown> }[] = []
+        let renders = 0
+
+        bus.on(Block.EVENTS.FLOW_CDU, (...args: unknown[]) => {
+            snapshots.push({
+                oldProps: args[0] as Record<string, unknown>,
+                newProps: args[1] as Record<string, unknown>,
+            })
+        })
+        bus.on(Block.EVENTS.FLOW_RENDER, () => {
+            renders += 1
+        })
+
+        pageComponent.setProps({ text: 'b', marker: 2, extra: 'c' })
+
+        expect(snapshots).to.have.length(1)
+        expect(renders).to.eq(1)
+        expect(snapshots[0]?.oldProps).to.include({ text: 'a', marker: 1 })
+        expect(snapshots[0]?.newProps).to.include({ text: 'b', marker: 2, extra: 'c' })
+
+        pageComponent.destroy()
+    })
+
+    // Прямые записи через прокси сохраняют пер-ключевой эмит: батчит только
+    // setProps, сет-ловушка не тронута
+    it('keeps the per-key FLOW_CDU emit for direct writes through the props proxy', () => {
+        const pageComponent = new PageClass({ text: 'a', marker: 1 })
+        const bus = (pageComponent as unknown as { eventBus: () => EventBus }).eventBus()
+        let emits = 0
+
+        bus.on(Block.EVENTS.FLOW_CDU, () => {
+            emits += 1
+        })
+
+        const props = (pageComponent as unknown as { props: Record<string, unknown> }).props
+
+        props.text = 'b'
+        props.marker = 2
+
+        expect(emits).to.eq(2)
+
+        pageComponent.destroy()
     })
 
     it('should set events', () => {
@@ -249,5 +300,160 @@ describe('Block', () => {
 
         expect(updateSpy.called).to.be.false
         expect(child.element).to.be.null
+    })
+
+    // Смета заменённых hbs-детей (2026-11-04-bot-wait-offline): перерендер
+    // родителя уничтожает ребёнка, выпавший из нового списка (withStore-
+    // подписка снята — счётчик слушателей стора вернулся к baseline), ребёнок
+    // в новом списке — построен и жив
+    it('destroys hbs-children absent from the new render list, unsubscribing their store wrapper', () => {
+        const sweptInstances: Block[] = []
+
+        class SweptBase extends Block {
+            // eslint-disable-next-line no-unused-vars
+            constructor(props?: Props) {
+                super(props)
+
+                sweptInstances.push(this)
+            }
+
+            render() {
+                const fragment = document.createDocumentFragment()
+                const div = document.createElement('div')
+
+                div.className = 'swept-child'
+                fragment.appendChild(div)
+
+                return fragment
+            }
+        }
+
+        const Swept = withStore(
+            ((state: AppState) => ({ selectedChat: state.selectedChat })) as unknown as (state: AppState) => ComponentProps
+        )(SweptBase as typeof Block)
+
+        registerComponent('TestSweptChild', Swept as typeof Block)
+
+        let steadyCount = 0
+
+        class SteadyChild extends Block {
+            // eslint-disable-next-line no-unused-vars
+            constructor(props?: Props) {
+                super(props)
+
+                steadyCount += 1
+            }
+
+            render() {
+                const fragment = document.createDocumentFragment()
+                const div = document.createElement('div')
+
+                div.className = 'steady-child'
+                fragment.appendChild(div)
+
+                return fragment
+            }
+        }
+
+        registerComponent('TestSteadyChild', SteadyChild as typeof Block)
+
+        const tpl = Handlebars.compile(
+            '<div>{{#if showChild}}<span>{{{ TestSweptChild }}}</span>{{/if}}<span>{{{ TestSteadyChild }}}</span></div>'
+        )
+
+        class SweeperPage extends Block {
+            render() {
+                return this.compile(tpl, { showChild: (this.props as { showChild?: boolean }).showChild === true })
+            }
+        }
+
+        const storeListeners = () =>
+            (store as unknown as { listeners: Record<string, (() => void)[] | undefined> }).listeners.updated?.length ?? 0
+        const baseline = storeListeners()
+        const parent = new SweeperPage({ showChild: true })
+
+        expect(sweptInstances).to.have.length(1)
+        expect(storeListeners(), 'withStore-подписка ребёнка добавлена').to.eq(baseline + 1)
+        expect(steadyCount).to.eq(1)
+
+        parent.setProps({ showChild: false })
+
+        // Ушедший из списка ребёнок уничтожен: подписка снята, элемент снят
+        expect(storeListeners(), 'подписка withStore снята сметой compile').to.eq(baseline)
+        expect((sweptInstances[0] as unknown as { element: HTMLElement | null }).element).to.be.null
+
+        // Присутствующий в новом списке ребёнок жив: построен заново и стоит в DOM
+        expect(steadyCount).to.eq(2)
+        expect(parent.element?.querySelector('.steady-child')).to.exist
+
+        parent.destroy()
+    })
+
+    // Review F-2: cache-retained инстанс переживает И смету compile, И полный
+    // destroy() родителя, а его элемент переезжает в DOM нового родителя;
+    // умирает такой инстанс только через prune кэша
+    it('keeps a cache-retained child alive through the compile sweep AND a full parent destroy', () => {
+        const retainedInstances: Block[] = []
+
+        class RetainedBase extends Block {
+            // eslint-disable-next-line no-unused-vars
+            constructor(props?: Props) {
+                super(props)
+
+                retainedInstances.push(this)
+            }
+
+            render() {
+                const fragment = document.createDocumentFragment()
+                const div = document.createElement('div')
+
+                div.className = 'retained-child'
+                fragment.appendChild(div)
+
+                return fragment
+            }
+        }
+
+        registerComponent('TestRetainedChild', RetainedBase as typeof Block)
+
+        const tpl = Handlebars.compile('{{#if showChild}}<span>{{{ TestRetainedChild cacheKey="f2-key" }}}</span>{{/if}}')
+
+        class RetainerPage extends Block {
+            render() {
+                return this.compile(tpl, { showChild: (this.props as { showChild?: boolean }).showChild === true })
+            }
+        }
+
+        const first = new RetainerPage({ showChild: true })
+
+        expect(retainedInstances).to.have.length(1)
+
+        const retained = retainedInstances[retainedInstances.length - 1]
+
+        // Смета compile: ребёнок выпал из нового списка — но retained,
+        // уничтожения нет
+        first.setProps({ showChild: false })
+
+        expect((retained as unknown as { element: HTMLElement | null }).element).to.not.be.null
+
+        // Полный destroy родителя: retained-ребёнок не тронут — жизнью владеет
+        // кэш (prune), а не родитель
+        first.destroy()
+
+        expect((retained as unknown as { element: HTMLElement | null }).element).to.not.be.null
+
+        // Новый родитель с тем же ключом переиспользует инстанс (тот же
+        // component.id, построения не было) и переносит его элемент в свой DOM
+        const second = new RetainerPage({ showChild: true })
+
+        expect(retainedInstances).to.have.length(1)
+        expect(second.element?.contains((retained as unknown as { element: HTMLElement }).element)).to.be.true
+
+        second.destroy()
+
+        // Retained-инстанс умирает ТОЛЬКО через prune кэша
+        pruneComponentCache(new Set())
+
+        expect((retained as unknown as { element: HTMLElement | null }).element).to.be.null
     })
 })

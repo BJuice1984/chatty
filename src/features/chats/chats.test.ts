@@ -3,11 +3,12 @@ import sinon from 'sinon'
 import { JSDOM } from 'jsdom'
 import store from '../../utils/Store.ts'
 import { TransportError } from '../../utils/HTTPTransport.ts'
+import { resetBusyOverlayForTests } from '../../utils/busyOverlay.ts'
 import { AI_CHAT_TITLE } from '../../utils/constants.ts'
-import { ChatsFeatureController, applyReactionDelta, setContactsIntegration, toggleOwnReaction } from './controller.ts'
+import { ChatsFeatureController, applyReactionDelta, setContactsIntegration, setDocumentSearch, toggleOwnReaction } from './controller.ts'
 import { ownChatsPort } from './api/own.ts'
 import { chatSearchSlice, chatsSlice } from './store.ts'
-import { notifyChatDeleted, notifyReactionEvent } from './ws/gateway.ts'
+import { notifyChatDeleted, notifyReactionEvent, notifyWsConnected, notifyWsUnexpectedClose } from './ws/gateway.ts'
 import { OwnWsAdapter } from './ws/own.ts'
 import type { ChatsPort } from './ports.ts'
 import type { ChatSearchMatch, Message, ReactionSummary } from '../../utils/types.ts'
@@ -199,6 +200,32 @@ describe('chats feature boundary', () => {
         await controller.sendMessage(3, 'ответ', 21)
 
         expect(sendMessage.calledOnceWith(3, 'ответ', 21)).to.be.true
+    })
+
+    // Один бот-ран на чат (2026-11-03): пока в AI-чате жив isPending-
+    // плейсхолдер «Ассистент печатает…», повторная отправка игнорируется —
+    // параллельные раны вешают модель-провайдера; после снятия pending
+    // отправка проходит (старт рана ждёт WS-эхо своего сообщения — вне
+    // этого юнит-теста)
+    it('should ignore a send into an AI chat while the bot run is pending', async () => {
+        const sendMessage = sinon.stub().resolves()
+        const controller = new ChatsFeatureController(
+            makePort(),
+            makeMessages({ sendMessage })
+        )
+        chatsSlice.setChats([{ id: 3, title: 'ai', avatar: '', unread_count: 0, is_ai: true }] as never)
+        storeSetMessages(3, [{ chat_id: 3, time: 't1', type: 'message', user_id: 7, content: 'моё', isPending: true }])
+
+        await controller.sendMessage(3, 'второе')
+
+        expect(sendMessage.called).to.be.false
+
+        storeSetMessages(3, [{ chat_id: 3, time: 't1', type: 'message', user_id: 7, content: 'моё', id: 11 }])
+        sendMessage.resetHistory()
+
+        await controller.sendMessage(3, 'второе')
+
+        expect(sendMessage.calledOnceWith(3, 'второе')).to.be.true
     })
 
     // 2026-10-27-ai-chat-creation: create форвардит is_ai в порт как есть;
@@ -863,6 +890,7 @@ describe('chats controller bot run', () => {
         store.set('messages', undefined)
         store.set('user', undefined)
         store.set('chats', [])
+        resetBusyOverlayForTests()
     })
 
     function setupAiChat(): void {
@@ -919,6 +947,10 @@ describe('chats controller bot run', () => {
 
         expect(questionAt).to.be.greaterThan(-1)
         expect(pendingAt).to.be.greaterThan(questionAt)
+
+        // pending_for — id вопроса (review F-1, единственный создатель хвоста):
+        // по этому полю WS-адаптер вяжет bot_delta стрима к хвосту
+        expect((list[pendingAt] as { pending_for?: number }).pending_for).to.equal(101)
 
         resolveRun({ id: 1, status: 'succeeded', error_kind: null })
         await until(() => !hasPending())
@@ -980,8 +1012,16 @@ describe('chats controller bot run', () => {
         echoOwnMessage()
         await sent
         await until(() => hasPending())
+        await until(() => runBot.calledOnce)
+
+        // сетевой ретрай не молчит: между попытками reconnect-оверлей открыт
+        expect(document.getElementById('busy-overlay')).to.be.not.null
+
         await until(() => runBot.calledTwice)
         await until(() => !hasPending())
+
+        // после восстановления оверлей снят (grace-удаление — тик)
+        await until(() => document.getElementById('busy-overlay') === null)
 
         expect(runBot.calledTwice).to.be.true
         expect(runBot.secondCall.calledWith(38, 101)).to.be.true
@@ -1007,5 +1047,228 @@ describe('chats controller bot run', () => {
         expect(runBot.calledTwice).to.be.true
         expect(errorMessage()?.content).to.contain('Ошибка сети')
         expect(hasPending()).to.be.false
+
+        await until(() => document.getElementById('busy-overlay') === null)
+    })
+
+    // REST-fallback (2026-11-03): WS-сокет умер на нестабильной сети —
+    // broadcast ответа потерян, REST-ран 200; ответ догоняется хвостом
+    // истории по REST и не требует перезагрузки страницы
+    it('delivers the bot answer over the REST fallback when the WS broadcast was lost', async () => {
+        setupAiChat()
+        const runBot = sinon.stub().resolves({ id: 9, status: 'succeeded', error_kind: null, response_message_id: 200 })
+        const fetchMessages = sinon.stub().resolves([
+            { chat_id: 38, time: 't200', type: 'message', user_id: -1, content: 'ответ бота', id: 200 },
+        ])
+        const controller = new ChatsFeatureController(
+            makePort({ runBot, fetchMessages }),
+            makeMessages(),
+            { botRunRetryDelaysMs: [10] }
+        )
+
+        const sent = controller.sendMessage(38, 'вопрос')
+
+        echoOwnMessage()
+        await sent
+        await until(() => (store.getState().messages?.[38] ?? []).some(item => item.id === 200))
+
+        expect(fetchMessages.calledOnce).to.be.true
+        expect(hasPending()).to.be.false
+    })
+
+    it('skips the REST fallback when the answer already arrived over WS', async () => {
+        setupAiChat()
+        let resolveRun!: (value: { id: number, status: string, error_kind: string | null, response_message_id?: number }) => void
+        const runBot = sinon.stub().returns(new Promise(resolve => {
+            resolveRun = resolve
+        }))
+        const fetchMessages = sinon.stub().resolves([])
+        const controller = new ChatsFeatureController(
+            makePort({ runBot, fetchMessages }),
+            makeMessages(),
+            { botRunRetryDelaysMs: [10] }
+        )
+
+        const sent = controller.sendMessage(38, 'вопрос')
+
+        echoOwnMessage()
+        await until(() => hasPending())
+
+        // broadcast дошёл до resolve рана — ответ уже в сторе
+        storeSetMessages(38, [
+            { chat_id: 38, time: 't101', type: 'message', user_id: 7, content: 'вопрос', id: 101 },
+            { chat_id: 38, time: 't200', type: 'message', user_id: -1, content: 'ответ бота', id: 200 },
+        ])
+
+        resolveRun({ id: 9, status: 'succeeded', error_kind: null, response_message_id: 200 })
+        await sent
+
+        expect(fetchMessages.called).to.be.false
+    })
+
+    // Документы под ответом бота (2026-11-03): RAG-поиск по тексту вопроса
+    // даёт настоящий список файлов — контроллер дописывает attachments
+    it('attaches the documents found by the question under the bot answer', async () => {
+        setupAiChat()
+        const runBot = sinon.stub().resolves({ id: 9, status: 'succeeded', error_kind: null, response_message_id: 200 })
+        const fetchMessages = sinon.stub().resolves([
+            { chat_id: 38, time: 't200', type: 'message', user_id: -1, content: 'вот документы', id: 200 },
+        ])
+        const controller = new ChatsFeatureController(
+            makePort({ runBot, fetchMessages }),
+            makeMessages(),
+            { botRunRetryDelaysMs: [10] }
+        )
+        setDocumentSearch({
+            search: async () => [
+                { name: 'Заявление на отпуск.pdf', url: '/api/v1/files/5/download' },
+                { name: 'Бюджет отдела 2026.xlsx', url: '/api/v1/files/6/download' },
+            ],
+        })
+
+        try {
+            const sent = controller.sendMessage(38, 'какие есть документы на отпуск')
+
+            echoOwnMessage()
+            await sent
+            await until(() => {
+                const answer = (store.getState().messages?.[38] ?? []).find(item => item.id === 200) as { attachments?: { name: string }[] } | undefined
+
+                return answer?.attachments != null && answer.attachments.length === 2
+            })
+
+            const answer = (store.getState().messages?.[38] ?? []).find(item => item.id === 200) as { attachments?: { name: string, url: string }[] }
+
+            expect(answer.attachments?.map(item => item.name)).to.deep.equal([
+                'Заявление на отпуск.pdf',
+                'Бюджет отдела 2026.xlsx',
+            ])
+            expect(answer.attachments?.[0].url).to.equal('/api/v1/files/5/download')
+        } finally {
+            setDocumentSearch({ search: async () => [] })
+        }
+    })
+
+    // Композер блокируется isPending-хвостом (botPending): финальное
+    // сообщение + finally контроллера снимают хвост — отправка снова
+    // доступна, ответ лежит один раз, текст стрима не задваивается
+    it('unblocks the composer once the final answer replaces the pending tail', async () => {
+        setupAiChat()
+        let resolveRun!: (value: { id: number, status: string, error_kind: string | null, response_message_id?: number }) => void
+        const runBot = sinon.stub().returns(new Promise(resolve => {
+            resolveRun = resolve
+        }))
+        const controller = new ChatsFeatureController(makePort({ runBot }), makeMessages())
+
+        const sent = controller.sendMessage(38, 'вопрос')
+
+        echoOwnMessage()
+        await sent
+        await until(() => hasPending())
+
+        // финальный ответ доставлен WS-broadcast'ом (существующий путь)
+        storeSetMessages(38, [
+            ...(store.getState().messages?.[38] ?? []),
+            { chat_id: 38, time: 't200', type: 'message', user_id: -1, content: 'полный ответ', id: 200 },
+        ])
+
+        resolveRun({ id: 9, status: 'succeeded', error_kind: null, response_message_id: 200 })
+        await until(() => !hasPending())
+
+        const list = store.getState().messages?.[38] ?? []
+
+        expect(list.filter(item => item.id === 200)).to.have.length(1)
+        expect(hasPending()).to.be.false
+        expect(list.some(item => item.content === 'Ассистент печатает…')).to.be.false
+    })
+})
+
+// Эхо-таймаут (2026-11-04-bot-wait-offline): 5с бюджет waitForOwnEcho
+// исчерпан — честная пользовательская ошибка через pushError вместо
+// молчаливого пропуска прогона; фейковые таймеры прокручивают бюджет
+describe('chats controller bot echo timeout', () => {
+    let clock: sinon.SinonFakeTimers
+
+    beforeEach(() => {
+        clock = sinon.useFakeTimers()
+        store.set('user', { id: 7, login: 'a@example.com' } as never)
+        store.set('chats', [{ id: 38, title: 'AI ассистент', avatar: '', unread_count: 0, is_ai: true } as never])
+        storeSetMessages(38, [{ chat_id: 38, time: 't100', type: 'message', user_id: 7, content: 'старый вопрос', id: 100 }])
+    })
+
+    afterEach(() => {
+        clock.restore()
+        store.set('messages', undefined)
+        store.set('user', undefined)
+        store.set('chats', [])
+        resetBusyOverlayForTests()
+    })
+
+    it('surfaces an honest user-visible error when the echo never arrives within the 5s budget', async () => {
+        const runBot = sinon.stub()
+        const controller = new ChatsFeatureController(makePort({ runBot }), makeMessages())
+
+        const sent = controller.sendMessage(38, 'вопрос')
+
+        await sent
+
+        // эхо не приходит — бюджет выжат полным тиком
+        await clock.tickAsync(5_200)
+
+        const list = store.getState().messages?.[38] ?? []
+        const error = list.find(item => item.isError === true)
+
+        expect(error?.content).to.contain('эхо сообщения не получено')
+        expect(runBot.called).to.be.false
+        expect(list.some(item => item.isPending === true)).to.be.false
+        expect(controller).to.be.instanceOf(ChatsFeatureController)
+    })
+})
+
+// Индикатор смерти WS (2026-11-04 offline, review F-3): адаптер нотифицирует
+// только немаркированные закрытия — контроллер показывает reconnect-оверлей
+// на первом падении и гасит на последнем восстановлении (парность show/hide
+// per-эпизод, refcount busyOverlay остаётся сбалансированным)
+describe('chats controller ws-death indicator', () => {
+    beforeEach(() => {
+        resetBusyOverlayForTests()
+    })
+
+    afterEach(() => {
+        resetBusyOverlayForTests()
+        store.set('messages', undefined)
+        store.set('user', undefined)
+        store.set('chats', [])
+    })
+
+    it('shows the reconnect overlay on unexpected closes and hides it when every dead chat recovers', async () => {
+        const controller = new ChatsFeatureController(makePort(), makeMessages())
+
+        notifyWsUnexpectedClose(3)
+
+        expect(document.getElementById('busy-overlay')).to.be.not.null
+
+        // второй мёртвый чат: оверлей уже стоит, refcount не растёт зря
+        notifyWsUnexpectedClose(4)
+
+        // первый ожил — второй ещё мёртв, оверлей держится
+        notifyWsConnected(3)
+
+        expect(document.getElementById('busy-overlay')).to.be.not.null
+
+        notifyWsConnected(4)
+
+        await new Promise(resolve => setTimeout(resolve, 1))
+
+        expect(document.getElementById('busy-overlay')).to.be.null
+        expect(controller).to.be.instanceOf(ChatsFeatureController)
+    })
+
+    it('a first-time Connected is a no-op: no overlay, no stray hide', async () => {
+        new ChatsFeatureController(makePort(), makeMessages())
+
+        notifyWsConnected(3)
+
+        expect(document.getElementById('busy-overlay')).to.be.null
     })
 })

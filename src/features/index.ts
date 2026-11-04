@@ -5,17 +5,31 @@
 
 import authController from './auth/controller.ts'
 import { authModule } from './auth/module.ts'
-import ChatsController, { setContactsIntegration } from './chats/controller.ts'
+import { installAuthTransportPolicy } from './auth/transportPolicy.ts'
+import ChatsController, { setContactsIntegration, setDocumentSearch } from './chats/controller.ts'
 import { chatsModule } from './chats/module.ts'
+import { installConnectivityWatchers } from './chats/ws/connectivity.ts'
 import { ProfileFeatureController, setProfileController, setProfileSeams } from './profile/controller.ts'
 import { profilePort } from './profile/api/index.ts'
 import { profileModule } from './profile/module.ts'
 import { aiAssistantModule } from './ai-assistant/module.ts'
+import { searchChatDocumentHits } from './ai-assistant/documents.ts'
 import { contactsModule } from './contacts/module.ts'
 import contactsController, { setChatOpener } from './contacts/controller.ts'
 import Router from '../utils/Router.ts'
 import { MESSENGER } from '../utils/constants.ts'
 import type { AppModule } from '../core/module/types.ts'
+
+// Глобальная политика повторов транспорта (2026-11-03-auth-refresh-retry):
+// 401 → single-flight refresh + повтор, неудачный refresh → локальный выход,
+// 5xx → лестница повторов; оверлей владеется только политикой
+installAuthTransportPolicy()
+
+// Браузерный offline/online (2026-11-04-bot-wait-offline): offline —
+// reconnect-оверлей, online — гашение + force-дроп застрявших backoff'ов
+// (чаты + stories) + рефетч списка с Connected-ресинком. Auth-прогрев
+// сознательно нет (review F-4): stale access лечит глобальная 401-политика
+installConnectivityWatchers()
 
 // Контроллер профиля зависит только от своего порта.
 setProfileController(new ProfileFeatureController(profilePort))
@@ -43,6 +57,12 @@ setChatOpener((chatId) => {
 setContactsIntegration({
     addContact: (userId) => contactsController.addContact(userId),
     refreshContacts: () => contactsController.fetchContacts(),
+})
+
+// RAG-поиск принадлежит ai-assistant — чаты получают им список найденных
+// документов с настоящими именами под ответом бота (consumer-side шов)
+setDocumentSearch({
+    search: (chatId, query, topK) => searchChatDocumentHits(chatId, query, topK),
 })
 
 export const featureModules: AppModule[] = [authModule, chatsModule, profileModule, aiAssistantModule, contactsModule]
