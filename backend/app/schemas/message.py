@@ -40,6 +40,9 @@ class MessageResponse(BaseModel):
     content: str | None
     file_id: int | None
     client_message_id: str | None
+    # маркер служебного сообщения (None = обычное): аддитивное поле, модель
+    # заполняет через from_attributes; UI рисует kind-сообщения служебной строкой
+    kind: str | None = None
     reply_to_id: int | None = None
     reply_to: MessageReplyTo | None = None
     reactions: list[ReactionSummary] = Field(default_factory=list)

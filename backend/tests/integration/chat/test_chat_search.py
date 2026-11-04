@@ -246,3 +246,125 @@ async def test_search_requires_authentication(app):
     async with AsyncClient(transport=ASGITransport(app=app), base_url='http://testserver') as anon:
         response = await anon.get('/api/v1/chats/search', params={'q': 'anything'})
     assert response.status_code == 401
+
+
+# --- '@'-режим: поиск чатов по СОУЧАСТНИКАМ -----------------------------------
+
+
+async def add_member(client, chat_id: int, user_id: int) -> None:
+    response = await client.post(f'/api/v1/chats/{chat_id}/members', json={'user_id': user_id})
+    assert response.status_code == 201
+
+
+def set_display_name(session_factory, user_id: int, display_name: str) -> None:
+    """PUT /auth/profile требует csrf-танцев — интеграционному тесту проще
+    выставить колонку напрямую через фабрику сессий приложения."""
+    from app.models.user import User
+
+    session = session_factory()
+    try:
+        user = session.get(User, user_id)
+        user.display_name = display_name
+        session.commit()
+    finally:
+        session.close()
+
+
+async def test_member_search_matches_login_prefix_and_display_name(client, app, session_factory):
+    await register(client, 'member-owner@example.com')
+    async with AsyncClient(transport=ASGITransport(app=app), base_url='http://testserver') as bob_client, \
+            AsyncClient(transport=ASGITransport(app=app), base_url='http://testserver') as carol_client:
+        bob = await register(bob_client, 'bob.member@example.com')
+        carol = await register(carol_client, 'carol.member@example.com')
+        set_display_name(session_factory, carol['id'], 'carolina')
+
+        # ДВА общих чата с bob + один с carol + чат без них
+        with_bob_first = await make_chat(client, 'First shared')
+        with_bob_second = await make_chat(client, 'Second shared')
+        with_carol = await make_chat(client, 'Carol talk')
+        await make_chat(client, 'Lonely')
+        for chat_id in (with_bob_first, with_bob_second):
+            await add_member(client, chat_id, bob['id'])
+        await add_member(client, with_carol, carol['id'])
+
+        # email-префикс (с '@' или без хвоста домена — префикс есть префикс)
+        body = await search(client, '@bob.member@exam')
+        assert body['query'] == '@bob.member@exam'
+        assert {item['chat_id'] for item in body['results']} == {with_bob_first, with_bob_second}
+        for item in body['results']:
+            assert item['matched_in'] == 'member'
+            assert item['snippet']['match'] == 'bob.member@example.com'  # display_name не задан -> email
+            assert item['last_match_at'] is None
+
+        # display_name-префикс: carolina совпадает по 'carol'
+        body = await search(client, '@carol')
+        assert [item['chat_id'] for item in body['results']] == [with_carol]
+        assert body['results'][0]['snippet'] == {
+            'before': '',
+            'match': 'carolina',
+            'after': '',
+        }
+
+
+async def test_member_search_excludes_the_caller_and_empty_term(client, app):
+    await register(client, 'selfmatch@example.com')
+    await make_chat(client, 'Mine alone')
+
+    # собственный login не матчит: '@selfmatch' ищет ДРУГОГО участника
+    body = await search(client, '@selfmatch')
+    assert body['results'] == []
+
+    # '@' без терма — честный пустой результат, не ошибка
+    body = await search(client, '@')
+    assert body == {'query': '@', 'results': []}
+
+
+async def test_member_search_scopes_to_shared_chats(client, app):
+    await register(client, 'scope-owner@example.com')
+    async with AsyncClient(transport=ASGITransport(app=app), base_url='http://testserver') as bob_client, \
+            AsyncClient(transport=ASGITransport(app=app), base_url='http://testserver') as outsider_client:
+        bob = await register(bob_client, 'scope-bob@example.com')
+        await register(outsider_client, 'scope-outsider@example.com')
+
+        private_chat = await make_chat(client, 'private with bob')
+        await add_member(client, private_chat, bob['id'])
+
+        # чужой (не общий с запрашивающим) чат никогда не появляется
+        body = await search(outsider_client, '@scope-bob')
+        assert body['results'] == []
+
+        body = await search(client, '@scope-bob')
+        assert [item['chat_id'] for item in body['results']] == [private_chat]
+
+
+async def test_member_search_orders_by_activity(client, app):
+    await register(client, 'order-owner@example.com')
+    async with AsyncClient(transport=ASGITransport(app=app), base_url='http://testserver') as bob_client:
+        bob = await register(bob_client, 'order-bob@example.com')
+
+        quiet = await make_chat(client, 'quiet shared')  # без сообщений
+        dated = await make_chat(client, 'dated shared')
+        await add_member(client, quiet, bob['id'])
+        await add_member(client, dated, bob['id'])
+        await post_message(client, dated, 'fresh activity')
+
+        body = await search(client, '@order-bob')
+        # датированный свежее-раньше; недатированный (created_at) ниже
+        assert [item['chat_id'] for item in body['results']] == [dated, quiet]
+
+
+async def test_member_search_caps_results_at_50(client, app):
+    await register(client, 'cap-owner@example.com')
+    async with AsyncClient(transport=ASGITransport(app=app), base_url='http://testserver') as bob_client:
+        bob = await register(bob_client, 'cap-bob@example.com')
+        chat_ids = []
+        for index in range(55):
+            chat_id = await make_chat(client, f'bulk member {index:02d}')
+            await add_member(client, chat_id, bob['id'])
+            chat_ids.append(chat_id)
+
+        body = await search(client, '@cap-bob')
+        assert len(body['results']) == 50
+        # активность DESC: без сообщений якорь created_at, свежие создания
+        # раньше — cap оставляет 50 НОВЕЙШИХ чатов
+        assert {item['chat_id'] for item in body['results']} == set(chat_ids[5:])
