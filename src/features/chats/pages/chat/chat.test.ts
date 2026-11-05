@@ -25,7 +25,6 @@ import { registerComponent } from '../../../../core/registerComponent.ts'
 import * as Components from '../../../../components/components.ts'
 import { SearchBar } from '../../../../components/searchBar/searchBar.ts'
 import { getFeedScroll, resetFeedScrollForTests, setFeedScroll } from '../../../../components/messenger/feed-scroll.ts'
-import { AI_CHAT_TITLE } from '../../../../utils/constants.ts'
 
 // Живой поиск: юнит-рендер страницы требует настоящих хелперов SearchBar
 // и User (chat.hbs вызывает их компонент-хелпами). Регистрация — как в
@@ -923,7 +922,7 @@ describe('chat page stories', () => {
 // на ChatsController.create — (A) чекбокс сосед Form читается по
 // refs.create в момент сабмита (сериализация до страницы не доходит),
 // (B) плитка «Чат с AI» шлёт дефолтный заголовок из utils/constants
-describe('chat page ai chat creation', () => {
+describe('chat page one-click creation (2026-11-06-chat-create-flow)', () => {
     let storiesSocket: sinon.SinonStub
 
     beforeEach(() => {
@@ -934,71 +933,61 @@ describe('chat page ai chat creation', () => {
         storiesSocket.restore()
     })
 
-    it('sends is_ai=true with the title when the AI checkbox is checked (A)', () => {
+    it('the header button click goes straight to createAndSelect', () => {
         const fetchChats = sinon.stub(ChatsController, 'fetchChats').resolves()
-        const create = sinon.stub(ChatsController, 'create').resolves()
+        const createAndSelect = sinon.stub(ChatsController, 'createAndSelect').resolves()
 
         try {
             const page = new ChatPage({} as never)
-            const checkbox = page.element?.querySelector<HTMLInputElement>('input[name="is_ai"]')
 
-            expect(checkbox).to.exist
+            ;(callbacksOf(page) as { onClick?: () => void }).onClick?.()
 
-            checkbox!.checked = true
-
-            const submit = ((callbacksOf(page) as { buttons?: {
-                handleSubmitClick?: (value: { title: string }) => void
-            }[] }).buttons ?? [])[0]?.handleSubmitClick
-
-            submit?.({ title: 'мой ИИ-чат' })
-
-            expect(create.calledOnceWith({ title: 'мой ИИ-чат', is_ai: true })).to.be.true
+            expect(createAndSelect.calledOnce).to.be.true
 
             page.destroy()
         } finally {
-            create.restore()
+            createAndSelect.restore()
             fetchChats.restore()
         }
     })
 
-    it('keeps the unchecked submit exactly as before: title only, no is_ai (A)', () => {
+    it('no ChatListCreate card, form or is_ai checkbox mounts', () => {
         const fetchChats = sinon.stub(ChatsController, 'fetchChats').resolves()
-        const create = sinon.stub(ChatsController, 'create').resolves()
 
         try {
             const page = new ChatPage({} as never)
 
-            const submit = ((callbacksOf(page) as { buttons?: {
-                handleSubmitClick?: (value: { title: string }) => void
-            }[] }).buttons ?? [])[0]?.handleSubmitClick
-
-            submit?.({ title: 'обычный чат' })
-
-            // calledOnceWith — глубокое равенство: is_ai в payload нет вовсе
-            expect(create.calledOnceWith({ title: 'обычный чат' })).to.be.true
+            expect(page.element?.querySelector('.chat-list-create')).to.eq(null)
+            expect(page.element?.querySelector('input[name="is_ai"]')).to.eq(null)
+            expect(page.element?.querySelector('input[name="title"]')).to.eq(null)
 
             page.destroy()
         } finally {
-            create.restore()
             fetchChats.restore()
         }
     })
 
-    it('creates the AI chat from the tile callback with the shared title (B)', () => {
+    it('an external selectedChat change opens the mobile pane, undefined collapses it', () => {
         const fetchChats = sinon.stub(ChatsController, 'fetchChats').resolves()
-        const create = sinon.stub(ChatsController, 'create').resolves()
 
         try {
             const page = new ChatPage({} as never)
+            const pane = () => (page.element as HTMLElement).className.includes('chat_pane-open')
 
-            ;(callbacksOf(page) as { onAiChatClick?: () => void }).onAiChatClick?.()
+            expect(pane()).to.be.false
 
-            expect(create.calledOnceWith({ title: AI_CHAT_TITLE, is_ai: true })).to.be.true
-            expect(AI_CHAT_TITLE).to.eq('AI ассистент')
+            // программный селект (createAndSelect): стор-эмит приносит новый
+            // selectedChat — CDU-гвард открывает панель
+            store.set('selectedChat', 41)
+
+            expect(pane()).to.be.true
+
+            store.set('selectedChat', undefined)
+
+            expect(pane()).to.be.false
 
             page.destroy()
         } finally {
-            create.restore()
             fetchChats.restore()
         }
     })

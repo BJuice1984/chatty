@@ -435,6 +435,24 @@ describe('own ws adapter social events', () => {
         expect(socket.readyState).to.eq(FakeWebSocket.OPEN)
     })
 
+    // 2026-11-06-chat-create-flow: «+AI» одного участника включает бота для
+    // всех — событие уходит контроллеру как есть, сокет жив
+    it('forwards chat_ai_toggled to the gateway listener and keeps the socket open', async () => {
+        const onChatAiToggled = sinon.spy()
+
+        setChatsEventListeners({ onChatAiToggled })
+
+        const { socket } = await connectedSocket()
+
+        socket.triggerMessage(JSON.stringify({
+            type: 'chat_ai_toggled',
+            content: { chat_id: 3, is_ai: true },
+        }))
+
+        expect(onChatAiToggled.calledOnceWith({ chat_id: 3, is_ai: true })).to.be.true
+        expect(socket.readyState).to.eq(FakeWebSocket.OPEN)
+    })
+
     // 2026-11-04 offline (review F-3): chat_deleted закрывает сокет адаптера
     // собственным путём — марка намеренного закрытия стоит, индикатор молчит
     it('chat_deleted close raises NO ws-death indicator (intentional)', async () => {

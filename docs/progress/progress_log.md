@@ -1,3 +1,39 @@
+# 2026-11-06 — Feat(chats): редизайн создания чата — one-click + авто-название, подсказка пустого чата, «+AI» (ALK 2026-11-06-chat-create-flow)
+
+ALK-прогон `2026-11-06-chat-create-flow` (S2, план rev 2, две волны, ветка
+feature/2026-11-06-chat-create-flow от dev efdc8c3): карточка-форма
+ChatListCreate удалена целиком (компонент/тест/scss/@import в _all.scss);
+кнопка «Создать чат» шапки списка — one-click: `createAndSelect()`
+(POST /chats `{title: 'Чат с', auto_titled: true}` → {chatId} → fetchChats →
+selectChat + getChatUsers, порядок запинен), карточка поднимается вверху
+списка created_at-фолбэком, мобильная панель открывается CDU-гвардом при
+внешнем селекте. Авто-название — серверное: миграция 013 `chats.auto_titled`
+(NOT NULL server_default '0', сегмент-тест 013 + 009–012 зелёные без repin);
+`add_member` дописывает имя СВЕЖЕГО участника (display_name → email-локаль,
+сид AUTO_TITLE_SEED «Чат с» → «Чат с Вася» → «Чат с Вася, Маша», кап 200
+тихий пропуск, early-return повторного/реактивируемого участника title не
+трогает) с переиспользованным WS `chat_renamed`; расширенный PUT /chats/{id}
+(optional title + is_ai, валидатор «хотя бы одно поле»): ручной rename гасит
+auto_titled навсегда (идентичный title — no-op без гашения; фронт гасит
+оптимистично — адаптер ответ discard-ит, F-3), is_ai-флип с новым WS
+`chat_ai_toggled` активным; весь fan-out в endpoints (grep-пин «сервисы не
+импортируют hub», F-5). Фронт: шапка auto_titled-чата рендерит заголовок
+сразу инпутом (механика renamingTitle, коммит Enter/Escape/focusout, пустое
+— тихий откат); подсказка пустого чата «Добавьте пользователей…» + кнопка
+«добавить» (гейт по данным: нет сообщений И нет соучастников И не архив И не
+AI; selectChat сбрасывает chatUsers-слайс — F-7); кнопка «+AI» (✦,
+chat-ai-accent) первым в ряду шапки: клик → enableAi (оптимистичный is_ai
+патч с откатом), в AI-чате active-некликабельна, в архивном скрыта;
+`ChatsPort.createChat` контракт void → `{chatId}`; константа
+`NEW_CHAT_TITLE` (sync-twin бэкендового AUTO_TITLE_SEED); AI_CHAT_TITLE не
+тронута (живой код ai-assistant, F-2). Счётчики: mocha 696 → 709, pytest
+291 → 302 (+4 известных Windows-ingestion как deviations). Future-step
+(в NEXT): LLM-нейминг контекста чата — только пока auto_titled=true; backlog
+«тематические чаты» (2026-11-05) покрывается новым флоу. Полный цикл ALK:
+clarification (4 решения оператора) → план → независимое ревью (r1
+NEEDS_REFINEMENT 4 MAJOR + 3 MINOR → r2 READY_TO_FREEZE) → freeze rev 2 →
+WS-BE-API (ACCEPTED: 4 dimensions PASS, 3 LOW closed) → WS-FE-CHAT.
+
 # 2026-11-05 — Агентская среда: ALK 2.38.0 → 2.41.0 (Windows-стенд, плагин + CLI синхронно)
 
 Обновлён agent-lifecycle-kit на Windows-стенде синхронно в двух частях — по правилу

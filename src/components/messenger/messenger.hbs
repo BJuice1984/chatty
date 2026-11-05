@@ -18,6 +18,9 @@
             {{else}}
                 <h2 class="messenger__header-title" data-testid="chat-title"{{#if canRename}} title="Двойной клик — переименовать"{{/if}}>{{ chatInfo.title }}</h2>
             {{/if}}
+            {{#if autoTitleInput}}
+                <span class="messenger__header-title-hint" data-testid="auto-title-hint">авто-название</span>
+            {{/if}}
             <div class="messenger__chat-users-container">
               {{#each selectedChatUsers}}
                 {{!-- left_at — архивное членство: иконка покинувшего чат
@@ -34,6 +37,12 @@
             </div>
         </div>
         <ul class="messenger__container">
+          {{#if emptyChatHint}}
+            <li class="messenger__empty-hint" data-testid="empty-chat-hint">
+              <p class="messenger__empty-hint-text">Добавьте пользователей с помощью кнопки + в верхнем меню, либо нажмите «добавить»</p>
+              <button type="button" class="messenger__empty-hint-button" data-testid="empty-chat-add">добавить</button>
+            </li>
+          {{/if}}
           {{{ ChatHistory }}}
           {{#each messages}}
             {{{ Message content=this.content user_id=this.user_id chat_id=this.chat_id id=this.id kind=this.kind isMine=this.isMine isError=this.isError isPending=this.isPending fileUrl=this.fileUrl attachments=this.attachments autoDownload=../this.autoDownload time=this.time showDate=this.showDate replyTo=this.replyTo reactions=this.reactions onSetReaction=../this.onSetReaction onReply=../this.onReplyToMessage cacheKey=this.cacheKey }}}

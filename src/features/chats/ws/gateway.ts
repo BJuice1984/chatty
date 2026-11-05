@@ -33,6 +33,10 @@ type ChatDeletedListener = (chatId: number) => void
 // eslint-disable-next-line no-unused-vars
 type ChatRenamedListener = (event: { chat_id: number, title: string }) => void
 
+// Бот включён в чате (2026-11-06-chat-create-flow): {chat_id, is_ai}
+// eslint-disable-next-line no-unused-vars
+type ChatAiToggledListener = (event: { chat_id: number, is_ai: boolean }) => void
+
 // eslint-disable-next-line no-unused-vars
 type WsUnexpectedCloseListener = (chatId: number) => void
 // eslint-disable-next-line no-unused-vars
@@ -46,6 +50,8 @@ export interface ChatsEventListeners {
 
     onChatRenamed?: ChatRenamedListener
 
+    onChatAiToggled?: ChatAiToggledListener
+
     // Индикатор смерти WS (2026-11-04 offline, review F-3): Close транспорта
     // без payload неотличим от исчерпания реконнектов — адаптер дифференцирует
     // намеренность собственными марками и нотифицирует ТОЛЬКО немаркированные
@@ -58,6 +64,7 @@ export interface ChatsEventListeners {
 let reactionListener: ReactionListener | null = null
 let chatDeletedListener: ChatDeletedListener | null = null
 let chatRenamedListener: ChatRenamedListener | null = null
+let chatAiToggledListener: ChatAiToggledListener | null = null
 let wsUnexpectedCloseListener: WsUnexpectedCloseListener | null = null
 let wsConnectedListener: WsConnectedListener | null = null
 
@@ -74,6 +81,10 @@ export function setChatsEventListeners(listeners: ChatsEventListeners): void {
 
     if (listeners.onChatRenamed !== undefined) {
         chatRenamedListener = listeners.onChatRenamed
+    }
+
+    if (listeners.onChatAiToggled !== undefined) {
+        chatAiToggledListener = listeners.onChatAiToggled
     }
 
     if (listeners.onWsUnexpectedClose !== undefined) {
@@ -95,6 +106,10 @@ export function notifyChatDeleted(chatId: number): void {
 
 export function notifyChatRenamed(event: { chat_id: number, title: string }): void {
     chatRenamedListener?.(event)
+}
+
+export function notifyChatAiToggled(event: { chat_id: number, is_ai: boolean }): void {
+    chatAiToggledListener?.(event)
 }
 
 export function notifyWsUnexpectedClose(chatId: number): void {

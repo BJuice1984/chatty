@@ -4,14 +4,14 @@ import { JSDOM } from 'jsdom'
 import store from '../../utils/Store.ts'
 import { TransportError } from '../../utils/HTTPTransport.ts'
 import { resetBusyOverlayForTests } from '../../utils/busyOverlay.ts'
-import { AI_CHAT_TITLE } from '../../utils/constants.ts'
+import { NEW_CHAT_TITLE } from '../../utils/constants.ts'
 import { ChatsFeatureController, applyReactionDelta, setContactsIntegration, setDocumentSearch, toggleOwnReaction } from './controller.ts'
 import { ownChatsPort } from './api/own.ts'
 import { chatSearchSlice, chatsSlice } from './store.ts'
-import { notifyChatDeleted, notifyChatRenamed, notifyReactionEvent, notifyWsConnected, notifyWsUnexpectedClose } from './ws/gateway.ts'
+import { notifyChatAiToggled, notifyChatDeleted, notifyChatRenamed, notifyReactionEvent, notifyWsConnected, notifyWsUnexpectedClose } from './ws/gateway.ts'
 import { OwnWsAdapter } from './ws/own.ts'
 import type { ChatsPort } from './ports.ts'
-import type { ChatSearchMatch, Message, ReactionSummary } from '../../utils/types.ts'
+import type { ChatInfo, ChatSearchMatch, Message, ReactionSummary } from '../../utils/types.ts'
 
 const dom = new JSDOM()
 global.document = dom.window.document
@@ -19,9 +19,10 @@ global.document = dom.window.document
 function makePort(overrides: Partial<ChatsPort> = {}): ChatsPort {
     return {
         fetchChats: async () => [],
-        createChat: async () => undefined,
+        createChat: async () => ({ chatId: 1 }),
         deleteChat: async () => undefined,
         renameChat: async () => undefined,
+        enableAi: async () => undefined,
         readAll: async () => ({ updated: 0 }),
         // eslint-disable-next-line no-unused-vars
         getToken: async (chatId: number) => ({ token: `token-${chatId}` }),
@@ -231,25 +232,125 @@ describe('chats feature boundary', () => {
     })
 
     // 2026-10-27-ai-chat-creation: create форвардит is_ai в порт как есть;
-    // дефолтный заголовок ИИ-чата — общая константа utils/constants (её
-    // берут вниз обе фичи, из контроллера чатов она не реэкспортируется)
+    // заголовок ИИ-чата — константа utils/constants (её берут вниз обе
+    // фичи, из контроллера чатов она не реэкспортируется)
     it('should forward is_ai to createChat on create', async () => {
-        const createChat = sinon.stub().resolves()
+        const createChat = sinon.stub().resolves({ chatId: 9 })
         const controller = new ChatsFeatureController(makePort({ createChat }), makeMessages())
 
-        await controller.create({ title: AI_CHAT_TITLE, is_ai: true })
+        await controller.create({ title: 'AI ассистент', is_ai: true })
 
         expect(createChat.calledOnceWith({ title: 'AI ассистент', is_ai: true })).to.be.true
     })
 
     it('should keep a title-only create exactly as before', async () => {
-        const createChat = sinon.stub().resolves()
+        const createChat = sinon.stub().resolves({ chatId: 9 })
         const controller = new ChatsFeatureController(makePort({ createChat }), makeMessages())
 
         await controller.create({ title: 'просто чат' })
 
         // снятый чекбокс/старые вызовы: payload без is_ai, без значения-false
         expect(createChat.calledOnceWith({ title: 'просто чат' })).to.be.true
+    })
+})
+
+// One-click создание + «+AI» (2026-11-06-chat-create-flow): порядок
+// POST → fetchChats → select/getChatUsers, оптимистичные патчи и откат
+describe('chats controller create-and-select and enable-ai', () => {
+    beforeEach(() => {
+        chatsSlice.setChats([])
+        store.set('chatUsers', [])
+        store.set('selectedChat', undefined)
+    })
+
+    afterEach(() => {
+        chatsSlice.setChats([])
+        store.set('chatUsers', [])
+        store.set('selectedChat', undefined)
+    })
+
+    function chatRow(overrides: Partial<ChatInfo> = {}): ChatInfo {
+        return {
+            id: 41,
+            title: NEW_CHAT_TITLE,
+            avatar: '',
+            unread_count: 0,
+            ...overrides,
+        }
+    }
+
+    it('creates the auto-titled chat, refreshes the list, then selects it', async () => {
+        const calls: string[] = []
+        const fetchChats = sinon.stub().callsFake(async () => {
+            calls.push('fetchChats')
+            chatsSlice.setChats([chatRow()])
+
+            return [chatRow()]
+        })
+        const getChatUsers = sinon.stub().callsFake(async () => {
+            calls.push('getChatUsers')
+
+            return []
+        })
+        const createChat = sinon.stub().callsFake(async () => {
+            calls.push('createChat')
+
+            return { chatId: 41 }
+        })
+        const controller = new ChatsFeatureController(
+            makePort({ createChat, fetchChats, getChatUsers }),
+            makeMessages()
+        )
+
+        await controller.createAndSelect()
+
+        // payload: сид авто-названия + флаг (адаптер шлёт только выставленным)
+        expect(createChat.calledOnceWith({ title: NEW_CHAT_TITLE, auto_titled: true })).to.be.true
+        // порядок обязателен: селект ПОСЛЕ fetch — карточка уже в слайсе
+        expect(calls).to.deep.eq(['createChat', 'fetchChats', 'getChatUsers'])
+        expect(store.getState().selectedChat).to.eq(41)
+    })
+
+    it('stays on the current selection when the port create fails', async () => {
+        const createChat = sinon.stub().rejects(new Error('boom'))
+        const fetchChats = sinon.stub().resolves([])
+        const controller = new ChatsFeatureController(
+            makePort({ createChat, fetchChats }),
+            makeMessages()
+        )
+
+        await controller.createAndSelect()
+
+        expect(fetchChats.notCalled).to.be.true
+        expect(store.getState().selectedChat).to.eq(undefined)
+    })
+
+    it('enableAi patches is_ai optimistically and reverts on port error', async () => {
+        chatsSlice.setChats([chatRow({ id: 7 })])
+        const enableAi = sinon.stub().rejects(new Error('boom'))
+        const controller = new ChatsFeatureController(makePort({ enableAi }), makeMessages())
+
+        const pending = controller.enableAi(7)
+
+        expect((chatsSlice.getChats().find(chat => chat.id === 7) as ChatInfo).is_ai).to.eq(true)
+
+        await pending
+
+        expect((chatsSlice.getChats().find(chat => chat.id === 7) as ChatInfo).is_ai).to.eq(false)
+    })
+
+    it('chat_ai_toggled event patches is_ai in the slice (other clients)', async () => {
+        chatsSlice.setChats([chatRow({ id: 7 })])
+        new ChatsFeatureController(makePort(), makeMessages())
+
+        notifyChatAiToggled({ chat_id: 7, is_ai: true })
+
+        expect((chatsSlice.getChats().find(chat => chat.id === 7) as ChatInfo).is_ai).to.eq(true)
+
+        // значение-равное событие — идемпотентный пропуск без записи
+        notifyChatAiToggled({ chat_id: 7, is_ai: true })
+
+        expect((chatsSlice.getChats().find(chat => chat.id === 7) as ChatInfo).is_ai).to.eq(true)
     })
 })
 
@@ -1332,6 +1433,50 @@ describe('chats controller rename and read-all', () => {
         await controller.renameChat(3, 'Старое имя')
 
         expect(renameChat.called).to.be.false
+    })
+
+    // 2026-11-06 (review F-3): ручной rename гасит auto_titled тем же
+    // оптимистичным патчем — адаптер PUT-ответ discard-ит, а WS chat_renamed
+    // не различает ручное переименование и серверное автодополнение
+    it('renameChat clears auto_titled optimistically and restores it on failure', async () => {
+        store.set('chats', [
+            { id: 3, title: 'Чат с', avatar: '', unread_count: 0, auto_titled: true },
+        ] as never)
+        const error = sinon.stub(console, 'error')
+        const okRename = sinon.stub().resolves()
+        const failRename = sinon.stub().rejects(new Error('network'))
+        const okController = new ChatsFeatureController(makePort({ renameChat: okRename }), makeMessages())
+        const failController = new ChatsFeatureController(makePort({ renameChat: failRename }), makeMessages())
+
+        try {
+            await okController.renameChat(3, 'Моё название')
+
+            let row = (store.getState().chats as { id: number, title: string, auto_titled?: boolean }[]).find(chat => chat.id === 3)
+
+            expect(row?.auto_titled).to.eq(undefined)
+
+            await failController.renameChat(3, 'Ещё одно')
+
+            row = (store.getState().chats as { id: number, title: string, auto_titled?: boolean }[]).find(chat => chat.id === 3)
+
+            expect(row?.title).to.eq('Моё название')
+            expect(row?.auto_titled).to.eq(undefined)
+        } finally {
+            error.restore()
+        }
+    })
+
+    // 2026-11-06 (review F-7): смена чата сбрасывает chatUsers до ответа
+    // getChatUsers — устаревшие соучастники прошлого чата не флипают гейт
+    // подсказки пустого чата
+    it('selectChat clears the stale chatUsers slice', () => {
+        store.set('chatUsers', [{ id: 9, first_name: 'Боб' } as never])
+        const controller = new ChatsFeatureController(makePort(), makeMessages())
+
+        controller.selectChat(3)
+
+        expect(store.getState().selectedChat).to.eq(3)
+        expect(store.getState().chatUsers ?? []).to.deep.eq([])
     })
 
     it('markAllRead zeroes every unread pill after a successful port call', async () => {

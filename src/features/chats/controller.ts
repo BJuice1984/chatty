@@ -12,6 +12,7 @@
 import store from '../../utils/Store.ts'
 import { TransportError } from '../../utils/HTTPTransport.ts'
 import { hideBusyOverlay, showBusyOverlay } from '../../utils/busyOverlay.ts'
+import { NEW_CHAT_TITLE } from '../../utils/constants.ts'
 import type { ChatInfo, Message, ReactionSummary } from '../../utils/types.ts'
 import { chatsPort } from './api/index.ts'
 import type { ChatMessagesPort, ChatReactionEvent, ChatsPort, ChatsUserSearchResult } from './ports.ts'
@@ -181,6 +182,7 @@ export class ChatsFeatureController {
             onReaction: event => this.handleReactionEvent(event),
             onChatDeleted: chatId => this.handleChatDeleted(chatId),
             onChatRenamed: event => this.handleChatRenamedEvent(event),
+            onChatAiToggled: event => this.handleChatAiToggledEvent(event),
             onWsUnexpectedClose: chatId => this.handleWsDied(chatId),
             onWsConnected: chatId => this.handleWsReconnected(chatId),
         })
@@ -197,6 +199,56 @@ export class ChatsFeatureController {
         }
 
         void this.fetchChats()
+    }
+
+    // One-click создание (2026-11-06-chat-create-flow): кнопка «Создать чат»
+    // шапки списка сразу рождает чат с авто-названием — карточка приезжает в
+    // списке (fetchChats поднимает её наверх created_at-фолбэком и коннектит
+    // WS-сокет), затем селект открывает мессенджер справа. Порядок обязателен:
+    // select ПОСЛЕ fetch — мессенджер рендерится по chatInfo из chats-слайса
+    async createAndSelect(): Promise<void> {
+        let chatId: number
+
+        try {
+            const result = await this.port.createChat({ title: NEW_CHAT_TITLE, auto_titled: true })
+
+            chatId = result.chatId
+        } catch (e: unknown) {
+            console.error('Ошибка при создании чата:', e)
+
+            return
+        }
+
+        await this.fetchChats()
+        this.selectChat(chatId)
+        void this.getChatUsers(chatId)
+    }
+
+    // «+AI» в шапке чата (2026-11-06-chat-create-flow): включает бота в
+    // ТЕКУЩЕМ чате — оптимистичный is_ai-патч слайса (кнопка сразу активна,
+    // композер получает botPending-гейт), ошибка порта откатывает
+    async enableAi(chatId: number): Promise<void> {
+        const chats = (store.getState().chats ?? []) as ChatInfo[]
+
+        store.set('chats', chats.map(chat =>
+            chat.id === chatId
+                ? { ...chat, is_ai: true }
+                : chat
+        ))
+
+        try {
+            await this.port.enableAi(chatId)
+        } catch (e: unknown) {
+            console.error('Ошибка при включении AI в чате:', e)
+
+            const fresh = (store.getState().chats ?? []) as ChatInfo[]
+
+            store.set('chats', fresh.map(chat =>
+                chat.id === chatId
+                    ? { ...chat, is_ai: false }
+                    : chat
+            ))
+        }
     }
 
     async fetchChats(): Promise<void> {
@@ -304,7 +356,11 @@ export class ChatsFeatureController {
     // Inline-переименование (2026-11-05-messenger-ux-pack): оптимистичный
     // патч заголовка в слайсе, PUT на сервер (бэкенд пишет системное
     // сообщение и рассылает chat_renamed), ошибка откатывает заголовок.
-    // Системная строка приходит обычным WS-эхо 'message' с kind
+    // Системная строка приходит обычным WS-эхо 'message' с kind.
+    // 2026-11-06: ручной rename гасит auto_titled в том же оптимистичном
+    // патче (адаптер PUT-ответ discard-ит, а WS chat_renamed не различает
+    // ручное переименование и серверное автодополнение — review F-3) —
+    // шапка превращается в статичный заголовок сразу; откат возвращает оба
     async renameChat(chatId: number, title: string): Promise<void> {
         const chats = (store.getState().chats ?? []) as ChatInfo[]
         const previous = chats.find(chat => chat.id === chatId)
@@ -315,7 +371,7 @@ export class ChatsFeatureController {
 
         store.set('chats', chats.map(chat =>
             chat.id === chatId
-                ? { ...chat, title }
+                ? { ...chat, title, auto_titled: undefined }
                 : chat
         ))
 
@@ -328,7 +384,7 @@ export class ChatsFeatureController {
 
             store.set('chats', fresh.map(chat =>
                 chat.id === chatId
-                    ? { ...chat, title: previous.title }
+                    ? { ...chat, title: previous.title, auto_titled: previous.auto_titled }
                     : chat
             ))
         }
@@ -441,6 +497,25 @@ export class ChatsFeatureController {
         store.set('chats', chats.map(chat =>
             chat.id === event.chat_id
                 ? { ...chat, title: event.title }
+                : chat
+        ))
+    }
+
+    // WS chat_ai_toggled (2026-11-06-chat-create-flow): «+AI» одного
+    // участника включает бота для всех — патчим is_ai в слайсе (кнопка
+    // активна, композер получает botPending-гейт); значение-равный патч —
+    // идемпотентный пропуск
+    private handleChatAiToggledEvent(event: { chat_id: number, is_ai: boolean }): void {
+        const chats = (store.getState().chats ?? []) as ChatInfo[]
+        const current = chats.find(chat => chat.id === event.chat_id)
+
+        if (current == null || current.is_ai === event.is_ai) {
+            return
+        }
+
+        store.set('chats', chats.map(chat =>
+            chat.id === event.chat_id
+                ? { ...chat, is_ai: event.is_ai }
                 : chat
         ))
     }
@@ -795,6 +870,12 @@ export class ChatsFeatureController {
 
     selectChat(id: number): void {
         chatsSlice.selectChat(id)
+
+        // смена чата сбрасывает состав участников прежде ответа
+        // getChatUsers (каждый выбор его уже зовёт): устаревший список от
+        // прошлого чата не должен флипать гейт подсказки пустого чата
+        // (review F-7) и аватары шапки
+        store.set('chatUsers', [])
 
         // открытие чата прочитывает его: серверная пометка уходит с выдачей
         // истории (MessageService.history -> mark_read), а пилюлю гасим в

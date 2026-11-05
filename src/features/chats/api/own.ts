@@ -22,7 +22,7 @@ import { readCsrfToken } from '../../../utils/csrf.ts'
 import { avatarPoolUrl } from '../../../utils/avatarPool.ts'
 import { toMessage } from '../message-mapping.ts'
 import type { ChatInfo, Message, ReactionSummary } from '../../../utils/types.ts'
-import type { ChatsPort, ChatsUserSearchResult, ReactionToggleResult } from '../ports.ts'
+import type { ChatsPort, ChatsUserSearchResult, CreateChatResult, ReactionToggleResult } from '../ports.ts'
 
 export interface OwnChatMemberResponse {
     id: number
@@ -32,11 +32,18 @@ export interface OwnChatMemberResponse {
     avatar_url?: string | null
 }
 
+// Ответ POST /chats: адаптеру из полного ChatResponse нужен только id
+interface OwnCreatedChatResponse {
+    id: number
+}
+
 export interface OwnChatResponse {
     id: number
     title: string
     owner_id: number
     is_ai: boolean
+    // авто-название (013): шапка мессенджера рендерит заголовок инпутом
+    auto_titled?: boolean
     created_at: string
     unread_count?: number
     // файловый путь аватара чата ("{file_id}/download") или null
@@ -113,6 +120,8 @@ export function toChatInfo(response: OwnChatResponse, meId?: number): ChatInfo {
         created_at: response.created_at,
         // ИИ-чат: бейдж и акцент в списке чатов
         is_ai: response.is_ai,
+        // авто-название (2026-11-06): отсутствию — undefined
+        auto_titled: response.auto_titled === true ? true : undefined,
         // владелец чата: пункт «Удалить из чата» в меню участника — только
         // для него (меню UI-волны)
         owner_id: response.owner_id,
@@ -138,16 +147,28 @@ export const ownChatsPort: ChatsPort = {
         return chats.map(chat => toChatInfo(chat, meId))
     },
     async createChat(data) {
-        // is_ai уезжает только выставленным (2026-10-27-ai-chat-creation):
-        // бэкенд дефолтит false, а title-only вызовы обязаны слать прежний
-        // payload без поля
-        const payload: { title: string, is_ai?: boolean } = { title: data.title }
+        // is_ai/auto_titled уезжают только выставленными (прецедент
+        // 2026-10-27-ai-chat-creation): бэкенд дефолтит false, а title-only
+        // вызовы обязаны слать прежний payload без полей
+        const payload: { title: string, is_ai?: boolean, auto_titled?: boolean } = { title: data.title }
 
         if (data.is_ai === true) {
             payload.is_ai = true
         }
 
-        await http.post('', { data: payload, csrfToken: readCsrfToken() })
+        if (data.auto_titled === true) {
+            payload.auto_titled = true
+        }
+
+        const response = await (http.post('', {
+            data: payload,
+            csrfToken: readCsrfToken(),
+        }) as unknown as Promise<OwnCreatedChatResponse>)
+
+        // one-click-флоу селектит свежую карточку по id (2026-11-06)
+        const result: CreateChatResult = { chatId: response.id }
+
+        return result
     },
     async deleteChat(data) {
         // owner-only на бэкенде; перед 204 участникам уходит WS chat_deleted
@@ -159,6 +180,12 @@ export const ownChatsPort: ChatsPort = {
         // репозитории. Ответ — обновлённый ChatResponse (title для
         // оптимистичного патча контроллер уже применил локально)
         await http.put(`/${chatId}`, { data: { title }, csrfToken: readCsrfToken() })
+    },
+    async enableAi(chatId: number) {
+        // «+AI»: включает бота в текущем чате; сервер рассылает WS
+        // chat_ai_toggled активным участникам (наш патч — оптимистичный в
+        // контроллере, чужие приедут событием)
+        await http.put(`/${chatId}`, { data: { is_ai: true }, csrfToken: readCsrfToken() })
     },
     async readAll() {
         // «Пометить всё прочитанными»: bulk-upsert маркеров чтения по всем

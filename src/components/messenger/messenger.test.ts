@@ -1494,3 +1494,193 @@ describe('messenger inline rename and header avatar', () => {
         }
     })
 })
+
+// 2026-11-06-chat-create-flow: авто-название — заголовок сразу инпут;
+// подсказка пустого чата — гейт по данным; «+AI» — состояния и клик
+describe('messenger auto-title input, empty hint and +AI button', () => {
+    const seedChat = (extra: Record<string, unknown> = {}) => {
+        store.set('chats', [{ id: 5, title: 'Чат с', avatar: 'a.png', unread_count: 0, ...extra }] as never)
+        store.set('messages', { 5: [] })
+        store.set('selectedChat', 5)
+        store.set('chatUsers', [])
+    }
+
+    afterEach(() => {
+        store.set('messages', undefined)
+        store.set('selectedChat', undefined)
+        store.set('chats', undefined)
+        store.set('chatUsers', undefined)
+    })
+
+    function view(): Window & typeof globalThis {
+        return (document.defaultView ?? globalThis) as Window & typeof globalThis
+    }
+
+    function titleInput(messenger: InstanceType<typeof Messenger>): HTMLInputElement | null {
+        return messenger.element?.querySelector<HTMLInputElement>('[data-testid="chat-title-input"]') ?? null
+    }
+
+    function hint(messenger: InstanceType<typeof Messenger>): HTMLElement | null {
+        return messenger.element?.querySelector<HTMLElement>('[data-testid="empty-chat-hint"]') ?? null
+    }
+
+    function aiButton(messenger: InstanceType<typeof Messenger>): HTMLElement | null {
+        return messenger.element?.querySelector<HTMLElement>('.messenger__header-buttons-container .ai') ?? null
+    }
+
+    function keydownEnter(node: Element): void {
+        node.dispatchEvent(new (view().KeyboardEvent)('keydown', { key: 'Enter', bubbles: true }))
+    }
+
+    it('an auto-titled chat renders the title as an immediate input (no dblclick)', () => {
+        const messenger = new Messenger({} as never)
+
+        try {
+            seedChat({ auto_titled: true })
+
+            expect(titleInput(messenger)).to.not.be.null
+            expect(titleInput(messenger)?.value).to.eq('Чат с')
+        } finally {
+            messenger.destroy()
+        }
+    })
+
+    it('a manual commit on the auto-title input fires onRenameChat; empty reverts silently', () => {
+        const onRenameChat = sinon.spy()
+        const messenger = new Messenger({ onRenameChat } as never)
+
+        try {
+            seedChat({ auto_titled: true })
+
+            const input = titleInput(messenger)
+
+            if (input != null) {
+                input.value = 'Проект X'
+            }
+
+            keydownEnter(input as Element)
+
+            expect(onRenameChat.calledOnceWith(5, 'Проект X')).to.be.true
+
+            // пустое значение — тихий откат: вызова нет, авто-инпут жив
+            const cleared = titleInput(messenger)
+
+            if (cleared != null) {
+                cleared.value = '   '
+            }
+
+            keydownEnter(cleared as Element)
+
+            expect(onRenameChat.calledOnce).to.be.true
+            expect(titleInput(messenger)).to.not.be.null
+        } finally {
+            messenger.destroy()
+        }
+    })
+
+    it('a non-auto-titled chat keeps the static h2; an archived auto-titled chat gets no input', () => {
+        const plain = new Messenger({} as never)
+
+        try {
+            seedChat()
+
+            expect(titleInput(plain)).to.be.null
+
+            seedChat({ auto_titled: true, leftAt: '2026-11-01T10:00:00Z' })
+
+            expect(titleInput(plain)).to.be.null
+        } finally {
+            plain.destroy()
+        }
+    })
+
+    it('the empty hint shows only with no messages, no co-members, not archived and not AI', () => {
+        const messenger = new Messenger({} as never)
+
+        try {
+            seedChat()
+
+            expect(hint(messenger)).to.not.be.null
+
+            // есть соучастник — подсказки нет
+            store.set('chatUsers', [{ id: 9, avatar: '', display_name: 'Боб' }] as never)
+
+            expect(hint(messenger)).to.be.null
+
+            store.set('chatUsers', [])
+            // AI-чат — подсказки нет
+            store.set('chats', [{ id: 5, title: 'Чат с', avatar: 'a.png', unread_count: 0, is_ai: true }] as never)
+
+            expect(hint(messenger)).to.be.null
+
+            // архивный — подсказки нет
+            store.set('chats', [{ id: 5, title: 'Чат с', avatar: 'a.png', unread_count: 0, leftAt: '2026-11-01T10:00:00Z' }] as never)
+
+            expect(hint(messenger)).to.be.null
+
+            // появилось сообщение — подсказки нет
+            store.set('chats', [{ id: 5, title: 'Чат с', avatar: 'a.png', unread_count: 0 }] as never)
+            store.set('messages', { 5: [{ chat_id: 5, time: 't1', type: 'message', user_id: 1, content: 'привет' }] })
+
+            expect(hint(messenger)).to.be.null
+        } finally {
+            messenger.destroy()
+        }
+    })
+
+    it('the «добавить» button of the hint opens the add-user modal', () => {
+        const messenger = new Messenger({} as never)
+
+        try {
+            seedChat()
+
+            const button = messenger.element?.querySelector<HTMLElement>('[data-testid="empty-chat-add"]')
+
+            button?.dispatchEvent(new (view().MouseEvent)('click', { bubbles: true }))
+
+            expect(messenger.element?.querySelector('[data-testid="user-search-input"]')).to.not.be.null
+        } finally {
+            messenger.destroy()
+        }
+    })
+
+    it('+AI: click fires onEnableAi; an AI chat renders the active non-clickable state', () => {
+        const onEnableAi = sinon.spy()
+        const messenger = new Messenger({ onEnableAi } as never)
+
+        try {
+            seedChat()
+
+            const button = aiButton(messenger)
+
+            button?.dispatchEvent(new (view().MouseEvent)('click', { bubbles: true }))
+
+            expect(onEnableAi.calledOnceWith(5)).to.be.true
+
+            store.set('chats', [{ id: 5, title: 'Чат с', avatar: 'a.png', unread_count: 0, is_ai: true }] as never)
+
+            const active = aiButton(messenger)
+
+            expect(active?.classList.contains('ai_active')).to.be.true
+
+            active?.dispatchEvent(new (view().MouseEvent)('click', { bubbles: true }))
+
+            expect(onEnableAi.calledOnce).to.be.true
+        } finally {
+            messenger.destroy()
+        }
+    })
+
+    it('an archived chat shows neither +AI nor the cross button', () => {
+        const messenger = new Messenger({} as never)
+
+        try {
+            seedChat({ leftAt: '2026-11-01T10:00:00Z' })
+
+            expect(aiButton(messenger)).to.be.null
+            expect(messenger.element?.querySelector('.messenger__header-buttons-container .cross')).to.be.null
+        } finally {
+            messenger.destroy()
+        }
+    })
+})
