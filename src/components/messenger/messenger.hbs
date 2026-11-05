@@ -20,7 +20,9 @@
             {{/if}}
             <div class="messenger__chat-users-container">
               {{#each selectedChatUsers}}
-                <div class="chat__container-profile-chat-ava" data-testid="chat-user-avatar" data-user-id="{{this.id}}">
+                {{!-- left_at — архивное членство: иконка покинувшего чат
+                  гасится (прецедент chat-list-user_archived) --}}
+                <div class="chat__container-profile-chat-ava{{#if this.left_at}} chat__container-profile-chat-ava_archived{{/if}}" data-testid="chat-user-avatar" data-user-id="{{this.id}}">
                   {{{ ChatAvatar src=this.avatar alt='Аватар пользователя' title=this.display_name onClick=this.onClick }}}
                 </div>
               {{/each}}

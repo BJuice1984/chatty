@@ -1,5 +1,10 @@
 {{!-- Сырой инпут вместо LabeledInput: value идёт двойными скобками —
-  Handlebars сам экранирует его, а экосистема input/** не трогается --}}
+  Handlebars сам экранирует его, а экосистема input/** не трогается.
+  Модификатор крестика _visible сеется ЗДЕСЬ (value = модульная память на
+  момент создания инстанса): store-перерисовки пересоздают бар без
+  повторного componentDidMount, рендер-тайм — единственная точка, живущая
+  при каждом пересоздании; живой ввод/очистка доводят класс через
+  syncClearVisibility --}}
 <form class="chat__search-bar-form">
     <input
         class="input__element"
@@ -9,4 +14,8 @@
         value="{{value}}"
         autocomplete="off"
     >
+    {{!-- Крестик очистки: виден только при непустом поле (класс _has-value
+      на форме ставит searchBar.ts); клик чистит значение и гонит его через
+      обычный input-эвент — память и дебаунс сбрасываются тем же путём --}}
+    <button type="button" class="chat__search-bar-clear{{#if value}} chat__search-bar-clear_visible{{/if}}" data-testid="chat-search-clear" aria-label="Очистить поиск">&#10005;</button>
 </form>

@@ -42,16 +42,20 @@ def to_member_brief(
     email: str,
     avatar_file_id: int | None,
     display_name: str | None = None,
+    left_at: datetime | None = None,
 ) -> ChatMemberBrief:
     """Единая точка сборки формы участника: и список чатов, и эндпоинт
     участников строят её здесь, чтобы формы не разъехались (login —
     email-хэнл контракта, display_name — редактируемая колонка с fallback
-    на локальную часть email — правило UserSearchItem/ContactResponse)."""
+    на локальную часть email — правило UserSearchItem/ContactResponse);
+    left_at — архивное членство, значимо только для одиночного эндпоинта
+    участников (краткие составы GET /chats зовут без него)."""
     return ChatMemberBrief(
         id=user_id,
         login=email,
         display_name=display_name or email.split('@')[0],
         avatar_url=file_avatar_url(avatar_file_id),
+        left_at=left_at,
     )
 
 

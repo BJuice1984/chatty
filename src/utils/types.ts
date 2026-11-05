@@ -83,6 +83,9 @@ export interface ChatUser {
     email: string
     phone: string
     avatar: string
+    // архивное членство (участник покинул чат, GET /chats/{id}/members):
+    // null/undefined — активный; шапка мессенджера гасит такую иконку
+    left_at?: string | null
     [key: string]: unknown
 }
 

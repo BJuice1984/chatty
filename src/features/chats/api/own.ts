@@ -203,7 +203,14 @@ export const ownChatsPort: ChatsPort = {
     },
     async getChatUsers(chatId: number) {
         const members = await (http.get(`/${chatId}/members`) as unknown as Promise<
-            { id: number; login: string; display_name: string; avatar_url?: string | null }[]
+            {
+                id: number
+                login: string
+                display_name: string
+                avatar_url?: string | null
+                // архивное членство (покинул чат) — шапка гасит иконку
+                left_at?: string | null
+            }[]
         >)
 
         return members.map(member => ({
@@ -216,6 +223,7 @@ export const ownChatsPort: ChatsPort = {
             phone: '',
             // реальный аватар участника, иначе pool-фолбэк
             avatar: member.avatar_url ?? avatarPoolUrl(member.id),
+            left_at: member.left_at ?? null,
         }))
     },
     async changeChatAvatar(data: FormData) {

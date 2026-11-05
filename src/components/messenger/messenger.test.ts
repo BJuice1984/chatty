@@ -719,6 +719,25 @@ describe('messenger member menu', () => {
         cancel: menuQuery(messenger, 'member-menu-cancel'),
     })
 
+    it('dims the avatar of a departed member (archived membership, left_at)', () => {
+        store.set('chatUsers', [
+            { id: 1, display_name: 'active', avatar: '' },
+            { id: 2, display_name: 'gone', avatar: '', left_at: '2026-11-05T10:00:00Z' },
+        ])
+        const messenger = new Messenger({} as never)
+
+        try {
+            const active = messenger.element?.querySelector('[data-testid="chat-user-avatar"][data-user-id="1"]')
+            const gone = messenger.element?.querySelector('[data-testid="chat-user-avatar"][data-user-id="2"]')
+
+            expect(active?.classList.contains('chat__container-profile-chat-ava_archived')).to.be.false
+            expect(gone?.classList.contains('chat__container-profile-chat-ava_archived')).to.be.true
+        } finally {
+            messenger.destroy()
+            store.set('chatUsers', undefined)
+        }
+    })
+
     it('owner viewing a non-contact member: contact item, kick and cancel', () => {
         const messenger = new Messenger({ meId: 7, ownerId: 7, contactIds: [] } as never)
 

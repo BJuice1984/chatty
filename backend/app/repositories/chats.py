@@ -225,18 +225,25 @@ class ChatRepository:
         self.session.commit()
         return len(set(covered))
 
-    def list_members(self, chat_id: int) -> list[tuple[int, str, int | None, str | None]]:
+    def list_members(self, chat_id: int) -> list[tuple[int, str, int | None, str | None, datetime | None]]:
         """Участники чата как (user_id, email-хэнл, avatar_file_id,
-        display_name) — для UI-списка, меток «уже добавлен» в поиске и
-        аватаров участников; display_name идёт в fallback to_member_brief."""
+        display_name, left_at) — для UI-списка, меток «уже добавлен» в
+        поиске и аватаров участников; left_at — архивное членство
+        (покинул чат, строка не удалялась), display_name идёт в fallback
+        to_member_brief."""
         rows = (
-            self.session.query(ChatMember.user_id, User.email, User.avatar_file_id, User.display_name)
+            self.session.query(
+                ChatMember.user_id, User.email, User.avatar_file_id, User.display_name, ChatMember.left_at
+            )
             .join(User, User.id == ChatMember.user_id)
             .filter(ChatMember.chat_id == chat_id)
             .order_by(ChatMember.user_id)
             .all()
         )
-        return [(row.user_id, row.email, row.avatar_file_id, row.display_name) for row in rows]
+        return [
+            (row.user_id, row.email, row.avatar_file_id, row.display_name, row.left_at)
+            for row in rows
+        ]
 
     def list_members_for_chats(self, chat_ids: list[int]) -> list[tuple[int, int, str, int | None, str | None]]:
         """Участники многих чатов одним IN-запросом как (chat_id, user_id,

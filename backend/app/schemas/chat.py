@@ -51,6 +51,10 @@ class ChatMemberBrief(BaseModel):
     login: str
     display_name: str
     avatar_url: str | None = None
+    # архивное членство (участник покинул чат): null — активный; заполняется
+    # только одиночным эндпоинтом участников, краткие составы GET /chats
+    # всегда отдают null (карточкам не нужно)
+    left_at: datetime | None = None
 
 
 class ChatLastMessageBrief(BaseModel):

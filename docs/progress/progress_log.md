@@ -1,3 +1,28 @@
+# 2026-11-05 — Feat/fix(messenger): UI-хвост прогона — крестик очистки поиска, блеклые состояния, ушедшие участники
+
+Живое тестирование оператора после финализации прогона дало четыре правки.
+(1) Крестик очистки в chat__search-bar-form (searchBar.{hbs,ts,test.ts} +
+chat.scss): виден только при непустом поле — модификатор _visible на самом
+крестике, СЕЕТСЯ ШАБЛОНОМ из {{#if value}} (store-перерисовки пересоздают
+бар без повторного componentDidMount — рендер-тайм единственная живая
+точка; баг «появляется и исчезает» после «Найти все чаты»), живой ввод и
+очистка доводят класс через syncClearVisibility; клик чистит значение и
+проецирует обычный input-эвент (память/дебаунс/фокус тем же путём, что
+ручной ввод), событие строится в realm окна документа — ownerDocument у
+Block-элементов бывает implementation-createHTMLDocument c defaultView
+null, фоллбек на глобальный документ. (2) Невидимая иконка «Пометить всё
+прочитанными»: stroke=currentColor внутри <img> изолирован от CSS-контекста
+и чернеет на тёмной шапке — приведена к конвенции остальных иконок
+(#F7F7FC); disabled-состояние усилено (opacity .3 + cursor default).
+(3) Ушедшие участники (messenger__chat-users-container): GET
+/chats/{id}/members теперь несёт left_at (repo list_members + ChatMemberBrief
++ to_member_brief — additive, краткие составы GET /chats не затронуты),
+фронт прокидывает его в ChatUser, обёртка аватара получает
+chat__container-profile-chat-ava_archived (opacity .55 + grayscale,
+прецедент chat-list-user_archived); пины: pytest (покинувший left_at≠null,
+активный null) + mocha (модификатор на аватаре). Гейты: фронт 696 mocha,
+бэкенд 295 passed + heads 012, guard strict 0.
+
 # 2026-11-05 — Fix(messenger): длинный заголовок чата выносил вёрстку за экран (post-run, WS-FE-CHAT хвост)
 
 Корень: у корня .messenger грид объявлял только строки — колонка была

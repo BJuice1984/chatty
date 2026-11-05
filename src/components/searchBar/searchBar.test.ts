@@ -189,4 +189,48 @@ describe('search bar live search', () => {
 
         bar.destroy()
     })
+
+    it('keeps the clear button hidden for an empty input', () => {
+        const bar = new SearchBar()
+
+        expect(bar.element?.querySelector('[data-testid="chat-search-clear"]')?.classList.contains('chat__search-bar-clear_visible')).to.be.false
+
+        bar.destroy()
+    })
+
+    it('shows the clear button from render when the memory carries a seeded value', () => {
+        setChatSearchBarValue('@ivan')
+
+        const bar = new SearchBar()
+
+        // рендер-тайм, без componentDidMount: store-перерисовки пересоздают
+        // бар без повторного CDM — класс обязан сеяться шаблоном
+        expect(bar.element?.querySelector('[data-testid="chat-search-clear"]')?.classList.contains('chat__search-bar-clear_visible')).to.be.true
+
+        bar.destroy()
+    })
+
+    it('clear button empties the input, memory and search through the regular input path', () => {
+        const onSearch = sinon.stub()
+        const bar = new SearchBar({ onSearch })
+
+        typeInto(bar, 'ab')
+        clock.tick(CHAT_SEARCH_DEBOUNCE_MS)
+        expect(onSearch.calledOnceWith('ab')).to.be.true
+        expect(bar.element?.querySelector('[data-testid="chat-search-clear"]')?.classList.contains('chat__search-bar-clear_visible')).to.be.true
+
+        const clear = bar.element?.querySelector('[data-testid="chat-search-clear"]')
+        clear?.dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true }))
+
+        const input = bar.element?.querySelector<HTMLInputElement>('input[name="chat_search"]')
+        expect(input?.value).to.equal('')
+        expect(getChatSearchBarMemory().value).to.equal('')
+        expect(bar.element?.querySelector('[data-testid="chat-search-clear"]')?.classList.contains('chat__search-bar-clear_visible')).to.be.false
+
+        clock.tick(CHAT_SEARCH_DEBOUNCE_MS)
+        expect(onSearch.calledTwice).to.be.true
+        expect(onSearch.secondCall.calledWith('')).to.be.true
+
+        bar.destroy()
+    })
 })
