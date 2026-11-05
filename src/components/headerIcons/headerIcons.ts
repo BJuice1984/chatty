@@ -1,3 +1,9 @@
+// Иконки шапки списка чатов: «Создать чат» (открывает форму ChatListCreate)
+// и «Пометить всё прочитанными» (2026-11-05-messenger-ux-pack — бывшая
+// иконка настроек: настройки живут на /settings через BottomBar). Кнопка
+// прочитанных активна только при наличии пилюль — без них потушена
+// (модификатор disabled на HeaderIcon + гейт клика).
+
 import Block from '../../core/Block.ts'
 import template from './headerIcons.hbs'
 
@@ -5,6 +11,10 @@ interface HeaderIconsProps {
     src: string
     alt: string
     onClick: () => void
+    // есть ли непрочитанные: гейт «Пометить всё прочитанными»
+    hasUnread?: boolean
+    // клик по «Пометить всё прочитанными» (фича chats через страницу)
+    onMarkAllRead?: () => void
     [key: string]: unknown
 }
 
@@ -19,11 +29,12 @@ export class HeaderIcons extends Block {
                     onClick: props.onClick,
                 },
                 {
-                    src: '/images/settings-icon.svg',
-                    alt: 'Иконка. Настройки',
-                    onClick: () => {
-                        console.log('Настройки')
-                    },
+                    src: '/images/mark-all-read-icon.svg',
+                    alt: 'Иконка. Пометить всё прочитанными',
+                    // потушенная иконка не кликается: гейт на месте колбэка,
+                    // CSS дополнительно гасит pointer-events
+                    disabled: props.hasUnread !== true,
+                    onClick: props.hasUnread === true ? props.onMarkAllRead : undefined,
                 },
             ],
         })

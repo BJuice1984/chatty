@@ -180,6 +180,7 @@ export class ChatsFeatureController {
         setChatsEventListeners({
             onReaction: event => this.handleReactionEvent(event),
             onChatDeleted: chatId => this.handleChatDeleted(chatId),
+            onChatRenamed: event => this.handleChatRenamedEvent(event),
             onWsUnexpectedClose: chatId => this.handleWsDied(chatId),
             onWsConnected: chatId => this.handleWsReconnected(chatId),
         })
@@ -300,6 +301,55 @@ export class ChatsFeatureController {
         }
     }
 
+    // Inline-переименование (2026-11-05-messenger-ux-pack): оптимистичный
+    // патч заголовка в слайсе, PUT на сервер (бэкенд пишет системное
+    // сообщение и рассылает chat_renamed), ошибка откатывает заголовок.
+    // Системная строка приходит обычным WS-эхо 'message' с kind
+    async renameChat(chatId: number, title: string): Promise<void> {
+        const chats = (store.getState().chats ?? []) as ChatInfo[]
+        const previous = chats.find(chat => chat.id === chatId)
+
+        if (previous == null || previous.title === title) {
+            return
+        }
+
+        store.set('chats', chats.map(chat =>
+            chat.id === chatId
+                ? { ...chat, title }
+                : chat
+        ))
+
+        try {
+            await this.port.renameChat(chatId, title)
+        } catch (e: unknown) {
+            console.error('Ошибка при переименовании чата:', e)
+
+            const fresh = (store.getState().chats ?? []) as ChatInfo[]
+
+            store.set('chats', fresh.map(chat =>
+                chat.id === chatId
+                    ? { ...chat, title: previous.title }
+                    : chat
+            ))
+        }
+    }
+
+    // «Пометить всё прочитанными» (2026-11-05-messenger-ux-pack): bulk-метка
+    // на сервере, пилюли гасим локально по факту успеха (полный рефетч не
+    // нужен — кроме непрочитанных ничего не меняется)
+    async markAllRead(): Promise<void> {
+        try {
+            await this.port.readAll()
+
+            const chats = ((store.getState().chats ?? []) as ChatInfo[]).map(chat =>
+                chat.unread_count === 0 ? chat : { ...chat, unread_count: 0 })
+
+            store.set('chats', chats)
+        } catch (e: unknown) {
+            console.error('Ошибка при отметке чатов прочитанными:', e)
+        }
+    }
+
     // Toggle-реакция: оптимистичный собственный чип viewer-side, затем REST —
     // его сводка viewer-relative и заменяет локальную; ошибка откатывает тоггл
     async setReaction(chatId: number, messageId: number, emoji: string): Promise<void> {
@@ -375,6 +425,24 @@ export class ChatsFeatureController {
         this.forgetWsDeath(chatId)
         void this.messages.closeChat(chatId)
         void this.fetchChats()
+    }
+
+    // WS chat_renamed (2026-11-05-messenger-ux-pack): чужое переименование
+    // обновляет заголовок в списке и шапке (обе читают chats-слайс); своё —
+    // уже применено оптимистичным патчем, идемпотентный пропуск
+    private handleChatRenamedEvent(event: { chat_id: number, title: string }): void {
+        const chats = (store.getState().chats ?? []) as ChatInfo[]
+        const current = chats.find(chat => chat.id === event.chat_id)
+
+        if (current == null || current.title === event.title) {
+            return
+        }
+
+        store.set('chats', chats.map(chat =>
+            chat.id === event.chat_id
+                ? { ...chat, title: event.title }
+                : chat
+        ))
     }
 
     // Сокет чата исчерпал реконнекты (обрыв без восстановления): первый

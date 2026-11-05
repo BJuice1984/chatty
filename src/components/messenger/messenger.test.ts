@@ -1255,3 +1255,174 @@ describe('messenger message instance cache', () => {
         messenger.destroy()
     })
 })
+
+
+// 2026-11-05-messenger-ux-pack: inline-переименование заголовка (двойной
+// клик -> инпут; Enter/Escape/клик вне сохраняют; пустое — тихий откат) и
+// аватарный слот шапки (owner-only, не в архивном чате)
+describe('messenger inline rename and header avatar', () => {
+    const seedChat = (extra: Record<string, unknown> = {}) => {
+        store.set('chats', [{ id: 5, title: 'Старое название', avatar: 'a.png', unread_count: 0, ...extra }] as never)
+        store.set('messages', { 5: [] })
+        store.set('selectedChat', 5)
+    }
+
+    afterEach(() => {
+        store.set('messages', undefined)
+        store.set('selectedChat', undefined)
+        store.set('chats', undefined)
+    })
+
+    function view(): Window & typeof globalThis {
+        return (document.defaultView ?? globalThis) as Window & typeof globalThis
+    }
+
+    function dblclickTitle(messenger: InstanceType<typeof Messenger>): void {
+        messenger.element
+            ?.querySelector('[data-testid="chat-title"]')
+            ?.dispatchEvent(new (view().MouseEvent)('dblclick', { bubbles: true }))
+    }
+
+    function titleInput(messenger: InstanceType<typeof Messenger>): HTMLInputElement | null {
+        return messenger.element?.querySelector<HTMLInputElement>('[data-testid="chat-title-input"]') ?? null
+    }
+
+    it('dblclick swaps the title for an input in a non-archived chat', () => {
+        const messenger = new Messenger({} as never)
+
+        try {
+            seedChat()
+
+            expect(titleInput(messenger)).to.be.null
+
+            dblclickTitle(messenger)
+
+            expect(titleInput(messenger)).to.not.be.null
+        } finally {
+            messenger.destroy()
+        }
+    })
+
+    it('Enter commits a changed value through onRenameChat and closes the input', () => {
+        const onRenameChat = sinon.spy()
+        const messenger = new Messenger({ onRenameChat } as never)
+
+        try {
+            seedChat()
+            dblclickTitle(messenger)
+
+            const input = titleInput(messenger)
+
+            if (input != null) {
+                input.value = 'Новое название'
+            }
+
+            input?.dispatchEvent(new (view().KeyboardEvent)('keydown', { key: 'Enter', bubbles: true }))
+
+            expect(onRenameChat.calledOnceWith(5, 'Новое название')).to.be.true
+            expect(titleInput(messenger)).to.be.null
+        } finally {
+            messenger.destroy()
+        }
+    })
+
+    it('Escape SAVES too (operator decision), focus-out commits as well', () => {
+        const onRenameChat = sinon.spy()
+        const messenger = new Messenger({ onRenameChat } as never)
+
+        try {
+            seedChat()
+            dblclickTitle(messenger)
+
+            const input = titleInput(messenger)
+
+            if (input != null) {
+                input.value = 'Сохранено по Escape'
+            }
+
+            input?.dispatchEvent(new (view().KeyboardEvent)('keydown', { key: 'Escape', bubbles: true }))
+
+            expect(onRenameChat.calledOnceWith(5, 'Сохранено по Escape')).to.be.true
+
+            // focus-out — тот же коммит
+            dblclickTitle(messenger)
+
+            const second = titleInput(messenger)
+
+            if (second != null) {
+                second.value = 'Сохранено по клику вне'
+            }
+
+            second?.dispatchEvent(new (view().FocusEvent)('focusout', { bubbles: true }))
+
+            expect(onRenameChat.calledTwice).to.be.true
+        } finally {
+            messenger.destroy()
+        }
+    })
+
+    it('an empty trimmed value silently reverts without a rename call', () => {
+        const onRenameChat = sinon.spy()
+        const messenger = new Messenger({ onRenameChat } as never)
+
+        try {
+            seedChat()
+            dblclickTitle(messenger)
+
+            const input = titleInput(messenger)
+
+            if (input != null) {
+                input.value = '   '
+            }
+
+            input?.dispatchEvent(new (view().KeyboardEvent)('keydown', { key: 'Enter', bubbles: true }))
+
+            expect(onRenameChat.called).to.be.false
+            expect(titleInput(messenger)).to.be.null
+        } finally {
+            messenger.destroy()
+        }
+    })
+
+    it('an archived chat never offers the rename input', () => {
+        const messenger = new Messenger({} as never)
+
+        try {
+            seedChat({ leftAt: '2026-11-01T10:00:00Z' })
+
+            dblclickTitle(messenger)
+
+            expect(titleInput(messenger)).to.be.null
+        } finally {
+            messenger.destroy()
+        }
+    })
+
+    it('header avatar slot: editable modifier only for the owner of a non-archived chat', () => {
+        // meId/ownerId приходят пропсами от страницы (chat.hbs) — в тесте
+        // двигаем их setProps'ом, как это делает withStore в проде
+        const messenger = new Messenger({ meId: 42, ownerId: 7 } as never)
+
+        try {
+            seedChat({ owner_id: 7 })
+
+            const slot = () => messenger.element?.querySelector('[data-testid="chat-avatar-slot"]')
+
+            // не владелец: слот есть, аффорданса нет
+            expect(slot()).to.exist
+            expect(slot()?.classList.contains('messenger__header-avatar_editable')).to.be.false
+
+            // владелец активного чата: аффорданс появляется
+            messenger.setProps({ meId: 7 })
+
+            expect(slot()?.classList.contains('messenger__header-avatar_editable')).to.be.true
+
+            // владелец, но архивный чат: read-only
+            store.set('chats', [{ id: 5, title: 'Архив', avatar: 'a.png', unread_count: 0, owner_id: 7, leftAt: '2026-11-01T10:00:00Z' }] as never)
+
+            expect(slot()?.classList.contains('messenger__header-avatar_editable')).to.be.false
+        } finally {
+            messenger.destroy()
+        }
+    })
+})

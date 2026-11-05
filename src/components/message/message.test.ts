@@ -371,3 +371,52 @@ describe('message reply quote block', () => {
         emptySnippet.destroy()
     })
 })
+
+
+// 2026-11-05-messenger-ux-pack: системные события ленты (messages.kind) —
+// служебная строка по центру без пузыря, аффордансов и реакций
+describe('message system line', () => {
+    it('renders a kind-bearing message as the centered service line without a bubble', () => {
+        const system = new Message({
+            content: 'bob переименовал чат в «Проект»',
+            user_id: 2,
+            kind: 'chat_renamed',
+            id: 11,
+            chat_id: 3,
+            time: localIso(new Date()),
+        })
+
+        expect(system.element?.querySelector('[data-testid="message-system"]')).to.exist
+        expect(system.element?.querySelector('.messenger__message-bubble')).to.not.exist
+        // аффордансы ответа/реакций системной строке не положены
+        expect(system.element?.querySelector('[data-testid="message-actions"]')).to.not.exist
+        expect(system.element?.querySelector('[data-testid="message-reactions-toggle"]')).to.not.exist
+
+        system.destroy()
+    })
+
+    it('renders an ordinary message with the bubble and without the service line', () => {
+        const normal = new Message({ content: 'привет', user_id: 2, id: 12, chat_id: 3, time: localIso(new Date()) })
+
+        expect(normal.element?.querySelector('[data-testid="message-system"]')).to.not.exist
+        expect(normal.element?.querySelector('.messenger__message-bubble')).to.exist
+
+        normal.destroy()
+    })
+
+    it('renders the system content as escaped text (XSS)', () => {
+        const hostile = new Message({
+            content: 'a <script>alert(1)</script> переименовал чат в «<img src=x onerror=alert(1)>»',
+            user_id: 2,
+            kind: 'chat_renamed',
+            time: localIso(new Date()),
+        })
+
+        const line = hostile.element?.querySelector('[data-testid="message-system"]')
+
+        expect(line?.querySelector('script')).to.not.exist
+        expect(line?.innerHTML).to.contain('&lt;script&gt;')
+
+        hostile.destroy()
+    })
+})

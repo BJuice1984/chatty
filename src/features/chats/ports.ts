@@ -47,6 +47,14 @@ export interface ChatsPort {
     createChat(data: CreateChatData): Promise<void>
     // eslint-disable-next-line no-unused-vars
     deleteChat(data: DeleteChatData): Promise<void>
+    // Переименование чата (2026-11-05-messenger-ux-pack): любой активный
+    // участник; PUT /chats/{id} — бэкенд пишет системное сообщение
+    // (kind='chat_renamed') и рассылает chat_renamed активным участникам
+    // eslint-disable-next-line no-unused-vars
+    renameChat(chatId: number, title: string): Promise<void>
+    // «Пометить всё прочитанными» (2026-11-05-messenger-ux-pack): bulk-upsert
+    // маркеров чтения по всем чатам вьюера (активным и архивным)
+    readAll(): Promise<{ updated: number }>
     // eslint-disable-next-line no-unused-vars
     getToken(chatId: number): Promise<TokenResponse>
     // eslint-disable-next-line no-unused-vars

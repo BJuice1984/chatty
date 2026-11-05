@@ -31,11 +31,81 @@
     @include text-format(400, 18px, 30px);
 
     color: var(--main-text-color);
-    width: 100%;
+    flex: 1;
+    min-width: 0;
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
     text-align: left;
+  }
+
+  &__header-title-input {
+    @include reset;
+    @include text;
+    @include text-format(400, 18px, 30px);
+
+    flex: 1;
+    min-width: 0;
+    padding: 2px 10px;
+    border: none;
+    border-radius: 8px;
+    border-bottom: 2px solid var(--third-text-color);
+    background-color: var(--overlay-background);
+    color: var(--main-text-color);
+    outline: none;
+    box-sizing: border-box;
+  }
+
+  &__header-avatar {
+    @include size(50px, 50px);
+
+    position: relative;
+    flex-shrink: 0;
+    margin-right: 10px;
+
+    /* аватар рендерит ChatAvatar (img или div-заглушка): структурные
+       селекторы вместо BEM-класса чужого блока — stylelint-паттерн */
+
+    img,
+    > div {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+      border-radius: 12px;
+      border: var(--border-chat);
+      box-sizing: border-box;
+      box-shadow: $boxShadowLogin;
+      cursor: default;
+      transition: 0.2s ease-in-out;
+
+      &:hover {
+        opacity: 1;
+      }
+    }
+
+    &_editable img,
+    &_editable > div {
+      cursor: pointer;
+
+      &:hover {
+        opacity: 0.35;
+      }
+    }
+
+    &_editable::after {
+      content: '';
+      position: absolute;
+      right: -3px;
+      bottom: -3px;
+      width: 18px;
+      height: 18px;
+      border-radius: 50%;
+      background-color: var(--third-text-color);
+      background-image: url('../../images/pencil.svg');
+      background-repeat: no-repeat;
+      background-position: center;
+      background-size: 10px;
+    }
   }
 
   &__header-container {
@@ -45,7 +115,7 @@
     align-items: center;
     padding-top: 15px;
     padding-bottom: 10px;
-    padding-left: 77px;
+    padding-left: 12px;
   }
 
   &__header-buttons-container {
@@ -217,6 +287,37 @@
     color: var(--second-text-color);
     background-color: var(--bubble-day-marker-background);
     white-space: nowrap;
+  }
+
+  /* Служебная строка ленты (2026-11-05): системные события — «кто и когда
+     переименовал чат» — без пузыря, по центру, второстепенным тоном */
+
+  &__message-system {
+    @include reset;
+    @include text;
+    @include text-format(400, 12px, 16px);
+
+    align-self: center;
+    display: flex;
+    align-items: baseline;
+    gap: 6px;
+    max-width: 100%;
+    padding: 2px 12px;
+    border-radius: 8px;
+    color: var(--second-text-color);
+    background-color: var(--bubble-day-marker-background);
+    overflow-wrap: anywhere;
+
+    &-text {
+      overflow-wrap: anywhere;
+    }
+
+    &-time {
+      @include text-format(400, 10px, 12px);
+
+      color: var(--bubble-time-text-color);
+      white-space: nowrap;
+    }
   }
 
   /* Цитата над пузырём (реплай): сниппет сервера + подпись «В ответ» */
@@ -732,6 +833,10 @@
 
     &__header-container {
       padding-left: 10px;
+    }
+
+    &__header-avatar {
+      @include size(36px, 36px);
     }
 
     &__container-message {

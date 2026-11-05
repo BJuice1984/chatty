@@ -1,9 +1,12 @@
-// Элемент списка чатов (stage 4): выбор чата и загрузка аватара чата —
-// колбэки из пропсов (фича chats), компонент контроллеров не импортирует.
+// Элемент списка чатов (stage 4): выбор чата — колбэк из пропсов (фича
+// chats), компонент контроллеров не импортирует.
 // 2026-10-26-chat-search: подсветка совпадения — страница передаёт сырые
 // части, компонент экранирует их и заворачивает совпадение в <mark>.
 // 2026-11-01-chat-leave: архивное членство (leftAt) — потушенный
 // модификатор карточки: чат читается, но без живого участия.
+// 2026-11-05-messenger-ux-pack: карточка больше НЕ кнопка смены аватара —
+// скрытый file-инпут, карандаш и клик по аватару убраны; смена аватара чата
+// живёт в шапке мессенджера (owner-only, см. messenger).
 
 import Block from '../../core/Block.ts'
 import Handlebars from 'handlebars'
@@ -24,8 +27,6 @@ export interface UserProps extends ChatInfo {
     searchTime?: string
     // eslint-disable-next-line no-unused-vars
     onSelect?: (id: number) => void
-    // eslint-disable-next-line no-unused-vars
-    onChatFile?: (data: FormData) => void
 }
 
 export class User extends Block {
@@ -36,15 +37,6 @@ export class User extends Block {
             // экранированный HTML (прецедент renderAddUserModalContent)
             titleHtml: props.titleParts != null ? renderHighlighted(props.titleParts) : undefined,
             snippetHtml: props.snippetParts != null ? renderHighlighted(props.snippetParts) : undefined,
-            onClick: () => {
-                this.refs.fileInput.element?.click()
-            },
-            input: {
-                name: 'avatar',
-                id: props.id,
-                type: 'file',
-                extraClass: 'input__element_type_hide',
-            },
             events: {
                 click: () => {
                     props.onSelect?.(props.id)

@@ -809,20 +809,25 @@ describe('chat page stories', () => {
         const changeChatAvatar = sinon.stub(ChatsController, 'changeChatAvatar').resolves()
 
         try {
-            // непустой список чатов: в users-list рендерятся скрытые
-            // аватарные инпуты (InputFile name=avatar id=<chatId>)
+            // непустой список чатов + выбранный чат: карточки списка БОЛЬШЕ
+            // не несут аватарных инпутов (2026-11-05 — аффорданс переехал в
+            // шапку мессенджера), скрытый инпут ровно один — в шапке
             store.set('chats', [
-                { id: 1, title: 'Chat 1', unread_count: 0 },
+                { id: 1, title: 'Chat 1', unread_count: 0, owner_id: 7 },
                 { id: 2, title: 'Chat 2', unread_count: 0 },
             ])
+            store.set('messages', { 1: [] })
+            store.set('selectedChat', 1)
+            store.set('user', { id: 7 })
 
             const page = new ChatPage({} as never)
-            const avatarInput = page.element?.querySelector(
+            const avatarInputs = page.element?.querySelectorAll(
                 'input[type="file"]:not(.chat-story-file-input)'
-            ) as HTMLInputElement
+            )
 
-            expect(avatarInput, 'chat avatar inputs rendered').to.not.be.null
+            expect(avatarInputs?.length, 'exactly one header avatar input').to.equal(1)
 
+            const avatarInput = avatarInputs?.[0] as HTMLInputElement
             const file = new File(['avatar'], 'avatar.png', { type: 'image/png' })
 
             Object.defineProperty(avatarInput, 'files', { value: [file], configurable: true })
@@ -833,6 +838,9 @@ describe('chat page stories', () => {
 
             page.destroy()
         } finally {
+            store.set('selectedChat', undefined)
+            store.set('messages', {})
+            store.set('user', undefined)
             changeChatAvatar.restore()
             uploadStory.restore()
             fetchStories.restore()
@@ -1052,6 +1060,63 @@ describe('chat page search list', () => {
         // датированные по убыванию (ничья 06-01 — id DESC: 5 раньше 3),
         // недатированные тонут (id DESC: 9 раньше 2)
         expect(titlesOf(page)).to.deep.equal(['новый', 'равный времени', 'старый', 'без сообщений', 'битая дата'])
+
+        page.destroy()
+    })
+
+
+    // 2026-11-05-messenger-ux-pack: created_at-fallback — свежесозданный чат
+    // без сообщений больше не тонет: сортируется датой создания между
+    // датированными, ниже новее-сообщений, выше старее
+    it('lifts a freshly created message-less chat above older dated chats (created_at fallback)', () => {
+        store.set('chats', [
+            { id: 1, title: 'давний диалог', avatar: '', unread_count: 0, last_message: { time: '2026-01-01T00:00:00Z', content: 'a' }, created_at: '2025-12-31T00:00:00Z' },
+            { id: 2, title: 'живой чат', avatar: '', unread_count: 0, last_message: { time: '2026-11-05T09:00:00Z', content: 'b' }, created_at: '2026-01-01T00:00:00Z' },
+            { id: 3, title: 'только что созданный', avatar: '', unread_count: 0, created_at: '2026-11-05T10:00:00Z' },
+        ])
+
+        const page = new ChatPage({} as never)
+
+        // созданный в 10:00 выше чата с последним сообщением в 09:00 —
+        // «новый чат в верху списка»; давний диалог ниже всех
+        expect(titlesOf(page)).to.deep.equal(['только что созданный', 'живой чат', 'давний диалог'])
+
+        page.destroy()
+    })
+
+    it('falls back to id DESC among equally dated new chats', () => {
+        store.set('chats', [
+            { id: 7, title: 'старший id', avatar: '', unread_count: 0, created_at: '2026-11-05T10:00:00Z' },
+            { id: 8, title: 'младший id', avatar: '', unread_count: 0, created_at: '2026-11-05T10:00:00Z' },
+        ])
+
+        const page = new ChatPage({} as never)
+
+        expect(titlesOf(page)).to.deep.equal(['младший id', 'старший id'])
+
+        page.destroy()
+    })
+
+    // '@'-режим: member-совпадение рисуется подсвеченным сниппетом (имя
+    // совпавшего участника), заголовок без mark (review F-3 — пин живёт в
+    // этой волне, владеющей chat.test.ts)
+    it('renders a member match with the highlighted snippet and no title mark', () => {
+        store.set('chats', [
+            { id: 4, title: 'Общий чат', avatar: '', unread_count: 0, last_message: { time: '2026-03-05T00:00:00Z', content: 'привет' } },
+        ])
+        store.set('chatSearch', {
+            query: '@bob',
+            results: [
+                { chat_id: 4, matched_in: 'member', snippet: { before: '', match: 'bob@example.com', after: '' }, last_match_at: null },
+            ],
+        })
+
+        const page = new ChatPage({} as never)
+
+        const row = page.element?.querySelector('.chat-list-user')
+
+        expect(row?.querySelector('.chat-list-user__title mark')).to.not.exist
+        expect(row?.querySelector('.chat-list-user__snippet mark')?.textContent).to.equal('bob@example.com')
 
         page.destroy()
     })

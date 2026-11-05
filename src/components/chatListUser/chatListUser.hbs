@@ -1,8 +1,7 @@
 <li class="chat-list-user {{#if is_ai}}chat-list-user_ai{{/if}}{{#if isActive}} chat-list-user_active{{/if}}{{#if this.leftAt}} chat-list-user_archived{{/if}}">
   <div class="chat-list-user__container {{extraClass}}">
     <div class="chat-list-user__img-container chat-list-user__img-container-ava">
-      {{{ InputFile ref="fileInput" id=this.input.id name=this.input.name type=this.input.type extraClass=this.input.extraClass onChatFile=this.onChatFile }}}
-      {{{ ChatAvatar src=this.src alt=this.alt onClick=this.onClick }}}
+      {{{ ChatAvatar src=this.src alt=this.alt }}}
     </div>
   </div>
   <div class="chat-list-user__container-content {{extraClass}}">

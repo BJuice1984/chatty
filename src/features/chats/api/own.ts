@@ -66,7 +66,8 @@ export type OwnUserSearchResponse = ChatsUserSearchResult[]
 // сниппета и времени нет по контракту
 interface OwnChatSearchResult {
     chat_id: number
-    matched_in: 'title' | 'message' | 'both'
+    // 'member' — '@'-режим: сниппет несёт имя совпавшего участника
+    matched_in: 'title' | 'message' | 'both' | 'member'
     snippet: { before: string; match: string; after: string } | null
     last_match_at: string | null
 }
@@ -108,6 +109,8 @@ export function toChatInfo(response: OwnChatResponse, meId?: number): ChatInfo {
         title: response.title,
         avatar: response.avatar_url ?? companionAvatar(response.members, meId),
         unread_count: response.unread_count ?? 0,
+        // дата создания — fallback сортировки «новый чат сверху»
+        created_at: response.created_at,
         // ИИ-чат: бейдж и акцент в списке чатов
         is_ai: response.is_ai,
         // владелец чата: пункт «Удалить из чата» в меню участника — только
@@ -149,6 +152,23 @@ export const ownChatsPort: ChatsPort = {
     async deleteChat(data) {
         // owner-only на бэкенде; перед 204 участникам уходит WS chat_deleted
         await http.delete(`/${data.chatId}`, { csrfToken: readCsrfToken() })
+    },
+    async renameChat(chatId: number, title: string) {
+        // PUT (не PATCH) — прецедент PUT /auth/profile: у транспорта нет
+        // patch-метода, а контракт частичного обновления на PUT уже живет в
+        // репозитории. Ответ — обновлённый ChatResponse (title для
+        // оптимистичного патча контроллер уже применил локально)
+        await http.put(`/${chatId}`, { data: { title }, csrfToken: readCsrfToken() })
+    },
+    async readAll() {
+        // «Пометить всё прочитанными»: bulk-upsert маркеров чтения по всем
+        // чатам вьюера; {updated} — число чатов с сообщениями (фронт гасит
+        // пилюли локально по факту успеха)
+        const response = await (http.post('/read-all', { csrfToken: readCsrfToken() }) as unknown as Promise<
+            { updated: number }
+        >)
+
+        return response
     },
     getToken() {
         return Promise.resolve({ token: '' })

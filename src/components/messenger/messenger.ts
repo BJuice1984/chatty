@@ -98,6 +98,15 @@ interface MessengerProps {
     onKickUser?: (userId: number, chatId: number) => void
     // eslint-disable-next-line no-unused-vars
     onLeaveChat?: (chatId: number) => void
+    // смена аватара чата из шапки (2026-11-05): скрытый InputFile рядом с
+    // заголовком; аффорданс — только владельцу и не в архивном чате
+    // eslint-disable-next-line no-unused-vars
+    onChatAvatar?: (data: FormData) => void
+    // inline-переименование (2026-11-05): коммит по Enter/Escape/focus-out
+    // eslint-disable-next-line no-unused-vars
+    onRenameChat?: (chatId: number, title: string) => void
+    // UI-флаг «заголовок в режиме инпута» (controller-free, поднимается setProps)
+    renamingTitle?: boolean
     // controller-free UI-состояние (внутреннее, поднимается через setProps):
     // модалка добавления пользователя и её данные поиска
     addUserOpen?: boolean
@@ -457,8 +466,58 @@ class MessengerBase extends Block {
                         this.handleComposerSubmit(form)
                     }
                 },
+                dblclick: (event: Event) => {
+                    const target = event.target as HTMLElement | null
+
+                    // заголовок → инпут переименования; архивный чат
+                    // (leftAt) — read-only, аффорданса нет (2026-11-05)
+                    if (target?.closest('[data-testid="chat-title"]') != null) {
+                        if ((this.props as MessengerProps & { chatInfo?: { leftAt?: string | null } }).chatInfo?.leftAt == null) {
+                            this.setProps({ renamingTitle: true })
+                            this.focusTitleInput()
+                        }
+                    }
+                },
+                keydown: (event: Event) => {
+                    const target = event.target as HTMLElement | null
+
+                    // Enter и Escape СОХРАНЯЮТ (решение оператора: без
+                    // подтверждения; Esc — не отмена), ввод закрывается
+                    if (
+                        target?.closest('[data-testid="chat-title-input"]') != null &&
+                        (event as KeyboardEvent).key !== 'Tab'
+                    ) {
+                        event.preventDefault()
+                        this.commitTitleInput()
+                    }
+                },
+                focusout: (event: Event) => {
+                    const target = event.target as HTMLElement | null
+
+                    // клик вне инпута = сохранение (если значение валидно)
+                    if (target?.closest('[data-testid="chat-title-input"]') != null) {
+                        this.commitTitleInput()
+                    }
+                },
                 click: (event: Event) => {
                     const target = event.target as HTMLElement | null
+
+                    // клик по аватару чата в шапке: пикер загрузки — только
+                    // владелец и только активное членство (гейт дублирует
+                    // серверный require_owned); props читаются на момент клика
+                    if (target?.closest('[data-testid="chat-avatar-slot"]') != null) {
+                        const props = this.props as MessengerProps
+
+                        if (
+                            props.meId != null &&
+                            props.ownerId === props.meId &&
+                            (props.chatInfo as { leftAt?: string | null } | undefined)?.leftAt == null
+                        ) {
+                            this.refs.avatarInput?.element?.click()
+                        }
+
+                        return
+                    }
 
                     if (target?.closest('[data-testid="messenger-back"]') != null) {
                         (this.props as MessengerProps).onBack?.()
@@ -668,6 +727,53 @@ class MessengerBase extends Block {
         }
     }
 
+    // фокус в инпут переименования после перерисовки: заголовок превратился
+    // в <input> — курсор в конец, чтобы править название сразу
+    private focusTitleInput(): void {
+        const run = () => {
+            const input = this.element?.querySelector<HTMLInputElement>('[data-testid="chat-title-input"]')
+
+            if (input != null) {
+                input.focus()
+
+                const end = input.value.length
+
+                input.setSelectionRange(end, end)
+            }
+        }
+
+        if (typeof requestAnimationFrame === 'function') {
+            requestAnimationFrame(run)
+        } else {
+            setTimeout(run, 0)
+        }
+    }
+
+    // Сохранение переименования (Enter/Escape/клик вне — все сохраняют):
+    // пустое или неизменённое значение — тихий откат без запроса; валидное —
+    // onRenameChat (контроллер делает оптимистичный патч и откат по ошибке)
+    private commitTitleInput(): void {
+        const input = this.element?.querySelector<HTMLInputElement>('[data-testid="chat-title-input"]')
+
+        if (input == null) {
+            return
+        }
+
+        const value = input.value.trim()
+        const { onRenameChat, selectedChat, chatInfo } = this.props as MessengerProps
+        const currentTitle = (chatInfo as { title?: unknown } | undefined)?.title
+
+        this.setProps({ renamingTitle: false })
+
+        if (
+            value !== '' &&
+            value !== currentTitle &&
+            typeof selectedChat === 'number'
+        ) {
+            onRenameChat?.(selectedChat, value)
+        }
+    }
+
     destroy() {
         if (this.userSearchDebounce != null) {
             clearTimeout(this.userSearchDebounce)
@@ -681,11 +787,16 @@ class MessengerBase extends Block {
 
     render() {
         const props = this.props as MessengerProps
-        const chatInfo = props.chatInfo as { title?: unknown, leftAt?: string | null } | undefined
+        const chatInfo = props.chatInfo as { title?: unknown, leftAt?: string | null, avatar?: unknown } | undefined
         const chatTitle = chatInfo?.title
         // архивное членство (left_at из GET /chats): чат только читается —
         // меню участников, кнопка «+» и композер скрыты, история скроллится
         const archived = chatInfo?.leftAt != null
+        // аватар чата в шапке: смена — только владелец и только активное
+        // членство (серверный require_owned + read-only архива); остальным —
+        // просто картинка без аффорданса
+        const canEditAvatar = !archived && props.meId != null && props.ownerId === props.meId
+        const chatAvatar = typeof chatInfo?.avatar === 'string' ? chatInfo.avatar : ''
         const menuTarget = props.menuTarget ?? null
         const headerButtons = (props.headerButtons as { extraClass?: string }[] | undefined) ?? []
         const visibleHeaderButtons = archived
@@ -695,6 +806,9 @@ class MessengerBase extends Block {
         return this.compile(template, {
             ...props,
             archived,
+            canEditAvatar,
+            canRename: !archived,
+            chatAvatar,
             headerButtons: visibleHeaderButtons,
             menuTitle: menuTarget?.display_name ?? '',
             menuOpen: menuTarget != null,

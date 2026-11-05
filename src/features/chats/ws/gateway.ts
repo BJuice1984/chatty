@@ -28,6 +28,11 @@ export function appendMessages(current: Message[], incoming: Message | Message[]
 type ReactionListener = (event: ChatReactionEvent) => void
 // eslint-disable-next-line no-unused-vars
 type ChatDeletedListener = (chatId: number) => void
+
+// Чат переименован (2026-11-05-messenger-ux-pack): {chat_id, title}
+// eslint-disable-next-line no-unused-vars
+type ChatRenamedListener = (event: { chat_id: number, title: string }) => void
+
 // eslint-disable-next-line no-unused-vars
 type WsUnexpectedCloseListener = (chatId: number) => void
 // eslint-disable-next-line no-unused-vars
@@ -38,6 +43,8 @@ export interface ChatsEventListeners {
     onReaction?: ReactionListener
 
     onChatDeleted?: ChatDeletedListener
+
+    onChatRenamed?: ChatRenamedListener
 
     // Индикатор смерти WS (2026-11-04 offline, review F-3): Close транспорта
     // без payload неотличим от исчерпания реконнектов — адаптер дифференцирует
@@ -50,6 +57,7 @@ export interface ChatsEventListeners {
 
 let reactionListener: ReactionListener | null = null
 let chatDeletedListener: ChatDeletedListener | null = null
+let chatRenamedListener: ChatRenamedListener | null = null
 let wsUnexpectedCloseListener: WsUnexpectedCloseListener | null = null
 let wsConnectedListener: WsConnectedListener | null = null
 
@@ -62,6 +70,10 @@ export function setChatsEventListeners(listeners: ChatsEventListeners): void {
 
     if (listeners.onChatDeleted !== undefined) {
         chatDeletedListener = listeners.onChatDeleted
+    }
+
+    if (listeners.onChatRenamed !== undefined) {
+        chatRenamedListener = listeners.onChatRenamed
     }
 
     if (listeners.onWsUnexpectedClose !== undefined) {
@@ -79,6 +91,10 @@ export function notifyReactionEvent(event: ChatReactionEvent): void {
 
 export function notifyChatDeleted(chatId: number): void {
     chatDeletedListener?.(chatId)
+}
+
+export function notifyChatRenamed(event: { chat_id: number, title: string }): void {
+    chatRenamedListener?.(event)
 }
 
 export function notifyWsUnexpectedClose(chatId: number): void {
