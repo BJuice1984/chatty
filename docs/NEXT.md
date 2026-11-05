@@ -1,6 +1,8 @@
 # NEXT — точка входа для следующей сессии
 
-Обновлено: 2026-11-04 (закрыт ALK-прогон `2026-11-04-bot-wait-offline`,
+Обновлено: 2026-11-05 — **НЕЗАВЕРШЁННЫЙ ALK-прогон `2026-11-05-messenger-ux-pack`,
+продолжение с другой машины — см. раздел «Продолжение прогона» ниже.**
+(До этого: закрыт ALK-прогон `2026-11-04-bot-wait-offline`,
 ветка feature/2026-11-03-auth-refresh-retry, PR на `dev`: экономика рендера
 (батчинг setProps, keyed-переиспользование), SSE-стриминг ответа бота с
 bot_delta-мостом, браузерный offline/online с force-реконнектом, честная
@@ -9,6 +11,86 @@ bot_delta-мостом, браузерный offline/online с force-рекон�
 настройки /settings `2026-11-01-settings`, членство в чате
 `2026-11-01-chat-leave`, контакты `2026-11-01-contacts`; до этого —
 pg_trgm-индексы для /chats/search, `2026-10-27-chats-search-trgm`).
+
+## Продолжение прогона `2026-11-05-messenger-ux-pack` (с другой машины)
+
+Пакет из шести фич мессенджера (S2, план rev 3 с амендментом). Оператор
+остановил прогон 2026-11-05 после приёмки трёх волн; ветка
+`feature/2026-11-05-messenger-ux-pack` запушена (origin), PR ещё не открыт.
+
+**Коммиты (старые → новые):** `2d6729b` freeze (S2 rev 2, 3 раунда ревью) →
+`6bd90d1` WS-BE-API (PUT /chats/{id} + messages.kind миграция 012 + системные
+сообщения + chat_renamed broadcast; POST /chats/read-all; '@'-ветка
+/chats/search; +14 pytest → 291 passed) → `35a0c51` WS-OPS-STACK
+(scripts/probe-own-backend-routes.ps1; compose-стек ПЕРЕСОБРАН — kick/leave
+404 починены, heads 012, smoke PASS) → `f6e839d` WS-FE-CHAT (created_at-
+сортировка «новый чат сверху»; аватар чата в шапке owner-only + эллипсис
+длинного заголовка; dblclick-переименование с сохранением по Enter/Esc/
+клику-вне; служебная строка ленты; иконка «Пометить всё прочитанными») →
+`f419fc1` remediation (keydown коммитит ТОЛЬКО Enter/Escape) → `6980937`
+амендмент плана rev 3 (WS-FE-CHAT write-set +2 headerIcons-файла).
+
+**Гейты на ветке:** фронт `npm run verify` 0 (685 mocha, +30 к базе 655);
+бэкенд 291 passed + 4 известных Windows ingestion-падения (селективный прогон
+с 4× `--deselect` даёт exit 0; форма: `PYTHON_BIN=~/.venvs/chatty-backend/Scripts/python.exe
+bash backend/verify.sh` через Git Bash); `guard-architecture --all --strict` 0.
+
+**ВАЖНО — рантайм прогона НЕ в git:** стейт/пакеты/квитки живут в
+гитигнорированном `work/2026-11-05-messenger-ux-pack/` (run.state.json
+revision 19: BE-API/OPS-STACK/FE-CHAT ACCEPTED, FE-SEARCH RUNNING attempt 1,
+кода ещё нет). Для продолжения на другой машине ЛИБО скопировать эту папку
+целиком с машины-источника (тогда всё продолжается с revision 19), ЛИБО
+восстановить с нуля: `workflow init --manifest tasks/2026-11-05-messenger-ux-pack/plan.manifest.json
+--state work/.../run.state.json --run-id run-001 --package-id 2026-11-05-messenger-ux-pack
+--package-root '../..' --source-revision cadf2b0... --apply <digest>` →
+`task compile --write` → `adopt-plan --reset-tasks` → authorize → run-start —
+но тогда принятые волны в стейте пусты и их приёмку придётся оформить заново
+(код уже в ветке; честно зафиксировать как восстановление, повторив
+task-result/review/audit по существующим evidence-квиткам, если папка
+скопирована частично).
+
+**Осталось сделать — WS-FE-SEARCH** (объём: пакет
+`work/.../workflow/task-packets/WS-FE-SEARCH.task-packet.json`, write-set:
+searchBar.{ts,test.ts}, contacts/{controller.ts,contacts.test.ts,pages/...},
+features/index.ts, docs/NEXT.md, docs/progress/progress_log.md):
+1. `src/components/searchBar/searchBar.ts`: export `setChatSearchBarValue(value)`
+   — пишет модульную память (lastTypedValue=value, wasFocused:false) и гасит
+   pendingSearchTimer; инстанс бара сеет value из памяти (уже умеет).
+2. contacts-controller (`src/features/contacts/controller.ts`): `findChats(userId)`
+   — login из contacts-слайса → инъекция `chatSearchOpener(login)`; сеттер
+   `setChatSearchOpener` с noop-дефолтом (прецедент setChatOpener).
+3. Страница контактов: включить кнопку «Найти все чаты» (снять disabled и
+   title), клик → `findChats(id)` + закрыть меню; ошибка → фидбек
+   «Не удалось выполнить поиск».
+4. `src/features/index.ts`: `setChatSearchOpener((login) => { setChatSearchBarValue('@'+login);
+   void ChatsController.searchChats('@'+login); Router.go(MESSENGER) })`.
+5. Тесты: сид бара (следующий инстанс несёт значение, таймер погашен),
+   контакты (кнопка активна, findChats → opener('@'+login), noop-дефолт,
+   фидбек ошибки), passthrough сырого '@…' в порт.
+6. docs: запись фичи сюда (NEXT.md «Состояние») и progress_log сверху.
+
+**Приёмка волны (дорожка этой сессии):** commit → `workflow task-snapshot` →
+task-result (schemaVersion `agent-task-result.v2`; lineage runId/packageId/
+planDigest=8d8d213b.../planRevision=3/sourceRevision=cadf2b0.../taskId/attempt;
+actor+actorRunId; taskPacketHash=канонический дайджест пакета; changedFiles
+из снапшота; changeSet=claim; itemOutcomes со status COMPLETE; commands
+только PASS/exitCode 0 — упавшие в deviations; путь по шаблону
+`task-result-{attempt}.json`; файл = canonical JSON + LF) → независимое
+ревью (review-raw.json: verdict/findings/acceptanceChecks списком/
+dimensions) → `python work/2026-11-05-messenger-ux-pack/tools/assemble_envelopes.py
+review WS-FE-SEARCH 1 <raw>` и `... evidence WS-FE-SEARCH 1 EV-FE-2 <логи>` →
+`audit implementation ... --out` (rm старый --out; без --path) →
+`workflow task-accept --review --implementation-audit`.
+
+**Финал прогона:** свежий финальный аудит агентом → `audit final-implementation
+--report <per-task аудиты>` (канонический) → `workflow final-audit-outcome
+--verdict ACCEPTED` → `workflow finalize --final-audit --final-implementation-audit
+--proof <out> --reason ...` → PR в `dev` → записи в NEXT.md/progress_log →
+обновить память/эту заметку.
+
+**Стек:** compose-API на машине-источнике уже пересобран (012_message_kind);
+на новой машине поднять/пересобрать свой стек по runbook и проверить
+`scripts/probe-own-backend-routes.ps1` (все строки PASS).
 
 ## Состояние
 
