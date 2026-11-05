@@ -61,9 +61,6 @@
         @include size(32px, 32px);
         @include hover-opacity;
 
-        /* «Пометить всё прочитанными» без непрочитанных: потушена и
-           некликабельна (гейт колбэка дублируется в HeaderIcons) */
-
         &_disabled {
             opacity: 0.35;
             pointer-events: none;

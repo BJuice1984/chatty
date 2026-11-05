@@ -63,9 +63,6 @@
     flex-shrink: 0;
     margin-right: 10px;
 
-    /* аватар рендерит ChatAvatar (img или div-заглушка): структурные
-       селекторы вместо BEM-класса чужого блока — stylelint-паттерн */
-
     img,
     > div {
       width: 100%;
@@ -288,9 +285,6 @@
     background-color: var(--bubble-day-marker-background);
     white-space: nowrap;
   }
-
-  /* Служебная строка ленты (2026-11-05): системные события — «кто и когда
-     переименовал чат» — без пузыря, по центру, второстепенным тоном */
 
   &__message-system {
     @include reset;

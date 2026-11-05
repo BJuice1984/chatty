@@ -480,12 +480,16 @@ class MessengerBase extends Block {
                 },
                 keydown: (event: Event) => {
                     const target = event.target as HTMLElement | null
+                    const key = (event as KeyboardEvent).key
 
-                    // Enter и Escape СОХРАНЯЮТ (решение оператора: без
-                    // подтверждения; Esc — не отмена), ввод закрывается
+                    // ТОЛЬКО Enter и Escape сохраняют (решение оператора:
+                    // без подтверждения, Esc — не отмена) и закрывают ввод;
+                    // прочие клавиши проходят в инпут — название набирается
+                    // с клавиатуры (review TF-1: коммит на любой клавише
+                    // глотал символы и закрывал редактор)
                     if (
                         target?.closest('[data-testid="chat-title-input"]') != null &&
-                        (event as KeyboardEvent).key !== 'Tab'
+                        (key === 'Enter' || key === 'Escape')
                     ) {
                         event.preventDefault()
                         this.commitTitleInput()

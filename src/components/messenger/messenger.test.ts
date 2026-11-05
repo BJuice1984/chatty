@@ -1361,6 +1361,55 @@ describe('messenger inline rename and header avatar', () => {
         }
     })
 
+    it('plain typing neither commits nor closes the input (review TF-1 regression)', () => {
+        const onRenameChat = sinon.spy()
+        const messenger = new Messenger({ onRenameChat } as never)
+
+        try {
+            seedChat()
+            dblclickTitle(messenger)
+
+            const input = titleInput(messenger)
+
+            if (input != null) {
+                input.value = 'Нов'
+            }
+
+            // обычная клавиша набора проходит в инпут: редактор жив,
+            // коммита нет (прежний код коммитил на любой клавише кроме Tab)
+            input?.dispatchEvent(new (view().KeyboardEvent)('keydown', { key: 'н', bubbles: true }))
+            input?.dispatchEvent(new (view().KeyboardEvent)('keydown', { key: 'Backspace', bubbles: true }))
+
+            expect(onRenameChat.called).to.be.false
+            expect(titleInput(messenger)).to.not.be.null
+        } finally {
+            messenger.destroy()
+        }
+    })
+
+    it('title carries the ellipsis structure hook (min-width:0 flex target, review TF-4)', async () => {
+        const messenger = new Messenger({} as never)
+
+        try {
+            seedChat()
+
+            const title = messenger.element?.querySelector('[data-testid="chat-title"]')
+
+            expect(title?.classList.contains('messenger__header-title')).to.be.true
+
+            // class-level пин: правило эллипсиса живёт в messenger.scss
+            // (jsdom не считает layout — проверяем источник стиля)
+            const { readFileSync } = await import('node:fs')
+            const scss = readFileSync('src/scss/components/messenger.scss', 'utf-8')
+            const titleRule = scss.slice(scss.indexOf('&__header-title'), scss.indexOf('&__header-title-input'))
+
+            expect(titleRule).to.contain('min-width: 0')
+            expect(titleRule).to.contain('text-overflow: ellipsis')
+        } finally {
+            messenger.destroy()
+        }
+    })
+
     it('an empty trimmed value silently reverts without a rename call', () => {
         const onRenameChat = sinon.spy()
         const messenger = new Messenger({ onRenameChat } as never)
