@@ -95,7 +95,7 @@ review WS-FE-SEARCH 1 <raw>` и `... evidence WS-FE-SEARCH 1 EV-FE-2 <логи>`
 ## Состояние
 
 UX-батч мессенджера `2026-11-05-messenger-ux-pack` (S2 rev 3, четыре волны,
-mocha 655 → 685, pytest 277 → 291 на Windows-стенде / 295 на Linux). Шесть
+mocha 655 → 692, pytest 277 → 291 на Windows-стенде / 295 на Linux). Шесть
 фич: **новый чат сверху** — сортировка списка по активности с
 `created_at`-фолбэком и id DESC при ничьей (месседж-лесс чат не тонет);
 **шапка чата** — аватар чата owner-only (не-владелец и архив — без
@@ -120,7 +120,7 @@ GET `/chats/search?q=@…` матчит соучастников по префи
 выполнить поиск». Корень kick/leave-404 на приёмке стека — устаревший
 контейнер (код ветки не был пересобран): compose-стек пересобран,
 закоммичен probe-скрипт `scripts/probe-own-backend-routes.ps1`
-(health/ready + 401-vs-404 таблица роутов). Гейты: фронт 685 mocha +
+(health/ready + 401-vs-404 таблица роутов). Гейты: фронт 692 mocha +
 guard strict 0; бэкенд 295 pytest на Linux (291 + 4 Windows-only ingestion,
 зелёные на Unix), alembic heads `012_message_kind`.
 
