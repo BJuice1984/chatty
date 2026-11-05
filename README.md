@@ -35,7 +35,7 @@
    для другого стенда скопируйте `.env.example` → `.env` (или
    `.env.own.example` → `.env.own`) и поправьте URL
 4. Команды:
-   - `npm run dev` — dev-сервер на порту 3000 против локального бэкенда
+   - `npm run dev` — dev-сервер на порту 3001 против локального бэкенда
    - `npx vite --mode own` — то же с явным Vite-режимом `own` (грузит `.env.own`)
    - `npm run build` — проверка типов + сборка в `dist/`
    - `npm start` — сборка и express-статика из `dist/` на порту 3000

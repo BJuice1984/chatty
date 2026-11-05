@@ -11,11 +11,11 @@
 ## Команды
 
 ```bash
-npm run dev          # vite dev-сервер на порту 3000 против локального own-бэкенда (.env.development)
+npm run dev          # vite dev-сервер на порту 3001 против локального own-бэкенда (.env.development)
 npx vite --mode own  # то же с явным Vite-режимом own (грузит .env.own)
 npm run build        # проверка типов (tsc) + сборка в dist/
 npm run typecheck    # только проверка типов (tsc --noEmit)
-npm start            # build + express-статика из dist/ на порту 3000
+npm start            # build + express-статика из dist/ на порту 3001
 npm test             # mocha (конфиг .mocharc.json, стек tsx + chai + sinon + jsdom)
 npm test -- src/core/Block.test.ts       # один файл тестов
 npm test -- --grep "Block"               # тесты по названию

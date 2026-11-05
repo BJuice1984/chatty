@@ -10,7 +10,11 @@ export default defineConfig({
         outDir: resolve(projectRoot, 'dist'),
     },
     server: {
-        port: 3000,
+        port: 3001,
+        // строгий порт: занятый 3001 — loud-отказ вместо молчаливого
+        // переезда на соседний (молчаливый сдвиг рассинхронизирует
+        // фронт-origin с CHATTY_ALLOWED_ORIGINS бэкенда)
+        strictPort: true,
     },
     plugins: [vitePluginHandlebarsPrecompile()],
 })

@@ -34,6 +34,18 @@ minmax(0, 1fr) у .messenger (src/scss/components/messenger.scss). Обнару�
 оператором живьём после финализации прогона — jsdom-пин волны проверял
 классы, но не layout (задокументированное ограничение теста).
 
+# 2026-11-05 — Chore(dev): фронт постоянно на порту 3001
+
+Чат живёт на 3001: vite dev-сервер (vite.config.ts port 3001 + strictPort —
+занятый порт теперь loud-отказ вместо молчаливого переезда, который
+рассинхронизирует фронт-origin с CHATTY_ALLOWED_ORIGINS бэкенда и даёт
+«Ошибка сети» из-за CORS), express-статика npm start (server/server.js),
+CORS-дефолт compose-стека (docker-compose.yml — http://localhost:3001),
+AGENTS.md/README/runbook. Причина: 3000 на рабочем стенде занят dev-сервером
+другого проекта, чат стабильно смещался на 3001. Операторский .env на
+Linux-стенде уже разрешает оба origin-а. JSDOM-URL в тестах не менялись —
+это инертная база для history-API, не слушатель.
+
 # 2026-11-05 — Агентская среда: ALK 2.37.0 → 2.39.0 (Linux-стенд, плагин + CLI синхронно)
 
 Обновлён agent-lifecycle-kit на Linux-стенде в двух согласованных частях — по правилу репозитория версия CLI строго равна версии плагина; по решению оператора ровно до 2.39.0 (на PyPI; Windows-стенд уже на 2.38.0, там своя запись). Прямой `claude plugin update` не годился: `main` апстрима уже указывает в `.claude-plugin/marketplace.json` на v2.40.0 (на PyPI её нет), а CLI Claude Code версию не пиннит — поставил бы 2.40.0. Поэтому GitHub-схема (без локальных патчей, с 2026-10-26) заменена локальной (как на Windows): shallow-clone тега v2.39.0 в `~/dev/agent-lifecycle-kit` (f6c4270), патч `marketplace.json` — `source: "./"` строкой (объект `{"source": "./"}` эта версия CC не принимает — «source type not supported»; рабочий формат подсмотрен в claude-plugins-official, где относительные плагины кодируются строкой), затем `marketplace remove agent-lifecycle-kit` (заодно деинсталлировал плагин — ожидаемо) → `marketplace add ~/dev/agent-lifecycle-kit` → `plugin install agent-lifecycle-kit@agent-lifecycle-kit` (user-scope, кеш `cache/agent-lifecycle-kit/agent-lifecycle-kit/2.39.0`, gitCommitSha f6c4270; плагин резолвится напрямую из `~/dev/agent-lifecycle-kit` — каталог теперь рантайм-зависимость) и `.alk/venv/bin/pip install agent-lifecycle-kit==2.39.0` (py 3.12). Согласованность подтверждена `agent-lifecycle version` → 2.39.0, `claude plugin list` → 2.39.0 (enabled), `project profile check` из корня chatty → PASS без блокеров. Темы релизов 2.38.0–2.39.0: необязательный decision-research bound у замороженной задачи (preflight-отказы missing/stale/unsafe research перед нативным task start; legacy-дайджесты без нового поля не меняются), sealed accepted audit reports переживают совместные изменения плана и исходников, read-only validation accounting в обоих режимах `workflow status`, документация границ declared ledger (release-2-16-only), тестовые authority/recovery/durability-контроли; два открытых known limitation (BUG-R238-STDIN-DEADLINE, BUG-R238-NODE-SMOKE-DEADLINE) — Windows-CI, на контур chatty не влияют. Ломающих изменений CLI-контракта из ранбука прогонов не видно — при первом прогоне на 2.39.0 сверить приёмы с фактическим поведением. Изменений в коде chatty нет; для применения новой версии плагина нужен перезапуск Claude Code.
