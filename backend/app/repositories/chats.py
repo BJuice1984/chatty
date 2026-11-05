@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from datetime import datetime
 
-from sqlalchemy import and_, func, select
+from sqlalchemy import Integer, and_, func, literal, or_, select
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.dialects.sqlite import insert as sqlite_insert
 from sqlalchemy.orm import Session
@@ -181,18 +181,69 @@ class ChatRepository:
         self.session.execute(statement)
         self.session.commit()
 
-    def list_members(self, chat_id: int) -> list[tuple[int, str, int | None, str | None]]:
+    def mark_all_read(self, user_id: int) -> int:
+        """Bulk-двойник mark_read для «Пометить всё прочитанными»: один
+        диалектный INSERT..SELECT ставит маркер каждого чата пользователя
+        (ЛЮБОГО членства — активного и архивного, ровно как их считает
+        unread_counts) на новейшее сообщение чата; ON CONFLICT двигает
+        только вперёд (excluded-неймспейс — единственный способ адресовать
+        строку-источник INSERT..SELECT в DO UPDATE). Чаты без сообщений
+        строки не дают (нечего читать). Возвращает число чатов, покрытых
+        SELECT-ом (посчитано отдельно: RETURNING конфликтных UPDATE в
+        SQLite ненадёжен)."""
+
+        insert = pg_insert if self.session.get_bind().dialect.name == 'postgresql' else sqlite_insert
+        newest = (
+            select(Message.chat_id, func.max(Message.id).label('last_id'))
+            .join(ChatMember, ChatMember.chat_id == Message.chat_id)
+            .where(ChatMember.user_id == user_id)
+            .group_by(Message.chat_id)
+            .subquery()
+        )
+        covered = self.session.scalars(select(newest.c.chat_id)).all()
+        if not covered:
+            return 0
+        statement = insert(ChatLastRead).from_select(
+            ['user_id', 'chat_id', 'last_read_message_id'],
+            select(
+                func.cast(user_id, Integer).label('user_id'),
+                newest.c.chat_id.label('chat_id'),
+                newest.c.last_id.label('last_read_message_id'),
+            ).where(
+                # SQLite-парсер путает ON CONFLICT с join-ограничением SELECT-а
+                # без WHERE — литеральный true развязывает синтаксис (док SQLite
+                # про upsert); PostgreSQL'у условие безразлично
+                literal(True)
+            ),
+        )
+        statement = statement.on_conflict_do_update(
+            index_elements=['user_id', 'chat_id'],
+            set_={'last_read_message_id': statement.excluded.last_read_message_id},
+            where=ChatLastRead.last_read_message_id < statement.excluded.last_read_message_id,
+        )
+        self.session.execute(statement)
+        self.session.commit()
+        return len(set(covered))
+
+    def list_members(self, chat_id: int) -> list[tuple[int, str, int | None, str | None, datetime | None]]:
         """Участники чата как (user_id, email-хэнл, avatar_file_id,
-        display_name) — для UI-списка, меток «уже добавлен» в поиске и
-        аватаров участников; display_name идёт в fallback to_member_brief."""
+        display_name, left_at) — для UI-списка, меток «уже добавлен» в
+        поиске и аватаров участников; left_at — архивное членство
+        (покинул чат, строка не удалялась), display_name идёт в fallback
+        to_member_brief."""
         rows = (
-            self.session.query(ChatMember.user_id, User.email, User.avatar_file_id, User.display_name)
+            self.session.query(
+                ChatMember.user_id, User.email, User.avatar_file_id, User.display_name, ChatMember.left_at
+            )
             .join(User, User.id == ChatMember.user_id)
             .filter(ChatMember.chat_id == chat_id)
             .order_by(ChatMember.user_id)
             .all()
         )
-        return [(row.user_id, row.email, row.avatar_file_id, row.display_name) for row in rows]
+        return [
+            (row.user_id, row.email, row.avatar_file_id, row.display_name, row.left_at)
+            for row in rows
+        ]
 
     def list_members_for_chats(self, chat_ids: list[int]) -> list[tuple[int, int, str, int | None, str | None]]:
         """Участники многих чатов одним IN-запросом как (chat_id, user_id,
@@ -260,6 +311,52 @@ class ChatRepository:
             )
         )
         return [(chat_id, title) for chat_id, title in self.session.execute(statement).all()]
+
+    def search_member_matches(self, user_id: int, term: str) -> list[tuple[int, str]]:
+        """'@'-режим поиска: чаты пользователя (ЛЮБОЕ членство — скоуп как в
+        search_title_matches), где ДРУГОЙ участник (user_id != запрашивающего)
+        совпадает с term case-insensitive ПРЕФИКСОМ по login (полный email,
+        нижний регистр хранится) ИЛИ display_name (coalesce на пустую строку;
+        префикс по локальной части email покрывается display_name-веткой).
+        LIKE с экранированием по правилу escape_like. На чат берётся
+        детерминированно ПЕРВЫЙ совпавший участник (min user_id) — питоновская
+        редукция вместо коррелированного подзапроса (масштаб учебный, число
+        совпадений мало). Возвращает (chat_id, matched_name)."""
+        prefix = f'{escape_like(term).lower()}%'
+        statement = (
+            select(
+                ChatMember.chat_id,
+                User.id,
+                func.coalesce(User.display_name, User.email),
+            )
+            .join(ChatMember, ChatMember.user_id == User.id)
+            .where(
+                ChatMember.chat_id.in_(
+                    select(ChatMember.chat_id).where(ChatMember.user_id == user_id)
+                ),
+                ChatMember.user_id != user_id,
+                or_(
+                    func.lower(User.email).like(prefix, escape='\\'),
+                    func.lower(func.coalesce(User.display_name, '')).like(prefix, escape='\\'),
+                ),
+            )
+        )
+        first: dict[int, tuple[int, str]] = {}
+        for chat_id, member_id, name in self.session.execute(statement).all():
+            current = first.get(chat_id)
+            if current is None or member_id < current[0]:
+                first[chat_id] = (member_id, name)
+        return [(chat_id, name) for chat_id, (_member_id, name) in sorted(first.items())]
+
+    def chat_created_ats(self, chat_ids: list[int]) -> dict[int, datetime]:
+        """created_at чатов одним IN-запросом — опора fallback-активности
+        '@'-порядка (чатам без сообщений нечего терять кроме даты создания)."""
+        if not chat_ids:
+            return {}
+        rows = self.session.execute(
+            select(Chat.id, Chat.created_at).where(Chat.id.in_(chat_ids))
+        ).all()
+        return dict(rows)
 
     def search_message_matches(self, user_id: int, q: str) -> list[tuple[int, str, datetime]]:
         """Свежайшее совпадающее сообщение каждого чата пользователя одним

@@ -1,0 +1,113 @@
+{
+    "schemaVersion": "agent-specification.v1",
+    "package": "2026-11-05-messenger-ux-pack",
+    "tier": "S2",
+    "status": "DRAFT",
+    "createdAt": "2026-11-05",
+    "source": "operator request 2026-11-05 (six messenger items: new-chat-on-top ordering, chat avatar relocation to the header + long-title overflow fix, dblclick inline rename with per-actor system message and WS broadcast, «Найти все чаты» + '@'-member search, kick/leave restore via stack rebuild, mark-all-read header icon)",
+    "clarifications": [
+        {
+            "question": "Who may rename a chat?",
+            "answer": "Any ACTIVE member (require_active_member; archived membership stays read-only — the UI never offers the affordance in an archived chat). The rename MUST persist a system message in the feed naming the actor and the moment (operator addition)."
+        },
+        {
+            "question": "How does «Найти все чаты» seed the '@' query?",
+            "answer": "'@' + the contact's full login email (unique → exactly that user's shared chats). Manual '@' typing matches member login OR display_name prefix in both variants."
+        },
+        {
+            "question": "Rebuild the local compose stack (restores kick/leave 404)?",
+            "answer": "Yes — operator approved the runbook rebuild (preflight, up -d --build, health/ready, probes) with its documented rollback."
+        },
+        {
+            "question": "Broadcast renames over WS?",
+            "answer": "Yes — chat_renamed {chat_id, title} to active members; the system message rides the existing 'message' event shape with an additive kind field."
+        }
+    ],
+    "assumptions": [
+        "Escape in the rename input SAVES (operator wording: save on esc / outside click / Enter, no confirmation); an empty trimmed value silently reverts.",
+        "The rename PUT returns the updated ChatResponse; the per-feed system message is delivered by the WS 'message' broadcast (active members) and persists in history for late readers — no REST echo field. PUT (not PATCH) follows the repo precedent for partial-update semantics without a PATCH verb (PUT /auth/profile; HTTPTransport has no patch method — plan review F-1).",
+        "System messages count toward unread for other members like any feed event (unread_counts counts messages with user_id != viewer).",
+        "'@' alone (empty term) returns an empty result list (200), never an error.",
+        "Mark-all-read covers ALL memberships including archived ones — exactly the set unread_counts aggregates.",
+        "The kick/leave 404 is purely a stale container (built 2026-11-01 12:13, pre chat-leave merge); repo code is consistent — verified by unauthenticated 401-vs-404 probes."
+    ],
+    "requirements": [
+        {
+            "id": "REQ-BE-RENAME",
+            "title": "PUT /chats/{id}: active-member rename + persistent system message + chat_renamed broadcast",
+            "description": "ChatUpdate {title 1..200} schema; PUT /api/v1/chats/{chat_id} behind get_current_user with require_active_member (archived 403, unknown chat 404, anonymous 401). The method is PUT — the repo precedent for partial-update semantics without a PATCH verb (PUT /auth/profile; HTTPTransport has no patch method — plan review F-1). Service rename(): strip title; identical-title call is an idempotent no-op 200 (no message); otherwise update Chat.title and insert Message(user_id=caller, content=f\"{actor display_name} переименовал чат в «{new title}»\", kind='chat_renamed') in ONE transaction; after commit broadcast to ACTIVE members (a) {'type':'message','content':MessageResponse-with-kind} and (b) {'type':'chat_renamed','content':{'chat_id','title'}} (hub.broadcast with active_user_ids, the delete_chat precedent). messages.kind: nullable String(16) via migration 012 (NULL = ordinary); MessageResponse/MessageService.present gain additive kind: str|None = None. Response: updated ChatResponse.",
+            "priority": "P1"
+        },
+        {
+            "id": "REQ-BE-READ-ALL",
+            "title": "POST /chats/read-all: bulk read-marker upsert",
+            "description": "POST /api/v1/chats/read-all behind get_current_user; ChatReadAllResponse {updated: int}. Repository mark_all_read(user_id): one dialect-aware INSERT..SELECT (pg/sqlite like mark_read) — for every membership row of the caller (INCLUDING archived, matching unread_counts semantics) upsert chat_last_reads.last_read_message_id = max(messages.id) of that chat, ON CONFLICT (user_id, chat_id) DO UPDATE only forward (existing < new); chats without messages produce no row. 'updated' = number of chats the SELECT covered. Endpoint returns 200 with the count. No WS fan-out (read state is per-user).",
+            "priority": "P1"
+        },
+        {
+            "id": "REQ-BE-MEMBER-SEARCH",
+            "title": "GET /chats/search '@' branch: chats by member login/display_name prefix",
+            "description": "When q starts with '@': term = q[1:] (stripped); empty term → 200 with results: []. Repository search_member_matches(user_id, term): chats where the caller holds ANY membership and ANOTHER member (user_id != caller) matches case-insensitive PREFIX on lower(email) OR lower(coalesce(display_name,'')) with LIKE-escaping (escape_like precedent); per chat the deterministic first match (min user_id) yields the snippet name (display_name or login). Service: ChatSearchResult matched_in='member' (Literal extended), snippet {before:'', match:<name>, after:''}, last_match_at=None; ordering by chat activity (last_message.created_at ?? chat.created_at, id DESC — the activityOrder precedent), cap CHATS_SEARCH_RESULTS_CAP. Non-'@' queries are byte-identical to today (title/message/both).",
+            "priority": "P1"
+        },
+        {
+            "id": "REQ-BE-MIGRATION-012",
+            "title": "Additive migration 012: messages.kind + segment tests stay green",
+            "description": "Migration 012_message_kind: op.add_column('messages', sa.Column('kind', sa.String(16), nullable=True)); downgrade drop_column via batch_alter_table (SQLite-safe); alembic heads == 012_message_kind. Existing segment roundtrip tests 009/010/011 (explicit downgrade targets, stamp head) must stay green — their head-stamp now covers 012's downgrade too; if any isolation assertion breaks, this workstream owns the minimal repin (explicit own-revision stamps), keeping each test's owned delta asserted.",
+            "priority": "P1"
+        },
+        {
+            "id": "REQ-FE-CHAT-LIST",
+            "title": "Chat list ordering: new chats on top; header avatar slot; long-title overflow fix",
+            "description": "ChatInfo.created_at?: string (utils/types.ts); own adapter toChatInfo maps it; activityOrder falls back to Date.parse(created_at) when last_message is absent/invalid (NaN → -Infinity), tie-break id DESC unchanged. chatListUser: InputFile, onChatFile, avatar onClick, pencil background and hover affordances REMOVED (template + scss), avatar stays presentational; chat.hbs stops passing onChatFile. Messenger header: chat avatar block left of the title (today's 77px padding slot; padding reduced accordingly on desktop, mobile keeps the back-button row), hidden InputFile + onChatAvatar wiring (existing changeChatAvatar controller/port), pencil+click affordance ONLY for meId === ownerId AND a non-archived chat (leftAt — an archived owner must not get a 403 path; review F-2); title becomes flex-shrinking (flex:1 + min-width:0) so long names ellipsize instead of overflowing.",
+            "priority": "P1"
+        },
+        {
+            "id": "REQ-FE-RENAME-UI",
+            "title": "Inline rename: dblclick → input, save on Enter/Esc/focus-out; system message rendering; chat_renamed WS handling",
+            "description": "messenger.hbs: title swaps to <input> while renamingTitle (root-delegated dblclick on the title, Enter/Escape keydown and focusout commit); the dblclick→input affordance is gated by the archived flag (chatInfo.leftAt — the same flag that hides the composer and the cross button): an archived member never gets the input; empty trimmed value silently reverts; commit calls onRenameChat(chatId, title). Controller renameChat(): optimistic chats-slice title patch, port.renameChat (PUT + csrf header), on error revert + console.error. message-mapping.ts toMessage and OwnMessageResponse pass kind through; Message.kind?: string (utils/types.ts); mapTypedMessages → isSystem (kind != null); message.hbs renders a system entry as a centered muted service line with its time (no bubble/avatar/reply affordances) — the who/when lives in content + created_at. WS: own adapter handles 'chat_renamed' → gateway notifyChatRenamed → controller patches the chats slice title (skip identical); 'message' events with kind flow through the existing append path unchanged.",
+            "priority": "P1"
+        },
+        {
+            "id": "REQ-FE-READ-ALL-ICON",
+            "title": "«Пометить всё прочитанными» on the list-header icon",
+            "description": "New public/images/mark-all-read-icon.svg (double-check, currentColor); HeaderIcons second icon switches from settings-icon.svg to it (alt «Иконка. Пометить всё прочитанными», naming updated — it is no longer settings), onClick → controller markAllRead(); page mapper computes hasUnread = chats.some(unread_count > 0) and passes it; the icon renders dimmed + pointer-events:none when hasUnread is false (scss modifier in chat.scss). markAllRead(): port.readAll() → POST /chats/read-all + csrf → store patch unread_count=0 across chats. Settings remain reachable via BottomBar /settings — untouched.",
+            "priority": "P1"
+        },
+        {
+            "id": "REQ-FE-MENTION-SEARCH",
+            "title": "«Найти все чаты» + '@'-search frontend wiring",
+            "description": "ChatSearchMatch.matched_in gains 'member' (utils/types.ts + own DTO literal); searchOrder already renders member matches correctly (no titleParts, snippetParts from the server snippet) — pinned by test, not changed. Contacts menu: «Найти все чаты» enabled (disabled/title removed), click → ContactsController.findChats(id) resolves the contact's login from the slice and calls the injected chatSearchOpener(login); error → menu feedback «Не удалось выполнить поиск». Consumer-side seam setChatSearchOpener (default noop) in the contacts controller; features/index.ts wires it: setChatSearchBarValue('@'+login); void ChatsController.searchChats('@'+login); Router.go(MESSENGER). searchBar.ts exports setChatSearchBarValue(value) writing the module memory (lastTypedValue + wasFocused:false) and clearing the pending debounce timer. The '@'-branch server response drives the list; empty results show the existing empty hint.",
+            "priority": "P1"
+        },
+        {
+            "id": "REQ-OPS-REDEPLOY",
+            "title": "Compose stack rebuild restoring kick/leave and shipping the new routes",
+            "description": "Operator-approved runbook procedure (docs/deployment/own-backend.md): docker compose --env-file <operator env> config --quiet; up -d --build; health/ready curls (8000 health+ready, 9000 storage); unauthenticated probes distinguishing 401 (route exists) from 404 (missing) for DELETE /chats/{id}/members/{uid}, POST /chats/{id}/leave, /rejoin, PUT /chats/{id}, POST /chats/read-all, GET /chats/search?q=@a; authenticated smoke against the seeded admin: rename → system message + title, '@'-search, read-all zeroing, kick + leave of a scratch chat; alembic heads check (012). Rollback path per runbook if health fails. The only repository write is the probe script scripts/probe-own-backend-routes.ps1; receipts under work/.",
+            "priority": "P1"
+        }
+    ],
+    "nonGoals": [
+        "per-user local chat titles (title is shared)",
+        "rename history beyond the persisted system messages",
+        "deleting/editing system messages",
+        "server-side suppression of reactions/replies to system messages — the backend does not block them; the service line simply exposes no UI affordances",
+        "search index migration for lower(email)/lower(display_name) (study-scale prefix scan)",
+        "auto-selecting a freshly created chat",
+        "read-state WS fan-out to other members",
+        "a replacement settings surface — the list-header icon changes purpose; /settings via BottomBar is unchanged",
+        "changing chat-creation dedup semantics — multiple chats per user already allowed (POST /chats always creates; DM get-or-create stays as-is for the «Создать» menu item)"
+    ],
+    "acceptance": [
+        "AC-BE-RENAME: pytest proves rename happy path (200, new title, system message kind='chat_renamed' with actor + new title in content), idempotent same-title no-op, empty-title 422, archived member 403, non-member 403, anonymous 401; both broadcasts asserted (message event with kind, chat_renamed with title) via the test hub.",
+        "AC-BE-READ-ALL: pytest proves read-all zeroes unread for active AND archived chats, moves markers only forward (older marker not downgraded), counts updated chats, anonymous 401; GET /chats afterwards shows unread_count 0.",
+        "AC-BE-MEMBER-SEARCH: pytest proves '@email-prefix' and '@display-name-prefix' find shared chats, exclude the caller from matching, keep non-'@' queries byte-identical, empty '@' term → empty results, cap respected, other users' chats never leak.",
+        "AC-BE-MIGRATION: pytest segment tests 009/010/011 stay green; a 012 segment roundtrip (or equivalent inspector assertions) proves add/drop of messages.kind; alembic heads == 012_message_kind.",
+        "AC-FE-CHAT-LIST: mocha pins activityOrder fallback (chat without messages above older dated chats, created_at fallback), the removed avatar affordance in chatListUser (no file input, no click handler), the header avatar slot with owner-only non-archived affordance, the member-match render (snippet highlight, no title mark — pinned by the wave owning chat.test.ts, review F-3), and the long-title ellipsis path (class/attr-level, jsdom).",
+        "AC-FE-RENAME-UI: mocha pins dblclick → input in non-archived chats only, commit on Enter/Esc/focus-out with a changed value, silent revert on empty, controller optimistic patch + revert on port error, system message service-line rendering, chat_renamed store patch.",
+        "AC-FE-READ-ALL-ICON: mocha pins icon swap (src/alt), disabled state without unread, click → markAllRead → port call + unread zeroing in store.",
+        "AC-FE-MENTION-SEARCH: mocha pins the enabled contacts button → findChats → opener('@login'), searchBar value seeding, features/index wiring, and the raw '@…' query passthrough; the member-match RENDER pin lives in AC-FE-CHAT-LIST/EV-FE-1 (the wave owning chat.test.ts); XSS pin: a '<script>' title in a system message renders as text.",
+        "AC-OPS-REDEPLOY: receipts show preflight ok, rebuild, health/ready 200, probes 401-vs-404 for every listed route, authenticated smoke transcript, alembic heads 012.",
+        "AC-PROCESS: verify + verify:backend (PYTHON_BIN=~/.venvs/chatty-backend/Scripts/python.exe bash backend/verify.sh) + guard --all --strict green with grown counts from the recorded base (mocha 655 / pytest 277 + 4 known Windows ingestion failures); progress_log + NEXT.md entries; no write outside manifest write-sets; run on feature/2026-11-05-messenger-ux-pack off dev @ cadf2b0."
+    ]
+}

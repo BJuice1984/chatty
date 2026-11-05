@@ -32,6 +32,22 @@ export function getChatSearchBarMemory(): ChatSearchBarMemory {
     return { value: lastTypedValue, ...lastFocus }
 }
 
+// Программный сид значения (2026-11-05-messenger-ux-pack, WS-FE-SEARCH):
+// «Найти все чаты» из контактов сеет '@'-запрос до перехода в мессенджер,
+// чтобы бар встретил пользователя готовым запросом, а не пустым полем.
+// Фокус не подделываем (wasFocused:false — перерисовки не вернут его в поле),
+// каретка — в конец сида; висящий дебаунс гасим: его onSearch стрелял бы по
+// старому значению на мёртвом инстансе
+export function setChatSearchBarValue(value: string): void {
+    lastTypedValue = value
+    lastFocus = { wasFocused: false, caret: value.length }
+
+    if (pendingSearchTimer != null) {
+        clearTimeout(pendingSearchTimer)
+        pendingSearchTimer = null
+    }
+}
+
 interface SearchBarProps {
     label: string
     name: string
@@ -61,6 +77,9 @@ export class SearchBar extends Block<SearchBarProps> {
                 focusout: (event: Event) => {
                     this.handleFocusOut(event)
                 },
+                click: (event: Event) => {
+                    this.handleClearClick(event)
+                },
             } as unknown as Record<string, () => void>,
         })
     }
@@ -88,6 +107,8 @@ export class SearchBar extends Block<SearchBarProps> {
             pendingSearchTimer = null
             this.props.onSearch?.(value)
         }, CHAT_SEARCH_DEBOUNCE_MS)
+
+        this.syncClearVisibility()
     }
 
     // Фокус ушёл по желанию пользователя: следующие перерисовки его не
@@ -100,6 +121,48 @@ export class SearchBar extends Block<SearchBarProps> {
         }
 
         lastFocus = { wasFocused: false, caret: target.selectionStart ?? lastFocus.caret }
+    }
+
+    // Крестик очистки: значение чистится и ПРОЕЗИРУЕТСЯ обычным input-эвентом —
+    // модульная память, дебаунс-сброс поиска и фокус идут тем же путём, что и
+    // ручной ввод, отдельной ветки логики нет. Событие строится в realm
+    // документа инпута: глобальный Event тестового окружения (node) чужой
+    // для jsdom-элемента и отвергается dispatchEvent
+    private handleClearClick(event: Event): void {
+        const target = event.target as HTMLElement | null
+
+        if (target?.closest('[data-testid="chat-search-clear"]') == null) {
+            return
+        }
+
+        const input = this.element?.querySelector<HTMLInputElement>(`input[name="${this.props.name}"]`)
+
+        if (input == null) {
+            return
+        }
+
+        // ownerDocument бывает implementation-createHTMLDocument (defaultView
+        // null) — фоллбек к окну глобального документа, им же Block строит DOM
+        const view = input.ownerDocument.defaultView ?? globalThis.document?.defaultView
+        const InputEvent = view?.Event ?? Event
+
+        input.value = ''
+        input.focus()
+        input.dispatchEvent(new InputEvent('input', { bubbles: true }))
+    }
+
+    // Крестик виден только при непустом поле: стартовое значение сеет
+    // шаблон (_visible из {{#if value}}), живой ввод/очистка доводят
+    // модификатор здесь — на инпут-эвентах, без перерисовок
+    private syncClearVisibility(): void {
+        const input = this.element?.querySelector<HTMLInputElement>(`input[name="${this.props.name}"]`)
+        const clear = this.element?.querySelector<HTMLElement>('[data-testid="chat-search-clear"]')
+
+        if (input == null || clear == null) {
+            return
+        }
+
+        clear.classList.toggle('chat__search-bar-clear_visible', input.value !== '')
     }
 
     // Пересоздание/уход со страницы: висящий таймер не должен стрелять

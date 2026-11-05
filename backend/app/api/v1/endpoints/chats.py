@@ -13,7 +13,9 @@ from app.schemas.chat import (
     ChatMemberBrief,
     ChatMemberCreate,
     ChatMemberResponse,
+    ChatReadAllResponse,
     ChatResponse,
+    ChatUpdate,
     ChatsSearchResponse,
 )
 from app.schemas.message import MessageCreate, MessagePage, MessageResponse
@@ -102,6 +104,21 @@ async def create_dm(
     return ChatResponse.model_validate(chat)
 
 
+@router.post('/read-all', response_model=ChatReadAllResponse)
+async def read_all_chats(
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> ChatReadAllResponse:
+    """«Пометить всё прочитанными»: bulk-upsert маркеров чтения по каждому
+    чату запрашивающего (активному И архивному — ровно тот скоуп, чьи
+    непрочитанные считает GET /chats) до последнего сообщения чата; маркеры
+    двигаются только вперёд. Read-state приватна — WS-рассылки нет. Литерал
+    'read-all' стоит ДО одно-сегментных int-маршрутов — прецеденты /search
+    и /dm (FastAPI матчит по порядку регистрации)."""
+    updated = ChatService(db).mark_all_read(current_user.id)
+    return ChatReadAllResponse(updated=updated)
+
+
 @router.get('/{chat_id}', response_model=ChatResponse)
 async def get_chat(
     chat_id: int,
@@ -109,6 +126,37 @@ async def get_chat(
     db: Session = Depends(get_db),
 ) -> ChatResponse:
     chat = ChatService(db).require_member(chat_id, current_user.id)
+    return ChatResponse.model_validate(chat)
+
+
+@router.put('/{chat_id}', response_model=ChatResponse)
+async def rename_chat(
+    chat_id: int,
+    payload: ChatUpdate,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> ChatResponse:
+    """Rename by any ACTIVE member (PUT, not PATCH — the repo precedent for
+    partial updates without a PATCH verb, cf. PUT /auth/profile). The
+    identical-title call is an idempotent no-op without a message; otherwise
+    the title update and the persistent system message land in one
+    transaction and TWO payloads fan out to ACTIVE members (the delete_chat
+    filter precedent): the kind-bearing 'message' event (live feed append)
+    and 'chat_renamed' (other clients refresh their list titles)."""
+    chats_service = ChatService(db)
+    chat, system_message = chats_service.rename(chat_id, current_user.id, payload)
+    if system_message is not None:
+        presented = MessageService(db).present_one(system_message, current_user.id)
+        await hub.broadcast(
+            chat_id,
+            {'type': 'message', 'content': presented.model_dump(mode='json')},
+            active_user_ids=chats_service.active_member_ids(chat_id),
+        )
+        await hub.broadcast(
+            chat_id,
+            {'type': 'chat_renamed', 'content': {'chat_id': chat_id, 'title': chat.title}},
+            active_user_ids=chats_service.active_member_ids(chat_id),
+        )
     return ChatResponse.model_validate(chat)
 
 

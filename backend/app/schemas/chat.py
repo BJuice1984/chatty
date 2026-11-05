@@ -5,12 +5,28 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Literal
 
-from pydantic import BaseModel, ConfigDict, Field, PositiveInt
+from pydantic import BaseModel, ConfigDict, Field, PositiveInt, model_validator
 
 
 class ChatCreate(BaseModel):
     title: str = Field(min_length=1, max_length=200)
     is_ai: bool = False
+
+
+class ChatUpdate(BaseModel):
+    """Rename payload for PUT /chats/{id} — PUT (not PATCH) follows the repo
+    precedent for partial-update semantics without a PATCH verb (PUT
+    /auth/profile; the frontend HTTPTransport has no patch method)."""
+
+    title: str = Field(min_length=1, max_length=200)
+
+    @model_validator(mode='after')
+    def require_nonblank_title(self) -> 'ChatUpdate':
+        # blank-after-strip отклоняется на контракте (прецедент
+        # MessageCreate.require_content_or_file), сервису остаётся чистый strip
+        if not self.title.strip():
+            raise ValueError('title_required')
+        return self
 
 
 class ChatMemberCreate(BaseModel):
@@ -21,6 +37,13 @@ class ChatDmCreate(BaseModel):
     user_id: PositiveInt
 
 
+class ChatReadAllResponse(BaseModel):
+    """POST /chats/read-all result: how many chats with messages had their
+    read marker advanced (chats without messages produce no row)."""
+
+    updated: int
+
+
 class ChatMemberBrief(BaseModel):
     """Member summary in the chat list — the GET /chats/{id}/members shape."""
 
@@ -28,6 +51,10 @@ class ChatMemberBrief(BaseModel):
     login: str
     display_name: str
     avatar_url: str | None = None
+    # архивное членство (участник покинул чат): null — активный; заполняется
+    # только одиночным эндпоинтом участников, краткие составы GET /chats
+    # всегда отдают null (карточкам не нужно)
+    left_at: datetime | None = None
 
 
 class ChatLastMessageBrief(BaseModel):
@@ -96,7 +123,9 @@ class ChatSearchResult(BaseModel):
     """Один чат из GET /chats/search: где совпало и чем подсветить."""
 
     chat_id: int
-    matched_in: Literal['title', 'message', 'both']
+    # 'member' — '@'-режим: совпал СОУЧАСТНИК (префикс login/display_name),
+    # сниппет несёт имя совпавшего, времени совпадения нет
+    matched_in: Literal['title', 'message', 'both', 'member']
     # title-only совпадениям подсвечивать нечего: сниппета и времени нет
     snippet: ChatSearchSnippet | None = None
     last_match_at: datetime | None = None

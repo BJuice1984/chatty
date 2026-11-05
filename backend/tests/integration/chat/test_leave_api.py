@@ -198,7 +198,7 @@ async def test_archived_member_cannot_run_the_bot(client, app):
 
 
 async def test_archived_member_reads_still_pass(client, app):
-    await register(client, 'read-owner@example.com')
+    owner = await register(client, 'read-owner@example.com')
     chat_id = await make_chat(client, 'Readable')
     async with user_client(app) as bob_client:
         bob = await register(bob_client, 'read-bob@example.com')
@@ -227,7 +227,12 @@ async def test_archived_member_reads_still_pass(client, app):
         assert [item['content'] for item in older_page.json()['messages']] == ['posted after the leave']
         members = await bob_client.get(f'/api/v1/chats/{chat_id}/members')
         assert members.status_code == 200
-        assert len(members.json()) >= 1
+        entries = {item['id']: item for item in members.json()}
+        assert len(entries) >= 1
+        # архивное членство видно в списке участников: покинувший несёт
+        # left_at, активные — null (шапка мессенджера гасит их иконки)
+        assert entries[bob['id']]['left_at'] is not None
+        assert entries[owner['id']]['left_at'] is None
 
 
 async def test_archived_owner_can_still_delete_the_chat(client, app):

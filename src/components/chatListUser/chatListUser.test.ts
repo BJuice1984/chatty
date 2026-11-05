@@ -67,6 +67,30 @@ describe('chat list user archived modifier', () => {
     })
 })
 
+// 2026-11-05-messenger-ux-pack: карточка списка больше НЕ кнопка смены
+// аватара — ни скрытого file-инпута, ни кликабельного аватара; аффорданс
+// переехал в шапку мессенджера (owner-only)
+describe('chat list user avatar affordance removed', () => {
+    it('renders no hidden avatar file input', () => {
+        const user = new User({ id: 5, title: 'Чат', avatar: '', unread_count: 0 })
+
+        expect(user.element?.querySelector('input[type="file"]')).to.not.exist
+
+        user.destroy()
+    })
+
+    it('keeps the avatar presentational: no refs to a picker', () => {
+        const user = new User({ id: 6, title: 'Чат', avatar: '', unread_count: 0 })
+
+        const refs = (user as unknown as { refs: Record<string, unknown> }).refs
+
+        expect(refs.fileInput).to.be.undefined
+        expect(user.element?.querySelector('.chat-list-user__img')).to.exist
+
+        user.destroy()
+    })
+})
+
 // Живой поиск (2026-10-26-chat-search): совпадение подсвечивается <mark>
 // в заголовке и/или сниппете; без частей строка остаётся обычной последней
 // репликой. Сервер отдаёт сырые подстроки — вставка только после

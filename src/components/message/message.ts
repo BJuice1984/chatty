@@ -36,6 +36,9 @@ function toAttachmentView(attachment: MessageAttachment): MessageAttachment & { 
 interface MessageProps {
     content: string
     user_id: number
+    // маркер служебного сообщения (messages.kind, 2026-11-05): 'chat_renamed'
+    // и будущие служебные строки — рендер без пузыря и аффордансов
+    kind?: string
     isMine?: boolean
     // ISO-метка сообщения. Невалидная/пустая — рендер без времени и маркера
     // дня, без throw: Intl на new Date(NaN) кидает RangeError и убил бы
@@ -182,7 +185,7 @@ export class Message extends Block {
     }
 
     render() {
-        const { time, showDate, replyTo, reactions } = this.props as MessageProps
+        const { time, showDate, replyTo, reactions, kind } = this.props as MessageProps
 
         // Цитата NaN-safe: снимок без строки-фрагмента не рендерится
         const quoteSnippet = replyTo != null && typeof replyTo.snippet === 'string'
@@ -194,6 +197,7 @@ export class Message extends Block {
         // времени/маркера просто не собираются
         return this.compile(template, {
             ...this.props,
+            isSystem: kind != null,
             formattedTime: formatMessageTime(time),
             dayMarker: showDate === true ? formatMessageDay(time) : undefined,
             emojiSet: MESSAGE_EMOJI_SET,

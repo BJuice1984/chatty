@@ -7,7 +7,7 @@ const __dirname = dirname(__filename)
 const distPath = resolve(__dirname, '../dist')
 
 const app = express()
-const port = 3000
+const port = 3001
 app.use(express.static(resolve(distPath)))
 
 app.use((req, res) => {

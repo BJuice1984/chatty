@@ -417,6 +417,24 @@ describe('own ws adapter social events', () => {
         expect(created).to.have.length(1)
     })
 
+    // 2026-11-05-messenger-ux-pack: чужое переименование — сокет жив,
+    // событие чисто информационное и уходит контроллеру как есть
+    it('forwards chat_renamed to the gateway listener and keeps the socket open', async () => {
+        const onChatRenamed = sinon.spy()
+
+        setChatsEventListeners({ onChatRenamed })
+
+        const { socket } = await connectedSocket()
+
+        socket.triggerMessage(JSON.stringify({
+            type: 'chat_renamed',
+            content: { chat_id: 3, title: 'Новое название' },
+        }))
+
+        expect(onChatRenamed.calledOnceWith({ chat_id: 3, title: 'Новое название' })).to.be.true
+        expect(socket.readyState).to.eq(FakeWebSocket.OPEN)
+    })
+
     // 2026-11-04 offline (review F-3): chat_deleted закрывает сокет адаптера
     // собственным путём — марка намеренного закрытия стоит, индикатор молчит
     it('chat_deleted close raises NO ws-death indicator (intentional)', async () => {

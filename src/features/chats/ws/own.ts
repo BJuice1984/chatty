@@ -37,7 +37,7 @@ import type { HistoryMessage } from '../history/types.ts'
 // в бандл через импорт ws-адаптера (components фичи не импортируют —
 // guard-блокер).
 import '../history/view.ts'
-import { appendMessages, notifyChatDeleted, notifyReactionEvent, notifyWsConnected, notifyWsUnexpectedClose } from './gateway.ts'
+import { appendMessages, notifyChatDeleted, notifyChatRenamed, notifyReactionEvent, notifyWsConnected, notifyWsUnexpectedClose } from './gateway.ts'
 
 interface OwnWsEvent {
     type: string
@@ -326,6 +326,17 @@ export class OwnWsAdapter {
 
                 void this.closeChat(chatId)
                 notifyChatDeleted(chatId)
+
+                return
+            }
+
+            // Чат переименован (2026-11-05-messenger-ux-pack): заголовок в
+            // списке/шапке обновляет контроллер через gateway-слушатель;
+            // сокет жив — событие чисто информационное
+            if (wsEvent.type === 'chat_renamed' && wsEvent.content != null) {
+                const content = wsEvent.content as { chat_id: number, title: string }
+
+                notifyChatRenamed({ chat_id: content.chat_id, title: content.title })
             }
         })
         wsTransport.on(WSTransportEvents.Close, () => {

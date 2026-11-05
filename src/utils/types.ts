@@ -33,6 +33,10 @@ export interface ChatInfo {
     // Владелец чата (2026-11-01-chat-leave): «Удалить из чата» в меню
     // участника доступно только ему
     owner_id?: number
+    // Дата создания чата (2026-11-05-messenger-ux-pack): fallback сортировки
+    // списка — свежесозданный чат без сообщений поднимается в верх списка
+    // вместо того, чтобы тонуть
+    created_at?: string
     // Архивное членство (2026-11-01-chat-leave): left_at из GET /chats
     // относительно вьюера; отсутствию/null (активный участник, ответы POST
     // /chats и GET /chats/{id}) адаптер кладёт undefined
@@ -51,7 +55,10 @@ export interface ChatInfo {
 // и времени нет по контракту. Тип UI-стороны: DTO-зеркало живёт в api.
 export interface ChatSearchMatch {
     chat_id: number
-    matched_in: 'title' | 'message' | 'both'
+    // 'member' (2026-11-05-messenger-ux-pack): '@'-режим — совпал СОУЧАСТНИК
+    // (префикс login/display_name); сниппет несёт имя совпавшего, подсветки
+    // заголовка и времени совпадения нет
+    matched_in: 'title' | 'message' | 'both' | 'member'
     snippet?: { before: string; match: string; after: string } | null
     last_match_at?: string | null
 }
@@ -76,6 +83,9 @@ export interface ChatUser {
     email: string
     phone: string
     avatar: string
+    // архивное членство (участник покинул чат, GET /chats/{id}/members):
+    // null/undefined — активный; шапка мессенджера гасит такую иконку
+    left_at?: string | null
     [key: string]: unknown
 }
 
@@ -176,6 +186,11 @@ export interface Message {
     type: string
     user_id: number
     content: string
+    // маркер служебного сообщения с сервера (2026-11-05-messenger-ux-pack,
+    // messages.kind): отсутствию/null — обычное сообщение-пузырь; сегодня
+    // единственное значение 'chat_renamed' — строка «кто и когда переименовал
+    // чат», UI рисует её служебной строкой без пузыря
+    kind?: string
     file?: MessageFile
     // вычисляемый безопасный URL вложения (filesUrl + /{file_id}/download)
     // — рендерится компонентом message

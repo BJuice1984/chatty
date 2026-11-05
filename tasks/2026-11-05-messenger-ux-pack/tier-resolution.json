@@ -1,0 +1,11 @@
+{
+    "reasons": ["multiple-executable-owners"],
+    "requestDigest": "eb92c1b29fc524a870b9755562c21f02ee7af6ef95b938daa2afeec77a998aa7",
+    "rules": {
+        "S0": "exactly one executable owner, exactly one task, bounded-mechanical, no elevated risk",
+        "S1": "single executable owner, embedded requirements at or below 32768 bytes, no elevated risk",
+        "S2": "multiple executable owners or architecture/security/performance/browser/external-environment risk"
+    },
+    "schemaVersion": "agent-sdd-tier-resolution.v1",
+    "tier": "S2"
+}

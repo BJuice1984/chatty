@@ -60,6 +60,23 @@
     &__header-icon {
         @include size(32px, 32px);
         @include hover-opacity;
+
+        &_disabled {
+            opacity: 0.3;
+            pointer-events: none;
+            cursor: default;
+        }
+    }
+
+    &__container-profile-chat-ava {
+
+        &_archived {
+            opacity: 0.55;
+
+            img {
+                filter: grayscale(1);
+            }
+        }
     }
 
     &__container-stories-list {
@@ -101,6 +118,37 @@
     &__search-bar-form {
       @include reset;
       @include size(auto, 100%);
+
+      position: relative;
+
+      input {
+        padding-right: 30px;
+      }
+    }
+
+    &__search-bar-clear {
+      @include reset;
+
+      position: absolute;
+      top: 50%;
+      right: 6px;
+      transform: translateY(-50%);
+      display: none;
+      padding: 4px;
+      border: none;
+      background: transparent;
+      color: var(--second-text-color);
+      font-size: 14px;
+      line-height: 1;
+      cursor: pointer;
+
+      &:hover {
+        color: var(--main-text-color);
+      }
+
+      &_visible {
+        display: block;
+      }
     }
 
     &__container-users-list {

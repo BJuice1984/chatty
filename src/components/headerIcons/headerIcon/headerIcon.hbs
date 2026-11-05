@@ -1,1 +1,1 @@
-<img class="chat__header-icon" src="{{src}}" alt="{{alt}}">
+<img class="chat__header-icon{{#if this.disabled}} chat__header-icon_disabled{{/if}}" src="{{src}}" alt="{{alt}}"{{#if this.disabled}} aria-disabled="true"{{/if}}>

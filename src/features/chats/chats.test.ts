@@ -8,7 +8,7 @@ import { AI_CHAT_TITLE } from '../../utils/constants.ts'
 import { ChatsFeatureController, applyReactionDelta, setContactsIntegration, setDocumentSearch, toggleOwnReaction } from './controller.ts'
 import { ownChatsPort } from './api/own.ts'
 import { chatSearchSlice, chatsSlice } from './store.ts'
-import { notifyChatDeleted, notifyReactionEvent, notifyWsConnected, notifyWsUnexpectedClose } from './ws/gateway.ts'
+import { notifyChatDeleted, notifyChatRenamed, notifyReactionEvent, notifyWsConnected, notifyWsUnexpectedClose } from './ws/gateway.ts'
 import { OwnWsAdapter } from './ws/own.ts'
 import type { ChatsPort } from './ports.ts'
 import type { ChatSearchMatch, Message, ReactionSummary } from '../../utils/types.ts'
@@ -21,6 +21,8 @@ function makePort(overrides: Partial<ChatsPort> = {}): ChatsPort {
         fetchChats: async () => [],
         createChat: async () => undefined,
         deleteChat: async () => undefined,
+        renameChat: async () => undefined,
+        readAll: async () => ({ updated: 0 }),
         // eslint-disable-next-line no-unused-vars
         getToken: async (chatId: number) => ({ token: `token-${chatId}` }),
         addUsers: async () => undefined,
@@ -1270,5 +1272,109 @@ describe('chats controller ws-death indicator', () => {
         notifyWsConnected(3)
 
         expect(document.getElementById('busy-overlay')).to.be.null
+    })
+})
+
+
+// 2026-11-05-messenger-ux-pack: inline-переименование, «Пометить всё
+// прочитанными» и WS chat_renamed — контроллерские пути
+describe('chats controller rename and read-all', () => {
+    const seedChats = () => {
+        store.set('chats', [
+            { id: 3, title: 'Старое имя', avatar: '', unread_count: 2 },
+            { id: 4, title: 'Другой', avatar: '', unread_count: 0 },
+        ] as never)
+    }
+
+    beforeEach(() => {
+        seedChats()
+    })
+
+    afterEach(() => {
+        store.set('chats', [])
+    })
+
+    it('renameChat patches the title optimistically and calls the port', async () => {
+        const renameChat = sinon.stub().resolves()
+        const controller = new ChatsFeatureController(makePort({ renameChat }), makeMessages())
+
+        await controller.renameChat(3, 'Новое имя')
+
+        // оптимистичный патч применён ДО ответа порта (вызов был единственный)
+        const chats = store.getState().chats as { id: number, title: string }[]
+
+        expect(chats.find(chat => chat.id === 3)?.title).to.eq('Новое имя')
+        expect(chats.find(chat => chat.id === 4)?.title).to.eq('Другой')
+        expect(renameChat.calledOnceWith(3, 'Новое имя')).to.be.true
+    })
+
+    it('renameChat reverts the title when the port fails', async () => {
+        const error = sinon.stub(console, 'error')
+        const renameChat = sinon.stub().rejects(new Error('network'))
+        const controller = new ChatsFeatureController(makePort({ renameChat }), makeMessages())
+
+        try {
+            await controller.renameChat(3, 'Неудачное имя')
+
+            const chats = store.getState().chats as { id: number, title: string }[]
+
+            expect(chats.find(chat => chat.id === 3)?.title).to.eq('Старое имя')
+            expect(error.called).to.be.true
+        } finally {
+            error.restore()
+        }
+    })
+
+    it('renameChat skips the port for an identical title', async () => {
+        const renameChat = sinon.stub().resolves()
+        const controller = new ChatsFeatureController(makePort({ renameChat }), makeMessages())
+
+        await controller.renameChat(3, 'Старое имя')
+
+        expect(renameChat.called).to.be.false
+    })
+
+    it('markAllRead zeroes every unread pill after a successful port call', async () => {
+        const readAll = sinon.stub().resolves({ updated: 2 })
+        const controller = new ChatsFeatureController(makePort({ readAll }), makeMessages())
+
+        await controller.markAllRead()
+
+        const chats = store.getState().chats as { id: number, unread_count: number }[]
+
+        expect(chats.every(chat => chat.unread_count === 0)).to.be.true
+        expect(readAll.calledOnce).to.be.true
+    })
+
+    it('markAllRead keeps the pills when the port fails', async () => {
+        const error = sinon.stub(console, 'error')
+        const controller = new ChatsFeatureController(makePort({ readAll: sinon.stub().rejects(new Error('x')) }), makeMessages())
+
+        try {
+            await controller.markAllRead()
+
+            const chats = store.getState().chats as { id: number, unread_count: number }[]
+
+            expect(chats.find(chat => chat.id === 3)?.unread_count).to.eq(2)
+        } finally {
+            error.restore()
+        }
+    })
+
+    it('notifyChatRenamed patches a foreign rename and skips identical titles', () => {
+        new ChatsFeatureController(makePort(), makeMessages())
+
+        notifyChatRenamed({ chat_id: 4, title: 'Переименовали извне' })
+
+        let chats = store.getState().chats as { id: number, title: string }[]
+
+        expect(chats.find(chat => chat.id === 4)?.title).to.eq('Переименовали извне')
+
+        // идемпотентный noop: чужое событие с тем же title не дёргает стор
+        notifyChatRenamed({ chat_id: 4, title: 'Переименовали извне' })
+
+        chats = store.getState().chats as { id: number, title: string }[]
+
+        expect(chats.find(chat => chat.id === 4)?.title).to.eq('Переименовали извне')
     })
 })

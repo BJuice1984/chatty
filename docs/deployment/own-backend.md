@@ -144,7 +144,7 @@ operator env files older than that date point `CHATTY_BOT_PROVIDER_URL` at
   honestly `UNAVAILABLE`; they are never silently skipped or faked.
 - Frontend: `npm ci`, then `npx vite --mode own` for the dev server, or
   `npm run build && npm start` for the production bundle served from `dist/`
-  on port 3000. `npm run verify` must pass before any deploy artifact is
+  on port 3001. `npm run verify` must pass before any deploy artifact is
   recorded.
 
 First auth smoke (through the frontend origin from `CHATTY_ALLOWED_ORIGINS`):

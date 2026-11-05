@@ -2,10 +2,27 @@
     <div class="messenger">
         <div class="messenger__header-container">
             <button type="button" class="messenger__back" data-testid="messenger-back" aria-label="Назад к списку чатов"></button>
-            <h2 class="messenger__header-title">{{ chatInfo.title }}</h2>
+            <div class="messenger__header-avatar{{#if canEditAvatar}} messenger__header-avatar_editable{{/if}}" data-testid="chat-avatar-slot"{{#if canEditAvatar}} title="Сменить аватар чата"{{/if}}>
+                {{{ InputFile ref="avatarInput" id=selectedChat name="avatar" type="file" extraClass="input__element_type_hide" onChatFile=this.onChatAvatar }}}
+                {{{ ChatAvatar src=this.chatAvatar alt="Аватар чата" title=this.chatInfo.title onClick=this.onAvatarClick }}}
+            </div>
+            {{#if renamingTitle}}
+                <input
+                    class="messenger__header-title-input"
+                    data-testid="chat-title-input"
+                    type="text"
+                    value="{{ chatInfo.title }}"
+                    maxlength="200"
+                    aria-label="Название чата"
+                >
+            {{else}}
+                <h2 class="messenger__header-title" data-testid="chat-title"{{#if canRename}} title="Двойной клик — переименовать"{{/if}}>{{ chatInfo.title }}</h2>
+            {{/if}}
             <div class="messenger__chat-users-container">
               {{#each selectedChatUsers}}
-                <div class="chat__container-profile-chat-ava" data-testid="chat-user-avatar" data-user-id="{{this.id}}">
+                {{!-- left_at — архивное членство: иконка покинувшего чат
+                  гасится (прецедент chat-list-user_archived) --}}
+                <div class="chat__container-profile-chat-ava{{#if this.left_at}} chat__container-profile-chat-ava_archived{{/if}}" data-testid="chat-user-avatar" data-user-id="{{this.id}}">
                   {{{ ChatAvatar src=this.avatar alt='Аватар пользователя' title=this.display_name onClick=this.onClick }}}
                 </div>
               {{/each}}
@@ -19,7 +36,7 @@
         <ul class="messenger__container">
           {{{ ChatHistory }}}
           {{#each messages}}
-            {{{ Message content=this.content user_id=this.user_id chat_id=this.chat_id id=this.id isMine=this.isMine isError=this.isError isPending=this.isPending fileUrl=this.fileUrl attachments=this.attachments autoDownload=../this.autoDownload time=this.time showDate=this.showDate replyTo=this.replyTo reactions=this.reactions onSetReaction=../this.onSetReaction onReply=../this.onReplyToMessage cacheKey=this.cacheKey }}}
+            {{{ Message content=this.content user_id=this.user_id chat_id=this.chat_id id=this.id kind=this.kind isMine=this.isMine isError=this.isError isPending=this.isPending fileUrl=this.fileUrl attachments=this.attachments autoDownload=../this.autoDownload time=this.time showDate=this.showDate replyTo=this.replyTo reactions=this.reactions onSetReaction=../this.onSetReaction onReply=../this.onReplyToMessage cacheKey=this.cacheKey }}}
           {{/each}}
         </ul>
         {{#if replyDraft}}

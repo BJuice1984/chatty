@@ -13,6 +13,9 @@ export interface OwnMessageResponse {
     content: string | null
     file_id: number | null
     client_message_id: string | null
+    // маркер служебного сообщения (messages.kind, 2026-11-05): null/нет поля —
+    // обычное сообщение
+    kind?: string | null
     reply_to_id?: number | null
     reply_to?: {
         id: number
@@ -50,6 +53,8 @@ export function toMessage(response: OwnMessageResponse): Message {
         type: 'message',
         user_id: response.user_id,
         content: response.content ?? '',
+        // служебный маркер проходит насквозь (UI рисует строку без пузыря)
+        kind: response.kind ?? undefined,
         file_url: response.file_id == null
             ? undefined
             : joinUrl(env.filesUrl, `/${response.file_id}/download`),

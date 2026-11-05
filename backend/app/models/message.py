@@ -23,6 +23,10 @@ class Message(Base):
     content: Mapped[str | None] = mapped_column(Text, nullable=True)
     file_id: Mapped[int | None] = mapped_column(ForeignKey('files.id', ondelete='SET NULL'), nullable=True, index=True)
     client_message_id: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    # маркер служебного сообщения (NULL = обычное): today только 'chat_renamed' —
+    # персистентная строка ленты «кто и когда переименовал чат»; UI рисует
+    # такие сообщения служебной строкой без пузыря
+    kind: Mapped[str | None] = mapped_column(String(16), nullable=True)
     # самоссылка на цитируемое сообщение; при удалении цитаты БД зануляет ссылку
     reply_to_id: Mapped[int | None] = mapped_column(ForeignKey('messages.id', ondelete='SET NULL'), nullable=True)
     created_at: Mapped[datetime] = mapped_column(

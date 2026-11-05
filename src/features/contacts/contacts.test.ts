@@ -2,7 +2,7 @@ import { expect } from 'chai'
 import sinon from 'sinon'
 import { JSDOM } from 'jsdom'
 import store from '../../utils/Store.ts'
-import { ContactsFeatureController, setChatOpener } from './controller.ts'
+import { ContactsFeatureController, setChatOpener, setChatSearchOpener } from './controller.ts'
 import { contactsSlice } from './store.ts'
 import type { ContactsPort } from './ports.ts'
 import type { ContactInfo } from '../../utils/types.ts'
@@ -27,9 +27,10 @@ function makePort(overrides: Partial<ContactsPort> = {}): ContactsPort {
 describe('contacts feature boundary', () => {
     afterEach(() => {
         contactsSlice.setContacts([])
-        // модульный опенер — общий на файл: возвращаем noop-эквивалент,
+        // модульные опенеры — общие на файл: возвращаем noop-эквивалент,
         // чтобы связывание одного теста не будило соседей
         setChatOpener(() => {})
+        setChatSearchOpener(() => {})
     })
 
     it('should expose the port through the controller (boundary smoke)', () => {
@@ -157,5 +158,41 @@ describe('contacts feature boundary', () => {
 
         expect((store.getState() as { contacts?: ContactInfo[] }).contacts).to.deep.eq([ada])
         expect(contactsSlice.getContacts()).to.deep.eq([ada])
+    })
+
+    // ДО любого setChatSearchOpener в этом файле: как у openDm, пиннуем
+    // noop-дефолт — до связывания композицией findChats резолвится
+    it('should survive findChats before the composition wires the search opener', async () => {
+        contactsSlice.setContacts([bob])
+        const controller = new ContactsFeatureController(makePort())
+
+        await controller.findChats(9)
+    })
+
+    it('should pass the RAW login from the slice to the injected search opener', async () => {
+        contactsSlice.setContacts([bob, ada])
+        const opener = sinon.spy()
+        setChatSearchOpener(opener)
+        const controller = new ContactsFeatureController(makePort())
+
+        await controller.findChats(12)
+
+        // сырой login БЕЗ '@': префикс и переход принадлежат композиции
+        expect(opener.calledOnceWith('ada@example.com')).to.be.true
+    })
+
+    it('should reject findChats when the contact is gone from the slice', async () => {
+        contactsSlice.setContacts([bob])
+        const opener = sinon.spy()
+        setChatSearchOpener(opener)
+        const controller = new ContactsFeatureController(makePort())
+
+        let rejected = false
+        await controller.findChats(404).catch(() => {
+            rejected = true
+        })
+
+        expect(rejected).to.be.true
+        expect(opener.notCalled).to.be.true
     })
 })

@@ -77,6 +77,9 @@ interface ChatPageProps {
     contactIds?: number[]
     meId?: number
     ownerId?: number
+    // есть ли хоть одна пилюля непрочитанных (2026-11-05): гейт иконки
+    // «Пометить всё прочитанными» в шапке списка
+    hasUnread?: boolean
 }
 
 // Карточка списка чатов в пропсах страницы: ChatInfo + декорации
@@ -88,15 +91,19 @@ interface OrderedChat extends ChatInfo {
 }
 
 // Порядок пустого запроса — по активности: свежий last_message сверху,
-// отсутствующий/битый (NaN) тонет ниже всех дат, ничья — id DESC.
+// отсутствующий — fallback на created_at (2026-11-05: свежесозданный чат
+// без сообщений поднимается в верх списка, а не тонет), битый (NaN) тонет
+// ниже всех дат, ничья — id DESC.
 // Всегда новый массив: мэппер withStore обязан давать свежую ссылку на
 // chats, иначе shallowEqual погасит перерисовку на любом стор-эмите
 function activityOrder(chats: ChatInfo[]): ChatInfo[] {
     const timeOf = (chat: ChatInfo): number => {
-        const raw = chat.last_message?.time
-        const parsed = raw != null ? Date.parse(raw) : Number.NaN
+        const candidates = [chat.last_message?.time, chat.created_at]
+        const parsed = candidates
+            .map(raw => (raw != null ? Date.parse(raw) : Number.NaN))
+            .find(value => !Number.isNaN(value))
 
-        return Number.isNaN(parsed) ? Number.NEGATIVE_INFINITY : parsed
+        return parsed === undefined ? Number.NEGATIVE_INFINITY : parsed
     }
 
     return [...chats].sort((left, right) => {
@@ -303,8 +310,8 @@ class ChatPageBase extends Block {
 
     // Открытие пикера add-плиткой: ref на сыром HTML не существует (refs
     // собираются только из компонент-хелперов) — querySelector в момент
-    // клика. Селектор точечный по классу: первый input[type=file] в DOM —
-    // скрытый аватарный инпут первого чата списка
+    // клика. Селектор точечный по классу (карточки чатов больше не несут
+    // своих file-инпутов — аватар чата меняется из шапки мессенджера)
     private openStoryPicker(): void {
         const input = this.element?.querySelector<HTMLInputElement>('input.chat-story-file-input')
 
@@ -467,6 +474,16 @@ class ChatPageBase extends Block {
             },
             onChatAvatar: (data: FormData) => {
                 void ChatsController.changeChatAvatar(data)
+            },
+            // inline-переименование из шапки мессенджера: оптимистичный патч
+            // и откат — в контроллере (2026-11-05-messenger-ux-pack)
+            onRenameChat: (chatId: number, title: string) => {
+                void ChatsController.renameChat(chatId, title)
+            },
+            // «Пометить всё прочитанными» — иконка в шапке списка
+            // (2026-11-05-messenger-ux-pack): активна только при непрочитанных
+            onMarkAllRead: () => {
+                void ChatsController.markAllRead()
             },
             onDeleteChat: (id: number) => {
                 void ChatsController.delete(id)
@@ -765,6 +782,8 @@ const withChats = withStore((state: AppState) => {
         contactIds: (contacts ?? []).map(contact => contact.id),
         meId: state.user?.id,
         ownerId,
+        // есть ли непрочитанные: гейтит иконку «Пометить всё прочитанными»
+        hasUnread: allChats.some(chat => chat.unread_count > 0),
     }
 })
 

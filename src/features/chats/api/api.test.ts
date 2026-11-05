@@ -108,6 +108,14 @@ describe('chats api adapter', () => {
         expect(chat.unread_count).to.eq(0)
     })
 
+    // 2026-11-05-messenger-ux-pack: created_at проезжает в ChatInfo —
+    // fallback сортировки «новый чат сверху»
+    it('maps created_at through toChatInfo', () => {
+        expect(toChatInfo(ownChat, 7).created_at).to.eq(ownChat.created_at)
+        expect(toChatInfo({ ...ownChat, created_at: '2026-11-05T09:00:00Z' }, 7).created_at)
+            .to.eq('2026-11-05T09:00:00Z')
+    })
+
     it('should carry is_ai through toChatInfo both ways', () => {
         expect(toChatInfo(ownChat, 7).is_ai).to.be.false
         expect(toChatInfo({ ...ownChat, is_ai: true }, 7).is_ai).to.be.true
@@ -326,6 +334,67 @@ describe('chats api social operations (fake XHR)', () => {
         expect(call.method).to.eq('DELETE')
         expect(call.url).to.contain('/chats/7')
         expect(call.headers['X-CSRF-Token']).to.eq('token-1')
+    })
+
+    // 2026-11-05-messenger-ux-pack: rename — PUT (не PATCH: у транспорта нет
+    // patch-метода, прецедент PUT /auth/profile), csrf на мутации
+    it('renames a chat over PUT /chats/{id} with the title body and csrf header', async () => {
+        FakeXHR.responses.push({ status: 200, response: { id: 7, title: 'Новое имя' } })
+
+        await ownChatsPort.renameChat(7, 'Новое имя')
+
+        const call = FakeXHR.calls[0]
+
+        expect(call.method).to.eq('PUT')
+        expect(call.url).to.contain('/chats/7')
+        expect(call.body).to.eq(JSON.stringify({ title: 'Новое имя' }))
+        expect(call.headers['X-CSRF-Token']).to.eq('token-1')
+    })
+
+    it('marks everything read over POST /chats/read-all with csrf and maps {updated}', async () => {
+        FakeXHR.responses.push({ status: 200, response: { updated: 3 } })
+
+        const result = await ownChatsPort.readAll()
+
+        const call = FakeXHR.calls[0]
+
+        expect(result).to.deep.eq({ updated: 3 })
+        expect(call.method).to.eq('POST')
+        expect(call.url).to.contain('/chats/read-all')
+        expect(call.headers['X-CSRF-Token']).to.eq('token-1')
+    })
+
+    // '@'-режим: member-совпадения доезжают до UI как есть (сниппет — имя
+    // совпавшего участника, времени совпадения нет)
+    it('searches member matches over GET /chats/search?q=@… passing the raw query', async () => {
+        FakeXHR.responses.push({
+            status: 200,
+            response: {
+                query: '@bob@exam',
+                results: [
+                    {
+                        chat_id: 3,
+                        matched_in: 'member',
+                        snippet: { before: '', match: 'bob@example.com', after: '' },
+                        last_match_at: null,
+                    },
+                ],
+            },
+        })
+
+        const results = await ownChatsPort.searchChats('@bob@exam')
+
+        const call = FakeXHR.calls[0]
+
+        expect(call.url).to.contain('q=%40bob%40exam')
+        expect(results).to.deep.eq([
+            {
+                chat_id: 3,
+                matched_in: 'member',
+                snippet: { before: '', match: 'bob@example.com', after: '' },
+                last_match_at: null,
+            },
+        ])
     })
 
     // 2026-11-01-chat-leave: кик — по одному DELETE на каждого участника

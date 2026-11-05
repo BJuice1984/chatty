@@ -1,3 +1,81 @@
+# 2026-11-05 — Feat/fix(messenger): UI-хвост прогона — крестик очистки поиска, блеклые состояния, ушедшие участники
+
+Живое тестирование оператора после финализации прогона дало четыре правки.
+(1) Крестик очистки в chat__search-bar-form (searchBar.{hbs,ts,test.ts} +
+chat.scss): виден только при непустом поле — модификатор _visible на самом
+крестике, СЕЕТСЯ ШАБЛОНОМ из {{#if value}} (store-перерисовки пересоздают
+бар без повторного componentDidMount — рендер-тайм единственная живая
+точка; баг «появляется и исчезает» после «Найти все чаты»), живой ввод и
+очистка доводят класс через syncClearVisibility; клик чистит значение и
+проецирует обычный input-эвент (память/дебаунс/фокус тем же путём, что
+ручной ввод), событие строится в realm окна документа — ownerDocument у
+Block-элементов бывает implementation-createHTMLDocument c defaultView
+null, фоллбек на глобальный документ. (2) Невидимая иконка «Пометить всё
+прочитанными»: stroke=currentColor внутри <img> изолирован от CSS-контекста
+и чернеет на тёмной шапке — приведена к конвенции остальных иконок
+(#F7F7FC); disabled-состояние усилено (opacity .3 + cursor default).
+(3) Ушедшие участники (messenger__chat-users-container): GET
+/chats/{id}/members теперь несёт left_at (repo list_members + ChatMemberBrief
++ to_member_brief — additive, краткие составы GET /chats не затронуты),
+фронт прокидывает его в ChatUser, обёртка аватара получает
+chat__container-profile-chat-ava_archived (opacity .55 + grayscale,
+прецедент chat-list-user_archived); пины: pytest (покинувший left_at≠null,
+активный null) + mocha (модификатор на аватаре). Гейты: фронт 696 mocha,
+бэкенд 295 passed + heads 012, guard strict 0.
+
+# 2026-11-05 — Fix(messenger): длинный заголовок чата выносил вёрстку за экран (post-run, WS-FE-CHAT хвост)
+
+Корень: у корня .messenger грид объявлял только строки — колонка была
+неявной auto, которая растягивается под max-content неразрывного
+(white-space: nowrap) заголовка до 200 символов и расширяла весь грид за
+экран; сами правила заголовка (flex:1, min-width:0, ellipsis) корректны, но
+включаются только внутри сжимаемой колонки. Фикс: grid-template-columns:
+minmax(0, 1fr) у .messenger (src/scss/components/messenger.scss). Обнаружен
+оператором живьём после финализации прогона — jsdom-пин волны проверял
+классы, но не layout (задокументированное ограничение теста).
+
+# 2026-11-05 — Chore(dev): фронт постоянно на порту 3001
+
+Чат живёт на 3001: vite dev-сервер (vite.config.ts port 3001 + strictPort —
+занятый порт теперь loud-отказ вместо молчаливого переезда, который
+рассинхронизирует фронт-origin с CHATTY_ALLOWED_ORIGINS бэкенда и даёт
+«Ошибка сети» из-за CORS), express-статика npm start (server/server.js),
+CORS-дефолт compose-стека (docker-compose.yml — http://localhost:3001),
+AGENTS.md/README/runbook. Причина: 3000 на рабочем стенде занят dev-сервером
+другого проекта, чат стабильно смещался на 3001. Операторский .env на
+Linux-стенде уже разрешает оба origin-а. JSDOM-URL в тестах не менялись —
+это инертная база для history-API, не слушатель.
+
+# 2026-11-05 — Агентская среда: ALK 2.37.0 → 2.39.0 (Linux-стенд, плагин + CLI синхронно)
+
+Обновлён agent-lifecycle-kit на Linux-стенде в двух согласованных частях — по правилу репозитория версия CLI строго равна версии плагина; по решению оператора ровно до 2.39.0 (на PyPI; Windows-стенд уже на 2.38.0, там своя запись). Прямой `claude plugin update` не годился: `main` апстрима уже указывает в `.claude-plugin/marketplace.json` на v2.40.0 (на PyPI её нет), а CLI Claude Code версию не пиннит — поставил бы 2.40.0. Поэтому GitHub-схема (без локальных патчей, с 2026-10-26) заменена локальной (как на Windows): shallow-clone тега v2.39.0 в `~/dev/agent-lifecycle-kit` (f6c4270), патч `marketplace.json` — `source: "./"` строкой (объект `{"source": "./"}` эта версия CC не принимает — «source type not supported»; рабочий формат подсмотрен в claude-plugins-official, где относительные плагины кодируются строкой), затем `marketplace remove agent-lifecycle-kit` (заодно деинсталлировал плагин — ожидаемо) → `marketplace add ~/dev/agent-lifecycle-kit` → `plugin install agent-lifecycle-kit@agent-lifecycle-kit` (user-scope, кеш `cache/agent-lifecycle-kit/agent-lifecycle-kit/2.39.0`, gitCommitSha f6c4270; плагин резолвится напрямую из `~/dev/agent-lifecycle-kit` — каталог теперь рантайм-зависимость) и `.alk/venv/bin/pip install agent-lifecycle-kit==2.39.0` (py 3.12). Согласованность подтверждена `agent-lifecycle version` → 2.39.0, `claude plugin list` → 2.39.0 (enabled), `project profile check` из корня chatty → PASS без блокеров. Темы релизов 2.38.0–2.39.0: необязательный decision-research bound у замороженной задачи (preflight-отказы missing/stale/unsafe research перед нативным task start; legacy-дайджесты без нового поля не меняются), sealed accepted audit reports переживают совместные изменения плана и исходников, read-only validation accounting в обоих режимах `workflow status`, документация границ declared ledger (release-2-16-only), тестовые authority/recovery/durability-контроли; два открытых known limitation (BUG-R238-STDIN-DEADLINE, BUG-R238-NODE-SMOKE-DEADLINE) — Windows-CI, на контур chatty не влияют. Ломающих изменений CLI-контракта из ранбука прогонов не видно — при первом прогоне на 2.39.0 сверить приёмы с фактическим поведением. Изменений в коде chatty нет; для применения новой версии плагина нужен перезапуск Claude Code.
+
+# 2026-11-05 — Feat(messenger): UX-батч из шести фич — сортировка, шапка-переименование, служебные строки, mark-all-read, '@'-поиск (ALK 2026-11-05-messenger-ux-pack)
+
+Пакет S2 (план rev 3, четыре волны): новый чат сверху (created_at-фолбек
+сортировки активности, id DESC при ничьей); шапка чата — аватар owner-only,
+эллипсис заголовка, dblclick-переименование с коммитом Enter/Escape/клик-вне
+(обычный набор текста не коммитит — remediation r2), оптимистичный патч с
+откатом; служебная строка ленты для kind-сообщений (миграция 012
+messages.kind, экранированный контент); иконка «Пометить всё прочитанными»
+(disabled без unread, POST /chats/read-all по всем членствам); '@'-поиск
+соучастников в GET /chats/search (префикс email/display_name, caller
+исключён, кап 50) + chat_renamed-рассылка патчит заголовки без рефетча;
+«Найти все чаты» в контактах — findChats берёт login из слайса, композиция
+(features/index.ts) сеет '@'+login в модульную память бара
+(setChatSearchBarValue гасит висящий дебаунс) и шлёт сырой '@'-запрос в
+searchChats с переходом в мессенджер; отказ — фидбек «Не удалось выполнить
+поиск». Корень kick/leave-404 при приёмке — устаревший образ compose-стека:
+пересобран, probe-скрипт scripts/probe-own-backend-routes.ps1 закоммичен.
+Прогон доведён на Linux-стенде: рантайм восстановлен с нуля (workflow init
+→ authorize → run-start), приёмка трёх волн переоформлена по свежим
+evidence (бэкенд-гейт 295 pytest на Linux, полный smoke живого стека,
+фронт 685 mocha), волна WS-FE-SEARCH реализована здесь. Финализирован:
+final-audit PASS (гейты воспроизведены независимым аудитором) →
+final-audit-outcome ACCEPTED → finalize (state COMPLETE, final-proof в
+work/). Гейты: verify 692 mocha, verify:backend 295 passed + heads
+012_message_kind, guard strict 0.
+
 # 2026-11-05 — Fix(chats): мобильный «назад» сбрасывает выбранный чат (ALK 2026-11-04-mobile-back-deselect, WS-MOBILE-BACK-DESELECT)
 
 Баг (<768px): вход в чат → «назад» → уход по нижнему бару (Контакты/

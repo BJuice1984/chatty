@@ -15,7 +15,8 @@ import { profileModule } from './profile/module.ts'
 import { aiAssistantModule } from './ai-assistant/module.ts'
 import { searchChatDocumentHits } from './ai-assistant/documents.ts'
 import { contactsModule } from './contacts/module.ts'
-import contactsController, { setChatOpener } from './contacts/controller.ts'
+import contactsController, { setChatOpener, setChatSearchOpener } from './contacts/controller.ts'
+import { setChatSearchBarValue } from '../components/searchBar/searchBar.ts'
 import Router from '../utils/Router.ts'
 import { MESSENGER } from '../utils/constants.ts'
 import type { AppModule } from '../core/module/types.ts'
@@ -48,6 +49,17 @@ setProfileSeams({
 setChatOpener((chatId) => {
     ChatsController.selectChat(chatId)
     void ChatsController.getChatUsers(chatId)
+    Router.go(MESSENGER)
+})
+
+// «Найти все чаты» (2026-11-05-messenger-ux-pack): '@'-поиск по логину
+// контакта — тоже chats-фича, contacts получает её инъекцией. Сид бара
+// ставится ДО перехода, чтобы мессенджер встретил пользователя готовым
+// запросом (инстанс бара сеет value из модульной памяти); поиск уходит
+// сырой строкой '@'+login — сервер сам различает '@'-ветку по префиксу
+setChatSearchOpener((login) => {
+    setChatSearchBarValue(`@${login}`)
+    void ChatsController.searchChats(`@${login}`)
     Router.go(MESSENGER)
 })
 

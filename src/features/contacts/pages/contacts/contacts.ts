@@ -37,10 +37,9 @@ const escapeHtml = (value: unknown): string => Handlebars.escapeExpression(
     typeof value === 'string' || typeof value === 'number' ? String(value) : ''
 )
 
-// Контент меню контакта: «Создать» (get-or-create DM), «Найти все чаты» —
-// видимый, но выключенный стаб (реализация поиска по чатам не смержена,
-// план 2026-11-01-contacts), «Отмена». Данные экранируются — modal рендерит
-// слот без экранирования
+// Контент меню контакта: «Создать» (get-or-create DM), «Найти все чаты»
+// ('@'-поиск по логину контакта, 2026-11-05-messenger-ux-pack), «Отмена».
+// Данные экранируются — modal рендерит слот без экранирования
 const renderContactMenuContent = (feedback: string): string => {
     const feedbackHtml = feedback !== ''
         ? `<p class="modal__feedback" data-testid="contact-menu-feedback">${escapeHtml(feedback)}</p>`
@@ -49,7 +48,7 @@ const renderContactMenuContent = (feedback: string): string => {
     return `<div class="modal__confirm-flow">${feedbackHtml}`
         + '<div class="modal__actions">'
         + '<button type="button" class="modal__button" data-testid="contact-menu-create">Создать</button>'
-        + '<button type="button" class="modal__button" data-testid="contact-menu-search" disabled title="пока не реализовано">Найти все чаты</button>'
+        + '<button type="button" class="modal__button" data-testid="contact-menu-search">Найти все чаты</button>'
         + '<button type="button" class="modal__button" data-testid="contact-menu-cancel">Отмена</button>'
         + '</div>'
         + '</div>'
@@ -182,6 +181,25 @@ class ContactsPageBase extends Block {
                                 })
                                 .catch(() => {
                                     this.setProps({ menuFeedback: 'Не удалось создать чат' })
+                                })
+                        }
+
+                        return
+                    }
+
+                    if (target?.closest('[data-testid="contact-menu-search"]') != null) {
+                        const menuTarget = (this.props as ContactsPageProps).menuTarget
+
+                        if (menuTarget != null) {
+                            // успех закрывает меню и уводит в мессенджер с
+                            // готовым '@'-запросом (опенер композиции); отказ
+                            // (контакт исчез из слайса) — меню остаётся с фидбеком
+                            void Promise.resolve(ContactsController.findChats(menuTarget.id))
+                                .then(() => {
+                                    this.setProps({ menuTarget: null, menuFeedback: '' })
+                                })
+                                .catch(() => {
+                                    this.setProps({ menuFeedback: 'Не удалось выполнить поиск' })
                                 })
                         }
 

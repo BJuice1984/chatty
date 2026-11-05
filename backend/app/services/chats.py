@@ -8,9 +8,11 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.models.chat import Chat, ChatMember
+from app.models.message import Message
 from app.models.user import User
 from app.repositories.chats import ChatRepository
 from app.repositories.contacts import ContactRepository
+from app.repositories.messages import MessageRepository
 from app.repositories.users import UserRepository
 from app.schemas.chat import (
     ChatCreate,
@@ -18,6 +20,7 @@ from app.schemas.chat import (
     ChatMemberBrief,
     ChatSearchResult,
     ChatSearchSnippet,
+    ChatUpdate,
 )
 from app.schemas.file import avatar_url as file_avatar_url
 
@@ -39,16 +42,20 @@ def to_member_brief(
     email: str,
     avatar_file_id: int | None,
     display_name: str | None = None,
+    left_at: datetime | None = None,
 ) -> ChatMemberBrief:
     """Единая точка сборки формы участника: и список чатов, и эндпоинт
     участников строят её здесь, чтобы формы не разъехались (login —
     email-хэнл контракта, display_name — редактируемая колонка с fallback
-    на локальную часть email — правило UserSearchItem/ContactResponse)."""
+    на локальную часть email — правило UserSearchItem/ContactResponse);
+    left_at — архивное членство, значимо только для одиночного эндпоинта
+    участников (краткие составы GET /chats зовут без него)."""
     return ChatMemberBrief(
         id=user_id,
         login=email,
         display_name=display_name or email.split('@')[0],
         avatar_url=file_avatar_url(avatar_file_id),
+        left_at=left_at,
     )
 
 
@@ -76,6 +83,7 @@ class ChatService:
         self.session = session
         self.chats = ChatRepository(session)
         self.users = UserRepository(session)
+        self.messages_repo = MessageRepository(session)
         # the repository (not ContactService) is composed here to keep the
         # implicit capture free of a service-to-service cycle
         self.contacts = ContactRepository(session)
@@ -86,6 +94,42 @@ class ChatService:
         self.session.commit()
         self.session.refresh(chat)
         return chat
+
+    def rename(self, chat_id: int, requester_id: int, payload: ChatUpdate) -> tuple[Chat, Message | None]:
+        """Rename by any ACTIVE member (require_active_member — the write
+        guard; archived rows stay read-only). The identical-title call is an
+        idempotent no-op (no message, None returned); otherwise the title
+        update and the persistent system message (kind='chat_renamed',
+        user_id = actor, content carrying the actor's display_name and the
+        new title) land in ONE transaction. Returns (chat, system_message)
+        — the endpoint broadcasts both payloads to ACTIVE members."""
+
+        chat = self.require_active_member(chat_id, requester_id)
+        title = payload.title.strip()
+        if chat.title == title:
+            return chat, None
+        actor = self.users.get_by_id(requester_id)
+        # display_name fallback — правило to_member_brief (локальная часть email)
+        actor_name = (actor.display_name if actor is not None and actor.display_name else None) \
+            or (actor.email.split('@')[0] if actor is not None else str(requester_id))
+        chat.title = title
+        message = self.messages_repo.add(Message(
+            chat_id=chat_id,
+            user_id=requester_id,
+            content=f'{actor_name} переименовал чат в «{title}»',
+            kind='chat_renamed',
+        ))
+        self.session.commit()
+        self.session.refresh(chat)
+        return chat, message
+
+    def mark_all_read(self, user_id: int) -> int:
+        """«Пометить всё прочитанными»: bulk-upsert маркеров чтения по всем
+        чатам пользователя (активным И архивным — ровно тот скоуп, чьи
+        непрочитанные считает unread_counts). Возвращает число чатов с
+        сообщениями (чаты без сообщений маркера не требуют)."""
+
+        return self.chats.mark_all_read(user_id)
 
     def create_dm(self, owner_id: int, target_id: int) -> tuple[Chat, bool]:
         """Get-or-create the 1:1 chat with the user: the existing DM (found
@@ -170,7 +214,16 @@ class ChatService:
         вокруг первого вхождения в СВЕЖАЙШЕМ совпадающем сообщении.
         Порядок: группа с совпадением в title (title ASC, chat_id ASC),
         затем только-сообщения (свежее совпадение раньше, chat_id DESC);
-        cap CHATS_SEARCH_RESULTS_CAP применяется после сортировки."""
+        cap CHATS_SEARCH_RESULTS_CAP применяется после сортировки.
+
+        '@'-режим: запрос с ведущим '@' ищет не по тексту, а по СОУЧАСТНИКАМ
+        (префикс login/display_name, кроме самого запрашивающего) — это путь
+        ручного '@'-ввода и кнопки «Найти все чаты» (сид '@'+email уникален
+        и даёт ровно общие чаты с этим пользователем). Порядок — по
+        активности (last_message ?? created_at, id DESC), сниппет несёт имя
+        совпавшего, времени совпадения нет."""
+        if q.startswith('@'):
+            return self._search_by_member(user_id, q[1:].strip())
         titles = dict(self.chats.search_title_matches(user_id, q))
         messages: dict[int, tuple[str, datetime]] = {
             chat_id: (content, created_at)
@@ -211,6 +264,46 @@ class ChatService:
                 )
             )
         return results[:CHATS_SEARCH_RESULTS_CAP]
+
+    def _search_by_member(self, user_id: int, term: str) -> list[ChatSearchResult]:
+        """'@'-ветка: пустой term честно даёт пустой результат; matched_in
+        'member', сниппет — имя совпавшего участника (выбрано в репозитории),
+        last_match_at нет; порядок по активности (last_message.created_at ??
+        chat.created_at DESC, затем id DESC — зеркалирует клиентский
+        activityOrder: датируемые свежее-раньше, недатированные ниже всех)."""
+        if term == '':
+            return []
+        matches = self.chats.search_member_matches(user_id, term)
+        if not matches:
+            return []
+        chat_ids = [chat_id for chat_id, _name in matches]
+        last_messages = self.last_messages_for_chats(chat_ids)
+        created_ats = self.chats.chat_created_ats(chat_ids)
+
+        def anchor_of(chat_id: int):
+            brief = last_messages.get(chat_id)
+            if brief is not None:
+                return brief.time
+            return created_ats.get(chat_id)
+
+        anchored = sorted(
+            [(chat_id, name) for chat_id, name in matches if anchor_of(chat_id) is not None],
+            key=lambda item: (anchor_of(item[0]), item[0]),
+            reverse=True,
+        )
+        unanchored = sorted(
+            [(chat_id, name) for chat_id, name in matches if anchor_of(chat_id) is None],
+            key=lambda item: item[0],
+            reverse=True,
+        )
+        return [
+            ChatSearchResult(
+                chat_id=chat_id,
+                matched_in='member',
+                snippet=ChatSearchSnippet(before='', match=name, after=''),
+            )
+            for chat_id, name in (anchored + unanchored)[:CHATS_SEARCH_RESULTS_CAP]
+        ]
 
     def mark_read(self, chat_id: int, user_id: int, message_id: int) -> None:
         """Открытие истории читает чат до message_id включительно.
