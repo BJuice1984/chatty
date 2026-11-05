@@ -32,6 +32,22 @@ export function getChatSearchBarMemory(): ChatSearchBarMemory {
     return { value: lastTypedValue, ...lastFocus }
 }
 
+// Программный сид значения (2026-11-05-messenger-ux-pack, WS-FE-SEARCH):
+// «Найти все чаты» из контактов сеет '@'-запрос до перехода в мессенджер,
+// чтобы бар встретил пользователя готовым запросом, а не пустым полем.
+// Фокус не подделываем (wasFocused:false — перерисовки не вернут его в поле),
+// каретка — в конец сида; висящий дебаунс гасим: его onSearch стрелял бы по
+// старому значению на мёртвом инстансе
+export function setChatSearchBarValue(value: string): void {
+    lastTypedValue = value
+    lastFocus = { wasFocused: false, caret: value.length }
+
+    if (pendingSearchTimer != null) {
+        clearTimeout(pendingSearchTimer)
+        pendingSearchTimer = null
+    }
+}
+
 interface SearchBarProps {
     label: string
     name: string

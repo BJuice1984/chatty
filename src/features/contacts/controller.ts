@@ -19,9 +19,23 @@ const noopChatOpener: ChatOpener = () => {}
 
 let chatOpener: ChatOpener = noopChatOpener
 
+// Поиск всех чатов контакта («Найти все чаты», 2026-11-05-messenger-ux-pack):
+// та же инъекция композицией. Опенер получает СЫРОЙ login контакта —
+// '@'-префикс, сид бара и переход в мессенджер принадлежат features/index.ts
+// eslint-disable-next-line no-unused-vars
+type ChatSearchOpener = (login: string) => void
+
+const noopChatSearchOpener: ChatSearchOpener = () => {}
+
+let chatSearchOpener: ChatSearchOpener = noopChatSearchOpener
+
 // Композиция (features/index.ts) вызывает это до первого рендера.
 export function setChatOpener(opener: ChatOpener): void {
     chatOpener = opener
+}
+
+export function setChatSearchOpener(opener: ChatSearchOpener): void {
+    chatSearchOpener = opener
 }
 
 export class ContactsFeatureController {
@@ -90,6 +104,25 @@ export class ContactsFeatureController {
         }
 
         chatOpener(result.chatId)
+    }
+
+    // «Найти все чаты» контакта: логин берётся из contacts-слайса (страница
+    // знает только id) и уходит инъецированному опенеру. Контакт мог быть
+    // удалён из слайса между рендером меню и кликом — в отличие от openDm
+    // отказ здесь реален, поэтому ошибка НЕ гасится: страница показывает
+    // фидбек «Не удалось выполнить поиск». Возврат — явный Promise (не
+    // async): отказ обязан стать rejection, а не sync-throw сквозь
+    // делегирование клика страницы
+    findChats(userId: number): Promise<void> {
+        const login = contactsSlice.getContacts().find(contact => contact.id === userId)?.login
+
+        if (login == null || login === '') {
+            return Promise.reject(new Error('contact_not_found'))
+        }
+
+        chatSearchOpener(login)
+
+        return Promise.resolve()
     }
 }
 

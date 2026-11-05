@@ -6,7 +6,7 @@ import { expect } from 'chai'
 import { JSDOM } from 'jsdom'
 import sinon from 'sinon'
 import '../../features/ai-assistant/hbs-test-loader.ts'
-import { CHAT_SEARCH_DEBOUNCE_MS, getChatSearchBarMemory, SearchBar } from './searchBar.ts'
+import { CHAT_SEARCH_DEBOUNCE_MS, getChatSearchBarMemory, SearchBar, setChatSearchBarValue } from './searchBar.ts'
 
 const dom = new JSDOM()
 global.document = dom.window.document
@@ -38,7 +38,8 @@ const blurFrom = (bar: SearchBar): void => {
 }
 
 // Модульная память глобальна: между тестами возвращаем её к чистому
-// листу через те же события (отдельного сеттера сознательно нет)
+// листу через те же события (продуктовый сеттер setChatSearchBarValue
+// для этого не используем — он несёт смысловую семантику сида)
 const resetMemory = (): void => {
     const bar = new SearchBar()
     typeInto(bar, '')
@@ -156,6 +157,35 @@ describe('search bar live search', () => {
         form?.dispatchEvent(submit)
 
         expect(submit.defaultPrevented).to.be.true
+
+        bar.destroy()
+    })
+
+    it('seeds the next instance with the value set programmatically (WS-FE-SEARCH)', () => {
+        setChatSearchBarValue('@ivan')
+
+        const memory = getChatSearchBarMemory()
+        expect(memory.value).to.equal('@ivan')
+        expect(memory.wasFocused).to.be.false
+        expect(memory.caret).to.equal('@ivan'.length)
+
+        const bar = new SearchBar()
+        const input = bar.element?.querySelector<HTMLInputElement>('input[name="chat_search"]')
+        expect(input?.value).to.equal('@ivan')
+
+        bar.destroy()
+    })
+
+    it('clears a pending debounce timer when the value is set programmatically', () => {
+        const onSearch = sinon.stub()
+        const bar = new SearchBar({ onSearch })
+
+        typeInto(bar, 'ab')
+        setChatSearchBarValue('@ivan')
+        clock.tick(CHAT_SEARCH_DEBOUNCE_MS * 2)
+
+        // висящий таймер 'ab' погашен: без сида он выстрелил бы ровно один раз
+        expect(onSearch.called).to.be.false
 
         bar.destroy()
     })

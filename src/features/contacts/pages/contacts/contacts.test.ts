@@ -1,7 +1,8 @@
 // Страница адресной книги (2026-11-01-contacts): список рисуется из слайса
 // стора (XSS-пин: login с <script> — текстом), CDM фетчит контакты, модалка
 // «Добавить» переиспользует билдер messenger с бейджем «уже в контактах» и
-// дебаунсом 300 мс, меню контакта зовёт openDm/removeContact. Состояние
+// дебаунсом 300 мс, меню контакта зовёт openDm/removeContact, «Найти все
+// чаты» — findChats (2026-11-05-messenger-ux-pack). Состояние
 // модалок — controller-free UI-пропсы; шаблон грузится тестовым погрузчиком,
 // компоненты-хелперы — импортом components.ts, как в прод-сборке main.ts.
 
@@ -244,7 +245,7 @@ describe('contacts page', () => {
         }
     })
 
-    it('renders «Найти все чаты» disabled with the stub title', () => {
+    it('renders «Найти все чаты» enabled without the stub title (WS-FE-SEARCH)', () => {
         store.set('contacts', [bob])
 
         const page = new ContactsPage({} as never)
@@ -252,11 +253,11 @@ describe('contacts page', () => {
         try {
             click(page.element?.querySelector('[data-testid="contact-item"]'))
 
-            const stub = inOpenModal(page, 'contact-menu-search') as HTMLButtonElement | null
+            const search = inOpenModal(page, 'contact-menu-search') as HTMLButtonElement | null
 
-            expect(stub?.disabled).to.be.true
-            expect(stub?.getAttribute('title')).to.equal('пока не реализовано')
-            expect(stub?.textContent).to.contain('Найти все чаты')
+            expect(search?.disabled).to.be.false
+            expect(search?.getAttribute('title')).to.be.null
+            expect(search?.textContent).to.contain('Найти все чаты')
         } finally {
             page.destroy()
         }
@@ -305,6 +306,52 @@ describe('contacts page', () => {
             page.destroy()
         } finally {
             openDm.restore()
+        }
+    })
+
+    it('searches all chats through «Найти все чаты» and closes the menu', async () => {
+        const findChats = sinon.stub(ContactsController, 'findChats').resolves()
+
+        try {
+            store.set('contacts', [bob])
+
+            const page = new ContactsPage({} as never)
+
+            click(page.element?.querySelector('[data-testid="contact-item"]'))
+            click(inOpenModal(page, 'contact-menu-search'))
+
+            expect(findChats.calledOnceWith(9)).to.be.true
+
+            await new Promise(resolve => setTimeout(resolve, 0))
+
+            expect(inOpenModal(page, 'contact-menu-search')).to.not.exist
+            expect(stateOf(page).menuTarget).to.be.null
+
+            page.destroy()
+        } finally {
+            findChats.restore()
+        }
+    })
+
+    it('keeps the menu with «Не удалось выполнить поиск» when findChats rejects', async () => {
+        const findChats = sinon.stub(ContactsController, 'findChats').rejects(new Error('contact_not_found'))
+
+        try {
+            store.set('contacts', [bob])
+
+            const page = new ContactsPage({} as never)
+
+            click(page.element?.querySelector('[data-testid="contact-item"]'))
+            click(inOpenModal(page, 'contact-menu-search'))
+
+            await new Promise(resolve => setTimeout(resolve, 0))
+
+            expect(inOpenModal(page, 'contact-menu-search')).to.exist
+            expect(inOpenModal(page, 'contact-menu-feedback')?.textContent).to.equal('Не удалось выполнить поиск')
+
+            page.destroy()
+        } finally {
+            findChats.restore()
         }
     })
 

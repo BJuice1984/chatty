@@ -1,3 +1,26 @@
+# 2026-11-05 — Feat(messenger): UX-батч из шести фич — сортировка, шапка-переименование, служебные строки, mark-all-read, '@'-поиск (ALK 2026-11-05-messenger-ux-pack)
+
+Пакет S2 (план rev 3, четыре волны): новый чат сверху (created_at-фолбек
+сортировки активности, id DESC при ничьей); шапка чата — аватар owner-only,
+эллипсис заголовка, dblclick-переименование с коммитом Enter/Escape/клик-вне
+(обычный набор текста не коммитит — remediation r2), оптимистичный патч с
+откатом; служебная строка ленты для kind-сообщений (миграция 012
+messages.kind, экранированный контент); иконка «Пометить всё прочитанными»
+(disabled без unread, POST /chats/read-all по всем членствам); '@'-поиск
+соучастников в GET /chats/search (префикс email/display_name, caller
+исключён, кап 50) + chat_renamed-рассылка патчит заголовки без рефетча;
+«Найти все чаты» в контактах — findChats берёт login из слайса, композиция
+(features/index.ts) сеет '@'+login в модульную память бара
+(setChatSearchBarValue гасит висящий дебаунс) и шлёт сырой '@'-запрос в
+searchChats с переходом в мессенджер; отказ — фидбек «Не удалось выполнить
+поиск». Корень kick/leave-404 при приёмке — устаревший образ compose-стека:
+пересобран, probe-скрипт scripts/probe-own-backend-routes.ps1 закоммичен.
+Прогон доведён на Linux-стенде: рантайм восстановлен с нуля (workflow init
+→ authorize → run-start), приёмка трёх волн переоформлена по свежим
+evidence (бэкенд-гейт 295 pytest на Linux, полный smoke живого стека,
+фронт 685 mocha), волна WS-FE-SEARCH реализована здесь. Гейты: verify 685
+mocha, verify:backend 295 passed + heads 012_message_kind, guard strict 0.
+
 # 2026-11-05 — Fix(chats): мобильный «назад» сбрасывает выбранный чат (ALK 2026-11-04-mobile-back-deselect, WS-MOBILE-BACK-DESELECT)
 
 Баг (<768px): вход в чат → «назад» → уход по нижнему бару (Контакты/
