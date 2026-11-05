@@ -1,7 +1,7 @@
 {
     "schemaVersion": "agent-plan-manifest.v1",
     "status": "FROZEN",
-    "planRevision": 2,
+    "planRevision": 3,
     "package": {
         "id": "2026-11-05-messenger-ux-pack",
         "title": "Messenger UX pack: new-chat ordering, header avatar + rename, member '@'-search, stack redeploy, mark-all-read",
@@ -39,8 +39,12 @@
                 "description": "ChatUpdate {title 1..200}; PUT /api/v1/chats/{chat_id} behind get_current_user, require_active_member guard (archived 403, unknown 404, anonymous 401). The method is PUT — the repo precedent for partial-update semantics without a PATCH verb (PUT /auth/profile, src/features/profile/api/own.ts; HTTPTransport has no patch method). Service rename(): strip title; identical title → idempotent 200 no-op WITHOUT a message; otherwise update Chat.title and insert Message(user_id=caller, content=f\"{actor display_name} переименовал чат в «{new title}»\", kind='chat_renamed') in ONE transaction; after commit broadcast to ACTIVE members (a) {'type':'message','content':MessageResponse-with-kind} and (b) {'type':'chat_renamed','content':{'chat_id','title'}} (hub.broadcast active_user_ids — the delete_chat precedent). messages.kind nullable String(16) via migration 012; MessageResponse gains additive kind: str|None = None (present fills it via model_validate). Response: updated ChatResponse.",
                 "priority": "P1",
                 "source": "operator request 2026-11-05 item 3 + clarification (any active member; system message with actor and time; WS broadcast approved)",
-                "acceptanceIds": ["AC-BE-RENAME"],
-                "evidenceIds": ["EV-BE-1"],
+                "acceptanceIds": [
+                    "AC-BE-RENAME"
+                ],
+                "evidenceIds": [
+                    "EV-BE-1"
+                ],
                 "owner": "WS-BE-API"
             },
             {
@@ -49,8 +53,12 @@
                 "description": "POST /api/v1/chats/read-all behind get_current_user; ChatReadAllResponse {updated: int}. Repository mark_all_read(user_id): one dialect-aware INSERT..SELECT (pg/sqlite like mark_read) — for every membership of the caller INCLUDING archived (matching unread_counts semantics) upsert chat_last_reads.last_read_message_id = max(messages.id) per chat, ON CONFLICT (user_id, chat_id) DO UPDATE only forward (existing < new); chats without messages produce no row; 'updated' = chats covered by the SELECT. No WS fan-out (read state is per-user).",
                 "priority": "P1",
                 "source": "operator request 2026-11-05 item 6",
-                "acceptanceIds": ["AC-BE-READ-ALL"],
-                "evidenceIds": ["EV-BE-1"],
+                "acceptanceIds": [
+                    "AC-BE-READ-ALL"
+                ],
+                "evidenceIds": [
+                    "EV-BE-1"
+                ],
                 "owner": "WS-BE-API"
             },
             {
@@ -59,8 +67,12 @@
                 "description": "q starting with '@': term = q[1:] stripped; empty term → 200 results: []. Repository search_member_matches(user_id, term): chats with ANY membership of the caller where ANOTHER member (user_id != caller) matches case-insensitive PREFIX on lower(email) OR lower(coalesce(display_name,'')) with escape_like; per chat the deterministic first match (min user_id) yields the snippet name (display_name or login). Service: matched_in='member' (Literal extended), snippet {before:'', match:<name>, after:''}, last_match_at=None; ordering by chat activity (last_message.created_at ?? chat.created_at, id DESC), cap CHATS_SEARCH_RESULTS_CAP. Non-'@' queries byte-identical to today.",
                 "priority": "P1",
                 "source": "operator request 2026-11-05 item 4 + clarification ('@'+full email seed)",
-                "acceptanceIds": ["AC-BE-MEMBER-SEARCH"],
-                "evidenceIds": ["EV-BE-1"],
+                "acceptanceIds": [
+                    "AC-BE-MEMBER-SEARCH"
+                ],
+                "evidenceIds": [
+                    "EV-BE-1"
+                ],
                 "owner": "WS-BE-API"
             },
             {
@@ -69,8 +81,12 @@
                 "description": "012_message_kind: op.add_column('messages', sa.Column('kind', sa.String(16), nullable=True)); downgrade drop_column via batch_alter_table (SQLite-safe); alembic heads == 012_message_kind. Segment roundtrip tests 009/010/011 (stamp head + explicit downgrade targets) must stay green; if an isolation assertion breaks, this workstream owns the minimal repin (explicit own-revision stamps) while keeping each test's owned delta asserted.",
                 "priority": "P1",
                 "source": "structural consequence of REQ-BE-RENAME (lessons: 011/010/009 segment repins)",
-                "acceptanceIds": ["AC-BE-MIGRATION"],
-                "evidenceIds": ["EV-BE-1"],
+                "acceptanceIds": [
+                    "AC-BE-MIGRATION"
+                ],
+                "evidenceIds": [
+                    "EV-BE-1"
+                ],
                 "owner": "WS-BE-API"
             },
             {
@@ -79,8 +95,12 @@
                 "description": "ChatInfo.created_at?: string (utils/types.ts); own adapter toChatInfo maps it; activityOrder falls back to Date.parse(created_at) when last_message is absent/invalid (NaN → -Infinity), tie id DESC. chatListUser: InputFile/onChatFile/avatar onClick/pencil background and hover affordances REMOVED (template + scss); chat.hbs stops passing onChatFile. Messenger header: chat avatar block left of the title (the 77px slot; desktop padding reduced, mobile keeps the back-button row), hidden InputFile + onChatAvatar wiring (existing changeChatAvatar path), pencil+click affordance ONLY when meId === ownerId AND the chat is NOT archived (the same leftAt flag that hides the composer and the cross button — an archived owner must not get a 403 path); title gets flex:1 + min-width:0 so long names ellipsize.",
                 "priority": "P1",
                 "source": "operator request 2026-11-05 items 1–2",
-                "acceptanceIds": ["AC-FE-CHAT-LIST"],
-                "evidenceIds": ["EV-FE-1"],
+                "acceptanceIds": [
+                    "AC-FE-CHAT-LIST"
+                ],
+                "evidenceIds": [
+                    "EV-FE-1"
+                ],
                 "owner": "WS-FE-CHAT"
             },
             {
@@ -89,8 +109,12 @@
                 "description": "messenger.hbs: while renamingTitle the title swaps to <input> (root-delegated dblclick; Enter/Escape keydown and focusout commit); empty trimmed value silently reverts; commit → onRenameChat(chatId, title). The dblclick→input affordance is gated by the archived flag (chatInfo.leftAt — the same flag that hides the composer and the cross button): an archived member never gets the input. Controller renameChat(): optimistic chats-slice title patch, port.renameChat (PUT + csrf header), error → revert + console.error. message-mapping.ts toMessage + OwnMessageResponse pass kind; Message.kind?: string; mapTypedMessages → isSystem (kind != null); message.hbs renders system entries as a centered muted service line with time (no bubble/avatar/reply). WS: own adapter handles 'chat_renamed' → gateway notifyChatRenamed → controller patches the slice title (skip identical); 'message' events with kind flow through the existing append path.",
                 "priority": "P1",
                 "source": "operator request 2026-11-05 item 3 (dblclick, save without confirmation on Enter/Esc/outside — Esc SAVES per clarification)",
-                "acceptanceIds": ["AC-FE-RENAME-UI"],
-                "evidenceIds": ["EV-FE-1"],
+                "acceptanceIds": [
+                    "AC-FE-RENAME-UI"
+                ],
+                "evidenceIds": [
+                    "EV-FE-1"
+                ],
                 "owner": "WS-FE-CHAT"
             },
             {
@@ -99,8 +123,12 @@
                 "description": "public/images/mark-all-read-icon.svg (double-check, currentColor); HeaderIcons second icon switches from settings-icon.svg (alt/naming updated — no longer settings), onClick → controller markAllRead(); page mapper passes hasUnread = chats.some(unread_count > 0); icon dimmed + pointer-events:none without unread (chat.scss modifier). markAllRead(): port.readAll() → POST /chats/read-all + csrf → store patch unread_count=0 across chats. /settings via BottomBar unchanged.",
                 "priority": "P1",
                 "source": "operator request 2026-11-05 item 6",
-                "acceptanceIds": ["AC-FE-READ-ALL-ICON"],
-                "evidenceIds": ["EV-FE-1"],
+                "acceptanceIds": [
+                    "AC-FE-READ-ALL-ICON"
+                ],
+                "evidenceIds": [
+                    "EV-FE-1"
+                ],
                 "owner": "WS-FE-CHAT"
             },
             {
@@ -109,8 +137,12 @@
                 "description": "ChatSearchMatch.matched_in gains 'member' (utils/types.ts + own DTO literal — added by WS-FE-CHAT in shared files); searchOrder renders member matches via the existing snippet path (pinned by test, not changed). Contacts menu «Найти все чаты» enabled (disabled/title removed); click → ContactsController.findChats(id) resolves login from the slice and calls injected chatSearchOpener(login); error → menu feedback «Не удалось выполнить поиск». Consumer-side seam setChatSearchOpener (default noop) in the contacts controller; features/index.ts wires: setChatSearchBarValue('@'+login); void ChatsController.searchChats('@'+login); Router.go(MESSENGER). searchBar.ts exports setChatSearchBarValue(value) writing module memory (lastTypedValue, wasFocused:false) and clearing the pending debounce timer.",
                 "priority": "P1",
                 "source": "operator request 2026-11-05 item 4",
-                "acceptanceIds": ["AC-FE-MENTION-SEARCH"],
-                "evidenceIds": ["EV-FE-2"],
+                "acceptanceIds": [
+                    "AC-FE-MENTION-SEARCH"
+                ],
+                "evidenceIds": [
+                    "EV-FE-2"
+                ],
                 "owner": "WS-FE-SEARCH"
             },
             {
@@ -119,8 +151,12 @@
                 "description": "Operator-approved runbook procedure (docs/deployment/own-backend.md): a committed probe script scripts/probe-own-backend-routes.ps1 (health curls + unauthenticated 401-vs-404 route table for DELETE /chats/{id}/members/{uid}, POST /chats/{id}/leave, POST /chats/{id}/rejoin, PUT /chats/{id}, POST /chats/read-all, GET /chats/search?q=@a); docker compose --env-file <operator env> config --quiet; up -d --build; authenticated smoke against the seeded admin (rename → system message + title, '@'-search, read-all zeroing, kick + leave on a scratch chat); alembic heads == 012. Rollback per runbook on health failure. The only repository write is the probe script itself.",
                 "priority": "P1",
                 "source": "operator request 2026-11-05 item 5 + clarification (rebuild approved); root cause verified: live container built 2026-11-01 12:13 pre-chat-leave, routes 404 while repo code is consistent",
-                "acceptanceIds": ["AC-OPS-REDEPLOY"],
-                "evidenceIds": ["EV-OPS-1"],
+                "acceptanceIds": [
+                    "AC-OPS-REDEPLOY"
+                ],
+                "evidenceIds": [
+                    "EV-OPS-1"
+                ],
                 "owner": "WS-OPS-STACK"
             }
         ],
@@ -221,16 +257,32 @@
                 "backend/alembic/versions/011_settings.py"
             ],
             "launchGate": "feature/2026-11-05-messenger-ux-pack branch created at cadf2b019c5312fbc8142f75197ab6ac8caec81e; base gates recorded 2026-11-05: npm run verify green (655 mocha); PYTHON_BIN=~/.venvs/chatty-backend/Scripts/python.exe bash backend/verify.sh → 277 passed + 4 known Windows ingestion failures (pre-existing noise, full log retained).",
-            "capabilityHints": ["fastapi", "sqlalchemy", "alembic", "pytest", "python"],
-            "requiredTools": ["python", "pytest"],
+            "capabilityHints": [
+                "fastapi",
+                "sqlalchemy",
+                "alembic",
+                "pytest",
+                "python"
+            ],
+            "requiredTools": [
+                "python",
+                "pytest"
+            ],
             "contextRefs": [
                 "plan.md",
                 "acceptance-criteria.md",
                 "specification.json",
                 "developer-overview.md"
             ],
-            "acceptanceIds": ["AC-BE-RENAME", "AC-BE-READ-ALL", "AC-BE-MEMBER-SEARCH", "AC-BE-MIGRATION"],
-            "evidenceIds": ["EV-BE-1"],
+            "acceptanceIds": [
+                "AC-BE-RENAME",
+                "AC-BE-READ-ALL",
+                "AC-BE-MEMBER-SEARCH",
+                "AC-BE-MIGRATION"
+            ],
+            "evidenceIds": [
+                "EV-BE-1"
+            ],
             "executionPolicy": {
                 "maxAttempts": 3,
                 "maxWallSeconds": 3600
@@ -260,7 +312,9 @@
             "title": "Ops: compose rebuild restoring chat-leave routes and shipping the new endpoints",
             "owner": "worker-ops-stack",
             "reviewer": "independent-release-reviewer",
-            "dependsOn": ["WS-BE-API"],
+            "dependsOn": [
+                "WS-BE-API"
+            ],
             "writes": [
                 "scripts/probe-own-backend-routes.ps1"
             ],
@@ -271,16 +325,26 @@
             ],
             "forbiddenWrites": [],
             "launchGate": "WS-BE-API accepted; backend changes present on the run branch; docker daemon reachable.",
-            "capabilityHints": ["docker", "compose", "bash"],
-            "requiredTools": ["docker"],
+            "capabilityHints": [
+                "docker",
+                "compose",
+                "bash"
+            ],
+            "requiredTools": [
+                "docker"
+            ],
             "contextRefs": [
                 "plan.md",
                 "acceptance-criteria.md",
                 "developer-overview.md",
                 "docs/deployment/own-backend.md"
             ],
-            "acceptanceIds": ["AC-OPS-REDEPLOY"],
-            "evidenceIds": ["EV-OPS-1"],
+            "acceptanceIds": [
+                "AC-OPS-REDEPLOY"
+            ],
+            "evidenceIds": [
+                "EV-OPS-1"
+            ],
             "executionPolicy": {
                 "maxAttempts": 2,
                 "maxWallSeconds": 2400
@@ -307,13 +371,17 @@
             "title": "Frontend: ordering, header avatar + overflow, inline rename, system messages, mark-all-read",
             "owner": "worker-frontend-chat",
             "reviewer": "independent-release-reviewer",
-            "dependsOn": ["WS-BE-API"],
+            "dependsOn": [
+                "WS-BE-API"
+            ],
             "writes": [
                 "public/images/mark-all-read-icon.svg",
                 "src/components/chatListUser/chatListUser.hbs",
-                "src/components/chatListUser/chatListUser.ts",
                 "src/components/chatListUser/chatListUser.test.ts",
+                "src/components/chatListUser/chatListUser.ts",
                 "src/components/headerIcons/headerIcon/headerIcon.hbs",
+                "src/components/headerIcons/headerIcon/headerIcon.ts",
+                "src/components/headerIcons/headerIcons.hbs",
                 "src/components/headerIcons/headerIcons.test.ts",
                 "src/components/headerIcons/headerIcons.ts",
                 "src/components/message/message.hbs",
@@ -349,16 +417,31 @@
             ],
             "forbiddenWrites": [],
             "launchGate": "WS-BE-API accepted at the integration baseline; npm run verify green at base (655 mocha).",
-            "capabilityHints": ["typescript", "handlebars", "scss", "mocha", "sinon"],
-            "requiredTools": ["node", "npm"],
+            "capabilityHints": [
+                "typescript",
+                "handlebars",
+                "scss",
+                "mocha",
+                "sinon"
+            ],
+            "requiredTools": [
+                "node",
+                "npm"
+            ],
             "contextRefs": [
                 "plan.md",
                 "acceptance-criteria.md",
                 "specification.json",
                 "developer-overview.md"
             ],
-            "acceptanceIds": ["AC-FE-CHAT-LIST", "AC-FE-RENAME-UI", "AC-FE-READ-ALL-ICON"],
-            "evidenceIds": ["EV-FE-1"],
+            "acceptanceIds": [
+                "AC-FE-CHAT-LIST",
+                "AC-FE-RENAME-UI",
+                "AC-FE-READ-ALL-ICON"
+            ],
+            "evidenceIds": [
+                "EV-FE-1"
+            ],
             "executionPolicy": {
                 "maxAttempts": 3,
                 "maxWallSeconds": 3600
@@ -377,7 +460,6 @@
                 "store.ts (chatsSlice): title/unread patch helpers as needed — no utils/Store.ts edit",
                 "chatListUser: InputFile/onChatFile/onClick removed from template and component; pencil background + hover affordances removed from scss; chatListUser.test.ts pins no hidden input/no click handler; chat.hbs stops passing onChatFile",
                 "messenger.hbs/ts: chat avatar block left of the title (ChatAvatar + hidden InputFile onChatAvatar; affordance only when meId === ownerId AND !archived — the leftAt flag that already hides the composer/cross); title flex:1 + min-width:0 ellipsis; dblclick → renamingTitle input gated by !archived (root-delegated dblclick; Enter/Escape/focusout commit; empty reverts silently); onRenameChat prop → controller; messenger.test.ts pins the archived gate (no input on dblclick, no avatar affordance)",
-
                 "message.hbs/ts: kind-bearing message renders as centered muted service line with time (no bubble/avatar/reply affordances); mapTypedMessages → isSystem; message.test.ts pins the service line + XSS (system content with '<script>' renders as text)",
                 "headerIcons: second icon → mark-all-read-icon.svg, alt «Иконка. Пометить всё прочитанными», onClick + disabled modifier when !hasUnread; headerIcon.hbs carries the modifier class; headerIcons.test.ts pins src/alt/disabled/click",
                 "chat.hbs/chat.ts: HeaderIcons gets hasUnread (mapper: chats.some(unread_count > 0)) + onMarkAllRead → ChatsController.markAllRead; activityOrder falls back to created_at (chat.test.ts pins new-chat-on-top + id DESC tie-break); chat.test.ts ALSO pins the member-match render: searchOrder output for matched_in='member' carries snippetParts (highlighted snippet line) and NO titleParts — this wave owns chat.test.ts, so the pin lives here (review F-3)",
@@ -391,7 +473,9 @@
             "title": "Frontend: «Найти все чаты» + '@'-wiring + docs",
             "owner": "worker-frontend-search",
             "reviewer": "independent-release-reviewer",
-            "dependsOn": ["WS-FE-CHAT"],
+            "dependsOn": [
+                "WS-FE-CHAT"
+            ],
             "writes": [
                 "docs/NEXT.md",
                 "docs/progress/progress_log.md",
@@ -410,16 +494,29 @@
             ],
             "forbiddenWrites": [],
             "launchGate": "WS-FE-CHAT accepted at the integration baseline; npm run verify green.",
-            "capabilityHints": ["typescript", "handlebars", "mocha", "sinon"],
-            "requiredTools": ["node", "npm"],
+            "capabilityHints": [
+                "typescript",
+                "handlebars",
+                "mocha",
+                "sinon"
+            ],
+            "requiredTools": [
+                "node",
+                "npm"
+            ],
             "contextRefs": [
                 "plan.md",
                 "acceptance-criteria.md",
                 "specification.json",
                 "developer-overview.md"
             ],
-            "acceptanceIds": ["AC-FE-MENTION-SEARCH", "AC-PROCESS"],
-            "evidenceIds": ["EV-FE-2"],
+            "acceptanceIds": [
+                "AC-FE-MENTION-SEARCH",
+                "AC-PROCESS"
+            ],
+            "evidenceIds": [
+                "EV-FE-2"
+            ],
             "executionPolicy": {
                 "maxAttempts": 3,
                 "maxWallSeconds": 3600
@@ -445,8 +542,12 @@
             {
                 "id": "AC-BE-RENAME",
                 "title": "Rename + system message + broadcasts proven by pytest",
-                "requirementIds": ["REQ-BE-RENAME"],
-                "evidenceIds": ["EV-BE-1"],
+                "requirementIds": [
+                    "REQ-BE-RENAME"
+                ],
+                "evidenceIds": [
+                    "EV-BE-1"
+                ],
                 "independentEvidenceIds": [],
                 "statement": "PUT /chats/{id} renames (200, title persisted, system Message kind='chat_renamed' with actor display_name + new title in content, created_at set); same-title call is an idempotent no-op 200 WITHOUT a second message; blank/oversized title 422; archived member 403; non-member 403; anonymous 401; the test hub received BOTH {'type':'message'} (with kind) and {'type':'chat_renamed'} {chat_id, title} for ACTIVE members only.",
                 "description": "Backend integration tests.",
@@ -456,8 +557,12 @@
             {
                 "id": "AC-BE-READ-ALL",
                 "title": "Bulk read-all proven by pytest",
-                "requirementIds": ["REQ-BE-READ-ALL"],
-                "evidenceIds": ["EV-BE-1"],
+                "requirementIds": [
+                    "REQ-BE-READ-ALL"
+                ],
+                "evidenceIds": [
+                    "EV-BE-1"
+                ],
                 "independentEvidenceIds": [],
                 "statement": "POST /chats/read-all zeroes unread across active AND archived chats (GET /chats shows unread_count 0); markers move only forward; {updated: n} counts chats with messages; chats without messages produce no row; anonymous 401.",
                 "description": "Backend integration tests.",
@@ -467,8 +572,12 @@
             {
                 "id": "AC-BE-MEMBER-SEARCH",
                 "title": "'@'-member search proven by pytest",
-                "requirementIds": ["REQ-BE-MEMBER-SEARCH"],
-                "evidenceIds": ["EV-BE-1"],
+                "requirementIds": [
+                    "REQ-BE-MEMBER-SEARCH"
+                ],
+                "evidenceIds": [
+                    "EV-BE-1"
+                ],
                 "independentEvidenceIds": [],
                 "statement": "'@<email-prefix>' and '@<display-name-prefix>' return the shared chats (matched_in='member', snippet.match = matched member name, last_match_at None); caller's own login never matches; non-'@' queries byte-identical to the pre-change contract; '@' alone → 200 results: []; cap 50; another user's private chat never appears.",
                 "description": "Backend integration tests.",
@@ -478,8 +587,12 @@
             {
                 "id": "AC-BE-MIGRATION",
                 "title": "Additive migration 012 + segment tests green",
-                "requirementIds": ["REQ-BE-MIGRATION-012"],
-                "evidenceIds": ["EV-BE-1"],
+                "requirementIds": [
+                    "REQ-BE-MIGRATION-012"
+                ],
+                "evidenceIds": [
+                    "EV-BE-1"
+                ],
                 "independentEvidenceIds": [],
                 "statement": "alembic heads == 012_message_kind; 012 adds messages.kind (String(16) nullable) and drops it on downgrade (batch_alter, SQLite-safe); segment tests 009/010/011 stay green (minimal repin only if an isolation assertion breaks, owned here); the 012 segment roundtrip is green; suite counts grow from the 277 passed base (4 known Windows ingestion failures documented as deviations with full logs).",
                 "description": "Gate run captured as evidence.",
@@ -489,8 +602,12 @@
             {
                 "id": "AC-FE-CHAT-LIST",
                 "title": "Ordering + header avatar + overflow proven by mocha",
-                "requirementIds": ["REQ-FE-CHAT-LIST"],
-                "evidenceIds": ["EV-FE-1"],
+                "requirementIds": [
+                    "REQ-FE-CHAT-LIST"
+                ],
+                "evidenceIds": [
+                    "EV-FE-1"
+                ],
                 "independentEvidenceIds": [],
                 "statement": "A chat without messages sorts per the created_at fallback above older dated chats (id DESC tie-break pinned); chatListUser renders no hidden file input and no avatar click handler; the messenger header shows the chat avatar left of the title with the upload affordance only when meId === ownerId AND the chat is not archived (leftAt); the title carries the min-width:0/flex ellipsis path (class-level pin in jsdom); a member-match (matched_in='member') renders with the highlighted snippet line and NO title mark (pinned here — this wave owns chat.test.ts, review F-3).",
                 "description": "Frontend unit tests.",
@@ -500,8 +617,12 @@
             {
                 "id": "AC-FE-RENAME-UI",
                 "title": "Inline rename + system message rendering + chat_renamed proven by mocha",
-                "requirementIds": ["REQ-FE-RENAME-UI"],
-                "evidenceIds": ["EV-FE-1"],
+                "requirementIds": [
+                    "REQ-FE-RENAME-UI"
+                ],
+                "evidenceIds": [
+                    "EV-FE-1"
+                ],
                 "independentEvidenceIds": [],
                 "statement": "dblclick swaps the title to an input ONLY in a non-archived chat (archived leftAt: no input, no avatar affordance — pinned); Enter, Escape and focus-out each commit a CHANGED value via onRenameChat(chatId, title); empty trimmed input silently reverts; the controller patches the chats slice optimistically and reverts on port error; a kind-bearing message renders as the service line (no bubble) with content escaped ('<script>' XSS pin); chat_renamed patches the slice title, identical title is a no-op.",
                 "description": "Frontend unit tests.",
@@ -511,8 +632,12 @@
             {
                 "id": "AC-FE-READ-ALL-ICON",
                 "title": "Mark-all-read icon proven by mocha",
-                "requirementIds": ["REQ-FE-READ-ALL-ICON"],
-                "evidenceIds": ["EV-FE-1"],
+                "requirementIds": [
+                    "REQ-FE-READ-ALL-ICON"
+                ],
+                "evidenceIds": [
+                    "EV-FE-1"
+                ],
                 "independentEvidenceIds": [],
                 "statement": "The second list-header icon is mark-all-read-icon.svg with the new alt; with zero unread it renders disabled (modifier + pointer-events:none) and clicks are ignored; with unread a click calls markAllRead → POST /chats/read-all (+csrf) → every chats unread_count becomes 0 in the store.",
                 "description": "Frontend unit tests.",
@@ -522,8 +647,12 @@
             {
                 "id": "AC-FE-MENTION-SEARCH",
                 "title": "«Найти все чаты» + '@'-wiring proven by mocha",
-                "requirementIds": ["REQ-FE-MENTION-SEARCH"],
-                "evidenceIds": ["EV-FE-2"],
+                "requirementIds": [
+                    "REQ-FE-MENTION-SEARCH"
+                ],
+                "evidenceIds": [
+                    "EV-FE-2"
+                ],
                 "independentEvidenceIds": [],
                 "statement": "The contacts menu button «Найти все чаты» is enabled and its click calls findChats(id) → opener('@'+login); the opener default is noop; setChatSearchBarValue seeds the bar memory so the next bar render carries the value (pending debounce timer cleared); features/index wiring pinned (seed + searchChats + Router.go); the raw '@…' query reaches the port unchanged.",
                 "description": "Frontend unit tests.",
@@ -533,8 +662,12 @@
             {
                 "id": "AC-OPS-REDEPLOY",
                 "title": "Stack rebuilt with probes and smoke",
-                "requirementIds": ["REQ-OPS-REDEPLOY"],
-                "evidenceIds": ["EV-OPS-1"],
+                "requirementIds": [
+                    "REQ-OPS-REDEPLOY"
+                ],
+                "evidenceIds": [
+                    "EV-OPS-1"
+                ],
                 "independentEvidenceIds": [],
                 "statement": "Receipts show: compose config preflight ok; up -d --build completes; /health + /ready 200 (8000) and storage health 200 (9000); unauthenticated probes return 401/403 — not 404 — for kick, leave, rejoin, PUT /chats/{id}, read-all, '@'-search; authenticated smoke covers rename (system message + chat_renamed), '@'-search, read-all zeroing, kick 204, leave 204 on a scratch chat; alembic heads in the stack == 012_message_kind; rollback documented, executed only on failure.",
                 "description": "Ops receipts captured as evidence.",
@@ -544,8 +677,12 @@
             {
                 "id": "AC-PROCESS",
                 "title": "Gates and bookkeeping",
-                "requirementIds": ["REQ-FE-MENTION-SEARCH"],
-                "evidenceIds": ["EV-FE-2"],
+                "requirementIds": [
+                    "REQ-FE-MENTION-SEARCH"
+                ],
+                "evidenceIds": [
+                    "EV-FE-2"
+                ],
                 "independentEvidenceIds": [],
                 "statement": "npm run verify, PYTHON_BIN=~/.venvs/chatty-backend/Scripts/python.exe bash backend/verify.sh and guard-architecture --all --strict pass with counts grown from the recorded base (mocha 655 / pytest 277 + 4 known Windows ingestion failures); docs/progress/progress_log.md gets an entry on top and docs/NEXT.md records the feature set; no file outside the manifest write-sets changes; the run lives on feature/2026-11-05-messenger-ux-pack off dev @ cadf2b0.",
                 "description": "Gate runs captured as evidence.",
@@ -611,12 +748,17 @@
         {
             "id": "SEC-AUTHZ",
             "statement": "PUT /chats/{id}, read-all and search sit behind get_current_user: anonymous 401 pinned; rename requires ACTIVE membership (archived 403 pinned; the UI never offers the affordance in an archived chat); read-all touches only the caller's marker rows (user_id-scoped by construction); '@'-search is membership-scoped — another user's private chat never appears (pinned). Mutating frontend calls carry the readCsrfToken header (server-side csrf gating exists on auth routes only — no chat-route csrf dependency is claimed).",
-            "evidenceIds": ["EV-BE-1", "EV-FE-1"]
+            "evidenceIds": [
+                "EV-BE-1",
+                "EV-FE-1"
+            ]
         },
         {
             "id": "SEC-XSS",
             "statement": "The rename system message content (actor display_name + attacker-controlled title) renders through the Message component's double-brace path — a '<script>' title renders as text (mocha pin); '@'-snippets flow through the existing escape-then-wrap highlight builder; no new triple-brace sinks.",
-            "evidenceIds": ["EV-FE-1"]
+            "evidenceIds": [
+                "EV-FE-1"
+            ]
         }
     ],
     "budgetPolicy": {
@@ -658,9 +800,10 @@
         "maxRounds": 3,
         "implementationAuthorized": false,
         "report": "tasks/2026-11-05-messenger-ux-pack/plan-review.json",
-        "reviewedRevision": 2,
+        "reviewedRevision": 3,
         "verdict": "READY_TO_FREEZE",
-        "roundBudgetNote": "raised 2 -> 3 pre-freeze (controller revision, no lock existed yet): round 2 returned NEEDS_REFINEMENT solely for six mechanical edit-sweep leftovers (F-9..F-14) after all substantive findings F-1..F-8 were verified resolved; round 3 is the spot-verification of those six one-line edits"
+        "roundBudgetNote": "raised 2 -> 3 pre-freeze (controller revision, no lock existed yet): round 2 returned NEEDS_REFINEMENT solely for six mechanical edit-sweep leftovers (F-9..F-14) after all substantive findings F-1..F-8 were verified resolved; round 3 is the spot-verification of those six one-line edits",
+        "amendmentNote": "rev 2->3 (mid-run amendment, WS-FE-CHAT remediation review TF-2): adds src/components/headerIcons/headerIcon/headerIcon.ts and src/components/headerIcons/headerIcons.hbs to the WS-FE-CHAT write-set — the mark-all-read disabled state needs the pass-through in the each-loop template and the optional-onClick guard in the icon component; both edits shipped inside commit f6e839d outside the declared set. No other field changes; the delta is the two write-set lines."
     },
     "planFiles": [
         "tasks/2026-11-05-messenger-ux-pack/acceptance-criteria.md",
