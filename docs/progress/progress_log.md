@@ -1,3 +1,23 @@
+# 2026-11-05 — Агентская среда: ALK 2.38.0 → 2.41.0 (Windows-стенд, плагин + CLI синхронно)
+
+Обновлён agent-lifecycle-kit на Windows-стенде синхронно в двух частях — по правилу
+репозитория версия CLI строго равна версии плагина (Linux-стенд уже на 2.39.0, своя
+запись выше по истории). Прямой `claude plugin update` не годился: маркетплейс —
+directory-source на рабочую копию `~/dev/agent-lifecycle-kit`, поэтому сначала
+обновлена она. `git pull --ff-only` отказал — upstream force-push переписал main
+(3ee12e02 → 8633b75f, локальных коммитов не было); сделан reset на новый origin/main
+с сохранением локального патча `.claude-plugin/marketplace.json` (`source: "./"` —
+directory-режим, конфликт stash-pop разрешён в пользу локальной схемы, патч не
+коммитится). Затем `claude plugin update agent-lifecycle-kit@agent-lifecycle-kit` →
+2.41.0 (кеш `cache/agent-lifecycle-kit/agent-lifecycle-kit/2.41.0`) и
+`py -3.12 -m pip install --upgrade agent-lifecycle-kit` → 2.41.0. Согласованность
+подтверждена `claude plugin list` → 2.41.0 (enabled) и `agent_lifecycle version` →
+2.41.0. Changelog 2.39.0–2.41.0 ломающих изменений CLI-контракта не содержит:
+read-only validation accounting в `workflow status` (2.39), декомпозиция учёта
+закрывающих балансов и снижение branch score (2.40), Python quality runner в
+нулевом бейзлайне и фикс ложных output-limit-отказов ниже лимита (2.41). Изменений
+в коде chatty нет; для применения новой версии плагина нужен перезапуск Claude Code.
+
 # 2026-11-05 — Feat/fix(messenger): UI-хвост прогона — крестик очистки поиска, блеклые состояния, ушедшие участники
 
 Живое тестирование оператора после финализации прогона дало четыре правки.
