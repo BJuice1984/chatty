@@ -36,6 +36,12 @@ CHATS_SEARCH_RESULTS_CAP = 50
 # Сниппет поиска: окно до/после совпадения ≤ 32 символов с каждой стороны
 CHAT_SEARCH_SNIPPET_WINDOW = 32
 
+# Сид серверного авто-названия чата (013): чат one-click-создания стартует
+# как «Чат с», каждое СВЕЖЕЕ членство дописывает имя участника. Задуман как
+# задокументированный sync-twin фронтовой константы NEW_CHAT_TITLE
+# (src/utils/constants.ts) — менять только парой.
+AUTO_TITLE_SEED = 'Чат с'
+
 
 def to_member_brief(
     user_id: int,
@@ -89,39 +95,60 @@ class ChatService:
         self.contacts = ContactRepository(session)
 
     def create(self, owner_id: int, payload: ChatCreate) -> Chat:
-        chat = self.chats.add(Chat(title=payload.title.strip(), owner_id=owner_id, is_ai=payload.is_ai))
+        chat = self.chats.add(Chat(
+            title=payload.title.strip(),
+            owner_id=owner_id,
+            is_ai=payload.is_ai,
+            auto_titled=payload.auto_titled,
+        ))
         self.chats.add_member(ChatMember(chat_id=chat.id, user_id=owner_id))
         self.session.commit()
         self.session.refresh(chat)
         return chat
 
-    def rename(self, chat_id: int, requester_id: int, payload: ChatUpdate) -> tuple[Chat, Message | None]:
-        """Rename by any ACTIVE member (require_active_member — the write
-        guard; archived rows stay read-only). The identical-title call is an
-        idempotent no-op (no message, None returned); otherwise the title
-        update and the persistent system message (kind='chat_renamed',
-        user_id = actor, content carrying the actor's display_name and the
-        new title) land in ONE transaction. Returns (chat, system_message)
-        — the endpoint broadcasts both payloads to ACTIVE members."""
+    def update(
+        self,
+        chat_id: int,
+        requester_id: int,
+        payload: ChatUpdate,
+    ) -> tuple[Chat, Message | None, bool]:
+        """Обобщённое тело PUT (013): прежняя rename-семантика для заданного
+        ИЗМЕНИВШЕГОСЯ title (require_active_member — write-гвард, архивы
+        read-only; идентичный title — идемпотентный no-op без сообщения) И
+        гашение auto_titled (ручное название отключает авто-режим навсегда),
+        плюс флаг is_ai для заданного значения. Возвращает (chat,
+        system_message | None, ai_changed) — ВЕСЬ WS fan-out принадлежит
+        эндпоинту (прецедент репозитория: сервисы не импортируют hub)."""
 
         chat = self.require_active_member(chat_id, requester_id)
-        title = payload.title.strip()
-        if chat.title == title:
-            return chat, None
-        actor = self.users.get_by_id(requester_id)
-        # display_name fallback — правило to_member_brief (локальная часть email)
-        actor_name = (actor.display_name if actor is not None and actor.display_name else None) \
-            or (actor.email.split('@')[0] if actor is not None else str(requester_id))
-        chat.title = title
-        message = self.messages_repo.add(Message(
-            chat_id=chat_id,
-            user_id=requester_id,
-            content=f'{actor_name} переименовал чат в «{title}»',
-            kind='chat_renamed',
-        ))
-        self.session.commit()
-        self.session.refresh(chat)
-        return chat, message
+        system_message: Message | None = None
+        ai_changed = False
+
+        title = payload.title.strip() if payload.title is not None else None
+        if title is not None and title != chat.title:
+            actor = self.users.get_by_id(requester_id)
+            # display_name fallback — правило to_member_brief (локальная часть email)
+            actor_name = (actor.display_name if actor is not None and actor.display_name else None) \
+                or (actor.email.split('@')[0] if actor is not None else str(requester_id))
+            chat.title = title
+            # ручное название гасит авто-режим навсегда (фундамент LLM-нейминга:
+            # контекстное переименование — только пока название автоматическое)
+            chat.auto_titled = False
+            system_message = self.messages_repo.add(Message(
+                chat_id=chat_id,
+                user_id=requester_id,
+                content=f'{actor_name} переименовал чат в «{title}»',
+                kind='chat_renamed',
+            ))
+
+        if payload.is_ai is not None and payload.is_ai != chat.is_ai:
+            chat.is_ai = payload.is_ai
+            ai_changed = True
+
+        if system_message is not None or ai_changed:
+            self.session.commit()
+            self.session.refresh(chat)
+        return chat, system_message, ai_changed
 
     def mark_all_read(self, user_id: int) -> int:
         """«Пометить всё прочитанными»: bulk-upsert маркеров чтения по всем
@@ -397,7 +424,7 @@ class ChatService:
         if self.chats.reactivate_member(member):
             self.session.commit()
 
-    def add_member(self, chat_id: int, requester_id: int, user_id: int) -> ChatMember:
+    def add_member(self, chat_id: int, requester_id: int, user_id: int) -> tuple[ChatMember, str | None]:
         """Member addition plus the implicit contact capture: EVERY successful
         resolution records the contact requester -> user (skipped for
         self-add) via the idempotent get-then-insert upsert — the fresh
@@ -409,30 +436,62 @@ class ChatService:
         idempotent add. The requester must be an ACTIVE member (the write
         guard — an archived member cannot add anyone), and an existing
         ARCHIVED row reactivates (left_at -> NULL, same row, idempotent 201
-        semantics). The membership response shape stays unchanged."""
-        self.require_active_member(chat_id, requester_id)
+        semantics). The membership response shape stays unchanged.
+
+        013: the FRESH-insert branch additionally appends the added member's
+        name to an auto-titled non-DM chat's title (the existing/reactivated
+        early return never touches the title — a repeated add must not
+        duplicate the name). Returns (member, new_title | None); the WS
+        fan-out for a non-None new_title belongs to the ENDPOINT (the repo
+        precedent: services never import the hub)."""
+        chat = self.require_active_member(chat_id, requester_id)
         if self.users.get_by_id(user_id) is None:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail='user_not_found')
         existing = self.chats.get_member(chat_id, user_id)
         if existing is not None:
-            # the shared reactivation helper (the rejoin path's twin)
+            # the shared reactivation helper (the rejoin path's twin); the
+            # auto-title append NEVER runs here (review F-4)
             reactivated = self.chats.reactivate_member(existing)
             if user_id != requester_id:
                 self.contacts.upsert(requester_id, user_id)
             if reactivated or user_id != requester_id:
                 self.session.commit()
-            return existing
+            return existing, None
         member = ChatMember(chat_id=chat_id, user_id=user_id)
         try:
             self.chats.add_member(member)
             if user_id != requester_id:
                 self.contacts.upsert(requester_id, user_id)
+            new_title = self._auto_title_append(chat, user_id)
             self.session.commit()
         except IntegrityError:
             self.session.rollback()
             existing = self.chats.get_member(chat_id, user_id)
             if existing is None:
                 raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail='member_conflict')
-            member = existing
+            return existing, None
         self.session.refresh(member)
-        return member
+        return member, new_title
+
+    def _auto_title_append(self, chat: Chat, user_id: int) -> str | None:
+        """Дописывает имя СВЕЖЕГО участника в авто-название чата (013):
+        сработает только для auto_titled не-DM чата; сид AUTO_TITLE_SEED
+        получает имя через пробел («Чат с Вася»), более длинное название —
+        через запятую («Чат с Вася, Маша»); имя — display_name с фолбэком на
+        локальную часть email (правило to_member_brief). Результат длиннее
+        200 символов — тихий пропуск (само добавление остаётся успешным).
+        Возвращает новый title или None; коммитит вызывающий — той же
+        транзакцией, что и вставку членства."""
+        if not chat.auto_titled or chat.is_dm:
+            return None
+        user = self.users.get_by_id(user_id)
+        if user is None:
+            return None
+        login = user.email.lower()
+        name = user.display_name or login.split('@', 1)[0] or login
+        new_title = f'{AUTO_TITLE_SEED} {name}' if chat.title == AUTO_TITLE_SEED else f'{chat.title}, {name}'
+        # кап колонки String(200) — тот же лимит, что max_length ChatCreate/ChatUpdate
+        if len(new_title) > 200:
+            return None
+        chat.title = new_title
+        return new_title

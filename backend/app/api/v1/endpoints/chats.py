@@ -59,6 +59,7 @@ async def list_chats(
             owner_id=chat.owner_id,
             is_ai=chat.is_ai,
             is_dm=chat.is_dm,
+            auto_titled=chat.auto_titled,
             created_at=chat.created_at,
             unread_count=unread.get(chat.id, 0),
             avatar_url=chat.avatar_url,
@@ -130,21 +131,25 @@ async def get_chat(
 
 
 @router.put('/{chat_id}', response_model=ChatResponse)
-async def rename_chat(
+async def update_chat(
     chat_id: int,
     payload: ChatUpdate,
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ) -> ChatResponse:
-    """Rename by any ACTIVE member (PUT, not PATCH — the repo precedent for
-    partial updates without a PATCH verb, cf. PUT /auth/profile). The
-    identical-title call is an idempotent no-op without a message; otherwise
-    the title update and the persistent system message land in one
-    transaction and TWO payloads fan out to ACTIVE members (the delete_chat
-    filter precedent): the kind-bearing 'message' event (live feed append)
-    and 'chat_renamed' (other clients refresh their list titles)."""
+    """Update by any ACTIVE member (PUT, not PATCH — the repo precedent for
+    partial updates without a PATCH verb, cf. PUT /auth/profile). A changed
+    title keeps the rename semantics: the update, the auto_titled clear and
+    the persistent system message land in one transaction, then TWO payloads
+    fan out to ACTIVE members (the delete_chat filter precedent): the
+    kind-bearing 'message' event (live feed append) and 'chat_renamed'
+    (other clients refresh their list titles). The identical-title call is
+    an idempotent no-op without a message and without clearing the flag. A
+    provided is_ai flips the bot flag and fans out the NEW 'chat_ai_toggled'
+    event (a state patch — no system message); a value-equal call is a 200
+    without a second broadcast. At least one field must be present (422)."""
     chats_service = ChatService(db)
-    chat, system_message = chats_service.rename(chat_id, current_user.id, payload)
+    chat, system_message, ai_changed = chats_service.update(chat_id, current_user.id, payload)
     if system_message is not None:
         presented = MessageService(db).present_one(system_message, current_user.id)
         await hub.broadcast(
@@ -155,6 +160,12 @@ async def rename_chat(
         await hub.broadcast(
             chat_id,
             {'type': 'chat_renamed', 'content': {'chat_id': chat_id, 'title': chat.title}},
+            active_user_ids=chats_service.active_member_ids(chat_id),
+        )
+    if ai_changed:
+        await hub.broadcast(
+            chat_id,
+            {'type': 'chat_ai_toggled', 'content': {'chat_id': chat_id, 'is_ai': chat.is_ai}},
             active_user_ids=chats_service.active_member_ids(chat_id),
         )
     return ChatResponse.model_validate(chat)
@@ -188,7 +199,19 @@ async def add_chat_member(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ) -> ChatMemberResponse:
-    member = ChatService(db).add_member(chat_id, current_user.id, payload.user_id)
+    """Member addition (implicit contact capture + archived-row reactivation
+    — the service contract). 013: when the fresh insert appended the added
+    member's name to an auto-titled chat's title, the EXISTING
+    'chat_renamed' event fans out to ACTIVE members (other clients refresh
+    their list titles through the already-shipped frontend path)."""
+    chats_service = ChatService(db)
+    member, new_title = chats_service.add_member(chat_id, current_user.id, payload.user_id)
+    if new_title is not None:
+        await hub.broadcast(
+            chat_id,
+            {'type': 'chat_renamed', 'content': {'chat_id': chat_id, 'title': new_title}},
+            active_user_ids=chats_service.active_member_ids(chat_id),
+        )
     return ChatMemberResponse.model_validate(member)
 
 
