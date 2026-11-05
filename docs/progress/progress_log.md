@@ -18,8 +18,11 @@ searchChats с переходом в мессенджер; отказ — фид
 Прогон доведён на Linux-стенде: рантайм восстановлен с нуля (workflow init
 → authorize → run-start), приёмка трёх волн переоформлена по свежим
 evidence (бэкенд-гейт 295 pytest на Linux, полный smoke живого стека,
-фронт 685 mocha), волна WS-FE-SEARCH реализована здесь. Гейты: verify 692
-mocha, verify:backend 295 passed + heads 012_message_kind, guard strict 0.
+фронт 685 mocha), волна WS-FE-SEARCH реализована здесь. Финализирован:
+final-audit PASS (гейты воспроизведены независимым аудитором) →
+final-audit-outcome ACCEPTED → finalize (state COMPLETE, final-proof в
+work/). Гейты: verify 692 mocha, verify:backend 295 passed + heads
+012_message_kind, guard strict 0.
 
 # 2026-11-05 — Fix(chats): мобильный «назад» сбрасывает выбранный чат (ALK 2026-11-04-mobile-back-deselect, WS-MOBILE-BACK-DESELECT)
 
