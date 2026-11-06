@@ -12,6 +12,9 @@ dist
 dist-ssr
 *.local
 
+# Local credentials reference (plaintext passwords) — never commit
+credentials.local.md
+
 # Environment configuration: commit only documented, secret-free examples
 .env
 .env.*
