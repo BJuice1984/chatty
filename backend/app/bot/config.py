@@ -120,3 +120,72 @@ def bot_settings_from_env(environ: dict[str, str] | None = None) -> BotSettings:
         enable_thinking=_env_flag(env, ENABLE_THINKING, DEFAULT_ENABLE_THINKING),
         streaming=_env_flag(env, STREAMING, DEFAULT_STREAMING),
     )
+
+
+# --- LLM chat auto-title (2026-11-06-llm-chat-autotitle) ---------------------
+# The autotitle path reuses the BOT provider stack (CHATTY_BOT_PROVIDER_API/
+# URL/MODEL); these knobs own only the naming policy itself.
+
+AUTOTITLE_ENABLED = 'CHATTY_AUTOTITLE_ENABLED'
+AUTOTITLE_MIN_USER_MESSAGES = 'CHATTY_AUTOTITLE_MIN_USER_MESSAGES'
+AUTOTITLE_MIN_USER_CHARS = 'CHATTY_AUTOTITLE_MIN_USER_CHARS'
+AUTOTITLE_CONTEXT_MESSAGES = 'CHATTY_AUTOTITLE_CONTEXT_MESSAGES'
+AUTOTITLE_CONTEXT_CHARS = 'CHATTY_AUTOTITLE_CONTEXT_CHARS'
+AUTOTITLE_TIMEOUT_SECONDS = 'CHATTY_AUTOTITLE_TIMEOUT_SECONDS'
+AUTOTITLE_MAX_TITLE_CHARS = 'CHATTY_AUTOTITLE_MAX_TITLE_CHARS'
+AUTOTITLE_MAX_CHAT_MESSAGES = 'CHATTY_AUTOTITLE_MAX_CHAT_MESSAGES'
+
+DEFAULT_AUTOTITLE_ENABLED = True
+# Human replies only (bot answers and kind-bearing system lines never count):
+# two short greetings stay far below the char floor and never reach the model.
+DEFAULT_AUTOTITLE_MIN_USER_MESSAGES = 2
+DEFAULT_AUTOTITLE_MIN_USER_CHARS = 120
+DEFAULT_AUTOTITLE_CONTEXT_MESSAGES = 10
+DEFAULT_AUTOTITLE_CONTEXT_CHARS = 2000
+DEFAULT_AUTOTITLE_TIMEOUT_SECONDS = 15.0
+DEFAULT_AUTOTITLE_MAX_TITLE_CHARS = 48
+# Tail guard: a chat that grew past this many messages without ever passing
+# the threshold (or with the model persistently unavailable) stops trying.
+DEFAULT_AUTOTITLE_MAX_CHAT_MESSAGES = 40
+
+
+@dataclass(frozen=True)
+class AutoTitleSettings:
+    enabled: bool
+    min_user_messages: int
+    min_user_chars: int
+    context_messages: int
+    context_chars: int
+    timeout_seconds: float
+    max_title_chars: int
+    max_chat_messages: int
+
+
+def _env_int(env: dict[str, str], name: str, default: int, *, minimum: int = 1) -> int:
+    try:
+        value = int(env.get(name, default))
+    except ValueError:
+        value = default
+    return value if value >= minimum else default
+
+
+def _env_float(env: dict[str, str], name: str, default: float, *, minimum: float = 0.0) -> float:
+    try:
+        value = float(env.get(name, default))
+    except ValueError:
+        value = default
+    return value if value > minimum else default
+
+
+def autotitle_settings_from_env(environ: dict[str, str] | None = None) -> AutoTitleSettings:
+    env = os.environ if environ is None else environ
+    return AutoTitleSettings(
+        enabled=_env_flag(env, AUTOTITLE_ENABLED, DEFAULT_AUTOTITLE_ENABLED),
+        min_user_messages=_env_int(env, AUTOTITLE_MIN_USER_MESSAGES, DEFAULT_AUTOTITLE_MIN_USER_MESSAGES),
+        min_user_chars=_env_int(env, AUTOTITLE_MIN_USER_CHARS, DEFAULT_AUTOTITLE_MIN_USER_CHARS),
+        context_messages=_env_int(env, AUTOTITLE_CONTEXT_MESSAGES, DEFAULT_AUTOTITLE_CONTEXT_MESSAGES),
+        context_chars=_env_int(env, AUTOTITLE_CONTEXT_CHARS, DEFAULT_AUTOTITLE_CONTEXT_CHARS),
+        timeout_seconds=_env_float(env, AUTOTITLE_TIMEOUT_SECONDS, DEFAULT_AUTOTITLE_TIMEOUT_SECONDS),
+        max_title_chars=_env_int(env, AUTOTITLE_MAX_TITLE_CHARS, DEFAULT_AUTOTITLE_MAX_TITLE_CHARS),
+        max_chat_messages=_env_int(env, AUTOTITLE_MAX_CHAT_MESSAGES, DEFAULT_AUTOTITLE_MAX_CHAT_MESSAGES),
+    )

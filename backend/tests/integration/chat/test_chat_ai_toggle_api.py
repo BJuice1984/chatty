@@ -182,3 +182,42 @@ def test_ai_toggle_broadcasts_to_active_members(app):
             assert_alive(owner_ws)
             assert_alive(bob_ws)
             assert_alive(archived_ws)
+
+
+async def test_ai_toggle_seats_the_bot_and_appends_seed(client, app, session_factory):
+    """2026-11-06-quick: включение AI сажает бота в участники сразу (не после
+    первого ответа), пустой display_name бота становится «AI», а auto_titled
+    сид дополняется — «Чат с» -> «Чат с AI» (013-append через display_name)."""
+    await register(client, 'toggle-bot-owner@example.com')
+    async with user_client(app) as bot_client:
+        await register(bot_client, 'bot@chatty.local')
+
+    chat = (await client.post('/api/v1/chats', json={'title': 'Чат с', 'auto_titled': True})).json()
+
+    enabled = await client.put(f"/api/v1/chats/{chat['id']}", json={'is_ai': True})
+    assert enabled.status_code == 200
+    assert enabled.json()['is_ai'] is True
+
+    members = (await client.get(f"/api/v1/chats/{chat['id']}/members")).json()
+    bot_rows = [row for row in members if row['login'] == 'bot@chatty.local']
+    assert len(bot_rows) == 1
+    assert bot_rows[0]['display_name'] == 'AI'
+
+    listed = await chat_list(client)
+    assert listed[chat['id']]['title'] == 'Чат с AI'
+
+
+async def test_adding_the_bot_member_enables_ai(client, app):
+    """2026-11-06-quick: бот, добавленный кнопкой «+», включает чату is_ai —
+    «то же самое», что «+AI»: карточка получает ✦AI, участники — бота."""
+    await register(client, 'plus-owner@example.com')
+    async with user_client(app) as bot_client:
+        bot = await register(bot_client, 'bot@chatty.local')
+
+    chat = (await client.post('/api/v1/chats', json={'title': 'Проект', 'is_ai': False})).json()
+    added = await client.post(f"/api/v1/chats/{chat['id']}/members", json={'user_id': bot['id']})
+    assert added.status_code == 201
+
+    listed = await chat_list(client)
+    assert listed[chat['id']]['is_ai'] is True
+    assert listed[chat['id']]['title'] == 'Проект'

@@ -30,3 +30,23 @@ def build_messages(source_content: str, context_chunks: list[str]) -> list[dict[
         {'role': 'system', 'content': system},
         {'role': 'user', 'content': source_content},
     ]
+
+
+TITLE_SYSTEM_PROMPT = (
+    'Ты называешь чаты. Прочитай диалог и назови его тему коротко: '
+    '2–4 слова на языке диалога. Только само название, без кавычек '
+    'и без точки в конце. Если в диалоге ещё нет определённой темы '
+    '(только приветствия или болтовня), верни ровно NONE.'
+)
+
+
+def build_title_messages(dialogue: list[dict[str, str]]) -> list[dict[str, str]]:
+    # автоназвание чата (2026-11-06-llm-chat-autotitle): один system-блок
+    # (прецедент: два подряд system Qwen3.5 в llama.cpp падают 500) и
+    # транскрипт «user:/bot:» в user-блоке; роли расставляет вызывающий
+    # сервис по bot_user_id
+    transcript = '\n'.join(f"{line['role']}: {line['content']}" for line in dialogue)
+    return [
+        {'role': 'system', 'content': TITLE_SYSTEM_PROMPT},
+        {'role': 'user', 'content': transcript},
+    ]

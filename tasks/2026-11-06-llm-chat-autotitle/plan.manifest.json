@@ -1,0 +1,452 @@
+{
+    "schemaVersion": "agent-plan-manifest.v1",
+    "status": "FROZEN",
+    "planRevision": 2,
+    "package": {
+        "id": "2026-11-06-llm-chat-autotitle",
+        "title": "One-shot LLM chat auto-naming: threshold gate, provider short-call, CAS rename, chat_renamed fan-out, auto_titled AI-chat seeding",
+        "workspaceRoot": ".",
+        "artifactRoot": "work/2026-11-06-llm-chat-autotitle",
+        "planArtifactRoot": "tasks/2026-11-06-llm-chat-autotitle"
+    },
+    "packageIntegrity": {
+        "required": true,
+        "lockSchemaVersion": "agent-plan-lock.v2",
+        "inventorySource": "planFiles",
+        "undeclaredTopLevelFiles": "reject",
+        "allowedUnlistedFiles": [
+            "plan.lock.json",
+            "plan-review.json"
+        ]
+    },
+    "author": {
+        "id": "claude-code",
+        "surface": "agent-first-planning",
+        "runId": "2026-11-06-llm-chat-autotitle-draft"
+    },
+    "baseRevision": {
+        "ref": "dev",
+        "sha": "cf8c35d0c39d15e5bedd1fc335d0a47e2950353c"
+    },
+    "specification": {
+        "tier": "S2",
+        "intent": "One-shot LLM chat auto-naming: every newly created auto_titled chat (one-click user chats seeded 'Чат с' AND AI-assistant chats seeded 'AI ассистент') gets a short contextual title generated from its own messages by the local model, exactly once. After the model's title lands, auto_titled is cleared and only a manual double-click rename can change the title afterwards. The mechanical member-name append (013) keeps working until the LLM rename fires and never fires again afterwards.",
+        "status": "DRAFT",
+        "source": "tasks/2026-11-06-llm-chat-autotitle/specification.json",
+        "requirements": [
+            {
+                "id": "REQ-BE-AUTOTITLE",
+                "title": "Backend: single ChatAutoTitleService — threshold gate, model call via provider seam, one-shot CAS rename, WS chat_renamed fan-out",
+                "description": "app/services/chat_autotitle.py (sync, hub-free): config gate (CHATTY_AUTOTITLE_ENABLED, kill-switch), chat gate (auto_titled AND not is_dm AND total messages < CHATTY_AUTOTITLE_MAX_CHAT_MESSAGES), threshold gate over USER messages only (user_id != bot_user_id, kind IS NULL, non-empty content): count >= CHATTY_AUTOTITLE_MIN_USER_MESSAGES (2) AND summed chars >= CHATTY_AUTOTITLE_MIN_USER_CHARS (120); context build (last CONTEXT_MESSAGES=10 kind-NULL non-empty messages, CONTEXT_CHARS=2000 cap, user/bot roles); provider call reusing the bot provider seam through optional complete_short(messages, *, max_tokens, timeout_seconds) (Ollama think:false + num_predict; OpenAI-compatible max_tokens + enable_thinking:false) with getattr fallback to complete() (scripted fakes keep working — the complete_stream precedent; the fallback runs on the provider's own timeout); answer hygiene (strip, unwrap quotes, drop trailing dot, reject empty/NONE/multiline/over MAX_TITLE_CHARS=48 — rejection leaves auto_titled for a natural retry); one-shot CAS UPDATE chats SET title, auto_titled=false WHERE id AND auto_titled=true, rowcount 0 = silent skip; no system message. Trigger: BOTH frontend send paths — the WS message event (app/ws/router.py, after the broadcast) and HTTP POST /chats/{id}/messages (the AI-assistant askBot seam) — share one scheduler module app/ws/autotitle.py (per-process in-flight set, to_thread on a fresh session, success fans out the EXISTING chat_renamed {chat_id, title} to ACTIVE members; fire-and-forget — message latency never includes the model). The scheduler lives in the WS layer because app/services must never import app.ws.hub (review F-5 grep pin); endpoints already import ws modules (the hub import in endpoints/chats.py is the precedent).",
+                "priority": "P1",
+                "source": "operator decision 2026-11-06: one unified service for ALL new auto-filled chats (AI and user), auto-fill switches off after the model answers, manual dblclick rename only afterwards",
+                "acceptanceIds": ["AC-BE-GATE", "AC-BE-TITLE", "AC-BE-CONTEXT"],
+                "evidenceIds": ["EV-BE-1"],
+                "owner": "WS-BE-AUTOTITLE"
+            },
+            {
+                "id": "REQ-FE-AUTOTITLE",
+                "title": "Frontend: chat_renamed finalizes the auto-title input; AI chats are born auto_titled",
+                "description": "Two deltas on existing seams. (1) ChatsController.handleChatRenamedEvent also clears auto_titled in the chats slice — ANY chat_renamed (LLM rename, another member's manual rename, same-title) finalizes the header input into the static h2; the identical-title skip stays for title but must NOT skip the flag clearing while the slice flag is set (an LLM answer equal to the current title still clears the flag server-side). (2) The AI-assistant empty-state creation starts passing auto_titled: true: assistant page -> AiAssistantController.createAiChat -> AiAssistantPort.createChat extended with auto_titled?: boolean -> own adapter adds it to the POST /chats payload only when explicitly set (the src/features/chats/api/own.ts mirror). messenger.ts/messenger.hbs auto-title input mechanics are NOT touched.",
+                "priority": "P1",
+                "source": "operator decision 2026-11-06 (unified auto-fill for AI and user chats) + architectural consequence: the slice flag drives the header input",
+                "acceptanceIds": ["AC-FE-SLICE", "AC-FE-AI-SEED"],
+                "evidenceIds": ["EV-FE-1"],
+                "owner": "WS-FE-AUTOTITLE"
+            }
+        ],
+        "goal": "Fresh chats stop being indistinguishable 'Чат с'/'AI ассистент' rows: after a short exchange the local model names the chat once from its own content, every connected client sees the new title live, and from that moment the title is fully user-owned (manual rename only).",
+        "constraints": [
+            "No DB migration: auto_titled already exists (013); alembic heads stay 013_chat_auto_title.",
+            "No file under app/services may import app.ws.hub (review F-5 grep pin in test_chat_ai_toggle_api.py stays green); the fan-out lives in the WS layer (app/ws/autotitle.py).",
+            "The provider seam is reused, not duplicated: same CHATTY_BOT_PROVIDER_API/URL/MODEL instance; autotitle owns only CHATTY_AUTOTITLE_* knobs.",
+            "Scripted provider fakes in existing bot tests keep working: complete_short is reached via getattr with a complete() fallback.",
+            "The model call is fire-and-forget: message delivery latency never includes it; failures are logged and swallowed; a per-process in-flight set prevents duplicate calls for one chat.",
+            "Accepted race (plan review F-3): the 013 member-name append reads the flag from its in-memory chat row, so a member added inside the seconds-wide model-call window may overwrite the just-committed LLM title with the mechanical one while the flag is already cleared — the one-shot is consumed and the chat keeps the mechanical title; accepted as a degradation, not fixed in this package (the reverse race — LLM overwriting a MANUAL rename — is excluded by the CAS).",
+            "Frontend layers only downward; AppState/utils/Store.ts not edited; DTO types from api/ stay out of UI; guard-architecture --all --strict stays green.",
+            "Existing suites stay green; counts grow from the recorded base (mocha 712 passing, pytest 307 passed on the Linux stand, 2026-11-06).",
+            "Existing auto-title behavior is preserved: one-click NEW_CHAT_TITLE seed, member-name append, manual rename clearing the flag, the auto-title input itself."
+        ],
+        "nonGoals": [
+            "re-titling on demand or on a schedule (exactly one LLM rename per chat)",
+            "an LLM rename for manually titled chats, DMs or chats where auto_titled was cleared",
+            "a persisted attempt counter / new tables (retries ride the next user message; the MAX_CHAT_MESSAGES tail guard bounds the window)",
+            "an attempt budget migration when the model is down: each further user message retries once, connect-fails cost ~5s in the background",
+            "hardening the 013-append vs LLM-CAS race beyond the documented degradation (see constraints)",
+            "changing the WS event contract: the existing chat_renamed {chat_id, title} shape is reused as-is",
+            "frontend changes to the messenger header input mechanics (messenger.ts/messenger.hbs untouched)",
+            "replacing or removing the 013 member-name append (it keeps enriching the seed until the LLM rename clears the flag)",
+            "compose redeploy / operator env changes in this package (defaults are safe: enabled=true; the stack rebuild is the operator's standing runbook step)"
+        ],
+        "scope": "backend: app/bot (config knobs, provider.complete_short, title prompt) + app/services/chat_autotitle.py + app/ws/autotitle.py scheduler + the two trigger call sites (app/ws/router.py, app/api/v1/endpoints/chats.py) + backend/.env.example + pytest (unit + integration); frontend: src/features/chats/controller.ts chat_renamed handler, src/features/ai-assistant (page/controller/port/own adapter) auto_titled seeding + tests; docs: progress_log entry; receipts under work/2026-11-06-llm-chat-autotitle/."
+    },
+    "readOnly": [
+        "AGENTS.md",
+        "tasks/README.md",
+        "backend/verify.sh",
+        "docs/deployment/own-backend.md"
+    ],
+    "forbiddenWrites": [
+        "src/core",
+        "src/scss/libs",
+        "src/utils/Store.ts",
+        "docs/project-principles.json",
+        ".github/workflows",
+        "netlify.toml",
+        "server/server.js",
+        ".env",
+        ".env.development",
+        ".env.own",
+        "backend/alembic/versions"
+    ],
+    "leadOwned": [
+        {
+            "path": "tasks/2026-11-06-llm-chat-autotitle",
+            "owner": "controller",
+            "reason": "Controller owns plan-package artifacts."
+        }
+    ],
+    "workstreams": [
+        {
+            "id": "WS-BE-AUTOTITLE",
+            "title": "Backend: ChatAutoTitleService + provider short-call + dual send-path triggers + pytest",
+            "owner": "worker-backend-autotitle",
+            "reviewer": "independent-plan-reviewer",
+            "dependsOn": [],
+            "writes": [
+                "backend/.env.example",
+                "backend/app/api/v1/endpoints/chats.py",
+                "backend/app/bot/config.py",
+                "backend/app/bot/prompts.py",
+                "backend/app/bot/provider.py",
+                "backend/app/services/chat_autotitle.py",
+                "backend/app/ws/autotitle.py",
+                "backend/app/ws/router.py",
+                "backend/tests/integration/chat/test_chat_autotitle_llm.py",
+                "backend/tests/unit/chat/test_chat_autotitle.py"
+            ],
+            "readOnly": [
+                "AGENTS.md",
+                "backend/app/models/chat.py",
+                "backend/app/models/message.py",
+                "backend/app/repositories/messages.py",
+                "backend/app/repositories/users.py",
+                "backend/app/services/bot.py",
+                "backend/app/services/chats.py",
+                "backend/app/ws/hub.py",
+                "backend/tests/conftest.py",
+                "backend/tests/integration/bot/test_bot_api.py",
+                "backend/tests/integration/chat/test_chat_auto_title_api.py",
+                "backend/verify.sh"
+            ],
+            "forbiddenWrites": [],
+            "launchGate": "feature/2026-11-06-llm-chat-autotitle branch created at dev @ cf8c35d0c39d15e5bedd1fc335d0a47e2950353c; base gates recorded 2026-11-06 (Linux stand): npm run verify green (712 mocha — base-verify.log), pytest 307 passed + alembic head 013_chat_auto_title (base-pytest.log).",
+            "capabilityHints": [
+                "python",
+                "fastapi",
+                "sqlalchemy",
+                "pytest",
+                "websockets"
+            ],
+            "requiredTools": [
+                "python",
+                "pytest"
+            ],
+            "contextRefs": [
+                "plan.md",
+                "acceptance-criteria.md",
+                "specification.json",
+                "developer-overview.md"
+            ],
+            "acceptanceIds": [
+                "AC-BE-GATE",
+                "AC-BE-TITLE",
+                "AC-BE-CONTEXT"
+            ],
+            "evidenceIds": [
+                "EV-BE-1"
+            ],
+            "executionPolicy": {
+                "maxAttempts": 3,
+                "maxWallSeconds": 3600
+            },
+            "artifactPaths": {
+                "result": "work/2026-11-06-llm-chat-autotitle/evidence/WS-BE-AUTOTITLE/task-result-{attempt}.json",
+                "review": "work/2026-11-06-llm-chat-autotitle/evidence/WS-BE-AUTOTITLE/task-review-{attempt}.json"
+            },
+            "required": true,
+            "plannedItems": [
+                "app/bot/config.py: AutoTitleSettings (frozen dataclass) + autotitle_settings_from_env() — CHATTY_AUTOTITLE_ENABLED(true)/MIN_USER_MESSAGES(2)/MIN_USER_CHARS(120)/CONTEXT_MESSAGES(10)/CONTEXT_CHARS(2000)/TIMEOUT_SECONDS(15)/MAX_TITLE_CHARS(48)/MAX_CHAT_MESSAGES(40), garbage-proof parsing in the bot-knob style; provider/model stay CHATTY_BOT_* (no second stack); backend/.env.example section",
+                "app/bot/provider.py: complete_short(messages, *, max_tokens, timeout_seconds: float) on OllamaBotProvider (think:false + options.num_predict) and OpenAIChatProvider (max_tokens + chat_template_kwargs.enable_thinking:false); each call passes timeout_seconds through the shared _provider_timeout (the CHATTY_AUTOTITLE_TIMEOUT_SECONDS budget reaches the short path; the complete() fallback keeps the provider's own timeout); shared response parsing/ BotProviderError mapping with complete(); existing complete/complete_stream untouched",
+                "app/bot/prompts.py: build_title_messages(dialogue) — single system block (the two-system 500 lesson) instructing 2-4 words in the dialogue language, no quotes/dot, exact NONE when no topic; user block with 'user:'/'bot:' transcript lines",
+                "app/services/chat_autotitle.py: ChatAutoTitleService(session, bot, autotitle, *, provider).maybe_rename(chat_id) -> str | None — gates (enabled/auto_titled/not is_dm/total < MAX_CHAT_MESSAGES), user-message threshold (kind IS NULL, non-empty content, user_id != bot_user_id via users.get_by_email(bot.user_email); no bot user -> every human message counts), context build (last CONTEXT_MESSAGES kind-NULL non-empty messages only — system lines and file-only rows stay out of the transcript — CONTEXT_CHARS head-trimmed, roles user/bot by user_id == bot_user_id), provider call via getattr complete_short(messages, max_tokens, timeout_seconds) fallback complete, BotProviderError logged and swallowed, answer hygiene (strip, unwrap \" ' «», drop trailing dot, reject empty/NONE-casefold/multiline/over MAX_TITLE_CHARS), one-shot CAS update(Chat).where(id, auto_titled true).values(title, auto_titled False) with rowcount check, NO system message, NO hub import",
+                "app/ws/autotitle.py (new, the scheduler both entry points share): module-level _AUTOTITLE_INFLIGHT set + schedule_autotitle(app_state, chat_id) — skip-and-return when chat_id is in flight, else add and asyncio.create_task(_autotitle_task(...)); _autotitle_task (finally: discard) opens a fresh session_factory session, reads bot_settings_from_env + autotitle_settings_from_env, resolves the provider through get_bot_provider(app.state, bot) (respecting the injected fake), runs title = await asyncio.to_thread(service.maybe_rename, chat_id), and on a title broadcasts the EXISTING chat_renamed {chat_id, title} to ACTIVE members (active_user_ids); every exception -> logger.warning(exc_info), never raised into the caller; the module lives in the WS layer so app/services stays hub-free (review F-5 pin)",
+                "app/ws/router.py: after the successful message broadcast in the event.type == 'message' branch — schedule_autotitle(websocket.app.state, chat_id) (fire-and-forget, never awaited)",
+                "app/api/v1/endpoints/chats.py create_message: after persisting the message — schedule_autotitle(request.app.state, chat_id) (fire-and-forget; the AI-assistant askBot seam posts through this endpoint — plan review F-1)",
+                "backend/tests/unit/chat/test_chat_autotitle.py: gate pins (below threshold no provider call; bot answers and kind-bearing lines never count; not-auto_titled / force-flagged is_dm / disabled / MAX_CHAT_MESSAGES tail never call; AI and non-AI identical), context pins (roles, message/char caps, transcript excludes kind-bearing and file-only rows — recorded by the scripted provider), hygiene pins (quotes/dot unwrap; empty/NONE/multiline/overlong rejected with the flag alive), CAS pins (second call no-op; pre-cleared flag never overwritten)",
+                "backend/tests/integration/chat/test_chat_autotitle_llm.py: single TestClient(app) for HTTP seeding AND websocket_connect (the test_bot_ws_broadcast.py pattern — extra client contexts run lifespan-shutdown and dispose the shared in-memory engine); autouse fixture resets app.ws.autotitle._AUTOTITLE_INFLIGHT between tests (the schema is recreated, chat ids repeat); WS send path — no chat_renamed before the threshold; after the threshold a scripted title lands (DB title + auto_titled=0 + chat_renamed to ACTIVE members + NO kind='chat_renamed' row); later messages never rename again; NONE answer keeps the flag, the next valid answer renames; manual rename before the background attempt wins (CAS silent skip, manual title stays); the HTTP POST /chats/{id}/messages path triggers the same one-shot rename (the AI-assistant seam, plan review F-1); background wait via receive/poll with timeout, never fixed sleeps"
+            ],
+            "qualityFloor": "bash backend/verify.sh green (pytest + alembic heads == 013_chat_auto_title); no src/ file touched; the review F-5 grep pin (no app/services file imports app.ws.hub) stays green."
+        },
+        {
+            "id": "WS-FE-AUTOTITLE",
+            "title": "Frontend: chat_renamed finalizes the slice flag; AI chats born auto_titled; docs",
+            "owner": "worker-frontend-autotitle",
+            "reviewer": "independent-plan-reviewer",
+            "dependsOn": [
+                "WS-BE-AUTOTITLE"
+            ],
+            "writes": [
+                "docs/progress/progress_log.md",
+                "src/features/ai-assistant/api/api.test.ts",
+                "src/features/ai-assistant/api/own.ts",
+                "src/features/ai-assistant/controller.test.ts",
+                "src/features/ai-assistant/controller.ts",
+                "src/features/ai-assistant/pages/assistant.test.ts",
+                "src/features/ai-assistant/pages/assistant.ts",
+                "src/features/ai-assistant/ports.ts",
+                "src/features/chats/chats.test.ts",
+                "src/features/chats/controller.ts"
+            ],
+            "readOnly": [
+                "AGENTS.md",
+                "src/features/chats/api/own.ts",
+                "src/features/chats/ws/own.ts",
+                "src/utils/constants.ts",
+                "src/utils/types.ts",
+                "src/components/messenger/messenger.ts"
+            ],
+            "forbiddenWrites": [],
+            "launchGate": "WS-BE-AUTOTITLE accepted at the integration baseline; npm run verify green at base (712 mocha).",
+            "capabilityHints": [
+                "typescript",
+                "mocha",
+                "sinon"
+            ],
+            "requiredTools": [
+                "node",
+                "npm"
+            ],
+            "contextRefs": [
+                "plan.md",
+                "acceptance-criteria.md",
+                "specification.json",
+                "developer-overview.md"
+            ],
+            "acceptanceIds": [
+                "AC-FE-SLICE",
+                "AC-FE-AI-SEED",
+                "AC-PROCESS"
+            ],
+            "evidenceIds": [
+                "EV-FE-1"
+            ],
+            "executionPolicy": {
+                "maxAttempts": 3,
+                "maxWallSeconds": 3600
+            },
+            "artifactPaths": {
+                "result": "work/2026-11-06-llm-chat-autotitle/evidence/WS-FE-AUTOTITLE/task-result-{attempt}.json",
+                "review": "work/2026-11-06-llm-chat-autotitle/evidence/WS-FE-AUTOTITLE/task-review-{attempt}.json"
+            },
+            "required": true,
+            "plannedItems": [
+                "src/features/chats/controller.ts handleChatRenamedEvent: when the slice row still has auto_titled === true, the event patch clears it (auto_titled: undefined) — including the identical-title case; non-auto-titled rows keep today's identical-title idempotent skip; messenger.ts/messenger.hbs untouched (the input swaps to h2 through the existing autoTitleInput slice read)",
+                "src/features/ai-assistant/pages/assistant.ts: createAiChat({ title: AI_CHAT_TITLE, is_ai: true, auto_titled: true })",
+                "src/features/ai-assistant/controller.ts: createAiChat parameter type extended with auto_titled?: boolean, passed through to the port",
+                "src/features/ai-assistant/ports.ts: createChat?(data: { title: string, is_ai?: boolean, auto_titled?: boolean })",
+                "src/features/ai-assistant/api/own.ts: payload gains auto_titled only when explicitly set (the src/features/chats/api/own.ts createChat mirror)",
+                "src/features/chats/chats.test.ts: chat_renamed patches title AND clears auto_titled (incl. identical-title with the flag alive; non-flagged rows keep the idempotent skip)",
+                "src/features/ai-assistant/api/api.test.ts: POST /chats payload carries auto_titled: true when passed and omits it when not",
+                "src/features/ai-assistant/controller.test.ts + pages/assistant.test.ts: the empty-state creation passes auto_titled: true through the controller into the port",
+                "docs/progress/progress_log.md: entry on top — feature, mechanism (threshold gate / context / one-shot CAS), operator knobs, verification evidence"
+            ],
+            "qualityFloor": "npm run verify green with the count grown from 712; guard-architecture --all --strict zero violations; no backend/ file touched; docs entry present."
+        }
+    ],
+    "acceptance": {
+        "criteria": [
+            {
+                "id": "AC-BE-GATE",
+                "title": "Threshold and safety gates proven by pytest",
+                "requirementIds": ["REQ-BE-AUTOTITLE"],
+                "evidenceIds": ["EV-BE-1"],
+                "independentEvidenceIds": [],
+                "statement": "Model NOT called when user-message count < 2 OR summed user chars < 120 (greeting-only chat stays 'Чат с'); bot answers and kind-bearing system lines never count toward the threshold; not-auto_titled chats, DMs, the disabled kill-switch (CHATTY_AUTOTITLE_ENABLED=false) and chats over MAX_CHAT_MESSAGES never call the model; AI and non-AI auto_titled chats are gated identically.",
+                "description": "Backend unit tests with a scripted provider.",
+                "source": "acceptance-criteria.md",
+                "priority": "P1"
+            },
+            {
+                "id": "AC-BE-TITLE",
+                "title": "One-shot CAS rename + chat_renamed proven by pytest",
+                "requirementIds": ["REQ-BE-AUTOTITLE"],
+                "evidenceIds": ["EV-BE-1"],
+                "independentEvidenceIds": [],
+                "statement": "After the threshold a scripted provider title lands as chats.title with auto_titled=0; the WS chat_renamed {chat_id, title} event reaches ACTIVE members; NO kind='chat_renamed' system message row is created; BOTH send paths (the WS message event and HTTP POST /chats/{id}/messages — the AI-assistant askBot seam) trigger the one-shot rename; subsequent messages never rename again; a manual rename (flag already cleared) makes the CAS a silent no-op — the LLM title does NOT overwrite the manual one.",
+                "description": "Backend integration tests over the WS and HTTP send paths.",
+                "source": "acceptance-criteria.md",
+                "priority": "P1"
+            },
+            {
+                "id": "AC-BE-CONTEXT",
+                "title": "Context build and answer hygiene proven by pytest",
+                "requirementIds": ["REQ-BE-AUTOTITLE"],
+                "evidenceIds": ["EV-BE-1"],
+                "independentEvidenceIds": [],
+                "statement": "The prompt carries the recent kind-NULL non-empty messages with user/bot roles (bot by bot_user_id; system lines and file-only rows stay out of the transcript) and respects the message-count and char caps; answer hygiene strips wrapping quotes and a trailing dot and rejects empty/NONE/multiline/over-MAX_TITLE_CHARS answers leaving auto_titled untouched; a NONE answer followed later by a valid answer renames on the later attempt.",
+                "description": "Backend unit tests with a prompt-recording scripted provider.",
+                "source": "acceptance-criteria.md",
+                "priority": "P1"
+            },
+            {
+                "id": "AC-FE-SLICE",
+                "title": "chat_renamed finalizes the slice flag proven by mocha",
+                "requirementIds": ["REQ-FE-AUTOTITLE"],
+                "evidenceIds": ["EV-FE-1"],
+                "independentEvidenceIds": [],
+                "statement": "handleChatRenamedEvent patches the slice title AND clears auto_titled (the header input becomes the static h2); the identical-title case still clears auto_titled while the slice flag is set; a non-flagged chat keeps the identical-title idempotent skip.",
+                "description": "Frontend unit tests.",
+                "source": "acceptance-criteria.md",
+                "priority": "P1"
+            },
+            {
+                "id": "AC-FE-AI-SEED",
+                "title": "AI chats born auto_titled proven by mocha",
+                "requirementIds": ["REQ-FE-AUTOTITLE"],
+                "evidenceIds": ["EV-FE-1"],
+                "independentEvidenceIds": [],
+                "statement": "The assistant empty-state creation passes auto_titled: true through the controller into the port and the own adapter includes auto_titled in the POST /chats payload only when explicitly set (unset stays absent).",
+                "description": "Frontend unit tests.",
+                "source": "acceptance-criteria.md",
+                "priority": "P1"
+            },
+            {
+                "id": "AC-PROCESS",
+                "title": "Gates and bookkeeping",
+                "requirementIds": ["REQ-FE-AUTOTITLE"],
+                "evidenceIds": ["EV-FE-1"],
+                "independentEvidenceIds": [],
+                "statement": "npm run verify, bash backend/verify.sh and guard-architecture --all --strict pass on the run branch with counts grown from the recorded base (mocha 712 / pytest 307); alembic heads unchanged (013_chat_auto_title — no migration); docs/progress/progress_log.md entry on top; no file outside the manifest write-sets changes.",
+                "description": "Gate runs captured as evidence.",
+                "source": "acceptance-criteria.md",
+                "priority": "P1"
+            }
+        ]
+    },
+    "validation": {
+        "commands": [
+            "npm run verify",
+            "bash backend/verify.sh",
+            "node .claude/hooks/scripts/guard-architecture.mjs --all --strict"
+        ]
+    },
+    "orchestration": {
+        "startMode": "reviewed-plan",
+        "remediationMode": "ask",
+        "maxPlanReviewRounds": 3,
+        "maxTaskAttempts": 3,
+        "maxParallelTasks": 1,
+        "maxValidationRunsPerTask": 2,
+        "stateFile": "work/2026-11-06-llm-chat-autotitle/run.state.json",
+        "eventLog": "work/2026-11-06-llm-chat-autotitle/events.jsonl",
+        "stepReviewRequired": true,
+        "finalAuditRequired": true
+    },
+    "implementationAudit": {
+        "required": true,
+        "finalRequired": true
+    },
+    "developerOverview": "tasks/2026-11-06-llm-chat-autotitle/developer-overview.md",
+    "releaseTarget": {
+        "kind": "local-only",
+        "environment": "Vite own mode + compose own-backend (no operator env change required: CHATTY_AUTOTITLE_* defaults are safe)",
+        "productionPromotionClaimed": false
+    },
+    "releaseImpact": "Backend: a background one-shot LLM rename for auto_titled chats behind a new CHATTY_AUTOTITLE_* knob block (kill-switch included), a new provider short-call mode, and two trigger call sites (WS message path + HTTP POST /chats/{id}/messages — the AI-assistant seam) sharing one scheduler module; the WS event contract is unchanged (chat_renamed reused). Frontend: any chat_renamed finalizes the auto-title input; AI-assistant chats are born auto_titled. No DB migration, no compose/env change mandated by this package.",
+    "nonGoals": [
+        "re-titling on demand or on a schedule (exactly one LLM rename per chat)",
+        "an LLM rename for manually titled chats, DMs or cleared-flag chats",
+        "a persisted attempt counter / new tables",
+        "hardening the 013-append vs LLM-CAS race beyond the documented degradation",
+        "changing the WS event contract",
+        "frontend changes to the messenger header input mechanics",
+        "replacing or removing the 013 member-name append",
+        "compose redeploy / operator env changes in this package"
+    ],
+    "finalAuditGates": [
+        "[AC-BE-GATE|EV-BE-1] threshold + safety gates (user-only counting, greeting no-fire, DM/flag/kill-switch/tail never call) proven by pytest",
+        "[AC-BE-TITLE|EV-BE-1] one-shot CAS rename triggered from BOTH send paths (WS + HTTP POST /chats/{id}/messages) + chat_renamed to ACTIVE members + no system message + manual-rename race won by the human proven by pytest",
+        "[AC-BE-CONTEXT|EV-BE-1] role/context caps + answer hygiene (quotes/dot unwrap, NONE/multiline/overlong rejection) + late valid retry proven by pytest",
+        "[AC-FE-SLICE|EV-FE-1] chat_renamed clears auto_titled in the slice (incl. identical-title) proven by mocha",
+        "[AC-FE-AI-SEED|EV-FE-1] AI chats born auto_titled through the port/adapter seam proven by mocha",
+        "[AC-PROCESS|EV-FE-1] verify + verify:backend + guard strict green with grown counts; heads stay 013; progress-log entry; no write outside the manifest write-sets"
+    ],
+    "securityGates": [
+        {
+            "id": "SEC-CONTEXT-SCOPE",
+            "statement": "The title prompt is built only from the target chat's own messages (the data-scope boundary of app/bot/prompts.py); the autotitle path adds no new endpoint and weakens no authorization; the operator kill-switch CHATTY_AUTOTITLE_ENABLED=false fully disables model calls (unit-pinned).",
+            "evidenceIds": ["EV-BE-1"]
+        },
+        {
+            "id": "SEC-NO-SECRETS",
+            "statement": "CHATTY_AUTOTITLE_* knobs are non-secret environment configuration documented in backend/.env.example; no secret lands in plan files, prompts or logs; failures log exception metadata only, never message content.",
+            "evidenceIds": ["EV-BE-1", "EV-FE-1"]
+        }
+    ],
+    "budgetPolicy": {
+        "units": "tokens-and-resources",
+        "reroute": "pause-and-review",
+        "maxTotalTokens": 120000,
+        "maxParallelWorkstreams": 1,
+        "maxRunWallSeconds": 10800,
+        "criticalPathWallSeconds": 7200,
+        "aggregateWorkstreamWallSeconds": 7200,
+        "retryReserveWallSeconds": 3600
+    },
+    "budgets": {
+        "defaultWorkstreamTokens": 30000,
+        "maxEvidenceBytesPerRun": 4194304
+    },
+    "contextLimits": {
+        "profile": "small-context-profile.v1",
+        "maxPlanContextBytes": 120000,
+        "maxRenderedPacketBytes": 40000,
+        "smallContextPacketBytes": 30000,
+        "maxReferenceFilesPerPacket": 12,
+        "includeOnlyOwnedWrites": true,
+        "excludeRuntimeWorkArtifacts": true
+    },
+    "tierResolution": {
+        "status": "RESOLVED",
+        "tier": "S2",
+        "requestedTier": "S2",
+        "reason": "multiple-executable-owners resolved by agent-lifecycle tier resolve",
+        "independentReviewRequired": true,
+        "requestPath": "tasks/2026-11-06-llm-chat-autotitle/tier-request.json",
+        "resolutionPath": "tasks/2026-11-06-llm-chat-autotitle/tier-resolution.json",
+        "requestDigest": "5fb06649c70106304efd6ff56aa8aa25c1af581304434389632533d942ca83a6"
+    },
+    "planReview": {
+        "required": true,
+        "reviewerClass": "independent-plan-reviewer",
+        "maxRounds": 3,
+        "implementationAuthorized": false,
+        "requestPath": "tasks/2026-11-06-llm-chat-autotitle/plan-review-request.md",
+        "report": "tasks/2026-11-06-llm-chat-autotitle/plan-review.json",
+        "reviewedRevision": 2,
+        "verdict": "READY_TO_FREEZE",
+        "roundBudgetNote": "2 раунда: round 1 — NEEDS_REFINEMENT (major F-1: HTTP-путь askBot не покрыт WS-триггером; + F-2..F-6), все закрыты в rev 2; round 2 — READY_TO_FREEZE с четырьмя редакционными хвостами F-7..F-10 (текстовые синхронизации, не контракты), применёнными в той же ревизии 2 до freeze по квалификации ревьюера «не блокирует»."
+    },
+    "planFiles": [
+        "tasks/2026-11-06-llm-chat-autotitle/acceptance-criteria.md",
+        "tasks/2026-11-06-llm-chat-autotitle/developer-overview.md",
+        "tasks/2026-11-06-llm-chat-autotitle/plan-review-request.md",
+        "tasks/2026-11-06-llm-chat-autotitle/plan-review.json",
+        "tasks/2026-11-06-llm-chat-autotitle/plan.manifest.json",
+        "tasks/2026-11-06-llm-chat-autotitle/plan.md",
+        "tasks/2026-11-06-llm-chat-autotitle/specification.json",
+        "tasks/2026-11-06-llm-chat-autotitle/tier-request.json",
+        "tasks/2026-11-06-llm-chat-autotitle/tier-resolution.json"
+    ]
+}

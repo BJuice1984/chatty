@@ -103,7 +103,10 @@ class AssistantPageBase extends Block {
                 const target = event.target as HTMLElement | null
 
                 if (target?.closest('[data-testid="ai-create-chat"]') != null) {
-                    void AiAssistantController.createAiChat({ title: AI_CHAT_TITLE, is_ai: true })
+                    // auto_titled: true (2026-11-06-llm-chat-autotitle): чат
+                    // ассистента рождается с авто-названием — LLM назовёт его
+                    // по контексту, потом флаг гасится (ручной rename дальше)
+                    void AiAssistantController.createAiChat({ title: AI_CHAT_TITLE, is_ai: true, auto_titled: true })
                 }
             },
         } as unknown as Record<string, () => void>

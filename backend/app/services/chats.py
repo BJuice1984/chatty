@@ -111,18 +111,26 @@ class ChatService:
         chat_id: int,
         requester_id: int,
         payload: ChatUpdate,
-    ) -> tuple[Chat, Message | None, bool]:
+    ) -> tuple[Chat, Message | None, bool, str | None]:
         """Обобщённое тело PUT (013): прежняя rename-семантика для заданного
         ИЗМЕНИВШЕГОСЯ title (require_active_member — write-гвард, архивы
         read-only; идентичный title — идемпотентный no-op без сообщения) И
         гашение auto_titled (ручное название отключает авто-режим навсегда),
         плюс флаг is_ai для заданного значения. Возвращает (chat,
-        system_message | None, ai_changed) — ВЕСЬ WS fan-out принадлежит
-        эндпоинту (прецедент репозитория: сервисы не импортируют hub)."""
+        system_message | None, ai_changed, auto_title | None) — ВЕСЬ WS
+        fan-out принадлежит эндпоинту (прецедент репозитория: сервисы не
+        импортируют hub).
+
+        2026-11-06-quick: включение AI сразу сажает бота в участники
+        (ensure_bot_membership — бот виден в шапке с аватаркой, а не после
+        первого ответа), а auto_titled-сид дополняется «AI» («Чат с» ->
+        «Чат с AI») через ту же 013-append-механику; auto_title возвращается
+        эндпоинту для fan-out chat_renamed."""
 
         chat = self.require_active_member(chat_id, requester_id)
         system_message: Message | None = None
         ai_changed = False
+        auto_title: str | None = None
 
         title = payload.title.strip() if payload.title is not None else None
         if title is not None and title != chat.title:
@@ -144,11 +152,36 @@ class ChatService:
         if payload.is_ai is not None and payload.is_ai != chat.is_ai:
             chat.is_ai = payload.is_ai
             ai_changed = True
+            if chat.is_ai and not chat.is_dm:
+                auto_title = self.ensure_bot_membership(chat)
 
         if system_message is not None or ai_changed:
             self.session.commit()
             self.session.refresh(chat)
-        return chat, system_message, ai_changed
+        return chat, system_message, ai_changed, auto_title
+
+    def ensure_bot_membership(self, chat: Chat) -> str | None:
+        """Посадить бота в участники (2026-11-06-quick): бот-юзер ищется по
+        CHATTY_BOT_USER_EMAIL; пустой display_name дополняется «AI» (имя в
+        списке участников и источник 013-append). Свежая вставка членства
+        проходит через общий add-механизм с авто-дополнением названия; уже
+        существующее членство — no-op. Возвращает новый title или None;
+        коммитит вызывающий. Бот-юзера нет (не зарегистрирован) — тихий
+        пропуск: ран бота сам честно зафейлится bot_user_not_configured."""
+        from app.bot.config import bot_settings_from_env
+
+        bot = self.users.get_by_email(bot_settings_from_env().user_email)
+        if bot is None:
+            return None
+        if not bot.display_name:
+            bot.display_name = 'AI'
+            self.session.add(bot)
+        existing = self.chats.get_member(chat.id, bot.id)
+        if existing is not None:
+            return None
+        member = ChatMember(chat_id=chat.id, user_id=bot.id)
+        self.chats.add_member(member)
+        return self._auto_title_append(chat, bot.id)
 
     def mark_all_read(self, user_id: int) -> int:
         """«Пометить всё прочитанными»: bulk-upsert маркеров чтения по всем
@@ -424,7 +457,7 @@ class ChatService:
         if self.chats.reactivate_member(member):
             self.session.commit()
 
-    def add_member(self, chat_id: int, requester_id: int, user_id: int) -> tuple[ChatMember, str | None]:
+    def add_member(self, chat_id: int, requester_id: int, user_id: int) -> tuple[ChatMember, str | None, bool]:
         """Member addition plus the implicit contact capture: EVERY successful
         resolution records the contact requester -> user (skipped for
         self-add) via the idempotent get-then-insert upsert — the fresh
@@ -441,12 +474,24 @@ class ChatService:
         013: the FRESH-insert branch additionally appends the added member's
         name to an auto-titled non-DM chat's title (the existing/reactivated
         early return never touches the title — a repeated add must not
-        duplicate the name). Returns (member, new_title | None); the WS
-        fan-out for a non-None new_title belongs to the ENDPOINT (the repo
-        precedent: services never import the hub)."""
+        duplicate the name). Returns (member, new_title | None, ai_changed);
+        the WS fan-out for a non-None new_title (and the AI toggle) belongs
+        to the ENDPOINT (the repo precedent: services never import the hub).
+
+        2026-11-06-quick: добавление БОТА участником (кнопка «+» с адресом
+        бота) включает чату is_ai — «то же самое», что «+AI»: карточка
+        помечается ✦AI, пустой display_name бота дополняется «AI» (append
+        даст «Чат с AI»), endpoint фан-аутит chat_ai_toggled."""
         chat = self.require_active_member(chat_id, requester_id)
-        if self.users.get_by_id(user_id) is None:
+        user = self.users.get_by_id(user_id)
+        if user is None:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail='user_not_found')
+        from app.bot.config import bot_settings_from_env
+
+        is_bot = user.email.lower() == bot_settings_from_env().user_email
+        if is_bot and not user.display_name:
+            user.display_name = 'AI'
+            self.session.add(user)
         existing = self.chats.get_member(chat_id, user_id)
         if existing is not None:
             # the shared reactivation helper (the rejoin path's twin); the
@@ -454,24 +499,30 @@ class ChatService:
             reactivated = self.chats.reactivate_member(existing)
             if user_id != requester_id:
                 self.contacts.upsert(requester_id, user_id)
-            if reactivated or user_id != requester_id:
+            ai_changed = is_bot and not chat.is_ai
+            if ai_changed:
+                chat.is_ai = True
+            if reactivated or user_id != requester_id or ai_changed:
                 self.session.commit()
-            return existing, None
+            return existing, None, ai_changed
         member = ChatMember(chat_id=chat_id, user_id=user_id)
         try:
             self.chats.add_member(member)
             if user_id != requester_id:
                 self.contacts.upsert(requester_id, user_id)
             new_title = self._auto_title_append(chat, user_id)
+            ai_changed = is_bot and not chat.is_ai
+            if ai_changed:
+                chat.is_ai = True
             self.session.commit()
         except IntegrityError:
             self.session.rollback()
             existing = self.chats.get_member(chat_id, user_id)
             if existing is None:
                 raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail='member_conflict')
-            return existing, None
+            return existing, None, False
         self.session.refresh(member)
-        return member, new_title
+        return member, new_title, ai_changed
 
     def _auto_title_append(self, chat: Chat, user_id: int) -> str | None:
         """Дописывает имя СВЕЖЕГО участника в авто-название чата (013):

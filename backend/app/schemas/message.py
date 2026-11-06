@@ -39,6 +39,10 @@ class MessageResponse(BaseModel):
     user_id: int
     content: str | None
     file_id: int | None
+    # исходное имя файла вложения (аддитивно, как kind): UI рисует пункт
+    # вложения с именем и иконкой по расширению — без него фронтовый
+    # фолбэк показывает безликое «Файл» (live-фидбек 2026-11-06)
+    file_name: str | None = None
     client_message_id: str | None
     # маркер служебного сообщения (None = обычное): аддитивное поле, модель
     # заполняет через from_attributes; UI рисует kind-сообщения служебной строкой

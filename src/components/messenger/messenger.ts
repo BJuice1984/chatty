@@ -277,7 +277,7 @@ export function mapTypedMessages(
         let attachments: MessageAttachment[] | undefined = message.attachments
 
         if (attachments == null && fileUrlValue !== undefined) {
-            attachments = [{ name: message.file?.filename ?? 'Файл', url: fileUrlValue }]
+            attachments = [{ name: message.file_name ?? message.file?.filename ?? 'Файл', url: fileUrlValue }]
         }
 
         return {
@@ -300,6 +300,10 @@ class MessengerBase extends Block {
     // применяется к собственному this.element (контракт review F-5), план
     // брошенного инстанса разрешается в detached-узле и молчит
     private scrollPlanScheduled = false
+
+    // черновик композера между перерисовками (componentDidUpdate снимает,
+    // render возвращает в новый DOM — см. 2026-11-06-quick)
+    private composerDraft = ''
     // отписка от preferences: тумблер автозагрузки в настройках должен
     // перерисовать вложения открытого чата, а утечка подписки — нет
     private unsubscribePreferences: (() => void) | null = null
@@ -325,6 +329,18 @@ class MessengerBase extends Block {
         setFeedScrollKey(this.memoryKey())
 
         const chatChanged = (oldProps as MessengerProps).selectedChat !== (newProps as MessengerProps).selectedChat
+
+        // 2026-11-06-quick: черновик композера переживает перерисовку —
+        // входящее сообщение (WS message → setProps) раньше стирало
+        // набираемый текст пересозданием DOM; смена чата черновик не
+        // переносит (пишем в другой контекст)
+        if (chatChanged) {
+            this.composerDraft = ''
+        } else {
+            const input = this.element?.querySelector<HTMLInputElement>('input.messenger__composer-input')
+
+            this.composerDraft = input?.value ?? ''
+        }
 
         if (chatChanged) {
             deleteFeedScroll(this.memoryKey())
@@ -847,7 +863,7 @@ class MessengerBase extends Block {
             ? headerButtons.filter(button => button.extraClass !== 'cross')
             : [aiButton, ...headerButtons])
 
-        return this.compile(template, {
+        const fragment = this.compile(template, {
             ...props,
             archived,
             canEditAvatar,
@@ -874,6 +890,22 @@ class MessengerBase extends Block {
             }),
             deleteContent: renderDeleteModalContent(chatTitle),
         })
+
+        // вернуть черновик в свежий DOM: render вызывается ПОСЛЕ
+        // componentDidUpdate (значение уже снято со старого узла), а fragment
+        // ещё не вставлен — value едет с узлом в документ. Гвард строго
+        // falsy: первый render() зовётся из конструктора БАЗОВОГО Block —
+        // ДО инициализации полей подкласса, composerDraft там undefined, и
+        // `undefined !== ''` писал в value строку «undefined» (live-баг
+        // 2026-11-06)
+        const draft = this.composerDraft
+        const nextInput = fragment.querySelector<HTMLInputElement>('input.messenger__composer-input')
+
+        if (draft != null && draft !== '' && nextInput != null) {
+            nextInput.value = draft
+        }
+
+        return fragment
     }
 }
 

@@ -200,6 +200,9 @@ export interface Message {
     // чат», UI рисует её служебной строкой без пузыря
     kind?: string
     file?: MessageFile
+    // исходное имя файла вложения с сервера (2026-11-06): имя пункта
+    // вложения и иконка по расширению; без него — фолбэк «Файл»
+    file_name?: string
     // вычисляемый безопасный URL вложения (filesUrl + /{file_id}/download)
     // — рендерится компонентом message
     file_url?: string

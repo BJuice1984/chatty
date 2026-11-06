@@ -1,0 +1,24 @@
+{
+    "schemaVersion": "agent-tier-request.v1",
+    "package": "2026-11-06-llm-chat-autotitle",
+    "requestedTier": "S2",
+    "requestedBy": "claude-code",
+    "requestedAt": "2026-11-06",
+    "taskCount": 2,
+    "executableOwners": [
+        "worker-backend-autotitle",
+        "worker-frontend-autotitle"
+    ],
+    "signals": {
+        "multipleExecutable_owners": true,
+        "architecture_risk": false,
+        "security_risk": false,
+        "performance_risk": false,
+        "browser_risk": false,
+        "data_risk": true,
+        "release_risk": false,
+        "migration_risk": false,
+        "external_environment_risk": true
+    },
+    "rationale": "Two executable owners (backend service + WS wiring, frontend slice patches); external-environment risk (background LLM provider call through the Ollama seam with an operator kill-switch); data risk (concurrent write on chats.title/auto_titled between the LLM rename and a manual rename — CAS semantics required). No DB migration: auto_titled already exists (013)."
+}

@@ -352,6 +352,46 @@ describe('chats controller create-and-select and enable-ai', () => {
 
         expect((chatsSlice.getChats().find(chat => chat.id === 7) as ChatInfo).is_ai).to.eq(true)
     })
+
+    // 2026-11-06-quick: сервер сажает бота в участники сразу при включении
+    // AI — событие рефетчит состав, чтобы аватарка бота приехала в шапку
+    // не после первого ответа
+    it('chat_ai_toggled(refresh) refetches the chat members for the bot seat', async () => {
+        chatsSlice.setChats([chatRow({ id: 7 })])
+        const getChatUsers = sinon.stub().resolves([])
+        new ChatsFeatureController(makePort({ getChatUsers }), makeMessages())
+
+        notifyChatAiToggled({ chat_id: 7, is_ai: true })
+
+        await new Promise(resolve => setTimeout(resolve, 0))
+
+        expect(getChatUsers.calledOnceWith(7)).to.be.true
+
+        // выключение AI состав не трогает
+        chatsSlice.setChats([chatRow({ id: 7 })])
+        notifyChatAiToggled({ chat_id: 7, is_ai: false })
+
+        await new Promise(resolve => setTimeout(resolve, 0))
+
+        expect(getChatUsers.callCount).to.eq(1)
+    })
+
+    // 2026-11-06-quick: вход в чат с непрочитанными при живом сокете —
+    // Connected-выдача истории не повторится, серверный маркер чтения
+    // двигает явный loadHistory (иначе fetchChats возвращал пилюлю)
+    it('selectChat re-requests history for a chat with unread and skips a read one', async () => {
+        chatsSlice.setChats([
+            chatRow({ id: 3, unread_count: 4 } as Partial<ChatInfo>),
+            chatRow({ id: 4, unread_count: 0 } as Partial<ChatInfo>),
+        ])
+        const loadHistory = sinon.stub().resolves()
+        const controller = new ChatsFeatureController(makePort(), makeMessages({ loadHistory }))
+
+        controller.selectChat(3)
+        controller.selectChat(4)
+
+        expect(loadHistory.calledOnceWith(3, null, 50)).to.be.true
+    })
 })
 
 // Живой поиск по чатам (2026-10-26-chat-search): контроллер режет пробелы,
@@ -1602,5 +1642,32 @@ describe('chats controller rename and read-all', () => {
         chats = store.getState().chats as { id: number, title: string }[]
 
         expect(chats.find(chat => chat.id === 4)?.title).to.eq('Переименовали извне')
+    })
+
+    // 2026-11-06-llm-chat-autotitle: ЛЮБОЙ chat_renamed финализирует
+    // авто-название — сервер гасит auto_titled той же транзакцией (LLM-титул
+    // или чужой ручной rename), identical-title пропускается только для
+    // чатов с уже погашенным флагом (LLM могла вернуть текущий заголовок)
+    it('notifyChatRenamed finalizes an auto-titled chat even on an identical title', () => {
+        store.set('chats', [
+            { id: 5, title: 'Чат с', avatar: '', unread_count: 0, auto_titled: true },
+        ] as never)
+        new ChatsFeatureController(makePort(), makeMessages())
+
+        // LLM вернула текущий сид — title не изменился, но флаг сервер погасил
+        notifyChatRenamed({ chat_id: 5, title: 'Чат с' })
+
+        let row = (store.getState().chats as { id: number, title: string, auto_titled?: boolean }[]).find(chat => chat.id === 5)
+
+        expect(row?.title).to.eq('Чат с')
+        expect(row?.auto_titled).to.eq(undefined)
+
+        // LLM-титул с реальным переименованием: и title, и гашение флага
+        notifyChatRenamed({ chat_id: 5, title: 'Webpack CDN' })
+
+        row = (store.getState().chats as { id: number, title: string, auto_titled?: boolean }[]).find(chat => chat.id === 5)
+
+        expect(row?.title).to.eq('Webpack CDN')
+        expect(row?.auto_titled).to.eq(undefined)
     })
 })

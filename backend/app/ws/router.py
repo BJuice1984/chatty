@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import asyncio
+
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 from pydantic import ValidationError
 
@@ -17,6 +19,7 @@ from app.schemas.message import (
 )
 from app.services.chats import ChatService
 from app.services.messages import MessageService
+from app.ws.autotitle import schedule_autotitle
 from app.ws.hub import hub, stories_hub
 
 
@@ -95,6 +98,11 @@ async def chat_websocket(websocket: WebSocket, chat_id: int) -> None:
                         {'type': 'message', 'content': response},
                         active_user_ids=active_user_ids,
                     )
+                    # one-shot LLM-автоназвание (2026-11-06): fire-and-forget
+                    # после broadcast — отправка сообщения никогда не ждёт
+                    # модель; планировщик сам гвардит параллельные вызовы
+                    # (луп сокета живёт всю сессию — задача доедет)
+                    asyncio.create_task(schedule_autotitle(websocket.app.state, chat_id))
                 elif event.type == 'history':
                     content = event.content if isinstance(event.content, dict) else {}
                     history = WebSocketHistoryContent.model_validate(content)

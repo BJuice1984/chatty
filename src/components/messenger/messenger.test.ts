@@ -228,6 +228,46 @@ describe('messenger action dispatch', () => {
         }
     })
 
+    // 2026-11-06-quick: входящее сообщение (WS message -> setProps) раньше
+    // стирало набираемый текст пересозданием DOM композера — черновик
+    // снимается в componentDidUpdate и возвращается в свежий узел; смена
+    // чата черновик не переносит
+    it('keeps the composer draft across an incoming-message rerender and drops it on chat switch', () => {
+        const messenger = new Messenger({ onSendMessage: () => {} } as never)
+
+        try {
+            store.set('messages', { 5: [] })
+            store.set('selectedChat', 5)
+
+            const input = () => messenger.element?.querySelector<HTMLInputElement>('input[name="message"]')
+
+            // store-выдача сменила else-ветку на композер: первый рендер с
+            // инпутом мог пойти из конструктора базового Block ДО
+            // инициализации полей подкласса — value обязан быть пустым, а не
+            // строкой «undefined» (регрессия live-бага 2026-11-06)
+            expect(input()?.value).to.eq('')
+
+            if (input() != null) {
+                input()!.value = 'набираю ответ'
+            }
+
+            // входящее сообщение: пропсы меняются — DOM пересобирается
+            store.set('messages', {
+                5: [{ id: 101, chat_id: 5, user_id: 2, content: 'входящее' }] as never,
+            })
+
+            expect(input()?.value).to.eq('набираю ответ')
+
+            // смена чата — черновик не переезжает в другой контекст
+            store.set('messages', { 6: [] })
+            store.set('selectedChat', 6)
+
+            expect(input()?.value).to.eq('')
+        } finally {
+            messenger.destroy()
+        }
+    })
+
     it('blocks the composer while the bot run is pending and frees it after', () => {
         const onSendMessage = sinon.spy()
         const messenger = new Messenger({ onSendMessage } as never)
