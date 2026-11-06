@@ -11,6 +11,7 @@ import { JSDOM } from 'jsdom'
 import sinon from 'sinon'
 import { TransportError } from '../../utils/HTTPTransport.ts'
 import Router from '../../utils/Router.ts'
+import { SIGNIN } from '../../utils/constants.ts'
 import store from '../../utils/Store.ts'
 import { AUTH_NETWORK_ERROR_MESSAGE, AuthFeatureController } from './controller.ts'
 import type { AuthPort, AuthUser } from './ports.ts'
@@ -210,5 +211,32 @@ describe('auth controller: authLoading — честное состояние п�
 
         expect(store.getState().authLoading).to.eq(false)
         expect(store.getState().authError).to.eq('Этот email уже зарегистрирован')
+    })
+})
+
+describe('auth controller: localSignOut — локальный выход после logout-all', () => {
+    beforeEach(() => {
+        store.set('user', null)
+        store.set('authError', null)
+        store.set('authLoading', false)
+        sinon.stub(Router, 'go')
+    })
+
+    afterEach(() => {
+        sinon.restore()
+    })
+
+    it('сбрасывает пользователя и уходит на страницу входа без серверного запроса', async () => {
+        // 2026-11-07: /auth/logout-all сам снимает все куки — повторный
+        // POST /auth/logout падает 403 по пустому csrf; выход остаётся локальным
+        const controller = new AuthFeatureController(makePort())
+        const go = Router.go as sinon.SinonStub
+
+        store.set('user', { id: 5, login: 'ada@example.com' } as never)
+
+        await controller.localSignOut()
+
+        expect(store.getState().user ?? null).to.eq(null)
+        expect(go.calledOnceWith(SIGNIN)).to.be.true
     })
 })

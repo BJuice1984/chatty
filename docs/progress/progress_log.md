@@ -1,3 +1,25 @@
+# 2026-11-07 — Fix(profile): локальный выход после logout-all + danger-кнопки настроек
+
+Живой браузерный репро (headless Edge): «Sign out everywhere» давал
+/auth/logout-all 200, после чего фронт дёргал второй POST /auth/logout —
+уже с пустым csrf (бэкенд logout-all сам снимает ВСЕ куки и бампает
+token_version) → 403 csrf_failed, юзер оставался на /settings. Фикс: у
+auth-контроллера появился localSignOut() (сброс стора + Router.go без
+запроса), профиль-фича после успешного logout-all цепляет его через новый
+шов localSignOut (композиция features/index.ts; серверный logout-шов
+остаётся у обычного Sign out). Тесты: profile-пины перебиты под новый
+контракт (logout-all → localSignOut, серверный logout НЕ зовётся; провал
+порта → localSignOut молчит), +пин localSignOut в auth-контроллере.
+UI-хвост оператора: кнопка Sign out переведена на classType danger (в
+размер остальных кнопок, красный текст/ховер как у danger-элементов),
+«Sign out everywhere» получил габариты 280×52, кнопки формы настроек
+центрированы (align-self: center в settings-section__block — инпуты
+остаются на stretch). Гейты: npm run verify PASS (mocha 732→733), guard
+strict 0. Живые проверки headless Edge: logout-all → 200 → форма входа,
+второго /auth/logout больше нет.
+
+
+
 # 2026-11-07 — Fix(auth): сброс ошибки при переходе sign-in ↔ sign-up
 
 Ошибка последней отправки («Неверный email или пароль» и пр.) висела под

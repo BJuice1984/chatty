@@ -121,6 +121,15 @@ export class AuthFeatureController {
             console.error('Ошибка при выходе из системы:', e)
         }
     }
+
+    // Локальный выход без серверного запроса (2026-11-07): /auth/logout-all
+    // сам снимает ВСЕ куки (csrf в том числе) и бампает token_version —
+    // следующий за ним POST /auth/logout едет уже с пустым csrf и падает
+    // 403 csrf_failed, оставляя юзера на странице настроек
+    localSignOut(): void {
+        authSlice.setUser(null)
+        Router.go(SIGNIN)
+    }
 }
 
 export default new AuthFeatureController()
