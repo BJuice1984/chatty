@@ -184,7 +184,7 @@ class ProfilePageBase extends Block<ProfilePageProps> {
                 },
                 {
                     label: 'Sign out',
-                    classType: 'secondary',
+                    classType: 'danger',
                     type: 'button',
                     onClick: () => {
                         void getProfileController().logout()
