@@ -12,6 +12,9 @@ export interface AuthSlice {
     getAuthError(): string | null
     // eslint-disable-next-line no-unused-vars
     setAuthError(message: string | null): void
+    getAuthLoading(): boolean
+    // eslint-disable-next-line no-unused-vars
+    setAuthLoading(value: boolean): void
 }
 
 export const authSlice: AuthSlice = {
@@ -29,5 +32,13 @@ export const authSlice: AuthSlice = {
 
     setAuthError(message) {
         store.set('authError', message)
+    },
+
+    getAuthLoading() {
+        return store.getState().authLoading === true
+    },
+
+    setAuthLoading(value) {
+        store.set('authLoading', value)
     },
 }

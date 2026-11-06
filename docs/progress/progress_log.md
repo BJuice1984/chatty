@@ -1,4 +1,37 @@
+# 2026-11-07 — ALK 2026-11-07-auth-session-ux: csrf-дубли, лоадер входа, сохранение значений форм
+
+Полный ALK-цикл (S2, план-пакет tasks/2026-11-07-auth-session-ux, 3 раунда
+план-ревью, freeze rev 3): два воркстрима на feature/2026-11-07-auth-session-ux.
+(1) WS-BE-CSRF: require_csrf теперь сверяет X-CSRF-Token с ЛЮБОЙ копией
+chatty_csrf по всем Cookie-заголовкам (getlist + hmac per-copy) — на starlette
+0.48.0 Request.cookies видит только первый заголовок, а внутри одного
+побеждает последний дубль: браузерный дубль со старой path-кукой запирал
+logout живьём (curl-репро: 403 csrf_failed при корректном заголовке). Тесты:
+6 кейсов с двумя red-green пинами (red-фаза воспроизведена на непатченном
+коде: ровно 2 падения); гейт — delta-контракт: 333 passed + ровно 4
+известных converter-фейла (WinError 193, Windows; exit≠0 на стенде by
+design). Ревью задачи ACCEPTED, implementation audit PASS. Коммит 737e210.
+(2) WS-FE-AUTH-UX: authLoading-поле стора (опциональное, без механики) —
+signin/signup оборачивают полёт finally-сбросом; кнопки submit в полёте
+disabled с лейблами «Signing in…»/«Signing up…» (проброс disabled через
+form.hbs в Button) и Enter-гвард в handleSubmitClick (submit доезжает до
+Form мимо disabled-кнопки); введённые значения переживают перерисовки
+ошибкой/лоадером — страницы снимают живые value со старого DOM в
+componentDidUpdate и возвращают через аддитивный value-проброс
+FormInputs→form.hbs→labeledInput.hbs→input.hbs (условный рендер атрибута;
+профиль-формы не тронуты). Урок реализации: поля классов инициализируются
+после super(), а первый render зовётся из super() — draft переведён на
+ленивую инициализацию. Гейты: npm run verify PASS (mocha 721→730),
+guard --all --strict 0. CLI-уроки ALK 2.43 (Windows): workflow init требует
+--package-root ../.. (os.path.relpath даёт backslash), канонические
+JSON-артефакты = canonical_bytes + '\n', task-review требует
+acceptanceChecks[].acceptanceId+PASS для аудита, audit out-файл
+exclusive-create (удалять перед перегоном), авторизационная квитанция —
+канонический JSON с lineage-полями стейта.
+
 # 2026-11-07 — Fix(auth): человекочитаемые ошибки входа + починка флейка оверлея
+
+
 
 Живой инцидент: при неверном пароле форма входа показывала «Нет связи с
 сервером» вместо причины. Корней два. (1) Операторский env стека разрешал

@@ -66,6 +66,7 @@ export class AuthFeatureController {
 
     async signin(data: SignInRequest): Promise<void> {
         authSlice.setAuthError(null)
+        authSlice.setAuthLoading(true)
 
         try {
             // Пробелы по краям логина/email от копипаста не попадают в запрос
@@ -75,11 +76,14 @@ export class AuthFeatureController {
         } catch (e: unknown) {
             console.error('Ошибка при входе в систему:', e)
             authSlice.setAuthError(authErrorMessage(e))
+        } finally {
+            authSlice.setAuthLoading(false)
         }
     }
 
     async signup(data: SignUpRequest): Promise<void> {
         authSlice.setAuthError(null)
+        authSlice.setAuthLoading(true)
 
         try {
             await this.port.signup(data)
@@ -88,6 +92,8 @@ export class AuthFeatureController {
         } catch (e: unknown) {
             console.error('Ошибка при регистрации:', e)
             authSlice.setAuthError(authErrorMessage(e))
+        } finally {
+            authSlice.setAuthLoading(false)
         }
     }
 

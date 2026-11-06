@@ -4,10 +4,11 @@
           ref=this.name
           label=this.label
           name=this.name
+          value=this.value
           validate=this.validate
           validateMessage=this.validateMessage }}}
   {{/each}}
   {{#each buttons}}
-    {{{ Button label=this.label classType=this.classType type=this.type onClick=this.onClick }}}
+    {{{ Button label=this.label classType=this.classType type=this.type disabled=this.disabled onClick=this.onClick }}}
   {{/each}}
 </form>

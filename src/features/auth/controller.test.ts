@@ -8,7 +8,9 @@
 
 import { expect } from 'chai'
 import { JSDOM } from 'jsdom'
+import sinon from 'sinon'
 import { TransportError } from '../../utils/HTTPTransport.ts'
+import Router from '../../utils/Router.ts'
 import store from '../../utils/Store.ts'
 import { AUTH_NETWORK_ERROR_MESSAGE, AuthFeatureController } from './controller.ts'
 import type { AuthPort, AuthUser } from './ports.ts'
@@ -43,6 +45,7 @@ function makePort(overrides: Partial<AuthPort> = {}): AuthPort {
 describe('auth controller: ошибки запросов видны в сторе', () => {
     beforeEach(() => {
         store.set('authError', null)
+        store.set('authLoading', false)
     })
 
     it('сетевой сбой входа кладёт сообщение об отсутствии связи', async () => {
@@ -147,5 +150,65 @@ describe('auth controller: ошибки запросов видны в стор�
         await controller.fetchUser()
 
         expect(store.getState().authError ?? null).to.eq(null)
+    })
+})
+
+describe('auth controller: authLoading — честное состояние полёта', () => {
+    beforeEach(() => {
+        store.set('authError', null)
+        store.set('authLoading', false)
+        // успешный signin зовёт Router.go — pushState протекает в общий
+        // jsdom-history и ломает счётчики Router-тестов; глушим навигацию
+        sinon.stub(Router, 'go')
+    })
+
+    afterEach(() => {
+        sinon.restore()
+    })
+
+    it(' signin в полёте держит authLoading=true, после успеха сбрасывает', async () => {
+        let resolveSignin!: () => void
+        const controller = new AuthFeatureController(makePort({
+            signin: () => new Promise<void>(resolve => {
+                resolveSignin = resolve
+            }),
+        }))
+
+        const flight = controller.signin({ login: 'ada@example.com', password: 'LongPassword1' })
+
+        expect(store.getState().authLoading).to.eq(true)
+
+        resolveSignin()
+        await flight
+
+        expect(store.getState().authLoading).to.eq(false)
+    })
+
+    it('signin после отказа тоже сбрасывает authLoading (finally, не только успех)', async () => {
+        const controller = new AuthFeatureController(makePort({
+            signin: () => Promise.reject(networkError),
+        }))
+
+        await controller.signin({ login: 'ada@example.com', password: 'wrong-password' })
+
+        expect(store.getState().authLoading).to.eq(false)
+        expect(store.getState().authError).to.eq(AUTH_NETWORK_ERROR_MESSAGE)
+    })
+
+    it('signup зеркалит поведение: полёт true, отказ сбрасывает', async () => {
+        const controller = new AuthFeatureController(makePort({
+            signup: () => Promise.reject(new TransportError('email_already_registered', 'http', 409)),
+        }))
+
+        const flight = controller.signup({
+            email: 'ada@example.com',
+            password: 'LongPassword1',
+            confirm_password: 'LongPassword1',
+        })
+
+        await flight
+
+        expect(store.getState().authLoading).to.eq(false)
+        expect(store.getState().authError).to.eq('Этот email уже зарегистрирован')
     })
 })

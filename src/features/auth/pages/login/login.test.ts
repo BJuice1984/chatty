@@ -25,6 +25,7 @@ Object.entries(Components).forEach(([name, component]) => {
 describe('login page: ошибка авторизации из стора', () => {
     beforeEach(() => {
         store.set('authError', null)
+        store.set('authLoading', false)
     })
 
     it('показывает authError, лежащую в сторе ещё до монтирования', () => {
@@ -54,5 +55,70 @@ describe('login page: ошибка авторизации из стора', () =
         const page = new LoginPage({})
 
         expect(page.element?.querySelector('[data-testid="auth-error"]')).to.eq(null)
+    })
+
+    it('введённые значения переживают перерисовку с ошибкой (2026-11-07)', () => {
+        const page = new LoginPage({})
+        const loginInput = page.element?.querySelector<HTMLInputElement>('input[name="login"]')
+        const passwordInput = page.element?.querySelector<HTMLInputElement>('input[name="password"]')
+
+        loginInput!.value = 'ada@example.com'
+        passwordInput!.value = 'LongPassword1'
+
+        store.set('authError', 'Неверный email или пароль')
+
+        const error = page.element?.querySelector('[data-testid="auth-error"]')
+        const loginAfter = page.element?.querySelector<HTMLInputElement>('input[name="login"]')
+        const passwordAfter = page.element?.querySelector<HTMLInputElement>('input[name="password"]')
+
+        expect(error?.textContent).to.eq('Неверный email или пароль')
+        expect(loginAfter?.value).to.eq('ada@example.com')
+        expect(passwordAfter?.value).to.eq('LongPassword1')
+    })
+
+    it('значения переживают и лоадер-перерисовку', () => {
+        const page = new LoginPage({})
+        const loginInput = page.element?.querySelector<HTMLInputElement>('input[name="login"]')
+
+        loginInput!.value = 'ada@example.com'
+
+        store.set('authLoading', true)
+
+        const loginAfter = page.element?.querySelector<HTMLInputElement>('input[name="login"]')
+
+        expect(loginAfter?.value).to.eq('ada@example.com')
+    })
+
+    it('в полёте submit-кнопка disabled с лейблом «Signing in…», после — возвращается', () => {
+        const page = new LoginPage({})
+        const submitBefore = page.element?.querySelector<HTMLButtonElement>('button[type="submit"]')
+
+        expect(submitBefore?.disabled).to.eq(false)
+        expect(submitBefore?.textContent?.trim()).to.eq('Sign in')
+
+        store.set('authLoading', true)
+
+        const submitDuring = page.element?.querySelector<HTMLButtonElement>('button[type="submit"]')
+
+        expect(submitDuring?.disabled).to.eq(true)
+        expect(submitDuring?.textContent?.trim()).to.eq('Signing in…')
+
+        store.set('authLoading', false)
+
+        const submitAfter = page.element?.querySelector<HTMLButtonElement>('button[type="submit"]')
+
+        expect(submitAfter?.disabled).to.eq(false)
+        expect(submitAfter?.textContent?.trim()).to.eq('Sign in')
+    })
+
+    it('вторичная кнопка не трогается лоадером', () => {
+        const page = new LoginPage({})
+
+        store.set('authLoading', true)
+
+        const secondary = page.element?.querySelector<HTMLButtonElement>('button[type="button"]')
+
+        expect(secondary?.disabled).to.eq(false)
+        expect(secondary?.textContent?.trim()).to.eq('Sign up')
     })
 })
