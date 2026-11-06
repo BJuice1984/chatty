@@ -37,7 +37,7 @@ import type { HistoryMessage } from '../history/types.ts'
 // в бандл через импорт ws-адаптера (components фичи не импортируют —
 // guard-блокер).
 import '../history/view.ts'
-import { appendMessages, notifyChatDeleted, notifyChatRenamed, notifyReactionEvent, notifyWsConnected, notifyWsUnexpectedClose } from './gateway.ts'
+import { appendMessages, notifyChatAiToggled, notifyChatDeleted, notifyChatRenamed, notifyReactionEvent, notifyWsConnected, notifyWsUnexpectedClose } from './gateway.ts'
 
 interface OwnWsEvent {
     type: string
@@ -337,6 +337,14 @@ export class OwnWsAdapter {
                 const content = wsEvent.content as { chat_id: number, title: string }
 
                 notifyChatRenamed({ chat_id: content.chat_id, title: content.title })
+            }
+
+            // Бот включён в чате (2026-11-06-chat-create-flow): is_ai-патч
+            // слайса делает контроллер через gateway-слушатель; сокет жив
+            if (wsEvent.type === 'chat_ai_toggled' && wsEvent.content != null) {
+                const content = wsEvent.content as { chat_id: number, is_ai: boolean }
+
+                notifyChatAiToggled({ chat_id: content.chat_id, is_ai: content.is_ai })
             }
         })
         wsTransport.on(WSTransportEvents.Close, () => {

@@ -112,8 +112,42 @@ async def test_admin_ingestion_reaches_ready_and_search_returns_file_id(client, 
     from app.repositories.documents import DocumentRepository
 
     with session_factory() as session:
-        chunks = DocumentRepository(session).ready_chunks_for_chat(chat_id)
+        chunks = DocumentRepository(session).ready_chunks()
         assert any('sample.docx' in chunk.content for chunk in chunks), 'file name must be indexed'
+
+
+async def test_shared_library_document_from_another_chat_is_searchable(client, app, session_factory):
+    """Scope B (2026-11-06): the document base is common to every user.
+
+    A document ingested by the admin into chat A must be found by a
+    DIFFERENT user searching from their own chat B — retrieval no longer
+    filters by the chunk's chat.
+    """
+    rag_ready(app)
+    admin = await register(client, 'admin@example.com')
+    promote_to_admin(session_factory, admin['id'])
+    chat_a = await client.post('/api/v1/chats', json={'title': 'Библиотека'})
+    assert chat_a.status_code == 201
+    file = await upload(client, chat_a.json()['id'], 'sample.docx')
+    ingested = await client.post(f"/api/v1/documents/{file['file_id']}/ingest")
+    assert ingested.status_code == 200, ingested.text
+
+    # новая регистрация перезаписывает cookie-сессию клиента — второй юзер
+    await register(client, 'member@example.com')
+    chat_b = await client.post('/api/v1/chats', json={'title': 'Личный AI-чат'})
+    assert chat_b.status_code == 201
+
+    found = await client.post(
+        f"/api/v1/chats/{chat_b.json()['id']}/documents/search",
+        json={'query': 'Chatty RAG fixture document.', 'top_k': 5},
+    )
+
+    assert found.status_code == 200, found.text
+    results = found.json()
+    assert results, 'shared library: another chat must find the document'
+    top = max(results, key=lambda item: item['score'])
+    assert top['file_id'] == file['file_id']
+    assert top['file_name'] == 'sample.docx'
 
 
 async def test_non_admin_cannot_ingest(client, app):

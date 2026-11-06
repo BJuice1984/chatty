@@ -36,22 +36,37 @@ export interface ReactionToggleResult {
     reactions: ReactionSummary[]
 }
 
+// Результат создания чата (2026-11-06-chat-create-flow): только идентификатор
+// — createAndSelect открывает свежую карточку без рефетча списка наугад
+export interface CreateChatResult {
+    chatId: number
+}
+
 export interface ChatsPort {
     // meId — идентичность вьюера для правила «единственный собеседник» в
     // аватарах списка: адаптер стор не читает, контроллер передаёт параметром
     // eslint-disable-next-line no-unused-vars
     fetchChats(meId?: number): Promise<ChatInfo[]>
-    // createChat (2026-10-27-ai-chat-creation): is_ai из CreateChatData
-    // уезжает адаптером только выставленным — title-only вызовы не меняются
+    // createChat (2026-11-06-chat-create-flow): контракт вырос с void до
+    // {chatId} — one-click-флоу селектит свежую карточку сразу; is_ai и
+    // auto_titled из CreateChatData уезжают адаптером только выставленными —
+    // title-only вызовы не меняют форму payload
     // eslint-disable-next-line no-unused-vars
-    createChat(data: CreateChatData): Promise<void>
+    createChat(data: CreateChatData): Promise<CreateChatResult>
     // eslint-disable-next-line no-unused-vars
     deleteChat(data: DeleteChatData): Promise<void>
     // Переименование чата (2026-11-05-messenger-ux-pack): любой активный
     // участник; PUT /chats/{id} — бэкенд пишет системное сообщение
-    // (kind='chat_renamed') и рассылает chat_renamed активным участникам
+    // (kind='chat_renamed') и рассылает chat_renamed активным участникам.
+    // 2026-11-06: ручной rename гасит серверный auto_titled (адаптер ответ
+    // discard-ит — гашение ездит оптимистичным патчем контроллера)
     // eslint-disable-next-line no-unused-vars
     renameChat(chatId: number, title: string): Promise<void>
+    // «+AI» в шапке чата (2026-11-06-chat-create-flow): включает бота в
+    // текущем чате (PUT /chats/{id} {is_ai: true}); WS chat_ai_toggled
+    // разъезжается остальным участникам
+    // eslint-disable-next-line no-unused-vars
+    enableAi(chatId: number): Promise<void>
     // «Пометить всё прочитанными» (2026-11-05-messenger-ux-pack): bulk-upsert
     // маркеров чтения по всем чатам вьюера (активным и архивным)
     readAll(): Promise<{ updated: number }>

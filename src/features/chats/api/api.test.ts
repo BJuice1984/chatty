@@ -246,7 +246,7 @@ describe('chats api social operations (fake XHR)', () => {
     it('creates a chat over POST /chats carrying is_ai when it is set', async () => {
         FakeXHR.responses.push({ status: 201, response: { id: 5 } })
 
-        await ownChatsPort.createChat({ title: 'мой ИИ-чат', is_ai: true })
+        const result = await ownChatsPort.createChat({ title: 'мой ИИ-чат', is_ai: true })
 
         const call = FakeXHR.calls[0]
 
@@ -254,6 +254,9 @@ describe('chats api social operations (fake XHR)', () => {
         expect(call.url).to.contain('/chats')
         expect(call.body).to.eq(JSON.stringify({ title: 'мой ИИ-чат', is_ai: true }))
         expect(call.headers['X-CSRF-Token']).to.eq('token-1')
+        // 2026-11-06: контракт вырос с void до {chatId} — one-click-флоу
+        // селектит свежую карточку по id из ChatResponse
+        expect(result).to.deep.eq({ chatId: 5 })
     })
 
     it('omits is_ai from POST /chats for a title-only create', async () => {
@@ -265,6 +268,37 @@ describe('chats api social operations (fake XHR)', () => {
 
         expect(call.method).to.eq('POST')
         expect(call.body).to.eq(JSON.stringify({ title: 'мой чат' }))
+        expect(call.headers['X-CSRF-Token']).to.eq('token-1')
+    })
+
+    // 2026-11-06-chat-create-flow: авто-название уезжает только выставленным
+    // (прецедент is_ai), title-only вызовы не меняют форму payload
+    it('carries auto_titled on POST /chats only when set', async () => {
+        FakeXHR.responses.push({ status: 201, response: { id: 7 } })
+
+        await ownChatsPort.createChat({ title: 'Чат с', auto_titled: true })
+
+        expect(FakeXHR.calls[0].body).to.eq(JSON.stringify({ title: 'Чат с', auto_titled: true }))
+
+        FakeXHR.calls = []
+        FakeXHR.responses.push({ status: 201, response: { id: 8 } })
+
+        await ownChatsPort.createChat({ title: 'Чат с' })
+
+        expect(FakeXHR.calls[0].body).to.eq(JSON.stringify({ title: 'Чат с' }))
+    })
+
+    // «+AI» (2026-11-06): PUT /chats/{id} {is_ai: true} с csrf-заголовком
+    it('enables the bot over PUT /chats/{id} with is_ai true and csrf', async () => {
+        FakeXHR.responses.push({ status: 200, response: { id: 7, is_ai: true } })
+
+        await ownChatsPort.enableAi(7)
+
+        const call = FakeXHR.calls[0]
+
+        expect(call.method).to.eq('PUT')
+        expect(call.url).to.contain('/chats/7')
+        expect(call.body).to.eq(JSON.stringify({ is_ai: true }))
         expect(call.headers['X-CSRF-Token']).to.eq('token-1')
     })
 

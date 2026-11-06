@@ -32,12 +32,18 @@ class DocumentRepository:
         document.chunk_count = len(chunks)
         self.session.flush()
 
-    def ready_chunks_for_chat(self, chat_id: int) -> list[DocChunk]:
-        """Only chunks of ready documents are retrieval candidates."""
+    def ready_chunks(self) -> list[DocChunk]:
+        """Chunks of ready documents — the shared, instance-wide library.
+
+        Scope B (2026-11-06): the document base is common to every user and
+        every AI chat; a chunk's chat_id still records where the file was
+        uploaded, but retrieval no longer filters by it. Only ready
+        documents are retrieval candidates.
+        """
         statement = (
             select(DocChunk)
             .join(Document, DocChunk.document_id == Document.id)
-            .where(DocChunk.chat_id == chat_id, Document.status == 'ready')
+            .where(Document.status == 'ready')
             .order_by(DocChunk.document_id.asc(), DocChunk.ordinal.asc())
         )
         return list(self.session.scalars(statement))

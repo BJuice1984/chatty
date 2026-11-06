@@ -105,6 +105,9 @@ interface MessengerProps {
     // inline-переименование (2026-11-05): коммит по Enter/Escape/focus-out
     // eslint-disable-next-line no-unused-vars
     onRenameChat?: (chatId: number, title: string) => void
+    // «+AI» (2026-11-06-chat-create-flow): включает бота в текущем чате
+    // eslint-disable-next-line no-unused-vars
+    onEnableAi?: (chatId: number) => void
     // UI-флаг «заголовок в режиме инпута» (controller-free, поднимается setProps)
     renamingTitle?: boolean
     // controller-free UI-состояние (внутреннее, поднимается через setProps):
@@ -535,6 +538,15 @@ class MessengerBase extends Block {
                         return
                     }
 
+                    // подсказка пустого чата: кнопка «добавить» открывает ту
+                    // же модалку поиска, что и «+» шапки (узор открытия cross)
+                    if (target?.closest('[data-testid="empty-chat-add"]') != null) {
+                        this.setProps({ addUserOpen: true, addUserQuery: '', addUserResults: [], addUserFeedback: '' })
+                        this.refocusSearchInput()
+
+                        return
+                    }
+
                     // клик по аватару участника в шапке: меню участника.
                     // Архивный чат (leftAt) — меню нет вовсе; участник ищется
                     // в selectedChatUsers по data-user-id обёртки аватара
@@ -791,7 +803,9 @@ class MessengerBase extends Block {
 
     render() {
         const props = this.props as MessengerProps
-        const chatInfo = props.chatInfo as { title?: unknown, leftAt?: string | null, avatar?: unknown } | undefined
+        const chatInfo = props.chatInfo as
+            | { title?: unknown, leftAt?: string | null, avatar?: unknown, is_ai?: boolean, auto_titled?: boolean }
+            | undefined
         const chatTitle = chatInfo?.title
         // архивное членство (left_at из GET /chats): чат только читается —
         // меню участников, кнопка «+» и композер скрыты, история скроллится
@@ -802,10 +816,36 @@ class MessengerBase extends Block {
         const canEditAvatar = !archived && props.meId != null && props.ownerId === props.meId
         const chatAvatar = typeof chatInfo?.avatar === 'string' ? chatInfo.avatar : ''
         const menuTarget = props.menuTarget ?? null
+        // авто-название (2026-11-06-chat-create-flow): заголовок НЕ-архивного
+        // auto_titled-чата — сразу инпут (механика renamingTitle без dblclick);
+        // ручной rename гасит флаг оптимистично — заголовок становится h2
+        const autoTitleInput = !archived && chatInfo?.auto_titled === true
+        const isAiChat = chatInfo?.is_ai === true
+        // подсказка пустого чата: гейт чисто по данным — нет сообщений, нет
+        // соучастников кроме меня, не архивный и не AI (оператор 2026-11-06)
+        const coMembers = (props.selectedChatUsers ?? [])
+            .map(member => (member as { id?: number }).id)
+            .filter((id): id is number => typeof id === 'number' && id !== props.meId)
+        const emptyChatHint = !archived && !isAiChat && (props.messages ?? []).length === 0 && coMembers.length === 0
+        // «+AI» первым в ряду кнопок: включает бота в текущем чате; в AI-чате
+        // кнопка уже активна (подсветка, клики игнорирует), архивный чат её
+        // не показывает вовсе (вместе с cross)
+        const aiButton = {
+            extraClass: isAiChat ? 'ai ai_active' : 'ai',
+            handleClick: isAiChat
+                ? () => {}
+                : () => {
+                    const live = this.props as MessengerProps
+
+                    if (typeof live.selectedChat === 'number') {
+                        live.onEnableAi?.(live.selectedChat)
+                    }
+                },
+        }
         const headerButtons = (props.headerButtons as { extraClass?: string }[] | undefined) ?? []
-        const visibleHeaderButtons = archived
+        const visibleHeaderButtons = (archived
             ? headerButtons.filter(button => button.extraClass !== 'cross')
-            : headerButtons
+            : [aiButton, ...headerButtons])
 
         return this.compile(template, {
             ...props,
@@ -813,6 +853,10 @@ class MessengerBase extends Block {
             canEditAvatar,
             canRename: !archived,
             chatAvatar,
+            autoTitleInput,
+            emptyChatHint,
+            // renamingTitle (dblclick) ИЛИ авто-режим — шаблон один инпут
+            renamingTitle: props.renamingTitle === true || autoTitleInput,
             headerButtons: visibleHeaderButtons,
             menuTitle: menuTarget?.display_name ?? '',
             menuOpen: menuTarget != null,

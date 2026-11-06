@@ -12,6 +12,7 @@
 import store from '../../utils/Store.ts'
 import { TransportError } from '../../utils/HTTPTransport.ts'
 import { hideBusyOverlay, showBusyOverlay } from '../../utils/busyOverlay.ts'
+import { NEW_CHAT_TITLE } from '../../utils/constants.ts'
 import type { ChatInfo, Message, ReactionSummary } from '../../utils/types.ts'
 import { chatsPort } from './api/index.ts'
 import type { ChatMessagesPort, ChatReactionEvent, ChatsPort, ChatsUserSearchResult } from './ports.ts'
@@ -46,6 +47,14 @@ const BOT_ECHO_WAIT_TICK_MS = 25
 // повторный вызов вернёт тот же ран и не создаст второй ответ
 const BOT_RUN_RETRY_DELAYS_MS: readonly number[] = [5_000, 15_000]
 
+// Поллинг идущего рана (2026-11-06): повторный POST против queued/running
+// возвращает ран как есть (бэкенд не исполняет его дважды), время ответа
+// модели непредсказуемо — pending-хвост «печатает…» живёт весь поллинг.
+// Бюджет — не таймаут ответа, а защита от вечного «печатает…» при ране,
+// который никогда не завершится
+const BOT_RUN_POLL_INTERVAL_MS = 5_000
+const BOT_RUN_POLL_BUDGET_MS = 10 * 60_000
+
 let contactsIntegration: ContactsIntegration = noopContactsIntegration
 
 // Композиция (features/index.ts) вызывает это до первого рендера.
@@ -72,6 +81,15 @@ let documentSearchIntegration: DocumentSearchIntegration = noopDocumentSearch
 
 export function setDocumentSearch(integration: DocumentSearchIntegration): void {
     documentSearchIntegration = integration
+}
+
+// Результат рана ассистента (контракт ChatsPort.runBot, локальный alias:
+// компоненты не тянут типы из api-слоя — guard-предупреждение)
+interface BotRunResult {
+    id: number
+    status: string
+    error_kind: string | null
+    response_message_id?: number | null
 }
 
 // Применяет дельту события реакции к сводке одного сообщения (чистая функция):
@@ -166,14 +184,24 @@ export class ChatsFeatureController {
 
     private readonly botRunRetryDelaysMs: readonly number[]
 
+    private readonly botRunPollIntervalMs: number
+
+    private readonly botRunPollBudgetMs: number
+
     constructor(
         port: ChatsPort = chatsPort,
         messages: ChatMessagesPort = chatMessagesPort,
-        options: { botRunRetryDelaysMs?: readonly number[] } = {}
+        options: {
+            botRunRetryDelaysMs?: readonly number[],
+            botRunPollIntervalMs?: number,
+            botRunPollBudgetMs?: number,
+        } = {}
     ) {
         this.port = port
         this.messages = messages
         this.botRunRetryDelaysMs = options.botRunRetryDelaysMs ?? BOT_RUN_RETRY_DELAYS_MS
+        this.botRunPollIntervalMs = options.botRunPollIntervalMs ?? BOT_RUN_POLL_INTERVAL_MS
+        this.botRunPollBudgetMs = options.botRunPollBudgetMs ?? BOT_RUN_POLL_BUDGET_MS
 
         // WS-события реакции/удаления чата приходят в адаптер — бизнес-логика
         // здесь (паттерн attachPort из history-модуля; прямой импорт дал бы цикл)
@@ -181,6 +209,7 @@ export class ChatsFeatureController {
             onReaction: event => this.handleReactionEvent(event),
             onChatDeleted: chatId => this.handleChatDeleted(chatId),
             onChatRenamed: event => this.handleChatRenamedEvent(event),
+            onChatAiToggled: event => this.handleChatAiToggledEvent(event),
             onWsUnexpectedClose: chatId => this.handleWsDied(chatId),
             onWsConnected: chatId => this.handleWsReconnected(chatId),
         })
@@ -197,6 +226,56 @@ export class ChatsFeatureController {
         }
 
         void this.fetchChats()
+    }
+
+    // One-click создание (2026-11-06-chat-create-flow): кнопка «Создать чат»
+    // шапки списка сразу рождает чат с авто-названием — карточка приезжает в
+    // списке (fetchChats поднимает её наверх created_at-фолбэком и коннектит
+    // WS-сокет), затем селект открывает мессенджер справа. Порядок обязателен:
+    // select ПОСЛЕ fetch — мессенджер рендерится по chatInfo из chats-слайса
+    async createAndSelect(): Promise<void> {
+        let chatId: number
+
+        try {
+            const result = await this.port.createChat({ title: NEW_CHAT_TITLE, auto_titled: true })
+
+            chatId = result.chatId
+        } catch (e: unknown) {
+            console.error('Ошибка при создании чата:', e)
+
+            return
+        }
+
+        await this.fetchChats()
+        this.selectChat(chatId)
+        void this.getChatUsers(chatId)
+    }
+
+    // «+AI» в шапке чата (2026-11-06-chat-create-flow): включает бота в
+    // ТЕКУЩЕМ чате — оптимистичный is_ai-патч слайса (кнопка сразу активна,
+    // композер получает botPending-гейт), ошибка порта откатывает
+    async enableAi(chatId: number): Promise<void> {
+        const chats = (store.getState().chats ?? []) as ChatInfo[]
+
+        store.set('chats', chats.map(chat =>
+            chat.id === chatId
+                ? { ...chat, is_ai: true }
+                : chat
+        ))
+
+        try {
+            await this.port.enableAi(chatId)
+        } catch (e: unknown) {
+            console.error('Ошибка при включении AI в чате:', e)
+
+            const fresh = (store.getState().chats ?? []) as ChatInfo[]
+
+            store.set('chats', fresh.map(chat =>
+                chat.id === chatId
+                    ? { ...chat, is_ai: false }
+                    : chat
+            ))
+        }
     }
 
     async fetchChats(): Promise<void> {
@@ -304,7 +383,11 @@ export class ChatsFeatureController {
     // Inline-переименование (2026-11-05-messenger-ux-pack): оптимистичный
     // патч заголовка в слайсе, PUT на сервер (бэкенд пишет системное
     // сообщение и рассылает chat_renamed), ошибка откатывает заголовок.
-    // Системная строка приходит обычным WS-эхо 'message' с kind
+    // Системная строка приходит обычным WS-эхо 'message' с kind.
+    // 2026-11-06: ручной rename гасит auto_titled в том же оптимистичном
+    // патче (адаптер PUT-ответ discard-ит, а WS chat_renamed не различает
+    // ручное переименование и серверное автодополнение — review F-3) —
+    // шапка превращается в статичный заголовок сразу; откат возвращает оба
     async renameChat(chatId: number, title: string): Promise<void> {
         const chats = (store.getState().chats ?? []) as ChatInfo[]
         const previous = chats.find(chat => chat.id === chatId)
@@ -315,7 +398,7 @@ export class ChatsFeatureController {
 
         store.set('chats', chats.map(chat =>
             chat.id === chatId
-                ? { ...chat, title }
+                ? { ...chat, title, auto_titled: undefined }
                 : chat
         ))
 
@@ -328,7 +411,7 @@ export class ChatsFeatureController {
 
             store.set('chats', fresh.map(chat =>
                 chat.id === chatId
-                    ? { ...chat, title: previous.title }
+                    ? { ...chat, title: previous.title, auto_titled: previous.auto_titled }
                     : chat
             ))
         }
@@ -445,6 +528,25 @@ export class ChatsFeatureController {
         ))
     }
 
+    // WS chat_ai_toggled (2026-11-06-chat-create-flow): «+AI» одного
+    // участника включает бота для всех — патчим is_ai в слайсе (кнопка
+    // активна, композер получает botPending-гейт); значение-равный патч —
+    // идемпотентный пропуск
+    private handleChatAiToggledEvent(event: { chat_id: number, is_ai: boolean }): void {
+        const chats = (store.getState().chats ?? []) as ChatInfo[]
+        const current = chats.find(chat => chat.id === event.chat_id)
+
+        if (current == null || current.is_ai === event.is_ai) {
+            return
+        }
+
+        store.set('chats', chats.map(chat =>
+            chat.id === event.chat_id
+                ? { ...chat, is_ai: event.is_ai }
+                : chat
+        ))
+    }
+
     // Сокет чата исчерпал реконнекты (обрыв без восстановления): первый
     // эпизод показывает оверлей переподключения
     private handleWsDied(chatId: number): void {
@@ -550,32 +652,35 @@ export class ChatsFeatureController {
     // Сетевой обрыв POST /bot/runs — не приговор прогону: запрос мог дойти
     // (ран выполняется, ответ придёт WS-broadcast'ом) или не дойти вовсе.
     // Идемпотентный ретрай закрывает оба случая; http-ошибки (4xx/5xx) и
-    // непредвиденные выбросы не ретраятся. Пока идут сетевые ретраи, экран
-    // закрывает reconnect-оверлей — иначе восстановление происходит молча
-    // и обрыв виден только в консоли (live-инцидент 2026-11-03: ран 48
-    // долечился за 134с, пользователь видел «CORS did not succeed»)
-    private async runBotWithNetworkRetry(chatId: number, messageId: number) {
+    // непредвиденные выбросы не ретраятся. Первый мгновенный ретрай —
+    // молчащий: единичный сброс keep-alive сокета (браузер маскирует его
+    // под «CORS did not succeed») при живом сервере и ретрае-невидимке не
+    // должен пугать лоадером (2026-11-06, live: ран succeeded, а оверлей
+    // уже открылся). Reconnect-оверлей открывается только перед попытками
+    // с паузой — дважды подряд упавший запрос и есть настоящий обрыв
+    // (live-инцидент 2026-11-03: ран 48 долечился за 134с без индикации)
+    private async runBotWithNetworkRetry(chatId: number, messageId: number): Promise<BotRunResult | null> {
         let overlayShown = false
         let lastError: unknown
 
         try {
-            for (const delay of [0, ...this.botRunRetryDelaysMs]) {
+            for (const delay of [0, 0, ...this.botRunRetryDelaysMs]) {
                 if (delay > 0) {
+                    if (!overlayShown) {
+                        overlayShown = true
+                        showBusyOverlay('reconnect')
+                    }
+
                     await new Promise(resolve => setTimeout(resolve, delay))
                 }
 
                 try {
-                    return await this.port.runBot?.(chatId, messageId)
+                    return (await this.port.runBot?.(chatId, messageId)) ?? null
                 } catch (error) {
                     lastError = error
 
                     if (!(error instanceof TransportError) || (error.kind !== 'network' && error.kind !== 'timeout')) {
                         throw error
-                    }
-
-                    if (!overlayShown) {
-                        overlayShown = true
-                        showBusyOverlay('reconnect')
                     }
                 }
             }
@@ -586,6 +691,29 @@ export class ChatsFeatureController {
                 hideBusyOverlay()
             }
         }
+    }
+
+    // Ран в статусе queued/running — не терминальный исход (2026-11-06,
+    // live: ретрай оборванного POST возвращал уже идущий ран, контроллер
+    // гасил pending — «печатает…» исчезало, UI молчал до позднего
+    // WS-broadcast ответа). Поллим идемпотентный POST до succeeded/failed;
+    // каждая попытка — под сетевой защитой runBotWithNetworkRetry. Бюджет
+    // исчерпан — выброс: общий catch превратит его в честную плашку,
+    // вечного «печатает…» не бывает
+    private async pollBotRun(chatId: number, messageId: number): Promise<BotRunResult | null> {
+        const deadline = Date.now() + this.botRunPollBudgetMs
+        let run = await this.runBotWithNetworkRetry(chatId, messageId)
+
+        while (run != null && (run.status === 'queued' || run.status === 'running')) {
+            if (Date.now() >= deadline) {
+                throw new Error('ответ ассистента не получен за отведённое время')
+            }
+
+            await new Promise(resolve => setTimeout(resolve, this.botRunPollIntervalMs))
+            run = await this.runBotWithNetworkRetry(chatId, messageId)
+        }
+
+        return run
     }
 
     private async runBotForLastOwnMessage(chatId: number): Promise<void> {
@@ -652,7 +780,7 @@ export class ChatsFeatureController {
                 },
             ])
 
-            const run = await this.runBotWithNetworkRetry(chatId, target)
+            const run = await this.pollBotRun(chatId, target)
 
             if (run?.status === 'failed') {
                 pushError(run.error_kind ?? 'unknown')
@@ -795,6 +923,12 @@ export class ChatsFeatureController {
 
     selectChat(id: number): void {
         chatsSlice.selectChat(id)
+
+        // смена чата сбрасывает состав участников прежде ответа
+        // getChatUsers (каждый выбор его уже зовёт): устаревший список от
+        // прошлого чата не должен флипать гейт подсказки пустого чата
+        // (review F-7) и аватары шапки
+        store.set('chatUsers', [])
 
         // открытие чата прочитывает его: серверная пометка уходит с выдачей
         // истории (MessageService.history -> mark_read), а пилюлю гасим в

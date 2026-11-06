@@ -17,6 +17,20 @@ import httpx
 
 from app.bot.config import BotSettings
 
+PROVIDER_CONNECT_TIMEOUT_SECONDS = 5.0
+
+
+def _provider_timeout(timeout_seconds: float) -> httpx.Timeout:
+    """Split the connect phase from the answer budget.
+
+    A scalar ``httpx`` timeout applies to connect as well, so a dead host
+    (SYN drop) silently burns the whole configured budget while the chat
+    shows a 'typing…' indicator. The connect phase gets a short fixed
+    slice; read/write/pool keep the operator-configurable budget (per-chunk
+    for streams).
+    """
+    return httpx.Timeout(timeout_seconds, connect=PROVIDER_CONNECT_TIMEOUT_SECONDS)
+
 
 class BotProviderError(Exception):
     """Explicit provider failure with a machine-readable kind."""
@@ -52,11 +66,13 @@ class OllamaBotProvider:
 
     def complete(self, messages: list[dict[str, str]]) -> str:
         try:
-            with httpx.Client(timeout=self.timeout_seconds, transport=self._transport) as client:
+            with httpx.Client(timeout=_provider_timeout(self.timeout_seconds), transport=self._transport) as client:
                 response = client.post(
                     f'{self.url}/api/chat',
                     json={'model': self.model, 'messages': messages, 'stream': False},
                 )
+        except httpx.ConnectTimeout as exc:
+            raise BotProviderError('provider_unreachable', 'provider host unreachable: connect timed out') from exc
         except httpx.TimeoutException as exc:
             raise BotProviderError('provider_timeout', f'provider timed out after {self.timeout_seconds}s') from exc
         except httpx.HTTPError as exc:
@@ -115,11 +131,13 @@ class OpenAIChatProvider:
 
     def complete(self, messages: list[dict[str, str]]) -> str:
         try:
-            with httpx.Client(timeout=self.timeout_seconds, transport=self._transport) as client:
+            with httpx.Client(timeout=_provider_timeout(self.timeout_seconds), transport=self._transport) as client:
                 response = client.post(
                     f'{self.url}/v1/chat/completions',
                     json=self._request_body(messages, stream=False),
                 )
+        except httpx.ConnectTimeout as exc:
+            raise BotProviderError('provider_unreachable', 'provider host unreachable: connect timed out') from exc
         except httpx.TimeoutException as exc:
             raise BotProviderError('provider_timeout', f'provider timed out after {self.timeout_seconds}s') from exc
         except httpx.HTTPError as exc:
@@ -152,7 +170,7 @@ class OpenAIChatProvider:
         """
         parts: list[str] = []
         try:
-            with httpx.Client(timeout=self.timeout_seconds, transport=self._transport) as client:
+            with httpx.Client(timeout=_provider_timeout(self.timeout_seconds), transport=self._transport) as client:
                 with client.stream(
                     'POST',
                     f'{self.url}/v1/chat/completions',
@@ -166,6 +184,8 @@ class OpenAIChatProvider:
                             continue
                         parts.append(delta)
                         yield delta
+        except httpx.ConnectTimeout as exc:
+            raise BotProviderError('provider_unreachable', 'provider host unreachable: connect timed out') from exc
         except httpx.TimeoutException as exc:
             raise BotProviderError('provider_timeout', f'provider timed out after {self.timeout_seconds}s') from exc
         except httpx.HTTPError as exc:

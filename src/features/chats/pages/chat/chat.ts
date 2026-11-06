@@ -27,8 +27,6 @@ import {
     setFeedScrollKey,
 } from '../../../../components/messenger/feed-scroll.ts'
 import type { ChatInfo, ChatSearchMatch, ContactInfo } from '../../../../utils/types.ts'
-import { AI_CHAT_TITLE, emptyValidationMessage } from '../../../../utils/constants.ts'
-import { emptyValidator } from '../../../../utils/validators.ts'
 import ChatsController from '../../controller.ts'
 import StoriesController from '../../stories/controller.ts'
 import type { StoryDto } from '../../stories/ports.ts'
@@ -443,13 +441,12 @@ class ChatPageBase extends Block {
                 }
             },
             onClick: () => {
-                this.refs.create.setProps({ isShown: true })
-            },
-            // One-click-плитка «Чат с AI» в ChatListCreate: дефолтный
-            // заголовок — общая константа utils (обе фичи берут её вниз
-            // по слоям), флаг включает бота
-            onAiChatClick: () => {
-                void ChatsController.create({ title: AI_CHAT_TITLE, is_ai: true })
+                // One-click создание (2026-11-06-chat-create-flow): кнопка
+                // «Создать чат» шапки списка сразу рождает чат «Чат с» —
+                // карточка поднимается вверху списка, селект открывает
+                // мессенджер справа (createAndSelect сам гонит порядок
+                // POST → fetchChats → select)
+                void ChatsController.createAndSelect()
             },
             onSelectChat: (id: number) => {
                 // Любой выбор чата открывает панель — chatListUser стреляет
@@ -479,6 +476,11 @@ class ChatPageBase extends Block {
             // и откат — в контроллере (2026-11-05-messenger-ux-pack)
             onRenameChat: (chatId: number, title: string) => {
                 void ChatsController.renameChat(chatId, title)
+            },
+            // «+AI» из шапки мессенджера (2026-11-06-chat-create-flow):
+            // оптимистичный is_ai-патч и откат — в контроллере
+            onEnableAi: (chatId: number) => {
+                void ChatsController.enableAi(chatId)
             },
             // «Пометить всё прочитанными» — иконка в шапке списка
             // (2026-11-05-messenger-ux-pack): активна только при непрочитанных
@@ -512,35 +514,6 @@ class ChatPageBase extends Block {
             onLeaveChat: (chatId: number) => {
                 void ChatsController.leaveChat(chatId)
             },
-            inputs: [
-                {
-                    label: 'type chat name',
-                    name: 'title',
-                    validate: emptyValidator,
-                    validateMessage: emptyValidationMessage,
-                },
-            ],
-            buttons: [
-                {
-                    label: 'Create',
-                    classType: 'hidden',
-                    type: 'submit',
-                    handleSubmitClick: (value: { title: string }) => {
-                        // Чекбокс ИИ-чата — сосед Form в ChatListCreate:
-                        // сериализация формы читает value ('on' при любом
-                        // checked) и до страницы не доходит, поэтому состояние
-                        // берём из DOM в момент сабмита через refs.create
-                        // (прецедент — открытие формы выше). Снятый чекбокс =
-                        // прежний вызов ровно с сериализованным title
-                        const isAi = this.refs.create?.element
-                            ?.querySelector<HTMLInputElement>('input[name="is_ai"]')?.checked ?? false
-
-                        void ChatsController.create(
-                            isAi ? { title: value.title, is_ai: true } : value
-                        )
-                    },
-                },
-            ],
             chats: propsFromStore.chats,
             // selectedChat обязан проброситься и при рождении: без него
             // первый стор-эмит выглядит «сменой чата» (undefined -> id) и
@@ -648,6 +621,19 @@ class ChatPageBase extends Block {
     protected componentDidUpdate(oldProps: unknown, newProps: { selectedChat?: number }) {
         this.restoreUsersScroll()
         this.restoreSearchFocus()
+
+        // Программный селект (createAndSelect) открывает панель — симметрично
+        // сбросу ниже: клик по карточке открывает её сам (onSelectChat), а
+        // смена выбора извне обязана показать мессенджер и на мобиле
+        // (2026-11-06-chat-create-flow); setProps идемпотентен — повторный
+        // клик по выбранной карточке ничего не ломает
+        if (
+            newProps.selectedChat !== undefined &&
+            (oldProps as { selectedChat?: number }).selectedChat !== newProps.selectedChat &&
+            (this.props as { chatPaneOpen?: boolean }).chatPaneOpen !== true
+        ) {
+            this.setProps({ chatPaneOpen: true })
+        }
 
         if (
             (oldProps as { selectedChat?: number }).selectedChat !== undefined &&

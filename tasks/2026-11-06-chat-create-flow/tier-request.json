@@ -1,0 +1,25 @@
+{
+    "schemaVersion": "agent-tier-request.v1",
+    "package": "2026-11-06-chat-create-flow",
+    "requestedTier": "S2",
+    "taskCount": 2,
+    "executableOwners": [
+        "worker-backend-api",
+        "worker-frontend-chat"
+    ],
+    "reasons": [
+        "multiple executable owners: backend (python/fastapi/alembic/pytest) and frontend (typescript/handlebars/mocha) workstreams",
+        "data risk: additive DB migration 013 (chats.auto_titled) and a contract change on PUT /chats/{id} (required title becomes optional + is_ai)",
+        "architecture touch: ChatsPort.createChat contract change (void -> {chatId}); new WS event chat_ai_toggled; removal of a registered component (ChatListCreate)",
+        "browser risk: messenger header rework (always-input for auto-titled chats, new +AI button), empty-state gating, mobile pane CDU guard"
+    ],
+    "scope": "backend chat contracts + migration; frontend chats feature UI flow; docs; no auth, no deployment, no external services",
+    "riskFactors": {
+        "security": false,
+        "performance": false,
+        "browser": true,
+        "data": true,
+        "externalEnvironment": false
+    },
+    "operatorContext": "operator decisions recorded 2026-11-06 (tasks/2026-11-06-chat-create-flow/specification.json operatorDecisions)"
+}

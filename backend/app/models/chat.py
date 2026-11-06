@@ -20,6 +20,12 @@ class Chat(Base):
     # DM marker: a 1:1 chat is defined ONLY by this flag (never by member
     # counting), so a plain 2-member group is never promoted implicitly
     is_dm: Mapped[bool] = mapped_column(Boolean, default=False, server_default='0', nullable=False)
+    # Auto-title marker (013): True — the title is server-generated (the
+    # 'Чат с' seed grows with each fresh member); a manual rename clears it
+    # forever. The future LLM-naming step relies on it (rename by context
+    # only while the title is still automatic). Sync twin of the frontend
+    # NEW_CHAT_TITLE constant (src/utils/constants.ts).
+    auto_titled: Mapped[bool] = mapped_column(Boolean, default=False, server_default='0', nullable=False)
     # use_alter: files<->chats/users FK-цикл, drop_all без него не сортирует таблицы
     avatar_file_id: Mapped[int | None] = mapped_column(
         ForeignKey('files.id', ondelete='SET NULL', use_alter=True),

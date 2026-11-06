@@ -1,0 +1,653 @@
+{
+    "schemaVersion": "agent-plan-manifest.v1",
+    "status": "FROZEN",
+    "planRevision": 2,
+    "package": {
+        "id": "2026-11-06-chat-create-flow",
+        "title": "Chat creation redesign: one-click create + auto-title, empty-chat hint, +AI bot toggle",
+        "workspaceRoot": ".",
+        "artifactRoot": "work/2026-11-06-chat-create-flow",
+        "planArtifactRoot": "tasks/2026-11-06-chat-create-flow"
+    },
+    "packageIntegrity": {
+        "required": true,
+        "lockSchemaVersion": "agent-plan-lock.v2",
+        "inventorySource": "planFiles",
+        "undeclaredTopLevelFiles": "reject",
+        "allowedUnlistedFiles": [
+            "plan.lock.json",
+            "plan-review.json"
+        ]
+    },
+    "author": {
+        "id": "claude-code",
+        "surface": "agent-first-planning",
+        "runId": "2026-11-06-chat-create-flow-draft"
+    },
+    "baseRevision": {
+        "ref": "dev",
+        "sha": "efdc8c3feda17f3d1798b25a75458acf5808ba84"
+    },
+    "specification": {
+        "tier": "S2",
+        "intent": "One-click chat creation replaces the ChatListCreate card form: the list-header «Создать чат» button immediately creates a chat titled «Чат с» (server flag chats.auto_titled, migration 013), the card appears at the top of the list and gets selected so the messenger pane on the right opens with a title input prefilled «Чат с». The server appends each added member's name to the auto title until the user sets their own (manual rename permanently clears the flag — the foundation for future LLM context naming, a declared future step). Chats without messages and co-members show an onboarding hint with an «добавить» button opening the existing add-user modal. A «+AI» button in every chat header enables the bot in THAT chat (is_ai=true via the extended PUT /chats/{id}) and turns active.",
+        "status": "FROZEN",
+        "requirements": [
+            {
+                "id": "REQ-BE-AUTO-TITLE",
+                "title": "Migration 013 + auto_titled in create/list contracts",
+                "description": "Additive migration 013_chat_auto_title: chats.auto_titled Boolean NOT NULL server_default '0' (existing chats read false — their titles count as manual); SQLite-safe downgrade. Model Chat.auto_titled. ChatCreate.auto_titled: bool = False and ChatResponse.auto_titled: bool = False (additive; GET /chats passes it field-by-field — the is_dm precedent; model_validate paths fill from the ORM). POST /chats semantics unchanged: always creates, 201, full ChatResponse with id.",
+                "priority": "P1",
+                "source": "operator clarification 2026-11-06 (server-side auto-title flag as the LLM-naming foundation)",
+                "acceptanceIds": [
+                    "AC-BE-AUTO-TITLE"
+                ],
+                "evidenceIds": [
+                    "EV-BE-1"
+                ],
+                "owner": "WS-BE-API"
+            },
+            {
+                "id": "REQ-BE-MEMBERS-APPEND",
+                "title": "POST /chats/{id}/members appends the added member's name to the auto title",
+                "description": "ONLY on the FRESH-membership insert branch of add_member (the existing/reactivated-membership early return keeps the title untouched — a repeated add must not duplicate the name; review F-4): when chat.auto_titled AND NOT chat.is_dm — rebuild the title with the added member's name (display_name or email local part — the to_member_brief rule): current title equals the named backend constant AUTO_TITLE_SEED = 'Чат с' (documented to stay in sync with the frontend NEW_CHAT_TITLE — review F-6) → 'Чат с <name>'; otherwise → '<title>, <name>'. Result longer than 200 chars → silent skip (title unchanged, addition still 201). The title update is transactional with the member insert; the SERVICE returns the fact (member, new_title | None) and the WS fan-out lives in the ENDPOINT (repo precedent: every hub.broadcast sits in endpoints, services never import hub — review F-5): on a non-None new_title, ACTIVE members receive the EXISTING WS event chat_renamed {chat_id, title} (no new event type; the frontend already patches the slice title on it).",
+                "priority": "P1",
+                "source": "operator request: «После добавления каждого пользователя в «Чат с» нужно добавлять username»",
+                "acceptanceIds": [
+                    "AC-BE-MEMBERS-APPEND"
+                ],
+                "evidenceIds": [
+                    "EV-BE-1"
+                ],
+                "owner": "WS-BE-API"
+            },
+            {
+                "id": "REQ-BE-PUT-EXT",
+                "title": "PUT /chats/{id}: optional title + is_ai, manual rename clears auto_titled, chat_ai_toggled broadcast",
+                "description": "ChatUpdate: title becomes optional (1..200, nonblank when present) + is_ai: bool | None = None; model_validator requires at least one field (empty PUT → 422). Guards unchanged (require_active_member: archived 403, non-member 403; anonymous 401). A CHANGED title keeps the existing rename semantics (strip; same-title call is an idempotent 200 no-op WITHOUT a system message and WITHOUT clearing auto_titled; a different title updates, persists the chat_renamed system message) AND sets auto_titled = False — a manual name permanently disables the auto mode. A provided is_ai updates chat.is_ai. The SERVICE returns the facts (chat, system_message | None, ai_changed: bool) and ALL WS fan-out lives in the ENDPOINT (the repo precedent: services never import hub — review F-5): on a system message — message + chat_renamed broadcasts; on ai_changed — the NEW WS event chat_ai_toggled {chat_id, is_ai} to ACTIVE members (no system message). Response: updated ChatResponse (with auto_titled).",
+                "priority": "P1",
+                "source": "operator clarification 2026-11-06 («+AI» enables the bot in the CURRENT chat)",
+                "acceptanceIds": [
+                    "AC-BE-PUT-EXT"
+                ],
+                "evidenceIds": [
+                    "EV-BE-1"
+                ],
+                "owner": "WS-BE-API"
+            },
+            {
+                "id": "REQ-BE-MIGRATION-013",
+                "title": "Segment coverage: 013 roundtrip green, 009–012 stay green",
+                "description": "New segment roundtrip test for 013 (scratch SQLite: create_all → stamp head → downgrade '012_message_kind' → upgrade head, inspector-asserted both ways). Segment tests 009/010/011/012 stay green; this workstream owns the minimal repin (explicit own-revision stamps) ONLY if an isolation assertion breaks. alembic heads == 013_chat_auto_title.",
+                "priority": "P1",
+                "source": "structural consequence of REQ-BE-AUTO-TITLE (lessons: 009/010/011/012 segment repins)",
+                "acceptanceIds": [
+                    "AC-BE-AUTO-TITLE"
+                ],
+                "evidenceIds": [
+                    "EV-BE-1"
+                ],
+                "owner": "WS-BE-API"
+            },
+            {
+                "id": "REQ-FE-CREATE-FLOW",
+                "title": "Remove ChatListCreate; one-click createAndSelect",
+                "description": "The ChatListCreate component is deleted entirely (hbs/ts/test, export in components.ts, chat-list-create.scss AND its @import line in src/scss/components/_all.scss — review F-1, the inputs/buttons/refs.create/onAiChatClick wiring in chat.hbs/chat.ts). The existing list-header «Создать чат» button (HeaderIcons onClick — the component itself does not change) calls ChatsController.createAndSelect(): port.createChat({title: 'Чат с', auto_titled: true}) → {chatId} → fetchChats() (card + WS socket) → selectChat(chatId) + getChatUsers(chatId) — select strictly AFTER the list refresh. ChatsPort.createChat changes its return contract to Promise<CreateChatResult> ({chatId: number}; the own adapter maps response.id); ChatInfo.auto_titled?: boolean in utils/types.ts, toChatInfo maps it. NEW_CHAT_TITLE = 'Чат с' constant in utils/constants.ts; AI_CHAT_TITLE is NOT touched — it stays live code of the ai-assistant feature (createAiChat; review F-2), only the ChatListCreate tile usage disappears. Mobile pane: a CDU guard opens chatPaneOpen when selectedChat appears/changes externally (symmetric to the existing undefined-collapse; idempotent setProps).",
+                "priority": "P1",
+                "source": "operator request + clarification 2026-11-06 (instant card + right-pane continuation)",
+                "acceptanceIds": [
+                    "AC-FE-CREATE-FLOW"
+                ],
+                "evidenceIds": [
+                    "EV-FE-1"
+                ],
+                "owner": "WS-FE-CHAT"
+            },
+            {
+                "id": "REQ-FE-TITLE-INPUT",
+                "title": "Auto-titled chats render the header title as an immediate input",
+                "description": "messenger.ts: when chatInfo.auto_titled === true AND not archived, the header title renders as an <input> IMMEDIATELY (value = title; the existing renamingTitle mechanics — Enter/Escape keydown + focusout commit, focusTitleInput caret) instead of the static h2; non-auto-titled chats keep the h2 + dblclick mode; archived chats never get an input. Commit semantics reuse commitTitleInput: non-empty value differing from the current title → onRenameChat; empty/unchanged → silent revert without a call. ChatsController.renameChat adds auto_titled:false to its EXISTING optimistic title patch (review F-3: the own adapter discards the PUT response and the WS chat_renamed event cannot distinguish a manual rename from the add_member auto-append) — the header turns static immediately on manual commit and the revert-on-error path restores the flag together with the title.",
+                "priority": "P1",
+                "source": "operator request: «инпут для ввода названия предзаполненный «Чат с»» + «если пользователь изначально написал своё название — остаётся без автозаполнения»",
+                "acceptanceIds": [
+                    "AC-FE-TITLE-INPUT"
+                ],
+                "evidenceIds": [
+                    "EV-FE-1"
+                ],
+                "owner": "WS-FE-CHAT"
+            },
+            {
+                "id": "REQ-FE-EMPTY-HINT",
+                "title": "Empty-chat onboarding hint with an «добавить» button",
+                "description": "messenger.hbs: when messages are empty AND there are no co-members (selectedChatUsers minus meId is empty) AND the chat is not archived AND not is_ai — the feed shows a hint block: text «Добавьте пользователей с помощью кнопки + в верхнем меню, либо нажмите «добавить»» plus a button «добавить» (data-testid=empty-chat-add) opening the existing add-user modal (addUserOpen = true). The block disappears as soon as any gate condition flips (first message, first co-member) without a reload. ChatsController.selectChat clears the chatUsers slice (review F-7: it is not reset between chats today, so a stale list from the previous chat could briefly flip the gate; every selection already calls getChatUsers which repopulates it). Styling in messenger.scss.",
+                "priority": "P1",
+                "source": "operator request 2026-11-06 + clarification (any chat gated purely by data)",
+                "acceptanceIds": [
+                    "AC-FE-EMPTY-HINT"
+                ],
+                "evidenceIds": [
+                    "EV-FE-1"
+                ],
+                "owner": "WS-FE-CHAT"
+            },
+            {
+                "id": "REQ-FE-AI-BUTTON",
+                "title": "«+AI» header button enables the bot in the current chat",
+                "description": "Third headerButtons entry with the public/images/ai-toggle-icon.svg icon (currentColor). Present in every non-archived chat; hidden in archived chats (the visibleHeaderButtons filter alongside cross); an is_ai chat renders it in an active non-clickable state. Click → onEnableAi → ChatsController.enableAi(chatId): port.enableAi(chatId) (PUT /chats/{id} {is_ai: true} + csrf) → optimistic is_ai=true patch in the chats slice with revert on port error. WS: own adapter handles the new chat_ai_toggled event → gateway notifyChatAiToggled → the controller patches is_ai in the slice (other clients update live).",
+                "priority": "P1",
+                "source": "operator request: «Во все чаты наверх добавляем кнопку «+AI» которая добавляет бота в чат и становится активной»",
+                "acceptanceIds": [
+                    "AC-FE-AI-BUTTON"
+                ],
+                "evidenceIds": [
+                    "EV-FE-1"
+                ],
+                "owner": "WS-FE-CHAT"
+            },
+            {
+                "id": "REQ-DOCS",
+                "title": "Progress log + NEXT.md feature record with the LLM-naming future step",
+                "description": "docs/progress/progress_log.md entry on top; docs/NEXT.md: the feature record, the declared FUTURE-LLM-NAMING step (auto_titled as the persisted precondition — rename by context only while the title is still automatic), and a note that the «тематические чаты» backlog item is covered by the new creation flow.",
+                "priority": "P2",
+                "source": "AGENTS.md convention (значимые изменения — запись в progress_log)",
+                "acceptanceIds": [
+                    "AC-PROCESS"
+                ],
+                "evidenceIds": [
+                    "EV-FE-1"
+                ],
+                "owner": "WS-FE-CHAT"
+            }
+        ],
+        "goal": "Создание чата — один клик: карточка сразу в списке и активна, мессенджер справа готов (инпут «Чат с», подсказка пустого чата, «+» и «+AI»); название дописывается сервером именами участников, пока пользователь не задал своё; флаг auto_titled персистентен и готов к будущему LLM-неймингу.",
+        "constraints": [
+            "Layers only downward (pages -> components -> controllers -> api -> utils -> core); guard-architecture --all --strict stays green; components never import features/controllers; AppState (utils/Store.ts) is NOT edited — new state rides existing slices and the in-slice cast idiom.",
+            "Migration 013 is additive (chats.auto_titled NOT NULL server_default '0'); alembic heads becomes 013_chat_auto_title; segment tests 009/010/011/012 stay green (repin owned by WS-BE-API only if an isolation assertion breaks).",
+            "All touched endpoints stay behind get_current_user; anonymous 401 pinned; mutating frontend calls carry readCsrfToken().",
+            "No new WS event except chat_ai_toggled; the auto-title append reuses chat_renamed; services/bot.py is not modified (the existing chat.is_ai gate).",
+            "src/features/contacts and src/features/ai-assistant are not modified (the DM get-or-create contract and the assistant page stay byte-identical).",
+            "Existing suites stay green; counts grow from the recorded base (mocha 696 passing; pytest 291 passed + 4 known Windows ingestion failures documented as environment deviations with full logs retained).",
+            "System message content stays server-built and renders through the Message double-brace path (XSS pin); the auto-title pieces flow through the existing escape-then-wrap builders."
+        ],
+        "nonGoals": [
+            "LLM context naming (declared future step FUTURE-LLM-NAMING in specification.json — separate plan)",
+            "disabling the bot from the UI (the button only enables; the PUT contract is symmetric but the UI never sends is_ai=false)",
+            "a system message about enabling the bot (chat_ai_toggled is a state patch only)",
+            "auto-deletion of abandoned empty «Чат с» chats (owner deletes via the existing trash button)",
+            "changing the contacts DM get-or-create contract",
+            "a separate contacts-menu entry for thematic chats (the new flow covers the backlog item)",
+            "bot/RAG mechanics changes (services/bot.py untouched)"
+        ],
+        "scope": "backend (migration 013 + auto_titled model/schema; members title-append; extended PUT /chats/{id} with is_ai + auto_titled clearing; chat_ai_toggled broadcast; pytest incl. migration segment); frontend chats feature (ChatListCreate removal, createAndSelect, ChatsPort.createChat contract, auto-title header input, empty-chat hint, +AI button + WS handling, tests, scss, svg); docs (progress_log, NEXT.md); receipts under work/2026-11-06-chat-create-flow/."
+    },
+    "readOnly": [
+        "AGENTS.md",
+        "tasks/README.md",
+        "docs/deployment/own-backend.md"
+    ],
+    "forbiddenWrites": [
+        "src/core",
+        "src/scss/libs",
+        "src/utils/Store.ts",
+        "src/features/contacts",
+        "src/features/ai-assistant",
+        "docs/project-principles.json",
+        ".github/workflows",
+        "netlify.toml",
+        "server/server.js",
+        ".env",
+        ".env.development",
+        ".env.own"
+    ],
+    "leadOwned": [
+        {
+            "path": "tasks/2026-11-06-chat-create-flow",
+            "owner": "controller",
+            "reason": "Controller owns plan-package artifacts."
+        }
+    ],
+    "workstreams": [
+        {
+            "id": "WS-BE-API",
+            "title": "Backend: migration 013 auto_titled + members title-append + extended PUT + chat_ai_toggled",
+            "owner": "worker-backend-api",
+            "reviewer": "independent-release-reviewer",
+            "dependsOn": [],
+            "writes": [
+                "backend/alembic/versions/013_chat_auto_title.py",
+                "backend/app/api/v1/endpoints/chats.py",
+                "backend/app/models/chat.py",
+                "backend/app/schemas/chat.py",
+                "backend/app/services/chats.py",
+                "backend/tests/integration/chat/test_chat_ai_toggle_api.py",
+                "backend/tests/integration/chat/test_chat_auto_title_api.py",
+                "backend/tests/integration/chat/test_chat_rename_api.py",
+                "backend/tests/integration/test_migration_009_contacts_segment.py",
+                "backend/tests/integration/test_migration_010_chat_leave_segment.py",
+                "backend/tests/integration/test_migration_011_settings_segment.py",
+                "backend/tests/integration/test_migration_012_message_kind_segment.py",
+                "backend/tests/integration/test_migration_013_chat_auto_title_segment.py"
+            ],
+            "readOnly": [
+                "AGENTS.md",
+                "backend/app/services/bot.py",
+                "backend/app/ws/hub.py",
+                "backend/app/repositories/chats.py",
+                "backend/app/repositories/users.py",
+                "backend/tests/conftest.py",
+                "backend/tests/integration/chat/test_http_and_ws.py",
+                "backend/alembic/versions/012_message_kind.py"
+            ],
+            "forbiddenWrites": [
+                "backend/alembic/versions/001_users.py",
+                "backend/alembic/versions/002_chat_messages_files.py",
+                "backend/alembic/versions/003_documents_chunks.py",
+                "backend/alembic/versions/004_bot_runs.py",
+                "backend/alembic/versions/005_reactions_replies.py",
+                "backend/alembic/versions/006_chat_last_reads.py",
+                "backend/alembic/versions/007_avatars_stories.py",
+                "backend/alembic/versions/008_pg_trgm_search_indexes.py",
+                "backend/alembic/versions/009_contacts.py",
+                "backend/alembic/versions/010_chat_leave.py",
+                "backend/alembic/versions/011_settings.py",
+                "backend/alembic/versions/012_message_kind.py"
+            ],
+            "launchGate": "feature/2026-11-06-chat-create-flow branch created at efdc8c3feda17f3d1798b25a75458acf5808ba84; base gates recorded 2026-11-06: npm run verify green (696 mocha); PYTHON_BIN=~/.venvs/chatty-backend/Scripts/python.exe bash backend/verify.sh → 291 passed + 4 known Windows ingestion failures (pre-existing noise, full log retained).",
+            "capabilityHints": [
+                "fastapi",
+                "sqlalchemy",
+                "alembic",
+                "pytest",
+                "python"
+            ],
+            "requiredTools": [
+                "python",
+                "pytest"
+            ],
+            "contextRefs": [
+                "plan.md",
+                "acceptance-criteria.md",
+                "specification.json",
+                "developer-overview.md"
+            ],
+            "acceptanceIds": [
+                "AC-BE-AUTO-TITLE",
+                "AC-BE-MEMBERS-APPEND",
+                "AC-BE-PUT-EXT"
+            ],
+            "evidenceIds": [
+                "EV-BE-1"
+            ],
+            "executionPolicy": {
+                "maxAttempts": 3,
+                "maxWallSeconds": 3600
+            },
+            "artifactPaths": {
+                "result": "work/2026-11-06-chat-create-flow/evidence/WS-BE-API/task-result-{attempt}.json",
+                "review": "work/2026-11-06-chat-create-flow/evidence/WS-BE-API/task-review-{attempt}.json"
+            },
+            "required": true,
+            "plannedItems": [
+                "models: Chat.auto_titled Boolean default False server_default '0'",
+                "migration 013_chat_auto_title: op.add_column('chats', sa.Column('auto_titled', sa.Boolean(), nullable=False, server_default='0')); downgrade via batch_alter_table drop_column (SQLite-safe); alembic heads == 013_chat_auto_title; segment roundtrip test test_migration_013_chat_auto_title_segment.py (scratch SQLite: create_all -> stamp head -> downgrade '012_message_kind' -> upgrade head, inspector-asserted both ways); segment tests 009/010/011/012 stay green — repin ONLY if an isolation assertion breaks, minimal explicit-revision stamps",
+                "schemas: ChatCreate.auto_titled: bool = False; ChatResponse.auto_titled: bool = False (GET /chats passes it field-by-field — the is_dm precedent); ChatUpdate.title Optional (1..200, nonblank when present) + is_ai: bool | None = None with an at-least-one-field model_validator (empty PUT 422)",
+                "services/chats.py create(): passes auto_titled through",
+                "services/chats.py add_member(): ONLY on the fresh-membership insert branch (the existing/reactivated early return keeps the title untouched — review F-4), when chat.auto_titled and not chat.is_dm — rebuild title with the added member's name (display_name or email local part — the to_member_brief rule): title == AUTO_TITLE_SEED ('Чат с', named module constant documented as the sync twin of the frontend NEW_CHAT_TITLE — review F-6) → f'Чат с {name}' else f'{title}, {name}'; result > 200 chars → silent skip; transactional with the member insert; the service returns (member, new_title | None) and does NOT touch the hub",
+                "services/chats.py rename → update generalization: provided title (changed) → existing rename semantics + auto_titled = False; same title → idempotent 200 no-op WITHOUT a system message and WITHOUT clearing auto_titled; provided is_ai → chat.is_ai update; the service returns (chat, system_message | None, ai_changed: bool) and does NOT touch the hub (review F-5)",
+                "endpoints/chats.py: ALL WS fan-out stays here (repo precedent — services never import hub): members endpoint broadcasts chat_renamed {chat_id, title} to ACTIVE members when the service returned a non-None new_title; PUT /{chat_id} with extended payload (existing guards; anonymous 401; response ChatResponse with auto_titled) broadcasts message + chat_renamed on a rename and the NEW chat_ai_toggled {chat_id, is_ai} when ai_changed",
+                "pytest test_chat_auto_title_api.py: create with auto_titled=true (201, flag echoed); members append 'Чат с' → 'Чат с <имя>' → '<title>, <имя2>'; email-local-part fallback for a member without display_name; NOT-auto_titled chat title unchanged; is_dm chat title unchanged; >200 cap silent skip (addition still 201); REPEATED member add (existing active membership early return) leaves the title unchanged (review F-4); chat_renamed broadcast observed on the test hub",
+                "pytest test_chat_ai_toggle_api.py: PUT {is_ai: true} flips the flag (echoed), chat_ai_toggled broadcast to ACTIVE members; repeat with is_ai:true when already true → 200 without a second broadcast; PUT {} → 422; archived member 403; non-member 403; anonymous 401; blank title 422; manual rename clears auto_titled (asserted on the response and a follow-up members call that leaves the title unchanged); service-layer assertion that no service imports app.ws.hub (grep pin — review F-5)",
+                "pytest test_chat_rename_api.py regression: title-only PUT keeps working byte-identically (happy path, no-op, 422, guards)"
+            ],
+            "qualityFloor": "PYTHON_BIN=~/.venvs/chatty-backend/Scripts/python.exe bash backend/verify.sh green (pytest incl. the 013 segment roundtrip + alembic heads == 013_chat_auto_title); known Windows ingestion failures documented as deviations with the full log; no frontend file touched."
+        },
+        {
+            "id": "WS-FE-CHAT",
+            "title": "Frontend: ChatListCreate removal, createAndSelect, auto-title input, empty hint, +AI",
+            "owner": "worker-frontend-chat",
+            "reviewer": "independent-release-reviewer",
+            "dependsOn": [
+                "WS-BE-API"
+            ],
+            "writes": [
+                "docs/NEXT.md",
+                "docs/progress/progress_log.md",
+                "public/images/ai-toggle-icon.svg",
+                "src/components/chatListCreate/chatListCreate.hbs",
+                "src/components/chatListCreate/chatListCreate.test.ts",
+                "src/components/chatListCreate/chatListCreate.ts",
+                "src/components/components.ts",
+                "src/components/messenger/messenger.hbs",
+                "src/components/messenger/messenger.test.ts",
+                "src/components/messenger/messenger.ts",
+                "src/features/chats/api/api.test.ts",
+                "src/features/chats/api/own.ts",
+                "src/features/chats/chats.test.ts",
+                "src/features/chats/controller.ts",
+                "src/features/chats/pages/chat/chat.hbs",
+                "src/features/chats/pages/chat/chat.test.ts",
+                "src/features/chats/pages/chat/chat.ts",
+                "src/features/chats/ports.ts",
+                "src/features/chats/store.ts",
+                "src/features/chats/ws/gateway.ts",
+                "src/features/chats/ws/own.ts",
+                "src/features/chats/ws/ws.test.ts",
+                "src/scss/components/_all.scss",
+                "src/scss/components/chat-list-create.scss",
+                "src/scss/components/messenger.scss",
+                "src/utils/constants.ts",
+                "src/utils/types.ts"
+            ],
+            "readOnly": [
+                "AGENTS.md",
+                "src/components/headerIcons/headerIcons.hbs",
+                "src/components/headerIcons/headerIcons.ts",
+                "src/features/index.ts",
+                "src/features/ai-assistant",
+                "src/features/contacts",
+                "src/utils/HTTPTransport.ts",
+                "src/utils/csrf.ts",
+                "docs/deployment/own-backend.md"
+            ],
+            "forbiddenWrites": [],
+            "launchGate": "WS-BE-API accepted at the integration baseline; npm run verify green at base (696 mocha).",
+            "capabilityHints": [
+                "typescript",
+                "handlebars",
+                "scss",
+                "mocha",
+                "sinon"
+            ],
+            "requiredTools": [
+                "node",
+                "npm"
+            ],
+            "contextRefs": [
+                "plan.md",
+                "acceptance-criteria.md",
+                "specification.json",
+                "developer-overview.md"
+            ],
+            "acceptanceIds": [
+                "AC-FE-CREATE-FLOW",
+                "AC-FE-TITLE-INPUT",
+                "AC-FE-EMPTY-HINT",
+                "AC-FE-AI-BUTTON",
+                "AC-PROCESS"
+            ],
+            "evidenceIds": [
+                "EV-FE-1"
+            ],
+            "executionPolicy": {
+                "maxAttempts": 3,
+                "maxWallSeconds": 3600
+            },
+            "artifactPaths": {
+                "result": "work/2026-11-06-chat-create-flow/evidence/WS-FE-CHAT/task-result-{attempt}.json",
+                "review": "work/2026-11-06-chat-create-flow/evidence/WS-FE-CHAT/task-review-{attempt}.json"
+            },
+            "required": true,
+            "plannedItems": [
+                "DELETE src/components/chatListCreate/ (hbs/ts/test), its export in components.ts, src/scss/components/chat-list-create.scss AND the @import './chat-list-create' line in src/scss/components/_all.scss (review F-1); chat.hbs loses the ChatListCreate helper call; chat.ts loses inputs/buttons/refs.create/onAiChatClick and the is_ai DOM-peek submit branch",
+                "utils/constants.ts: add NEW_CHAT_TITLE = 'Чат с'; AI_CHAT_TITLE is NOT touched — live code of ai-assistant createAiChat (review F-2), the byte-identical constraint holds",
+                "utils/types.ts: ChatInfo.auto_titled?: boolean; CreateChatResult {chatId: number} (or inline in ports.ts — the port-local DTO idiom)",
+                "ports.ts: createChat(data): Promise<{chatId: number}>; enableAi(chatId: number): Promise<void>",
+                "api/own.ts: createChat maps response.id → {chatId}, sends auto_titled only when set (the is_ai precedent: title-only calls keep the old payload shape); enableAi PUT /chats/{id} {is_ai: true} + readCsrfToken; toChatInfo maps auto_titled; api.test.ts pins URL/payload shapes + csrf on mutations + id mapping",
+                "controller.ts: createAndSelect() — createChat({title: NEW_CHAT_TITLE, auto_titled: true}) → {chatId} → fetchChats() → selectChat + getChatUsers(chatId) (order pinned by test); renameChat() — the existing optimistic title patch gains auto_titled:false (review F-3; revert restores both); selectChat() clears the chatUsers slice (review F-7 — stale co-members from the previous chat must not flip the empty-hint gate); enableAi(chatId) — optimistic is_ai=true slice patch, port call, revert on error; chat_ai_toggled listener → is_ai slice patch",
+                "store.ts (chatsSlice): is_ai/auto_titled patch helpers as needed — no utils/Store.ts edit",
+                "chat.ts: HeaderIcons onClick → ChatsController.createAndSelect(); mobile CDU guard — external selectedChat change opens chatPaneOpen (idempotent setProps), the existing undefined-collapse stays; chat.test.ts pins the flow and that no ChatListCreate card mounts",
+                "messenger.ts/hbs: auto_titled && !archived renders the title as an IMMEDIATE input (renamingTitle mechanics without dblclick; Enter/Escape/focusout commit; empty/unchanged — silent revert); non-auto-titled keep h2 + dblclick; archived never an input; messenger.test.ts pins all three modes",
+                "messenger.hbs: empty-feed hint block gated by (no messages AND no co-members (selectedChatUsers minus meId empty) AND !archived AND !is_ai) — text «Добавьте пользователей с помощью кнопки + в верхнем меню, либо нажмите «добавить»» + button data-testid=empty-chat-add → addUserOpen=true; messenger.test.ts pins every gate branch and the modal-open click",
+                "messenger.ts headerButtons: third entry ai-toggle-icon.svg; hidden in archived (visibleHeaderButtons filter); is_ai chat → active non-clickable modifier; click → onEnableAi → controller; messenger.scss styles (hint block, AI button active state); public/images/ai-toggle-icon.svg currentColor",
+                "ws/gateway.ts + ws/own.ts: chat_ai_toggled → notifyChatAiToggled → controller slice patch; ws.test.ts pins the event path",
+                "docs: docs/progress/progress_log.md entry on top; docs/NEXT.md feature record + FUTURE-LLM-NAMING step (auto_titled precondition) + «тематические чаты» backlog note"
+            ],
+            "qualityFloor": "npm run verify green end to end (counts grown from 696); guard-architecture --all --strict zero violations; docs entries present; no backend, contacts or ai-assistant file touched."
+        }
+    ],
+    "acceptance": {
+        "criteria": [
+            {
+                "id": "AC-BE-AUTO-TITLE",
+                "title": "Migration 013 + auto_titled contracts proven by pytest",
+                "requirementIds": [
+                    "REQ-BE-AUTO-TITLE",
+                    "REQ-BE-MIGRATION-013"
+                ],
+                "evidenceIds": [
+                    "EV-BE-1"
+                ],
+                "independentEvidenceIds": [],
+                "statement": "alembic heads == 013_chat_auto_title; 013 adds chats.auto_titled (Boolean NOT NULL server_default '0') and drops it on downgrade; the 013 segment roundtrip is green; segment tests 009/010/011/012 stay green (minimal repin only if an isolation assertion breaks); POST /chats with auto_titled=true echoes the flag in the 201 response; pre-migration chats read auto_titled=false; GET /chats carries the field.",
+                "description": "Backend integration tests.",
+                "source": "acceptance-criteria.md",
+                "priority": "P1"
+            },
+            {
+                "id": "AC-BE-MEMBERS-APPEND",
+                "title": "Auto-title append proven by pytest",
+                "requirementIds": [
+                    "REQ-BE-MEMBERS-APPEND"
+                ],
+                "evidenceIds": [
+                    "EV-BE-1"
+                ],
+                "independentEvidenceIds": [],
+                "statement": "POST /chats/{id}/members in an auto_titled non-DM chat on the fresh-insert branch: 'Чат с' → 'Чат с <имя>' (display_name, email-local-part fallback); second member → '<title>, <имя2>'; a repeated add of an existing (active or archived/reactivating) member leaves the title unchanged (review F-4); NOT-auto_titled and is_dm chats keep their titles; a >200 result is a silent skip with the addition still 201; ACTIVE members received chat_renamed {chat_id, title}; no service file imports app.ws.hub (grep pin — review F-5).",
+                "description": "Backend integration tests.",
+                "source": "acceptance-criteria.md",
+                "priority": "P1"
+            },
+            {
+                "id": "AC-BE-PUT-EXT",
+                "title": "Extended PUT proven by pytest",
+                "requirementIds": [
+                    "REQ-BE-PUT-EXT"
+                ],
+                "evidenceIds": [
+                    "EV-BE-1"
+                ],
+                "independentEvidenceIds": [],
+                "statement": "PUT {title} keeps the rename semantics AND clears auto_titled; same-title is an idempotent no-op WITHOUT a system message and WITHOUT clearing the flag; PUT {is_ai: true} flips the flag and broadcasts chat_ai_toggled {chat_id, is_ai} to ACTIVE members; a repeated true-on-true call is 200 without a second broadcast; PUT {} → 422; blank title 422; archived 403; non-member 403; anonymous 401; a members call after a manual rename leaves the title unchanged.",
+                "description": "Backend integration tests.",
+                "source": "acceptance-criteria.md",
+                "priority": "P1"
+            },
+            {
+                "id": "AC-FE-CREATE-FLOW",
+                "title": "One-click create + autoselect proven by mocha",
+                "requirementIds": [
+                    "REQ-FE-CREATE-FLOW"
+                ],
+                "evidenceIds": [
+                    "EV-FE-1"
+                ],
+                "independentEvidenceIds": [],
+                "statement": "The list-header «Создать чат» button calls createAndSelect: POST /chats {title: 'Чат с', auto_titled: true} (+csrf) → {chatId} → fetchChats → selectChat(chatId) + getChatUsers(chatId), select pinned AFTER the list refresh; the ChatListCreate component is gone (files deleted, no card mounts, inputs/buttons wiring removed); the new card rides the existing created_at top-fallback; an external selectedChat change opens the mobile pane while undefined still collapses it.",
+                "description": "Frontend unit tests.",
+                "source": "acceptance-criteria.md",
+                "priority": "P1"
+            },
+            {
+                "id": "AC-FE-TITLE-INPUT",
+                "title": "Auto-title header input proven by mocha",
+                "requirementIds": [
+                    "REQ-FE-TITLE-INPUT"
+                ],
+                "evidenceIds": [
+                    "EV-FE-1"
+                ],
+                "independentEvidenceIds": [],
+                "statement": "An auto_titled non-archived chat renders the header title as an immediate input with value=title (no dblclick needed); Enter, Escape and focus-out each commit a CHANGED non-empty value via onRenameChat(chatId, value); empty/unchanged values silently revert without a call; the controller's optimistic rename patch carries auto_titled:false so the header turns static immediately on manual commit (review F-3; the error-revert restores both); non-auto-titled chats keep the static h2 + dblclick mode; archived chats never get an input.",
+                "description": "Frontend unit tests.",
+                "source": "acceptance-criteria.md",
+                "priority": "P1"
+            },
+            {
+                "id": "AC-FE-EMPTY-HINT",
+                "title": "Empty-chat hint proven by mocha",
+                "requirementIds": [
+                    "REQ-FE-EMPTY-HINT"
+                ],
+                "evidenceIds": [
+                    "EV-FE-1"
+                ],
+                "independentEvidenceIds": [],
+                "statement": "The hint block (text + button data-testid=empty-chat-add) renders ONLY when: no messages AND no co-members (selectedChatUsers minus meId empty) AND not archived AND not is_ai — each branch pinned by its own case; selectChat clears the stale chatUsers slice before getChatUsers repopulates it (review F-7 pin); the «добавить» click opens the add-user modal (addUserOpen); flipping any gate condition removes the block.",
+                "description": "Frontend unit tests.",
+                "source": "acceptance-criteria.md",
+                "priority": "P1"
+            },
+            {
+                "id": "AC-FE-AI-BUTTON",
+                "title": "«+AI» button proven by mocha",
+                "requirementIds": [
+                    "REQ-FE-AI-BUTTON"
+                ],
+                "evidenceIds": [
+                    "EV-FE-1"
+                ],
+                "independentEvidenceIds": [],
+                "statement": "The button renders in every non-archived chat header; archived hides it (with cross); an is_ai chat shows the active non-clickable state; a click in a regular chat → onEnableAi → enableAi → PUT /chats/{id} {is_ai: true} (+csrf) → optimistic is_ai=true slice patch with revert on port error; the WS chat_ai_toggled event patches is_ai in the slice via gateway → controller.",
+                "description": "Frontend unit tests.",
+                "source": "acceptance-criteria.md",
+                "priority": "P1"
+            },
+            {
+                "id": "AC-PROCESS",
+                "title": "Gates and bookkeeping",
+                "requirementIds": [
+                    "REQ-DOCS"
+                ],
+                "evidenceIds": [
+                    "EV-FE-1"
+                ],
+                "independentEvidenceIds": [],
+                "statement": "npm run verify, PYTHON_BIN=~/.venvs/chatty-backend/Scripts/python.exe bash backend/verify.sh and guard-architecture --all --strict pass with counts grown from the recorded base (mocha 696 / pytest 291 + 4 known Windows ingestion failures); docs/progress/progress_log.md gets an entry on top and docs/NEXT.md records the feature + the LLM-naming future step; no file outside the manifest write-sets changes; the run lives on feature/2026-11-06-chat-create-flow off dev @ efdc8c3.",
+                "description": "Gate runs captured as evidence.",
+                "source": "acceptance-criteria.md",
+                "priority": "P1"
+            }
+        ]
+    },
+    "validation": {
+        "commands": [
+            "npm run verify",
+            "bash backend/verify.sh",
+            "node .claude/hooks/scripts/guard-architecture.mjs --all --strict"
+        ]
+    },
+    "orchestration": {
+        "startMode": "reviewed-plan",
+        "remediationMode": "ask",
+        "maxPlanReviewRounds": 2,
+        "maxTaskAttempts": 3,
+        "maxParallelTasks": 1,
+        "maxValidationRunsPerTask": 2,
+        "stateFile": "work/2026-11-06-chat-create-flow/run.state.json",
+        "eventLog": "work/2026-11-06-chat-create-flow/events.jsonl",
+        "stepReviewRequired": true,
+        "finalAuditRequired": true
+    },
+    "implementationAudit": {
+        "required": true,
+        "finalRequired": true
+    },
+    "developerOverview": "tasks/2026-11-06-chat-create-flow/developer-overview.md",
+    "releaseTarget": {
+        "kind": "local-only",
+        "environment": "Vite own mode + compose own-backend",
+        "productionPromotionClaimed": false
+    },
+    "releaseImpact": "Backend: additive chats.auto_titled (migration 013); ChatCreate/ChatResponse carry auto_titled; ChatUpdate gains optional title + is_ai (manual rename clears the auto flag); members-add appends names to auto titles with a reused chat_renamed broadcast; new WS event chat_ai_toggled. Frontend: ChatListCreate removed; one-click createAndSelect («Чат с» card, instant select, mobile pane opens); auto-titled headers render an immediate rename input; empty chats without co-members show an onboarding hint wired to the existing add-user modal; «+AI» header button enables the bot in the current chat; ChatsPort.createChat returns {chatId}. Docs: progress log + NEXT.md with the declared LLM-naming future step. No auth, deployment or Netlify changes; the compose stack upgrade (alembic 013) follows the operator runbook at PR merge.",
+    "nonGoals": [
+        "LLM context naming (future step — separate plan)",
+        "disabling the bot from the UI",
+        "a system message about enabling the bot",
+        "auto-deletion of abandoned empty chats",
+        "changing the contacts DM get-or-create contract",
+        "bot/RAG mechanics changes"
+    ],
+    "finalAuditGates": [
+        "[AC-BE-AUTO-TITLE|EV-BE-1] migration 013 + heads + segments + contract echo proven by pytest",
+        "[AC-BE-MEMBERS-APPEND|EV-BE-1] title append both forms + fallback + non-DM exclusions + cap + chat_renamed proven by pytest",
+        "[AC-BE-PUT-EXT|EV-BE-1] extended PUT semantics incl. auto_titled clearing, no-op, chat_ai_toggled, guards proven by pytest",
+        "[AC-FE-CREATE-FLOW|EV-FE-1] one-click create order + component removal + mobile pane proven by mocha",
+        "[AC-FE-TITLE-INPUT|EV-FE-1] immediate input for auto-titled chats + commit/revert + static modes proven by mocha",
+        "[AC-FE-EMPTY-HINT|EV-FE-1] four-branch gate + modal open proven by mocha",
+        "[AC-FE-AI-BUTTON|EV-FE-1] button states + optimistic patch/revert + WS path proven by mocha",
+        "[AC-PROCESS|EV-FE-1] verify + verify:backend + guard strict green with grown counts; progress-log and NEXT.md entries; no write outside the manifest write-sets"
+    ],
+    "securityGates": [
+        {
+            "id": "SEC-AUTHZ",
+            "statement": "The extended PUT and members-add stay behind get_current_user: anonymous 401 pinned; both require ACTIVE membership (archived 403 pinned; the UI never offers the +AI button or the title input in an archived chat); the auto-title append touches only the caller's own chat rows. Mutating frontend calls (create, rename, enableAi) carry the readCsrfToken header.",
+            "evidenceIds": [
+                "EV-BE-1",
+                "EV-FE-1"
+            ]
+        },
+        {
+            "id": "SEC-XSS",
+            "statement": "Auto-titled content (member display_names concatenated server-side) and the rename path flow through existing escaped render paths: the chat list title, the header h2/input value and system messages all use double-brace/attribute escaping; no new triple-brace sinks; hint text is static.",
+            "evidenceIds": [
+                "EV-FE-1"
+            ]
+        }
+    ],
+    "budgetPolicy": {
+        "units": "tokens-and-resources",
+        "reroute": "pause-and-review",
+        "maxTotalTokens": 160000,
+        "maxParallelWorkstreams": 1,
+        "maxRunWallSeconds": 14400,
+        "criticalPathWallSeconds": 10800,
+        "aggregateWorkstreamWallSeconds": 12600,
+        "retryReserveWallSeconds": 3600
+    },
+    "budgets": {
+        "defaultWorkstreamTokens": 40000,
+        "maxEvidenceBytesPerRun": 4194304
+    },
+    "contextLimits": {
+        "profile": "small-context-profile.v1",
+        "maxPlanContextBytes": 120000,
+        "maxRenderedPacketBytes": 40000,
+        "smallContextPacketBytes": 30000,
+        "maxReferenceFilesPerPacket": 12,
+        "includeOnlyOwnedWrites": true,
+        "excludeRuntimeWorkArtifacts": true
+    },
+    "tierResolution": {
+        "status": "RESOLVED",
+        "tier": "S2",
+        "requestedTier": "S2",
+        "reason": "multiple-executable-owners resolved by agent-lifecycle tier resolve",
+        "independentReviewRequired": true,
+        "requestPath": "tasks/2026-11-06-chat-create-flow/tier-request.json",
+        "resolutionPath": "tasks/2026-11-06-chat-create-flow/tier-resolution.json",
+        "requestDigest": "647c3ffe65740e0fbc1112f16d209714f2d3301acbde77a2d4a678400b6e8e81"
+    },
+    "planReview": {
+        "required": true,
+        "reviewerClass": "independent-plan-reviewer",
+        "maxRounds": 3,
+        "implementationAuthorized": false,
+        "report": "tasks/2026-11-06-chat-create-flow/plan-review.json",
+        "reviewedRevision": 2,
+        "verdict": "READY_TO_FREEZE",
+        "roundBudgetNote": "round 1 (rev 1): NEEDS_REFINEMENT — 4 MAJOR (F-1..F-4) + 3 MINOR (F-5..F-7); round 2 (rev 2): all seven findings verified closed against the package files, no new findings — READY_TO_FREEZE"
+    },
+    "planFiles": [
+        "tasks/2026-11-06-chat-create-flow/acceptance-criteria.md",
+        "tasks/2026-11-06-chat-create-flow/developer-overview.md",
+        "tasks/2026-11-06-chat-create-flow/plan-review-request.md",
+        "tasks/2026-11-06-chat-create-flow/plan-review.json",
+        "tasks/2026-11-06-chat-create-flow/plan.manifest.json",
+        "tasks/2026-11-06-chat-create-flow/plan.md",
+        "tasks/2026-11-06-chat-create-flow/specification.json",
+        "tasks/2026-11-06-chat-create-flow/tier-request.json",
+        "tasks/2026-11-06-chat-create-flow/tier-resolution.json"
+    ]
+}

@@ -11,20 +11,27 @@ from pydantic import BaseModel, ConfigDict, Field, PositiveInt, model_validator
 class ChatCreate(BaseModel):
     title: str = Field(min_length=1, max_length=200)
     is_ai: bool = False
+    # Auto-title marker (013): the one-click creation flow sends True — the
+    # server then grows the title with each fresh member until a manual
+    # rename clears the flag. Additive: title-only callers keep the old shape.
+    auto_titled: bool = False
 
 
 class ChatUpdate(BaseModel):
-    """Rename payload for PUT /chats/{id} — PUT (not PATCH) follows the repo
-    precedent for partial-update semantics without a PATCH verb (PUT
-    /auth/profile; the frontend HTTPTransport has no patch method)."""
+    """PUT /chats/{id} payload — PUT (not PATCH) follows the repo precedent
+    for partial-update semantics without a PATCH verb (PUT /auth/profile;
+    the frontend HTTPTransport has no patch method). Both fields are
+    optional, but at least one must be present (empty PUT 422); a provided
+    title must be nonblank after strip (the MessageCreate precedent)."""
 
-    title: str = Field(min_length=1, max_length=200)
+    title: str | None = Field(default=None, min_length=1, max_length=200)
+    is_ai: bool | None = None
 
     @model_validator(mode='after')
-    def require_nonblank_title(self) -> 'ChatUpdate':
-        # blank-after-strip отклоняется на контракте (прецедент
-        # MessageCreate.require_content_or_file), сервису остаётся чистый strip
-        if not self.title.strip():
+    def require_field_and_nonblank_title(self) -> 'ChatUpdate':
+        if self.title is None and self.is_ai is None:
+            raise ValueError('empty_update')
+        if self.title is not None and not self.title.strip():
             raise ValueError('title_required')
         return self
 
@@ -76,6 +83,10 @@ class ChatResponse(BaseModel):
     # construction passes it explicitly, the model_validate paths fill it
     # from the ORM attribute automatically
     is_dm: bool = False
+    # Auto-title marker (013, additive, default False): the GET /chats
+    # field-by-field construction passes it explicitly (the is_dm
+    # precedent), the model_validate paths fill it from the ORM attribute
+    auto_titled: bool = False
     created_at: datetime
     # непрочитанные для запрашивающего: чужие сообщения новее последнего
     # прочитанного (0, если всё прочитано)
