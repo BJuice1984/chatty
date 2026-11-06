@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends, Query, Response, status
+from fastapi import APIRouter, BackgroundTasks, Depends, Query, Request, Response, status
 from sqlalchemy.orm import Session
 
 from app.core.deps import get_current_user, get_db
@@ -22,6 +22,7 @@ from app.schemas.message import MessageCreate, MessagePage, MessageResponse
 from app.schemas.reaction import ReactionSet, ReactionSummaryResponse
 from app.services.chats import ChatService
 from app.services.messages import MessageService
+from app.ws.autotitle import schedule_autotitle
 from app.ws.hub import hub
 
 
@@ -292,6 +293,8 @@ async def list_messages(
 async def create_message(
     chat_id: int,
     payload: MessageCreate,
+    request: Request,
+    background_tasks: BackgroundTasks,
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ) -> MessageResponse:
@@ -299,6 +302,11 @@ async def create_message(
     ChatService(db).require_active_member(chat_id, current_user.id)
     service = MessageService(db)
     message = service.create(chat_id, current_user.id, payload)
+    # one-shot LLM-автоназвание (2026-11-06): этот эндпоинт — прод-путь
+    # страницы AI-ассистента (askBot). BackgroundTask, а не create_task:
+    # корутина доедет в лупе запроса ПОСЛЕ отправки ответа (голый create_task
+    # мог бы умереть вместе с порталом запроса, не стартовав)
+    background_tasks.add_task(schedule_autotitle, request.app.state, chat_id)
     return service.present_one(message, current_user.id)
 
 

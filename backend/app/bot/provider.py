@@ -32,6 +32,47 @@ def _provider_timeout(timeout_seconds: float) -> httpx.Timeout:
     return httpx.Timeout(timeout_seconds, connect=PROVIDER_CONNECT_TIMEOUT_SECONDS)
 
 
+def _ollama_answer_content(response: httpx.Response) -> str:
+    """Parse a native ollama /api/chat whole-answer response."""
+    if response.status_code != 200:
+        raise BotProviderError('provider_failed', f'provider endpoint returned {response.status_code}')
+    try:
+        payload = response.json()
+    except ValueError as exc:
+        raise BotProviderError('provider_malformed', 'provider returned a malformed payload') from exc
+    if not isinstance(payload, dict):
+        raise BotProviderError('provider_malformed', 'provider returned a malformed payload')
+    message = payload.get('message')
+    if not isinstance(message, dict):
+        raise BotProviderError('provider_malformed', 'provider returned a malformed payload')
+    content = message.get('content')
+    if not isinstance(content, str) or not content.strip():
+        raise BotProviderError('provider_malformed', 'provider returned an empty answer')
+    return content
+
+
+def _openai_answer_content(response: httpx.Response) -> str:
+    """Parse an OpenAI-compatible /v1/chat/completions whole-answer response."""
+    if response.status_code != 200:
+        raise BotProviderError('provider_failed', f'provider endpoint returned {response.status_code}')
+    try:
+        payload = response.json()
+    except ValueError as exc:
+        raise BotProviderError('provider_malformed', 'provider returned a malformed payload') from exc
+    if not isinstance(payload, dict):
+        raise BotProviderError('provider_malformed', 'provider returned a malformed payload')
+    choices = payload.get('choices')
+    if not isinstance(choices, list) or not choices:
+        raise BotProviderError('provider_malformed', 'provider returned a malformed payload')
+    message = choices[0].get('message') if isinstance(choices[0], dict) else None
+    if not isinstance(message, dict):
+        raise BotProviderError('provider_malformed', 'provider returned a malformed payload')
+    content = message.get('content')
+    if not isinstance(content, str) or not content.strip():
+        raise BotProviderError('provider_malformed', 'provider returned an empty answer')
+    return content
+
+
 class BotProviderError(Exception):
     """Explicit provider failure with a machine-readable kind."""
 
@@ -77,21 +118,34 @@ class OllamaBotProvider:
             raise BotProviderError('provider_timeout', f'provider timed out after {self.timeout_seconds}s') from exc
         except httpx.HTTPError as exc:
             raise BotProviderError('provider_unreachable', f'provider endpoint unreachable: {exc}') from exc
-        if response.status_code != 200:
-            raise BotProviderError('provider_failed', f'provider endpoint returned {response.status_code}')
+        return _ollama_answer_content(response)
+
+    def complete_short(self, messages: list[dict[str, str]], *, max_tokens: int, timeout_seconds: float) -> str:
+        """Whole short answer with thinking off and a tight token budget.
+
+        The autotitle path: a one-shot chat naming call must not run the
+        thinking phase (``think: false``) and must not inherit the bot's
+        whole-answer timeout — ``timeout_seconds`` is the caller's own budget.
+        """
         try:
-            payload = response.json()
-        except ValueError as exc:
-            raise BotProviderError('provider_malformed', 'provider returned a malformed payload') from exc
-        if not isinstance(payload, dict):
-            raise BotProviderError('provider_malformed', 'provider returned a malformed payload')
-        message = payload.get('message')
-        if not isinstance(message, dict):
-            raise BotProviderError('provider_malformed', 'provider returned a malformed payload')
-        content = message.get('content')
-        if not isinstance(content, str) or not content.strip():
-            raise BotProviderError('provider_malformed', 'provider returned an empty answer')
-        return content
+            with httpx.Client(timeout=_provider_timeout(timeout_seconds), transport=self._transport) as client:
+                response = client.post(
+                    f'{self.url}/api/chat',
+                    json={
+                        'model': self.model,
+                        'messages': messages,
+                        'stream': False,
+                        'think': False,
+                        'options': {'num_predict': max_tokens},
+                    },
+                )
+        except httpx.ConnectTimeout as exc:
+            raise BotProviderError('provider_unreachable', 'provider host unreachable: connect timed out') from exc
+        except httpx.TimeoutException as exc:
+            raise BotProviderError('provider_timeout', f'provider timed out after {timeout_seconds}s') from exc
+        except httpx.HTTPError as exc:
+            raise BotProviderError('provider_unreachable', f'provider endpoint unreachable: {exc}') from exc
+        return _ollama_answer_content(response)
 
     def complete_stream(self, messages: list[dict[str, str]]) -> Iterator[str]:
         """Explicit single-chunk stream: the native seam stays whole-answer.
@@ -142,24 +196,36 @@ class OpenAIChatProvider:
             raise BotProviderError('provider_timeout', f'provider timed out after {self.timeout_seconds}s') from exc
         except httpx.HTTPError as exc:
             raise BotProviderError('provider_unreachable', f'provider endpoint unreachable: {exc}') from exc
-        if response.status_code != 200:
-            raise BotProviderError('provider_failed', f'provider endpoint returned {response.status_code}')
+        return _openai_answer_content(response)
+
+    def complete_short(self, messages: list[dict[str, str]], *, max_tokens: int, timeout_seconds: float) -> str:
+        """Whole short answer with thinking off and a tight token budget.
+
+        The autotitle path: a one-shot naming call must not run the thinking
+        phase (``chat_template_kwargs.enable_thinking: false`` — forced here
+        regardless of the instance flag) and runs on the caller's own
+        ``timeout_seconds`` budget instead of the bot's whole-answer timeout.
+        """
+        body: dict[str, object] = {
+            'model': self.model,
+            'messages': messages,
+            'stream': False,
+            'max_tokens': max_tokens,
+            'chat_template_kwargs': {'enable_thinking': False},
+        }
         try:
-            payload = response.json()
-        except ValueError as exc:
-            raise BotProviderError('provider_malformed', 'provider returned a malformed payload') from exc
-        if not isinstance(payload, dict):
-            raise BotProviderError('provider_malformed', 'provider returned a malformed payload')
-        choices = payload.get('choices')
-        if not isinstance(choices, list) or not choices:
-            raise BotProviderError('provider_malformed', 'provider returned a malformed payload')
-        message = choices[0].get('message') if isinstance(choices[0], dict) else None
-        if not isinstance(message, dict):
-            raise BotProviderError('provider_malformed', 'provider returned a malformed payload')
-        content = message.get('content')
-        if not isinstance(content, str) or not content.strip():
-            raise BotProviderError('provider_malformed', 'provider returned an empty answer')
-        return content
+            with httpx.Client(timeout=_provider_timeout(timeout_seconds), transport=self._transport) as client:
+                response = client.post(
+                    f'{self.url}/v1/chat/completions',
+                    json=body,
+                )
+        except httpx.ConnectTimeout as exc:
+            raise BotProviderError('provider_unreachable', 'provider host unreachable: connect timed out') from exc
+        except httpx.TimeoutException as exc:
+            raise BotProviderError('provider_timeout', f'provider timed out after {timeout_seconds}s') from exc
+        except httpx.HTTPError as exc:
+            raise BotProviderError('provider_unreachable', f'provider endpoint unreachable: {exc}') from exc
+        return _openai_answer_content(response)
 
     def complete_stream(self, messages: list[dict[str, str]]) -> Iterator[str]:
         """Stream SSE ``data:`` chunks, yielding ONLY content deltas.
