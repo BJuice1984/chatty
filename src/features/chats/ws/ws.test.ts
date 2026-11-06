@@ -130,6 +130,16 @@ describe('chats ws gateway', () => {
 
         expect(mapped.content).to.eq('')
         expect(mapped.file_url).to.eq(joinUrl(env.filesUrl, '/5/download'))
+        // имени нет — фолбэк «Файл» остаётся на маппере messenger
+        expect(mapped.file_name).to.eq(undefined)
+    })
+
+    // 2026-11-06: сервер несёт исходное имя файла вложения — пункт
+    // вложения показывает его и иконку по расширению, а не «Файл»
+    it('should carry the attachment file name through the mapping', () => {
+        const mapped = toMessage({ ...ownFileResponse, file_name: 'Заявление.pdf' })
+
+        expect(mapped.file_name).to.eq('Заявление.pdf')
     })
 
     it('should build the own WS URL without a token', () => {

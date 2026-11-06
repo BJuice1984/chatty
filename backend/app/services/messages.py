@@ -165,12 +165,18 @@ class MessageService:
         return summaries
 
     def present(self, messages: Sequence[Message], viewer_id: int) -> list[MessageResponse]:
-        """Собирает ответы контракта: reply-блок со сниппетом и сводки реакций."""
+        """Собирает ответы контракта: reply-блок со сниппетом, сводки реакций
+        и имя файла вложения (одним батч-запросом на страницу — file_name
+        нужен UI для пункта вложения, без него показывается «Файл»)."""
 
         summaries = self.reaction_summaries([message.id for message in messages], viewer_id)
         parents = self.messages.get_many(
             {message.reply_to_id for message in messages if message.reply_to_id is not None},
         )
+        file_rows = self.files.get_by_ids(
+            [message.file_id for message in messages if message.file_id is not None],
+        )
+        file_names = {file.id: file.original_name for file in file_rows}
         presented: list[MessageResponse] = []
         for message in messages:
             reply_to = None
@@ -183,7 +189,11 @@ class MessageService:
                 )
             presented.append(
                 MessageResponse.model_validate(message).model_copy(
-                    update={'reply_to': reply_to, 'reactions': summaries.get(message.id, [])},
+                    update={
+                        'reply_to': reply_to,
+                        'reactions': summaries.get(message.id, []),
+                        'file_name': file_names.get(message.file_id) if message.file_id is not None else None,
+                    },
                 ),
             )
         return presented

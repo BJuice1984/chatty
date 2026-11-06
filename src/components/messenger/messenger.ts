@@ -277,7 +277,7 @@ export function mapTypedMessages(
         let attachments: MessageAttachment[] | undefined = message.attachments
 
         if (attachments == null && fileUrlValue !== undefined) {
-            attachments = [{ name: message.file?.filename ?? 'Файл', url: fileUrlValue }]
+            attachments = [{ name: message.file_name ?? message.file?.filename ?? 'Файл', url: fileUrlValue }]
         }
 
         return {

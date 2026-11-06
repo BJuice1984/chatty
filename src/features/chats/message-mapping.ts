@@ -12,6 +12,9 @@ export interface OwnMessageResponse {
     user_id: number
     content: string | null
     file_id: number | null
+    // исходное имя файла вложения (2026-11-06): без него пункт вложения
+    // показывает фолбэк «Файл»
+    file_name?: string | null
     client_message_id: string | null
     // маркер служебного сообщения (messages.kind, 2026-11-05): null/нет поля —
     // обычное сообщение
@@ -55,6 +58,9 @@ export function toMessage(response: OwnMessageResponse): Message {
         content: response.content ?? '',
         // служебный маркер проходит насквозь (UI рисует строку без пузыря)
         kind: response.kind ?? undefined,
+        // имя файла вложения: маппер messenger строит пункт вложения с
+        // именем и иконкой по расширению (фолбэк — безликое «Файл»)
+        file_name: response.file_name ?? undefined,
         file_url: response.file_id == null
             ? undefined
             : joinUrl(env.filesUrl, `/${response.file_id}/download`),

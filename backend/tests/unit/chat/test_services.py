@@ -108,3 +108,34 @@ def test_bot_answer_attachments_cross_chats_only_for_library_documents(session_f
         except HTTPException as exc:
             assert exc.status_code == 400
             assert exc.detail == 'file_not_ready_for_message'
+
+
+def test_present_carries_the_attachment_file_name(session_factory):
+    """2026-11-06: имя файла вложения в MessageResponse — без него UI
+    показывает фолбэк «Файл» (live-фидбек)."""
+    from app.models.file import File
+
+    with session_factory() as session:
+        owner = create_user(session, 'owner@example.com')
+        service = MessageService(session)
+        chat = ChatService(session).create(owner.id, ChatCreate(title='Файлы'))
+
+        file = File(
+            chat_id=chat.id,
+            owner_id=owner.id,
+            object_key='docs/zayavlenie.pdf',
+            original_name='Заявление.pdf',
+            content_type='application/pdf',
+            size_bytes=10,
+            status='ready',
+        )
+        session.add(file)
+        session.flush()
+        with_file = service.create(chat.id, owner.id, MessageCreate(content='вот файл', file_id=file.id))
+        plain = service.create(chat.id, owner.id, MessageCreate(content='без файла'))
+
+        page = service.present([with_file, plain], owner.id)
+
+        assert page[0].file_name == 'Заявление.pdf'
+        assert page[0].file_id == file.id
+        assert page[1].file_name is None
