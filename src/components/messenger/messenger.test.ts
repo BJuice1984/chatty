@@ -241,6 +241,12 @@ describe('messenger action dispatch', () => {
 
             const input = () => messenger.element?.querySelector<HTMLInputElement>('input[name="message"]')
 
+            // store-выдача сменила else-ветку на композер: первый рендер с
+            // инпутом мог пойти из конструктора базового Block ДО
+            // инициализации полей подкласса — value обязан быть пустым, а не
+            // строкой «undefined» (регрессия live-бага 2026-11-06)
+            expect(input()?.value).to.eq('')
+
             if (input() != null) {
                 input()!.value = 'набираю ответ'
             }

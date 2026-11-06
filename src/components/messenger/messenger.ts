@@ -893,11 +893,15 @@ class MessengerBase extends Block {
 
         // вернуть черновик в свежий DOM: render вызывается ПОСЛЕ
         // componentDidUpdate (значение уже снято со старого узла), а fragment
-        // ещё не вставлен — value едет с узлом в документ
+        // ещё не вставлен — value едет с узлом в документ. Гвард строго
+        // falsy: первый render() зовётся из конструктора БАЗОВОГО Block —
+        // ДО инициализации полей подкласса, composerDraft там undefined, и
+        // `undefined !== ''` писал в value строку «undefined» (live-баг
+        // 2026-11-06)
         const draft = this.composerDraft
         const nextInput = fragment.querySelector<HTMLInputElement>('input.messenger__composer-input')
 
-        if (draft !== '' && nextInput != null) {
+        if (draft != null && draft !== '' && nextInput != null) {
             nextInput.value = draft
         }
 
