@@ -16,6 +16,7 @@ import { AppState, withStore } from '../../../../utils/Store.ts'
 import { SIGNIN, mailValidationMessage, passwordValidationMessage } from '../../../../utils/constants.ts'
 import { mailValidator, passwordValidator } from '../../../../utils/validators.ts'
 import AuthController from '../../controller.ts'
+import { authSlice } from '../../store.ts'
 import type { FormButton, FormInputs } from '../../../../components/form/form.ts'
 import type { SignUpRequest } from '../../ports.ts'
 import template from './register.hbs'
@@ -87,6 +88,9 @@ class RegisterPageBase extends Block {
                     classType: 'secondary',
                     type: 'button',
                     onClick: () => {
+                        // уход на соседнюю форму прощает прошлую ошибку:
+                        // иначе ошибка регистрации висит под формой входа
+                        authSlice.setAuthError(null)
                         Router.go(SIGNIN)
                     },
                 },

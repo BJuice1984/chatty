@@ -6,7 +6,10 @@
 
 import { expect } from 'chai'
 import { JSDOM } from 'jsdom'
+import sinon from 'sinon'
 import Handlebars from 'handlebars'
+import Router from '../../../../utils/Router.ts'
+import { SIGNIN } from '../../../../utils/constants.ts'
 import '../../../ai-assistant/hbs-test-loader.ts'
 import type Block from '../../../../core/Block.ts'
 import { registerComponent } from '../../../../core/registerComponent.ts'
@@ -83,5 +86,21 @@ describe('register page: ошибка авторизации из стора', (
 
         expect(submit?.disabled).to.eq(true)
         expect(submit?.textContent?.trim()).to.eq('Signing up…')
+    })
+
+    it('переход на sign-in сбрасывает висящую ошибку регистрации (2026-11-07)', () => {
+        const goStub = sinon.stub(Router, 'go')
+        const page = new RegisterPage({})
+
+        store.set('authError', 'Этот email уже зарегистрирован')
+        expect(page.element?.querySelector('[data-testid="auth-error"]')).to.be.not.null
+
+        page.element?.querySelector<HTMLButtonElement>('button[type="button"]')?.click()
+
+        expect(store.getState().authError ?? null).to.eq(null)
+        expect(page.element?.querySelector('[data-testid="auth-error"]')).to.eq(null)
+        expect(goStub.calledOnceWith(SIGNIN)).to.be.true
+
+        goStub.restore()
     })
 })

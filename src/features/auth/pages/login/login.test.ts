@@ -5,7 +5,10 @@
 
 import { expect } from 'chai'
 import { JSDOM } from 'jsdom'
+import sinon from 'sinon'
 import Handlebars from 'handlebars'
+import Router from '../../../../utils/Router.ts'
+import { SIGNUP } from '../../../../utils/constants.ts'
 import '../../../ai-assistant/hbs-test-loader.ts'
 import type Block from '../../../../core/Block.ts'
 import { registerComponent } from '../../../../core/registerComponent.ts'
@@ -120,5 +123,21 @@ describe('login page: ошибка авторизации из стора', () =
 
         expect(secondary?.disabled).to.eq(false)
         expect(secondary?.textContent?.trim()).to.eq('Sign up')
+    })
+
+    it('переход на sign-up сбрасывает висящую ошибку входа (2026-11-07)', () => {
+        const goStub = sinon.stub(Router, 'go')
+        const page = new LoginPage({})
+
+        store.set('authError', 'Неверный email или пароль')
+        expect(page.element?.querySelector('[data-testid="auth-error"]')).to.be.not.null
+
+        page.element?.querySelector<HTMLButtonElement>('button[type="button"]')?.click()
+
+        expect(store.getState().authError ?? null).to.eq(null)
+        expect(page.element?.querySelector('[data-testid="auth-error"]')).to.eq(null)
+        expect(goStub.calledOnceWith(SIGNUP)).to.be.true
+
+        goStub.restore()
     })
 })

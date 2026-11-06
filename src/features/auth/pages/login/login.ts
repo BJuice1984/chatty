@@ -16,6 +16,7 @@ import { AppState, withStore } from '../../../../utils/Store.ts'
 import { SIGNUP, mailValidationMessage, passwordValidationMessage } from '../../../../utils/constants.ts'
 import { mailValidator, passwordValidator } from '../../../../utils/validators.ts'
 import AuthController from '../../controller.ts'
+import { authSlice } from '../../store.ts'
 import type { FormButton, FormInputs } from '../../../../components/form/form.ts'
 import type { SignInRequest } from '../../ports.ts'
 import template from './login.hbs'
@@ -81,6 +82,10 @@ class LoginPageBase extends Block {
                     classType: 'secondary',
                     type: 'button',
                     onClick: () => {
+                        // уход на соседнюю форму прощает прошлую ошибку:
+                        // иначе «Неверный email или пароль» логина висит
+                        // под пустой формой регистрации (2026-11-07)
+                        authSlice.setAuthError(null)
                         Router.go(SIGNUP)
                     },
                 },
