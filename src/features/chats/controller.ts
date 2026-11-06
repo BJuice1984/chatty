@@ -512,12 +512,31 @@ export class ChatsFeatureController {
 
     // WS chat_renamed (2026-11-05-messenger-ux-pack): чужое переименование
     // обновляет заголовок в списке и шапке (обе читают chats-слайс); своё —
-    // уже применено оптимистичным патчем, идемпотентный пропуск
+    // уже применено оптимистичным патчем, идемпотентный пропуск.
+    // 2026-11-06-llm-chat-autotitle: ЛЮБОЕ переименование финализирует
+    // авто-название — сервер гасит auto_titled той же транзакцией (LLM-титул
+    // или чужой ручной rename), поэтому при живом флаге патч гасит его даже
+    // при identical-title (LLM могла вернуть текущий заголовок) — инпут
+    // шапки становится статичным h2
     private handleChatRenamedEvent(event: { chat_id: number, title: string }): void {
         const chats = (store.getState().chats ?? []) as ChatInfo[]
         const current = chats.find(chat => chat.id === event.chat_id)
 
-        if (current == null || current.title === event.title) {
+        if (current == null) {
+            return
+        }
+
+        if (current.auto_titled === true) {
+            store.set('chats', chats.map(chat =>
+                chat.id === event.chat_id
+                    ? { ...chat, title: event.title, auto_titled: undefined }
+                    : chat
+            ))
+
+            return
+        }
+
+        if (current.title === event.title) {
             return
         }
 

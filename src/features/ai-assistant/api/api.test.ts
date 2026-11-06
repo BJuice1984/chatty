@@ -167,7 +167,7 @@ describe('ai assistant api createChat (fake XHR)', () => {
 
     // createChat опционален в контракте порта (см. ports.ts) — эти
     // тесты проверяют HTTP-поведение own-адаптера, который метод реализует
-    function adapterCreateChat(data: { title: string, is_ai?: boolean }): Promise<void> {
+    function adapterCreateChat(data: { title: string, is_ai?: boolean, auto_titled?: boolean }): Promise<void> {
         if (ownAiAssistantPort.createChat === undefined) {
             throw new Error('own-адаптер не реализует createChat')
         }
@@ -194,5 +194,23 @@ describe('ai assistant api createChat (fake XHR)', () => {
         const call = FakeXHR.calls[0]
 
         expect(call.body).to.eq(JSON.stringify({ title: 'обычный чат' }))
+    })
+
+    // 2026-11-06-llm-chat-autotitle: чат ассистента рождается auto_titled —
+    // флаг уезжает только выставленным (зеркало is_ai)
+    it('carries auto_titled in the payload only when explicitly set', async () => {
+        FakeXHR.responses.push({ status: 201, response: { id: 10 } })
+
+        await adapterCreateChat({ title: 'AI ассистент', is_ai: true, auto_titled: true })
+
+        expect(FakeXHR.calls[0].body).to.eq(
+            JSON.stringify({ title: 'AI ассистент', is_ai: true, auto_titled: true })
+        )
+
+        FakeXHR.responses.push({ status: 201, response: { id: 11 } })
+
+        await adapterCreateChat({ title: 'AI ассистент', is_ai: true })
+
+        expect(FakeXHR.calls[1].body).to.eq(JSON.stringify({ title: 'AI ассистент', is_ai: true }))
     })
 })

@@ -93,9 +93,12 @@ describe('ai assistant page states', () => {
             button?.click()
 
             expect(createAiChat.calledOnce).to.be.true
+            // 2026-11-06-llm-chat-autotitle: чат ассистента рождается
+            // auto_titled — LLM назовёт его по контексту диалога
             expect(createAiChat.firstCall.args[0]).to.deep.eq({
                 title: AI_CHAT_TITLE,
                 is_ai: true,
+                auto_titled: true,
             })
             expect(AI_CHAT_TITLE).to.eq('AI ассистент')
 

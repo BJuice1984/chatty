@@ -109,14 +109,18 @@ export const ownAiAssistantPort: AiAssistantPort = {
     },
 
     // 2026-10-27-ai-chat-creation: тот же эндпоинт POST /chats, что и у
-    // chats-фичи, — фича остаётся за собственным портом (guard). is_ai
-    // уезжает только выставленным, CSRF — double-submit как у остальных
-    // мутаций (зеркало chats/api/own.ts createChat)
+    // chats-фичи, — фича остаётся за собственным портом (guard). is_ai и
+    // auto_titled уезжают только выставленными, CSRF — double-submit как у
+    // остальных мутаций (зеркало chats/api/own.ts createChat)
     async createChat(data) {
-        const payload: { title: string, is_ai?: boolean } = { title: data.title }
+        const payload: { title: string, is_ai?: boolean, auto_titled?: boolean } = { title: data.title }
 
         if (data.is_ai === true) {
             payload.is_ai = true
+        }
+
+        if (data.auto_titled === true) {
+            payload.auto_titled = true
         }
 
         await http.post('', { data: payload, csrfToken: readCsrfToken() })

@@ -48,7 +48,7 @@ export class AiAssistantController {
     // (chats-фича не импортируется — guard), затем обновляет список
     // существующим loadChats: страница перерисуется срезом через стор.
     // Ошибка создания — то же текстовое error-состояние, что и везде
-    async createAiChat(data: { title: string, is_ai?: boolean }): Promise<void> {
+    async createAiChat(data: { title: string, is_ai?: boolean, auto_titled?: boolean }): Promise<void> {
         // createChat опционален в порте (литералы без него валидны);
         // own-адаптер метод реализует
         if (this.port.createChat === undefined) {

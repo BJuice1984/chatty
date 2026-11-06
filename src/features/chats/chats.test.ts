@@ -1603,4 +1603,31 @@ describe('chats controller rename and read-all', () => {
 
         expect(chats.find(chat => chat.id === 4)?.title).to.eq('Переименовали извне')
     })
+
+    // 2026-11-06-llm-chat-autotitle: ЛЮБОЙ chat_renamed финализирует
+    // авто-название — сервер гасит auto_titled той же транзакцией (LLM-титул
+    // или чужой ручной rename), identical-title пропускается только для
+    // чатов с уже погашенным флагом (LLM могла вернуть текущий заголовок)
+    it('notifyChatRenamed finalizes an auto-titled chat even on an identical title', () => {
+        store.set('chats', [
+            { id: 5, title: 'Чат с', avatar: '', unread_count: 0, auto_titled: true },
+        ] as never)
+        new ChatsFeatureController(makePort(), makeMessages())
+
+        // LLM вернула текущий сид — title не изменился, но флаг сервер погасил
+        notifyChatRenamed({ chat_id: 5, title: 'Чат с' })
+
+        let row = (store.getState().chats as { id: number, title: string, auto_titled?: boolean }[]).find(chat => chat.id === 5)
+
+        expect(row?.title).to.eq('Чат с')
+        expect(row?.auto_titled).to.eq(undefined)
+
+        // LLM-титул с реальным переименованием: и title, и гашение флага
+        notifyChatRenamed({ chat_id: 5, title: 'Webpack CDN' })
+
+        row = (store.getState().chats as { id: number, title: string, auto_titled?: boolean }[]).find(chat => chat.id === 5)
+
+        expect(row?.title).to.eq('Webpack CDN')
+        expect(row?.auto_titled).to.eq(undefined)
+    })
 })
