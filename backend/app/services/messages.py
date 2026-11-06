@@ -12,6 +12,7 @@ from app.models.message import Message
 from app.models.reaction import Reaction
 from app.models.user import User
 from app.repositories.chats import ChatRepository
+from app.repositories.documents import DocumentRepository
 from app.repositories.files import FileRepository
 from app.repositories.messages import MessageRepository
 from app.services.chats import ChatService
@@ -31,6 +32,17 @@ class MessageService:
         self.files = FileRepository(session)
         self.messages = MessageRepository(session)
         self.reactions = ReactionRepository(session)
+        self.documents = DocumentRepository(session)
+
+    def _is_library_file(self, file_id: int) -> bool:
+        """Библиотечный документ (общая база RAG, решение оператора
+        2026-11-06 «поиск без chat-скоупа»): файл с строкой documents.
+        Только такие файлы могут ехать attachment'ом в ЧУЖОЙ чат — бот
+        находит документ библиотеки из любого AI-чата, и ответ обязан
+        доехать (live-инцидент 2026-11-06: три рана подряд
+        attachment_not_authorized на найденном заявлении). Юзерский файл
+        без инжеста остаётся строго chat-скоупным."""
+        return self.documents.get_by_file_id(file_id) is not None
 
     def create(self, chat_id: int, user_id: int, payload: MessageCreate) -> Message:
         self._require_member(chat_id, user_id)
@@ -44,7 +56,9 @@ class MessageService:
                 raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail='reply_target_invalid')
         if payload.file_id is not None:
             file = self.files.get_by_id(payload.file_id)
-            if file is None or file.chat_id != chat_id or file.status != 'ready':
+            if file is None or file.status != 'ready' or (
+                file.chat_id != chat_id and not self._is_library_file(payload.file_id)
+            ):
                 raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail='file_not_ready_for_message')
         message = Message(
             chat_id=chat_id,
