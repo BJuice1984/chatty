@@ -150,7 +150,7 @@ async def update_chat(
     event (a state patch — no system message); a value-equal call is a 200
     without a second broadcast. At least one field must be present (422)."""
     chats_service = ChatService(db)
-    chat, system_message, ai_changed = chats_service.update(chat_id, current_user.id, payload)
+    chat, system_message, ai_changed, auto_title = chats_service.update(chat_id, current_user.id, payload)
     if system_message is not None:
         presented = MessageService(db).present_one(system_message, current_user.id)
         await hub.broadcast(
@@ -161,6 +161,14 @@ async def update_chat(
         await hub.broadcast(
             chat_id,
             {'type': 'chat_renamed', 'content': {'chat_id': chat_id, 'title': chat.title}},
+            active_user_ids=chats_service.active_member_ids(chat_id),
+        )
+    if auto_title is not None:
+        # 2026-11-06-quick: включение AI дополнило авто-название («Чат с» ->
+        # «Чат с AI») — тот же fan-out, что у append при добавлении участника
+        await hub.broadcast(
+            chat_id,
+            {'type': 'chat_renamed', 'content': {'chat_id': chat_id, 'title': auto_title}},
             active_user_ids=chats_service.active_member_ids(chat_id),
         )
     if ai_changed:
@@ -206,11 +214,19 @@ async def add_chat_member(
     'chat_renamed' event fans out to ACTIVE members (other clients refresh
     their list titles through the already-shipped frontend path)."""
     chats_service = ChatService(db)
-    member, new_title = chats_service.add_member(chat_id, current_user.id, payload.user_id)
+    member, new_title, ai_changed = chats_service.add_member(chat_id, current_user.id, payload.user_id)
     if new_title is not None:
         await hub.broadcast(
             chat_id,
             {'type': 'chat_renamed', 'content': {'chat_id': chat_id, 'title': new_title}},
+            active_user_ids=chats_service.active_member_ids(chat_id),
+        )
+    if ai_changed:
+        # 2026-11-06-quick: бот добавлен «+» — чат становится AI для всех
+        # (тот же state-patch, что у PUT is_ai)
+        await hub.broadcast(
+            chat_id,
+            {'type': 'chat_ai_toggled', 'content': {'chat_id': chat_id, 'is_ai': True}},
             active_user_ids=chats_service.active_member_ids(chat_id),
         )
     return ChatMemberResponse.model_validate(member)

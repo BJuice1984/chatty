@@ -197,3 +197,49 @@ def test_manual_rename_wins_the_race(app, session_factory):
         row = chat_row(session_factory, chat_id)
         assert row.title == 'Моё название'
         assert row.auto_titled is False
+
+
+def test_ai_rename_broadcasts_the_notice_message(app, session_factory):
+    """2026-11-06-quick: при зарегистрированном бот-юзере переименование
+    сопровождается служебной строкой ленты («AI назвал чат …», kind ручного
+    rename) — рядом с chat_renamed в сокет приезжает и message-событие."""
+    app.state.bot_provider = ScriptedTitleProvider(answers=['Webpack CDN'])
+    from app.core.security import hash_password
+    from app.models.user import User
+
+    with session_factory() as session:
+        session.add(User(email='bot@chatty.local', password_hash=hash_password('not-a-real-login-hash')))
+        session.commit()
+
+    with TestClient(app) as client:
+        client.post('/api/v1/auth/register', json={'email': 'notice-owner@example.com', 'password': PASSWORD})
+        chat = client.post('/api/v1/chats', json={'title': 'Чат с', 'auto_titled': True}).json()
+        chat_id = chat['id']
+
+        with client.websocket_connect(f'/api/v1/ws/chats/{chat_id}', headers=ORIGIN) as websocket:
+            websocket.send_json({'type': 'message', 'content': {'content': LONG_A}})
+            assert pump_until_renamed(websocket, rounds=6) is None
+            websocket.send_json({'type': 'message', 'content': {'content': LONG_B}})
+
+            # собираем ОБА кадра фоновой пары: message(kind) приезжает ДО
+            # chat_renamed (порядок броадкастов планировщика)
+            notice = None
+            renamed = None
+            for _ in range(12):
+                websocket.send_json({'type': 'history', 'content': {'limit': 1}})
+                while True:
+                    payload = websocket.receive_json()
+                    if payload['type'] == 'message' and payload['content'].get('kind') == 'chat_renamed':
+                        notice = payload['content']
+                    if payload['type'] == 'chat_renamed':
+                        renamed = payload['content']
+                    if payload['type'] == 'history':
+                        break
+                if notice is not None and renamed is not None:
+                    break
+            assert renamed is not None
+            assert renamed['title'] == 'Webpack CDN'
+            assert notice is not None
+            assert notice['content'] == 'AI назвал чат «Webpack CDN» по теме диалога'
+
+        assert renamed_rows(session_factory, chat_id) == 1

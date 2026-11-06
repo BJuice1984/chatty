@@ -550,7 +550,8 @@ export class ChatsFeatureController {
     // WS chat_ai_toggled (2026-11-06-chat-create-flow): «+AI» одного
     // участника включает бота для всех — патчим is_ai в слайсе (кнопка
     // активна, композер получает botPending-гейт); значение-равный патч —
-    // идемпотентный пропуск
+    // идемпотентный пропуск. 2026-11-06-quick: сервер сразу сажает бота в
+    // участники (виден в шапке с аватаркой) — рефетчим состав
     private handleChatAiToggledEvent(event: { chat_id: number, is_ai: boolean }): void {
         const chats = (store.getState().chats ?? []) as ChatInfo[]
         const current = chats.find(chat => chat.id === event.chat_id)
@@ -564,6 +565,12 @@ export class ChatsFeatureController {
                 ? { ...chat, is_ai: event.is_ai }
                 : chat
         ))
+
+        // свежий состав участников: бот приезжает в шапку сразу, а не после
+        // первого ответа; чужое включение AI — тоже
+        if (event.is_ai) {
+            void this.getChatUsers(event.chat_id)
+        }
     }
 
     // Сокет чата исчерпал реконнекты (обрыв без восстановления): первый
@@ -951,7 +958,17 @@ export class ChatsFeatureController {
 
         // открытие чата прочитывает его: серверная пометка уходит с выдачей
         // истории (MessageService.history -> mark_read), а пилюлю гасим в
-        // списке сразу, локально — без перечитывания всего списка
+        // списке сразу, локально — без перечитывания всего списка.
+        // 2026-11-06-quick: история запрашивается заново только при ЖИВОМ
+        // сокете — первичная выдача висит на Connected и не повторится, а
+        // без неё серверный маркер не двигался и fetchChats возвращал
+        // пилюлю обратно (переход настройки -> чаты)
+        const target = ((store.getState().chats ?? []) as ChatInfo[]).find(chat => chat.id === id)
+
+        if ((target?.unread_count ?? 0) > 0) {
+            void this.messages.loadHistory(id, null, 50)
+        }
+
         const chats = (store.getState().chats ?? []).map(chat =>
             (chat as { id?: number }).id === id
                 ? { ...chat, unread_count: 0 }

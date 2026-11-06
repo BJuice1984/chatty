@@ -62,16 +62,28 @@ async def schedule_autotitle(app_state: object, chat_id: int) -> None:
     _AUTOTITLE_INFLIGHT.add(chat_id)
     try:
         if getattr(app_state, 'autotitle_inline', False):
-            title = _rename_sync(app_state, chat_id)
-            active_user_ids = _active_members(app_state, chat_id) if title is not None else set()
+            renamed = _rename_sync(app_state, chat_id)
+            active_user_ids = _active_members(app_state, chat_id) if renamed is not None else set()
         else:
-            title = await asyncio.to_thread(_rename_sync, app_state, chat_id)
+            renamed = await asyncio.to_thread(_rename_sync, app_state, chat_id)
             active_user_ids = (
                 await asyncio.to_thread(_active_members, app_state, chat_id)
-                if title is not None
+                if renamed is not None
                 else set()
             )
-        if title is not None:
+        if renamed is not None:
+            title, notice = renamed
+            if notice is not None:
+                # служебная строка ленты «AI назвал чат …» — тем же
+                # kind-контрактом, что и ручной rename (готовый фронтовой
+                # рендер); сообщение читается той же inline/to_thread-веткой
+                from app.schemas.message import MessageResponse
+
+                await hub.broadcast(
+                    chat_id,
+                    {'type': 'message', 'content': MessageResponse.model_validate(notice).model_dump(mode='json')},
+                    active_user_ids=active_user_ids,
+                )
             await hub.broadcast(
                 chat_id,
                 {'type': 'chat_renamed', 'content': {'chat_id': chat_id, 'title': title}},
@@ -88,7 +100,7 @@ async def schedule_autotitle(app_state: object, chat_id: int) -> None:
             asyncio.create_task(schedule_autotitle(app_state, chat_id))
 
 
-def _rename_sync(app_state: object, chat_id: int) -> str | None:
+def _rename_sync(app_state: object, chat_id: int) -> tuple[str, object] | None:
     from app.bot.config import autotitle_settings_from_env, bot_settings_from_env
     from app.bot.provider import get_bot_provider
     from app.services.chat_autotitle import ChatAutoTitleService

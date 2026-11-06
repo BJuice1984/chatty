@@ -170,7 +170,7 @@ def test_threshold_reached_renames_once_and_clears_the_flag(session_factory):
 
         provider = ScriptedTitleProvider(answers=['Настройка Webpack CDN'])
         service = make_service(session, provider)
-        assert service.maybe_rename(chat.id) == 'Настройка Webpack CDN'
+        assert service.maybe_rename(chat.id)[0] == 'Настройка Webpack CDN'
         assert provider.short_calls == 1
         session.refresh(chat)
         assert chat.title == 'Настройка Webpack CDN'
@@ -179,6 +179,42 @@ def test_threshold_reached_renames_once_and_clears_the_flag(session_factory):
         # one-shot: повторный вызов — тихий no-op, модель не беспокоится
         assert make_service(session, provider).maybe_rename(chat.id) is None
         assert len(provider.calls) == 1
+
+
+def test_rename_writes_the_ai_notice_when_bot_user_exists(session_factory):
+    # 2026-11-06-quick: служебная строка «AI назвал чат …» — kind ручного
+    # rename, автор — бот
+    with session_factory() as session:
+        owner = create_user(session, 'owner@example.com')
+        bot = create_user(session, BOT_EMAIL)
+        chat = make_auto_chat(session, owner)
+        seed_message(session, chat.id, owner.id, 'Подскажи, как настроить Webpack publicPath для CDN-хостинга статики?')
+        seed_message(session, chat.id, owner.id, 'Собираю проект, ассеты раздаются со S3, пути ломаются при деплое')
+
+        provider = ScriptedTitleProvider(answers=['Настройка Webpack CDN'])
+        title, notice = make_service(session, provider).maybe_rename(chat.id)
+
+        assert title == 'Настройка Webpack CDN'
+        assert notice is not None
+        assert notice.kind == 'chat_renamed'
+        assert notice.user_id == bot.id
+        assert notice.content == 'AI назвал чат «Настройка Webpack CDN» по теме диалога'
+
+
+def test_rename_stays_quiet_without_a_bot_user(session_factory):
+    # бот-юзер не зарегистрирован — сообщению нечего ставить автором, rename
+    # молчит (ран бота сам честно зафейлится bot_user_not_configured)
+    with session_factory() as session:
+        owner = create_user(session, 'owner@example.com')
+        chat = make_auto_chat(session, owner)
+        seed_message(session, chat.id, owner.id, 'Подскажи, как настроить Webpack publicPath для CDN-хостинга статики?')
+        seed_message(session, chat.id, owner.id, 'Собираю проект, ассеты раздаются со S3, пути ломаются при деплое')
+
+        provider = ScriptedTitleProvider(answers=['Другая тема'])
+        title, notice = make_service(session, provider).maybe_rename(chat.id)
+
+        assert title == 'Другая тема'
+        assert notice is None
 
 
 def test_manual_rename_first_makes_cas_a_silent_noop(session_factory):
@@ -249,7 +285,7 @@ def test_context_roles_and_transcript_filtering(session_factory):
         seed_message(session, chat.id, owner.id, None)
 
         provider = ScriptedTitleProvider(answers=['Webpack CDN'])
-        assert make_service(session, provider).maybe_rename(chat.id) == 'Webpack CDN'
+        assert make_service(session, provider).maybe_rename(chat.id)[0] == 'Webpack CDN'
         prompt_user = provider.calls[0][1]['content']
         assert 'user: Подскажи' in prompt_user
         assert 'bot: publicPath' in prompt_user
@@ -269,7 +305,7 @@ def test_context_chars_cap_drops_the_oldest_lines(session_factory):
         seed_message(session, chat.id, owner.id, 'Собираю проект, ассеты раздаются со S3, пути ломаются при каждом деплое')
 
         provider = ScriptedTitleProvider(answers=['Тема'])
-        assert make_service(session, provider, autotitle=make_autotitle(context_chars=150)).maybe_rename(chat.id) == 'Тема'
+        assert make_service(session, provider, autotitle=make_autotitle(context_chars=150)).maybe_rename(chat.id)[0] == 'Тема'
         prompt_user = provider.calls[0][1]['content']
         # в бюджет 150 (вместе с префиксами ролей) влезает только свежий хвост
         assert 'СТАРАЯ-РЕПЛИКА' not in prompt_user
@@ -286,7 +322,7 @@ def test_context_message_cap_takes_the_recent_tail(session_factory):
         seed_message(session, chat.id, owner.id, 'Финальная содержательная реплика диалога на важную тему')
 
         provider = ScriptedTitleProvider(answers=['Тема'])
-        assert make_service(session, provider).maybe_rename(chat.id) == 'Тема'
+        assert make_service(session, provider).maybe_rename(chat.id)[0] == 'Тема'
         prompt_user = provider.calls[0][1]['content']
         assert 'Реплика 0' not in prompt_user
         assert 'Реплика 2' not in prompt_user
@@ -311,7 +347,7 @@ def test_answer_hygiene(session_factory):
 
         for raw, expected in cases:
             provider = ScriptedTitleProvider(answers=[raw])
-            assert make_service(session, provider).maybe_rename(chat.id) == expected
+            assert make_service(session, provider).maybe_rename(chat.id)[0] == expected
             # флаг погашен первым успехом — возвращаем для следующего кейса
             chat.auto_titled = True
             session.commit()
@@ -333,7 +369,7 @@ def test_answer_rejections_keep_the_flag_alive(session_factory):
 
         # поздний валидный ответ переименовывает (естественный ретрай)
         provider = ScriptedTitleProvider(answers=['Webpack CDN'])
-        assert make_service(session, provider).maybe_rename(chat.id) == 'Webpack CDN'
+        assert make_service(session, provider).maybe_rename(chat.id)[0] == 'Webpack CDN'
         session.refresh(chat)
         assert chat.auto_titled is False
 
@@ -364,6 +400,6 @@ def test_fallback_complete_for_providers_without_short_path(session_factory):
                 return 'Fallback title'
 
         provider = LegacyProvider()
-        assert make_service(session, provider).maybe_rename(chat.id) == 'Fallback title'
+        assert make_service(session, provider).maybe_rename(chat.id)[0] == 'Fallback title'
         session.refresh(chat)
         assert chat.title == 'Fallback title'

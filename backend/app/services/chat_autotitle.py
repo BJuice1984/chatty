@@ -53,13 +53,15 @@ class ChatAutoTitleService:
         self.provider = provider
         self.users = UserRepository(session)
 
-    def maybe_rename(self, chat_id: int) -> str | None:
+    def maybe_rename(self, chat_id: int) -> tuple[str, Message | None] | None:
         """Переименовать auto_titled-чат по контексту, ровно один раз.
 
-        Возвращает новый title или None (гейт не пройден, модель отказалась,
-        ответ не прошёл гигиену, CAS проиграл гонку). Любая ошибка провайдера
-        логируется и превращается в None — автозаполнение тихо ретраится на
-        следующем юзерском сообщении, пока флаг жив.
+        Возвращает (title, notice | None) или None (гейт не пройден, модель
+        отказалась, ответ не прошёл гигиену, CAS проиграл гонку); notice —
+        служебная строка ленты «AI назвал чат …» (нет только без
+        бот-юзера). Любая ошибка провайдера логируется и превращается в
+        None — автозаполнение тихо ретраится на следующем юзерском
+        сообщении, пока флаг жив.
         """
         if not self.autotitle.enabled:
             return None
@@ -98,8 +100,23 @@ class ChatAutoTitleService:
         if result.rowcount == 0:
             self.session.rollback()
             return None
+        # служебная строка ленты (2026-11-06-quick, оператор): тот же
+        # kind='chat_renamed', что у ручного rename — фронт рендерит её
+        # готовым служебным стилем; автора нет только когда бот-юзер не
+        # сконфигурен (сообщению нужен валидный user_id) — тогда тихо
+        notice = None
+        if bot_user_id is not None:
+            notice = Message(
+                chat_id=chat_id,
+                user_id=bot_user_id,
+                content=f'AI назвал чат «{title}» по теме диалога',
+                kind='chat_renamed',
+            )
+            self.session.add(notice)
         self.session.commit()
-        return title
+        if notice is not None:
+            self.session.refresh(notice)
+        return title, notice
 
     def _user_messages(self, chat_id: int, bot_user_id: int | None) -> list[tuple[str, int]]:
         """Юзерские реплики чата: (content, user_id).
