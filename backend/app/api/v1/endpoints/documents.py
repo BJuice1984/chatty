@@ -1,4 +1,9 @@
-"""Admin document ingestion and membership-scoped retrieval endpoints."""
+"""Admin document ingestion and shared-library retrieval endpoints.
+
+The document base is common to every user and every AI chat (scope B,
+2026-11-06): retrieval covers ALL ready documents; chat membership is the
+authorization gate for the search endpoint, not a data scope.
+"""
 
 from __future__ import annotations
 

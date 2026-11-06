@@ -110,9 +110,16 @@ class DocumentService:
         return document
 
     def search(self, *, chat_id: int, user_id: int, query: str, top_k: int) -> list[ChunkHit]:
+        """Search the shared document library from a chat.
+
+        Scope B (2026-11-06): the document base is common to every user;
+        chat membership is still the authorization gate for the endpoint
+        (and the bot run), but retrieval covers ALL ready documents, not
+        only the ones uploaded into this chat.
+        """
         self.chats.require_member(chat_id, user_id)
         capped = min(top_k, self.rag.top_k_max)
-        candidates = self.documents.ready_chunks_for_chat(chat_id)
+        candidates = self.documents.ready_chunks()
         if not candidates:
             return []
         file_names = {
