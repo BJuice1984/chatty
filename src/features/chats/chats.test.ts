@@ -1245,7 +1245,10 @@ describe('chats controller bot run', () => {
         await until(() => runBot.calledThrice)
         await until(() => !hasPending())
 
-        // после восстановления оверлей снят
+        // после восстановления оверлей снят: teardown узла — отложенный
+        // macrotask (busyOverlay), мгновенная проверка после микрозадач
+        // гоняется с таймером снятия — ждём снятия, а не фиксируем миг
+        await until(() => document.getElementById('busy-overlay') === null)
         expect(document.getElementById('busy-overlay')).to.be.null
 
         expect(runBot.calledThrice).to.be.true
