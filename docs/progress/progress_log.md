@@ -1,3 +1,95 @@
+# 2026-11-07 — Fix(profile): локальный выход после logout-all + danger-кнопки настроек
+
+Живой браузерный репро (headless Edge): «Sign out everywhere» давал
+/auth/logout-all 200, после чего фронт дёргал второй POST /auth/logout —
+уже с пустым csrf (бэкенд logout-all сам снимает ВСЕ куки и бампает
+token_version) → 403 csrf_failed, юзер оставался на /settings. Фикс: у
+auth-контроллера появился localSignOut() (сброс стора + Router.go без
+запроса), профиль-фича после успешного logout-all цепляет его через новый
+шов localSignOut (композиция features/index.ts; серверный logout-шов
+остаётся у обычного Sign out). Тесты: profile-пины перебиты под новый
+контракт (logout-all → localSignOut, серверный logout НЕ зовётся; провал
+порта → localSignOut молчит), +пин localSignOut в auth-контроллере.
+UI-хвост оператора: кнопка Sign out переведена на classType danger (в
+размер остальных кнопок, красный текст/ховер как у danger-элементов),
+«Sign out everywhere» получил габариты 280×52, кнопки формы настроек
+центрированы (align-self: center в settings-section__block — инпуты
+остаются на stretch). Гейты: npm run verify PASS (mocha 732→733), guard
+strict 0. Живые проверки headless Edge: logout-all → 200 → форма входа,
+второго /auth/logout больше нет.
+
+
+
+# 2026-11-07 — Fix(auth): сброс ошибки при переходе sign-in ↔ sign-up
+
+Ошибка последней отправки («Неверный email или пароль» и пр.) висела под
+СЛЕДУЮЩЕЙ формой при переходе между входом и регистрацией: authError —
+глобальное поле стора, страницы его только читали. Теперь навигационные
+кнопки обеих страниц (login → Sign up, register → Sign in) гасят ошибку
+перед Router.go. +2 regression-теста (клик вторичной кнопки: стор null,
+DOM-блок исчез, переход состоялся; Router.go заглушён синоном — pushState
+не течёт в общий jsdom-history). Гейт: npm run verify PASS (mocha 730→732).
+Живой итог прогона auth-session-ux на стеке: api-контейнер пересобран с
+csrf-фиксом, оба живых репро дубля cookie на logout дают 200 logged_out.
+
+
+
+# 2026-11-07 — ALK 2026-11-07-auth-session-ux: csrf-дубли, лоадер входа, сохранение значений форм
+
+Полный ALK-цикл (S2, план-пакет tasks/2026-11-07-auth-session-ux, 3 раунда
+план-ревью, freeze rev 3): два воркстрима на feature/2026-11-07-auth-session-ux.
+(1) WS-BE-CSRF: require_csrf теперь сверяет X-CSRF-Token с ЛЮБОЙ копией
+chatty_csrf по всем Cookie-заголовкам (getlist + hmac per-copy) — на starlette
+0.48.0 Request.cookies видит только первый заголовок, а внутри одного
+побеждает последний дубль: браузерный дубль со старой path-кукой запирал
+logout живьём (curl-репро: 403 csrf_failed при корректном заголовке). Тесты:
+6 кейсов с двумя red-green пинами (red-фаза воспроизведена на непатченном
+коде: ровно 2 падения); гейт — delta-контракт: 333 passed + ровно 4
+известных converter-фейла (WinError 193, Windows; exit≠0 на стенде by
+design). Ревью задачи ACCEPTED, implementation audit PASS. Коммит 737e210.
+(2) WS-FE-AUTH-UX: authLoading-поле стора (опциональное, без механики) —
+signin/signup оборачивают полёт finally-сбросом; кнопки submit в полёте
+disabled с лейблами «Signing in…»/«Signing up…» (проброс disabled через
+form.hbs в Button) и Enter-гвард в handleSubmitClick (submit доезжает до
+Form мимо disabled-кнопки); введённые значения переживают перерисовки
+ошибкой/лоадером — страницы снимают живые value со старого DOM в
+componentDidUpdate и возвращают через аддитивный value-проброс
+FormInputs→form.hbs→labeledInput.hbs→input.hbs (условный рендер атрибута;
+профиль-формы не тронуты). Урок реализации: поля классов инициализируются
+после super(), а первый render зовётся из super() — draft переведён на
+ленивую инициализацию. Гейты: npm run verify PASS (mocha 721→730),
+guard --all --strict 0. CLI-уроки ALK 2.43 (Windows): workflow init требует
+--package-root ../.. (os.path.relpath даёт backslash), канонические
+JSON-артефакты = canonical_bytes + '\n', task-review требует
+acceptanceChecks[].acceptanceId+PASS для аудита, audit out-файл
+exclusive-create (удалять перед перегоном), авторизационная квитанция —
+канонический JSON с lineage-полями стейта.
+
+# 2026-11-07 — Fix(auth): человекочитаемые ошибки входа + починка флейка оверлея
+
+
+
+Живой инцидент: при неверном пароле форма входа показывала «Нет связи с
+сервером» вместо причины. Корней два. (1) Операторский env стека разрешал
+CORS-origin порта 3000 (мёртвый), а UI живёт на 3001: браузер получал ответ
+401/403 без allow-origin, XHR падал в onerror, и фронт честно рапортовал о
+сети. Фикс — `.env.compose.local` (гитигнорён): allowed-origins = 3001 в
+обоих написаниях (localhost/127.0.0.1), api-контейнер пересоздан. (2) После
+починки CORS форма показывала бы сырой код `invalid_credentials` из detail
+бэкенда: authErrorMessage в `features/auth/controller.ts` получил карту
+статусов (401 — «Неверный email или пароль», 409 — занятый email, 422 —
+проверка полей с подсказкой про пароль ≥ 12); незнакомые статусы остаются с
+message бэкенда, network/timeout — прежние тексты. Тесты: controller.test
+перепинен под новый контракт +3 кейса (409/422/незнакомый статус). Попутно
+починен флейк `chats.test.ts` «reconnect overlay only after two consecutive
+network failures» (4/5 падений на деве ДО правок auth): мгновенный expect
+после микрозадач гонялся с отложенным macrotask-teardown оверлея — теперь
+тест ждёт снятия через until, 5/5 стабильно. Гейты: npm run verify PASS
+(721 mocha). Коммиты: fix(auth), test(chats), chore(.gitignore:
+credentials.local.md — локальный справочник кредов, см. заметку памяти).
+
+
+
 # 2026-11-06 — Quick-change: AI-полиш мессенджера (5 пунктов оператора)
 
 Живой прогон автоназвания выявил баг и четыре доработки (quick-change без

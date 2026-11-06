@@ -6,7 +6,10 @@
 
 import { expect } from 'chai'
 import { JSDOM } from 'jsdom'
+import sinon from 'sinon'
 import Handlebars from 'handlebars'
+import Router from '../../../../utils/Router.ts'
+import { SIGNIN } from '../../../../utils/constants.ts'
 import '../../../ai-assistant/hbs-test-loader.ts'
 import type Block from '../../../../core/Block.ts'
 import { registerComponent } from '../../../../core/registerComponent.ts'
@@ -26,6 +29,7 @@ Object.entries(Components).forEach(([name, component]) => {
 describe('register page: ошибка авторизации из стора', () => {
     beforeEach(() => {
         store.set('authError', null)
+        store.set('authLoading', false)
     })
 
     it('показывает authError, лежащую в сторе ещё до монтирования', () => {
@@ -51,5 +55,52 @@ describe('register page: ошибка авторизации из стора', (
         const page = new RegisterPage({})
 
         expect(page.element?.querySelector('[data-testid="auth-error"]')).to.eq(null)
+    })
+
+    it('все три поля переживают перерисовку с ошибкой (2026-11-07)', () => {
+        const page = new RegisterPage({})
+        const inputs = page.element?.querySelectorAll<HTMLInputElement>('input[name]')
+
+        inputs!.forEach(input => {
+            input.value = `${input.name}-typed`
+        })
+
+        store.set('authError', 'Этот email уже зарегистрирован')
+
+        const error = page.element?.querySelector('[data-testid="auth-error"]')
+        const after = page.element?.querySelectorAll<HTMLInputElement>('input[name]')
+
+        expect(error?.textContent).to.eq('Этот email уже зарегистрирован')
+        expect(after!.length).to.eq(3)
+        after!.forEach(input => {
+            expect(input.value).to.eq(`${input.name}-typed`)
+        })
+    })
+
+    it('в полёте submit-кнопка disabled с лейблом «Signing up…»', () => {
+        const page = new RegisterPage({})
+
+        store.set('authLoading', true)
+
+        const submit = page.element?.querySelector<HTMLButtonElement>('button[type="submit"]')
+
+        expect(submit?.disabled).to.eq(true)
+        expect(submit?.textContent?.trim()).to.eq('Signing up…')
+    })
+
+    it('переход на sign-in сбрасывает висящую ошибку регистрации (2026-11-07)', () => {
+        const goStub = sinon.stub(Router, 'go')
+        const page = new RegisterPage({})
+
+        store.set('authError', 'Этот email уже зарегистрирован')
+        expect(page.element?.querySelector('[data-testid="auth-error"]')).to.be.not.null
+
+        page.element?.querySelector<HTMLButtonElement>('button[type="button"]')?.click()
+
+        expect(store.getState().authError ?? null).to.eq(null)
+        expect(page.element?.querySelector('[data-testid="auth-error"]')).to.eq(null)
+        expect(goStub.calledOnceWith(SIGNIN)).to.be.true
+
+        goStub.restore()
     })
 })

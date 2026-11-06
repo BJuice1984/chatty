@@ -53,4 +53,15 @@
         box-shadow: $hoverLoginButton;
         transition: $hoverTransition;
       }
+
+    &__danger {
+        background-color: transparent;
+        box-shadow: none;
+        color: var(--span-error-color);
+
+        &:hover {
+            background-color: var(--danger-hover-background);
+            box-shadow: none;
+        }
+    }
 }

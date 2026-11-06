@@ -52,6 +52,10 @@
     gap: 8px;
     width: 100%;
 
+    .button {
+      align-self: center;
+    }
+
     &_type_password {
       padding-top: 16px;
     }
@@ -103,10 +107,10 @@
 
   &__danger-button {
     @include reset;
+    @include size(52px, 280px);
     @include text;
     @include text-format(500, 14px, 20px);
 
-    padding: 8px 18px;
     border: none;
     border-radius: 999px;
     background-color: transparent;

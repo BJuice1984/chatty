@@ -14,9 +14,19 @@ import { authSlice } from './store.ts'
 
 export const AUTH_NETWORK_ERROR_MESSAGE = 'Нет связи с сервером. Проверьте подключение и попробуйте позже'
 
+// HTTP-статусы форм входа/регистрации → человекочитаемый текст: detail
+// own-бэкенда — машинный код ('invalid_credentials'), показывать его
+// пользователю нельзя. Незнакомый статус остаётся с message бэкенда
+// (getHttpErrorMessage уже вытащил reason/detail)
+const AUTH_HTTP_ERROR_TEXTS: Record<number, string> = {
+    401: 'Неверный email или пароль',
+    409: 'Этот email уже зарегистрирован',
+    422: 'Проверьте поля: email — корректный адрес, пароль — минимум 12 символов',
+}
+
 // Человекочитаемое сообщение для формы: сетевые сбои (сервер не поднят,
-// CORS) — свой текст; HTTP-ошибки — message от бэкенда (getHttpErrorMessage
-// уже вытащил reason/detail); прочее — нейтральный fallback
+// CORS) — свой текст; известные HTTP-статусы — текст из карты выше;
+// прочие HTTP-ошибки — message от бэкенда; остальное — нейтральный fallback
 function authErrorMessage(error: unknown): string {
     if (error instanceof TransportError) {
         if (error.kind === 'network') {
@@ -28,7 +38,7 @@ function authErrorMessage(error: unknown): string {
         }
 
         if (error.kind === 'http') {
-            return error.message
+            return (error.status !== undefined ? AUTH_HTTP_ERROR_TEXTS[error.status] : undefined) ?? error.message
         }
     }
 
@@ -56,6 +66,7 @@ export class AuthFeatureController {
 
     async signin(data: SignInRequest): Promise<void> {
         authSlice.setAuthError(null)
+        authSlice.setAuthLoading(true)
 
         try {
             // Пробелы по краям логина/email от копипаста не попадают в запрос
@@ -65,11 +76,14 @@ export class AuthFeatureController {
         } catch (e: unknown) {
             console.error('Ошибка при входе в систему:', e)
             authSlice.setAuthError(authErrorMessage(e))
+        } finally {
+            authSlice.setAuthLoading(false)
         }
     }
 
     async signup(data: SignUpRequest): Promise<void> {
         authSlice.setAuthError(null)
+        authSlice.setAuthLoading(true)
 
         try {
             await this.port.signup(data)
@@ -78,6 +92,8 @@ export class AuthFeatureController {
         } catch (e: unknown) {
             console.error('Ошибка при регистрации:', e)
             authSlice.setAuthError(authErrorMessage(e))
+        } finally {
+            authSlice.setAuthLoading(false)
         }
     }
 
@@ -104,6 +120,15 @@ export class AuthFeatureController {
         } catch (e: unknown) {
             console.error('Ошибка при выходе из системы:', e)
         }
+    }
+
+    // Локальный выход без серверного запроса (2026-11-07): /auth/logout-all
+    // сам снимает ВСЕ куки (csrf в том числе) и бампает token_version —
+    // следующий за ним POST /auth/logout едет уже с пустым csrf и падает
+    // 403 csrf_failed, оставляя юзера на странице настроек
+    localSignOut(): void {
+        authSlice.setUser(null)
+        Router.go(SIGNIN)
     }
 }
 

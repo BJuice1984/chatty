@@ -1,0 +1,388 @@
+{
+    "schemaVersion": "agent-plan-manifest.v1",
+    "status": "FROZEN",
+    "planRevision": 3,
+    "package": {
+        "id": "2026-11-07-auth-session-ux",
+        "title": "Auth session UX: duplicate-cookie CSRF tolerance, login/signup flight state, typed-value preservation",
+        "workspaceRoot": ".",
+        "artifactRoot": "work/2026-11-07-auth-session-ux",
+        "planArtifactRoot": "tasks/2026-11-07-auth-session-ux"
+    },
+    "packageIntegrity": {
+        "required": true,
+        "lockSchemaVersion": "agent-plan-lock.v2",
+        "inventorySource": "planFiles",
+        "undeclaredTopLevelFiles": "reject",
+        "allowedUnlistedFiles": [
+            "plan.lock.json",
+            "plan-review.json"
+        ]
+    },
+    "author": {
+        "id": "claude-code",
+        "surface": "agent-first-planning",
+        "runId": "2026-11-07-auth-session-ux-draft"
+    },
+    "baseRevision": {
+        "ref": "dev",
+        "sha": "dff46746facb861fd3b29261e1be1c0104be71fd"
+    },
+    "specification": {
+        "tier": "S2",
+        "intent": "Close three operator-reported live defects of 2026-11-07. (1) Logout/refresh die with 403 csrf_failed when the request carries a duplicate chatty_csrf cookie: Starlette's Request.cookies parses only the FIRST raw Cookie header (headers.get('cookie')) and within a single header the LAST duplicate name wins (dict assignment) — either arrangement can shadow the fresh copy that document.cookie shows (live curl repro: two Cookie header entries, stale path-scoped copy first, correct X-CSRF-Token → 403). (2) A successful login shows the idle auth form through the whole signin+fetchUser flight before the router flip — operator asks for a loading state. (3) A failed login/registration wipes the typed credentials: the authError store update re-renders the page, registerComponent rebuilds Form/LabeledInput/Input from scratch, and input values lived only in the DOM — operator asks to keep values and show the error. The same-day already-committed work (auth error text mapping 1e3a1f4, overlay flake fix 3c9bb7f, gitignore 31d5304, progress log dff4674) and the operator-side CORS allowlist repair in .env.compose.local are context this plan rides on, not scope.",
+        "status": "FROZEN",
+        "requirements": [
+            {
+                "id": "REQ-BE-CSRF",
+                "title": "require_csrf matches the submitted header against ANY copy of the csrf cookie across all Cookie headers",
+                "description": "backend/app/core/deps.py: replace the single-value request.cookies.get read (headers.get('cookie') — only the FIRST raw Cookie header, LAST duplicate within it) with a raw-Cookie-header scan (request.headers.getlist('cookie') split on ';', collect every value whose name equals settings.csrf_cookie_name) and accept when the submitted header constant-time-matches (hmac.compare_digest) ANY collected copy; missing header, no cookie at all, or a header matching no copy still raise 403 csrf_failed; validate_origin call and everything outside require_csrf untouched. New backend/tests/unit/auth/test_csrf_duplicates.py drives require_csrf directly on hand-built Starlette Request scopes: single-match passes; RED-GREEN PIN — a scope whose headers list carries TWO cookie entries (b'cookie', b'chatty_csrf=<stale>') and (b'cookie', b'chatty_csrf=<fresh>') passes with the fresh header value post-fix and FAILS on the unpatched require_csrf (the live logout repro shape; a same-header variant 'chatty_csrf=<fresh>; chatty_csrf=<stale>' — Starlette keeps the LAST duplicate — is pinned as a second red-green case); header matching no copy 403; missing header / no cookie 403. A prepared patch (deps.py fix AND the test file — inspect with git stash show --include-untracked 'stash@{0}') exists in git stash (\"wip: csrf duplicate-cookie fix + tests\") and MAY be applied as the implementation. Gate: backend pytest summary delta vs the captured baseline — the failed set is EXACTLY the 4 known pre-existing Windows ingestion/converter failures (tests/unit/ingestion/test_converter.py, WinError 193, predating this plan) and all new tests pass; backend/verify.sh exit code is non-zero at baseline on this Windows stand BY DESIGN, the verdict is the delta contract, not exit-0.",
+                "priority": "P1",
+                "source": "live operator report 2026-11-07 + curl repro (duplicate Cookie header → 403 csrf_failed with matching header)",
+                "acceptanceIds": ["AC-BE-CSRF"],
+                "evidenceIds": ["EV-BE-1"],
+                "owner": "WS-BE-CSRF"
+            },
+            {
+                "id": "REQ-FE-LOADING",
+                "title": "Visible, safe auth flight state: disabled in-flight submit button + Enter-submit guard",
+                "description": "src/utils/Store.ts: AppState and ComponentProps gain the optional field authLoading (boolean | undefined; field only, no mechanics, no new events). src/features/auth/store.ts: setAuthLoading(value) mirroring setAuthError. src/features/auth/controller.ts: signin and signup set authLoading=true before the first await and authLoading=false in a finally (success and every error path). src/features/auth/pages/login/login.ts and register/register.ts: withStore maps authLoading alongside authError; render() rewrites the primary submit button props while in flight — label 'Signing in…' (login) / 'Signing up…' (register), disabled true — reverting on settle; the page's handleSubmitClick ignores a submit while this.props.authLoading is true (Form's submit handler invokes handleSubmitClick on ANY submit event — a dispatched/implicit submit bypasses the disabled button entirely; browser implicit-submission behavior around disabled default buttons is historically inconsistent, so the page-level guard is the reliable barrier). src/components/button/button.ts: ButtonProps gains disabled?: boolean; button.hbs renders {{#if disabled}}disabled{{/if}}; form.hbs forwards disabled=this.disabled into the Button helper invocation (the buttons array reaches Button ONLY through the four-key hash in form.hbs — without this forwarding the attribute never renders); existing classType 'disabled' styling semantics untouched. src/features/auth/controller.test.ts: deferred-promise pins — authLoading true while the signin promise is pending, false after resolve AND after reject (signup mirrored).",
+                "priority": "P1",
+                "source": "operator request 2026-11-07 (successful login shows the auth form through the flight)",
+                "acceptanceIds": ["AC-FE-LOADING"],
+                "evidenceIds": ["EV-FE-1"],
+                "owner": "WS-FE-AUTH-UX"
+            },
+            {
+                "id": "REQ-FE-VALUES",
+                "title": "Typed login/register values survive error and loading re-renders",
+                "description": "Pages own a private draft: Record<string, string> (empty initially). componentDidUpdate (login.ts, register.ts) harvests the live values from the OLD DOM before the re-render — this.element.querySelectorAll('input[name]') — into draft, then returns true; render() merges draft into the inputs array entries ({...input, value: draft[input.name] ?? ''}). Additive plumbing down the chain: FormInputs (src/components/form/form.ts) gains value?: string; form.hbs passes value=this.value into LabeledInput; labeledInput.hbs passes value=this.value into Input; input.hbs renders the value attribute CONDITIONALLY ({{#if value}}value=\"{{value}}\"{{/if}} — no empty value=\"\" attribute on inputs that carry no value; harmless either way since Input.setValue writes the DOM property which overrides the attribute, but the conditional keeps the profile forms' markup unchanged). The profile page and Form._setProfile behavior untouched. Tests: login.test.ts — fill login+password, store.set('authError', …) → after the re-render both inputs hold the typed values AND the error paragraph shows; register.test.ts — same pin for email/password/confirm_password; both also pin values surviving the authLoading toggle render.",
+                "priority": "P1",
+                "source": "operator request 2026-11-07 (failed login wipes typed credentials)",
+                "acceptanceIds": ["AC-FE-VALUES"],
+                "evidenceIds": ["EV-FE-1"],
+                "owner": "WS-FE-AUTH-UX"
+            },
+            {
+                "id": "REQ-PROCESS",
+                "title": "Gates and bookkeeping",
+                "description": "npm run verify exit 0 with mocha grown from the 721 baseline; backend gate per AC-BE-CSRF (pytest summary delta: failed set exactly the 4 known pre-existing converter failures, all new tests passing — verify.sh exit is non-zero at baseline on Windows by design); node .claude/hooks/scripts/guard-architecture.mjs --all --strict exit 0; ownership audit clean (no file outside the manifest write-sets); docs/progress/progress_log.md run record on top; all commits on feature/2026-11-07-auth-session-ux from dev @ dff4674, conventional-commit messages, no co-author trailers (operator rule).",
+                "priority": "P1",
+                "source": "repository gate contract (tasks/README.md) + operator commit rule",
+                "acceptanceIds": ["AC-PROCESS"],
+                "evidenceIds": ["EV-PROCESS-1"],
+                "owner": "WS-FE-AUTH-UX"
+            }
+        ],
+        "goal": "The operator can log out regardless of duplicate csrf cookies in browser history; login/registration show an honest in-flight state (disabled relabeled button, Enter-guarded) and never wipe what the user typed when the server answers with an error.",
+        "constraints": [
+            "require_csrf keeps validate_origin first and the 403 csrf_failed detail shape; per-copy comparison stays hmac.compare_digest; no cookie contract change (set_auth_cookies byte-identical), no new envs, no migration.",
+            "Store.ts gains ONLY the optional authLoading field on AppState/ComponentProps — no mechanics, no events, no API change.",
+            "No busyOverlay for the form loader (form-local button state); auth transition targets after success unchanged.",
+            "Value plumbing is additive end to end (FormInputs.value?, hbs value pass-through); the profile page and its _setProfile flow untouched.",
+            "No comments in new/edited scss (none expected); imports with .ts extension; eslint:fix/stylelint:fix before commit; pre-commit verify hook is strict.",
+            "Conventional commits without co-author trailers; plan package committed; work/ artifacts never committed.",
+            "Existing suites stay green; no test deleted; the 4 Windows converter failures are pre-existing and out of scope."
+        ],
+        "nonGoals": [
+            "no client-side logout fallback that ignores CSRF failures (server-side duplicate tolerance fixes the real cause)",
+            "no password reset / forgot-password flow",
+            "no logout-all or profile UI changes",
+            "no router/transition change after successful auth",
+            "no i18n framework (inline in-flight labels like the existing form copy)",
+            "no fixes to the 4 pre-existing Windows converter test failures"
+        ],
+        "scope": "backend duplicate-cookie CSRF tolerance + its unit tests (backend/app/core/deps.py, backend/tests/unit/auth/test_csrf_duplicates.py); frontend auth flight state + typed-value preservation with tests (src/utils/Store.ts field, src/features/auth store/controller/pages+tests, src/components form/input/button plumbing) + progress log; evidence under work/2026-11-07-auth-session-ux/."
+    },
+    "readOnly": [
+        "AGENTS.md",
+        "tasks/README.md",
+        "tasks/2026-11-03-auth-refresh-retry/plan.md",
+        "backend/app/core/security.py",
+        "backend/app/api/v1/endpoints/auth.py",
+        "src/features/auth/transportPolicy.ts",
+        "src/core/Block.ts"
+    ],
+    "forbiddenWrites": [
+        ".env",
+        ".env.development",
+        ".env.own",
+        ".env.compose.local",
+        "docs/project-principles.json",
+        "src/utils/HTTPTransport.ts",
+        "src/utils/busyOverlay.ts",
+        "src/utils/WSTransport.ts",
+        "src/utils/Router.ts",
+        "backend/app/core/security.py",
+        "backend/app/ws",
+        "backend/alembic",
+        ".github/workflows",
+        "netlify.toml",
+        "server/server.js"
+    ],
+    "leadOwned": [
+        {
+            "path": "tasks/2026-11-07-auth-session-ux",
+            "owner": "controller",
+            "reason": "Controller owns plan-package artifacts."
+        }
+    ],
+    "workstreams": [
+        {
+            "id": "WS-BE-CSRF",
+            "title": "Duplicate-cookie tolerant CSRF double-submit",
+            "owner": "worker-backend-csrf",
+            "reviewer": "independent-release-reviewer",
+            "dependsOn": [],
+            "writes": [
+                "backend/app/core/deps.py",
+                "backend/tests/unit/auth/test_csrf_duplicates.py"
+            ],
+            "readOnly": [
+                "backend/app/core/config.py",
+                "backend/app/api/v1/endpoints/auth.py",
+                "backend/tests/integration/auth/test_auth_refresh_api.py",
+                "backend/verify.sh"
+            ],
+            "forbiddenWrites": [],
+            "launchGate": "branch feature/2026-11-07-auth-session-ux at dff4674; backend venv ready (backend/.venv, Python 3.12); backend gate baseline captured (4 known pre-existing converter failures).",
+            "capabilityHints": ["fastapi", "starlette", "pytest"],
+            "requiredTools": ["python", "bash"],
+            "contextRefs": ["plan.md", "acceptance-criteria.md", "developer-overview.md", "specification.md"],
+            "acceptanceIds": ["AC-BE-CSRF"],
+            "evidenceIds": ["EV-BE-1"],
+            "executionPolicy": {
+                "maxAttempts": 3,
+                "maxWallSeconds": 3600
+            },
+            "artifactPaths": {
+                "result": "work/2026-11-07-auth-session-ux/evidence/WS-BE-CSRF/task-result-{attempt}.json",
+                "review": "work/2026-11-07-auth-session-ux/evidence/WS-BE-CSRF/task-review-{attempt}.json"
+            },
+            "required": true,
+            "plannedItems": [
+                "require_csrf: collect every value of settings.csrf_cookie_name from request.headers.getlist('cookie'); accept when the header hmac-matches ANY copy; keep validate_origin first and the 403 csrf_failed shape",
+                "tests/unit/auth/test_csrf_duplicates.py: hand-built Request scopes — single match passes; RED-GREEN pins: TWO cookie header entries (stale first) passes post-fix AND fails on unpatched code, single-header 'fresh; stale' (Starlette keeps the LAST duplicate) likewise; no-copy match 403; missing header / no cookie 403",
+                "the prepared git-stash patch (\"wip: csrf duplicate-cookie fix + tests\" — deps.py AND the test file; inspect with git stash show --include-untracked 'stash@{0}') MAY be applied as the implementation; the stashed test PREDATES the rev-2 red-green pins (its only duplicate case is the stale-first single-header arrangement, which passes on unpatched starlette 0.48.0) — extend it with both red-green cases per AC-BE-CSRF and correct its docstring; equivalence to the AC is mandatory, divergence is not",
+                "gate: backend pytest summary delta vs the captured baseline — failed set exactly the 4 known converter failures, all new tests passing (verify.sh exit is non-zero at baseline on this Windows stand by design; the delta is the verdict)"
+            ],
+            "qualityFloor": "backend gate green per the Windows-form contract; no file outside the write-set touched; no existing test deleted or weakened."
+        },
+        {
+            "id": "WS-FE-AUTH-UX",
+            "title": "Auth form flight state + typed-value preservation",
+            "owner": "worker-frontend-auth-ux",
+            "reviewer": "independent-release-reviewer",
+            "dependsOn": [
+                "WS-BE-CSRF"
+            ],
+            "writes": [
+                "src/utils/Store.ts",
+                "src/features/auth/store.ts",
+                "src/features/auth/controller.ts",
+                "src/features/auth/controller.test.ts",
+                "src/features/auth/pages/login/login.ts",
+                "src/features/auth/pages/login/login.test.ts",
+                "src/features/auth/pages/register/register.ts",
+                "src/features/auth/pages/register/register.test.ts",
+                "src/components/form/form.ts",
+                "src/components/form/form.hbs",
+                "src/components/input/labeledInput/labeledInput.hbs",
+                "src/components/input/input/input.hbs",
+                "src/components/button/button.ts",
+                "src/components/button/button.hbs",
+                "docs/progress/progress_log.md"
+            ],
+            "readOnly": [
+                "src/core/Block.ts",
+                "src/core/registerComponent.ts",
+                "src/features/auth/transportPolicy.ts",
+                "src/components/button/button.test.ts"
+            ],
+            "forbiddenWrites": [],
+            "launchGate": "WS-BE-CSRF accepted (project convention: backend contract first); npm run verify green at base (mocha 721); guard strict 0.",
+            "capabilityHints": ["typescript", "handlebars", "mocha", "chai", "jsdom"],
+            "requiredTools": ["node", "npm"],
+            "contextRefs": ["plan.md", "acceptance-criteria.md", "developer-overview.md", "specification.md"],
+            "acceptanceIds": ["AC-FE-LOADING", "AC-FE-VALUES", "AC-PROCESS"],
+            "evidenceIds": ["EV-FE-1", "EV-PROCESS-1"],
+            "executionPolicy": {
+                "maxAttempts": 3,
+                "maxWallSeconds": 5400
+            },
+            "artifactPaths": {
+                "result": "work/2026-11-07-auth-session-ux/evidence/WS-FE-AUTH-UX/task-result-{attempt}.json",
+                "review": "work/2026-11-07-auth-session-ux/evidence/WS-FE-AUTH-UX/task-review-{attempt}.json"
+            },
+            "required": true,
+            "plannedItems": [
+                "Store.ts: optional authLoading on AppState + ComponentProps (field only)",
+                "authSlice.setAuthLoading; controller signin/signup: true before the first await, false in finally",
+                "login/register pages: withStore maps authLoading; render() swaps the primary button (label Signing in…/Signing up…, disabled) in flight and reverts on settle; handleSubmitClick ignores submits while authLoading (any submit event reaches the handler regardless of the button state)",
+                "Button: disabled?: boolean prop + {{#if disabled}}disabled{{/if}} in button.hbs AND disabled=this.disabled forwarding in the form.hbs Button invocation (without the forwarding the attribute never renders); existing classType 'disabled' style semantics untouched; check existing Button tests",
+                "value preservation: page-level draft harvest in componentDidUpdate (old DOM) + merge in render; FormInputs.value?; form.hbs/labeledInput.hbs value pass-through; input.hbs renders value CONDITIONALLY ({{#if value}}value=\"{{value}}\"{{/if}} — no empty value=\"\" attribute on value-less inputs); profile page untouched",
+                "tests: login.test.ts (values survive authError AND authLoading renders; disabled+relabel+revert), register.test.ts (three fields preserved), controller.test.ts (authLoading true while pending via deferred promise; false after resolve and after reject)",
+                "docs/progress/progress_log.md run record on top",
+                "gate: npm run verify green with mocha grown from 721; guard strict 0"
+            ],
+            "qualityFloor": "npm run verify green; guard strict 0; no file outside the write-set touched; no test deleted."
+        }
+    ],
+    "acceptance": {
+        "criteria": [
+            {
+                "id": "AC-BE-CSRF",
+                "title": "Duplicate-cookie tolerance proven by pytest",
+                "requirementIds": ["REQ-BE-CSRF"],
+                "evidenceIds": ["EV-BE-1"],
+                "independentEvidenceIds": [],
+                "statement": "test_csrf_duplicates.py proves via direct require_csrf calls: single matching cookie passes; a scope with TWO cookie header entries (b'cookie', b'chatty_csrf=<stale>') then (b'cookie', b'chatty_csrf=<fresh>') passes with the fresh header value AND fails on the unpatched require_csrf (red-green pin, the live logout repro shape); the single-header variant 'chatty_csrf=<fresh>; chatty_csrf=<stale>' (Starlette keeps the LAST duplicate within one header) is pinned the same way; header matching no copy → 403 csrf_failed; missing header or no cookie → 403 csrf_failed. Backend gate verdict: pytest summary delta vs the captured baseline — the failed set is exactly the 4 known pre-existing converter failures, all new tests passing (verify.sh exit code is non-zero at baseline on this Windows stand by design).",
+                "description": "Backend unit tests.",
+                "source": "acceptance-criteria.md",
+                "priority": "P1"
+            },
+            {
+                "id": "AC-FE-LOADING",
+                "title": "Auth flight state proven by mocha",
+                "requirementIds": ["REQ-FE-LOADING"],
+                "evidenceIds": ["EV-FE-1"],
+                "independentEvidenceIds": [],
+                "statement": "Suites prove: the submit button is disabled and relabeled (Signing in…/Signing up…) while authLoading is set, reverting after settle; controller tests pin authLoading true while a signin promise is pending and false after resolve AND after reject; the submit handler ignores an Enter-submit during the flight. npm run verify exits 0.",
+                "description": "Frontend unit tests.",
+                "source": "acceptance-criteria.md",
+                "priority": "P1"
+            },
+            {
+                "id": "AC-FE-VALUES",
+                "title": "Typed values survive error renders proven by mocha",
+                "requirementIds": ["REQ-FE-VALUES"],
+                "evidenceIds": ["EV-FE-1"],
+                "independentEvidenceIds": [],
+                "statement": "Suites prove: on the login page both typed inputs survive an authError store update with the error paragraph visible; on the register page email/password/confirm_password survive the same; values also survive the authLoading toggle render. npm run verify exits 0.",
+                "description": "Frontend unit tests.",
+                "source": "acceptance-criteria.md",
+                "priority": "P1"
+            },
+            {
+                "id": "AC-PROCESS",
+                "title": "Gates and bookkeeping",
+                "requirementIds": ["REQ-PROCESS"],
+                "evidenceIds": ["EV-PROCESS-1"],
+                "independentEvidenceIds": [],
+                "statement": "npm run verify exit 0 (mocha ≥ 721 grown); backend gate contract per AC-BE-CSRF; guard --all --strict exit 0; ownership audit clean; progress_log run record on top; all commits on feature/2026-11-07-auth-session-ux from dev @ dff4674, conventional messages without co-author trailers.",
+                "description": "Gate runs captured as evidence.",
+                "source": "acceptance-criteria.md",
+                "priority": "P1"
+            }
+        ]
+    },
+    "validation": {
+        "commands": [
+            "npm run verify",
+            "PYTHON_BIN=backend/.venv/Scripts/python.exe bash backend/verify.sh",
+            "node .claude/hooks/scripts/guard-architecture.mjs --all --strict"
+        ]
+    },
+    "orchestration": {
+        "startMode": "reviewed-plan",
+        "remediationMode": "ask",
+        "maxPlanReviewRounds": 3,
+        "maxTaskAttempts": 3,
+        "maxParallelTasks": 1,
+        "maxValidationRunsPerTask": 2,
+        "stateFile": "work/2026-11-07-auth-session-ux/run.state.json",
+        "eventLog": "work/2026-11-07-auth-session-ux/events.jsonl",
+        "stepReviewRequired": true,
+        "finalAuditRequired": true
+    },
+    "implementationAudit": {
+        "required": true,
+        "finalRequired": true
+    },
+    "developerOverview": "tasks/2026-11-07-auth-session-ux/developer-overview.md",
+    "releaseTarget": {
+        "kind": "local-only",
+        "environment": "Vite own mode + compose own-backend",
+        "productionPromotionClaimed": false
+    },
+    "releaseImpact": "require_csrf tolerates duplicate csrf cookies (any-copy constant-time match over raw Cookie headers; origin check and 403 shape unchanged); the auth forms gain an honest in-flight state (disabled relabeled submit + Enter guard driven by an optional authLoading store field) and stop wiping typed credentials on error re-renders (page-level draft harvest merged back through additive value plumbing). No cookie contract change, no Store mechanics change, no profile/logout-all UI change.",
+    "finalAuditGates": [
+        "[AC-BE-CSRF|EV-BE-1] duplicate-cookie tolerance with red-green pins (two-entry header stale-first AND single-header last-wins) — pytest, backend delta clean (failed set == the 4 known baseline failures, all new tests passing)",
+        "[AC-FE-LOADING|EV-FE-1] disabled+relabeled in-flight button, Enter guard, revert on settle (resolve AND reject) — mocha, verify green",
+        "[AC-FE-VALUES|EV-FE-1] typed values survive authError/authLoading renders on both pages with the error paragraph visible — mocha, verify green",
+        "[AC-PROCESS|EV-PROCESS-1] all gates green (mocha 721→); guard strict 0; ownership audit clean; progress_log record; conventional commits without co-author trailers on feature/2026-11-07-auth-session-ux"
+    ],
+    "securityGates": [
+        {
+            "id": "SEC-CSRF-ANY-COPY-BOUNDS",
+            "statement": "Duplicate tolerance compares the header ONLY against copies of the csrf cookie the site itself issued (same cookie name in the request's Cookie headers); per-copy comparison stays hmac.compare_digest; validate_origin still runs first; a header matching no copy still fails — no relaxation of the double-submit invariant (an attacker still cannot forge the X-CSRF-Token header cross-site).",
+            "evidenceIds": ["EV-BE-1"]
+        },
+        {
+            "id": "SEC-NO-AUTH-MECHANICS-CHANGE",
+            "statement": "No change to tokens, cookies, refresh rotation or the transport policy; Store.ts gains only the optional authLoading field; features/auth/transportPolicy.ts and utils/HTTPTransport.ts are forbidden writes.",
+            "evidenceIds": ["EV-FE-1"]
+        }
+    ],
+    "budgetPolicy": {
+        "units": "tokens-and-resources",
+        "reroute": "pause-and-review",
+        "maxTotalTokens": 60000,
+        "maxParallelWorkstreams": 1,
+        "maxRunWallSeconds": 10800,
+        "criticalPathWallSeconds": 9000,
+        "aggregateWorkstreamWallSeconds": 9000,
+        "retryReserveWallSeconds": 1800
+    },
+    "budgets": {
+        "defaultWorkstreamTokens": 20000,
+        "maxEvidenceBytesPerRun": 4194304
+    },
+    "contextLimits": {
+        "profile": "small-context-profile.v1",
+        "maxPlanContextBytes": 120000,
+        "maxRenderedPacketBytes": 40000,
+        "smallContextPacketBytes": 30000,
+        "maxReferenceFilesPerPacket": 12,
+        "includeOnlyOwnedWrites": true,
+        "excludeRuntimeWorkArtifacts": true
+    },
+    "tierResolution": {
+        "status": "RESOLVED",
+        "tier": "S2",
+        "requestedTier": "S2",
+        "reason": "multiple-executable-owners + browser-risk + security-risk resolved by agent-lifecycle tier resolve",
+        "independentReviewRequired": true,
+        "requestPath": "tasks/2026-11-07-auth-session-ux/tier-request.json",
+        "resolutionPath": "tasks/2026-11-07-auth-session-ux/tier-resolution.json",
+        "requestDigest": "b570c84ab87efe7885415e6c681d3c93cd01d7fb13e1eb2401300f10139155f7"
+    },
+    "planReview": {
+        "required": true,
+        "reviewerClass": "independent-plan-reviewer",
+        "maxRounds": 3,
+        "implementationAuthorized": false,
+        "report": "tasks/2026-11-07-auth-session-ux/plan-review.json",
+        "reviewedRevision": 3,
+        "verdict": "READY_TO_FREEZE"
+    },
+    "nonGoals": [
+        "client-side logout fallback ignoring CSRF failures",
+        "password reset / forgot-password flow",
+        "logout-all or profile UI changes",
+        "router/transition change after successful auth",
+        "i18n framework for the two in-flight labels",
+        "fixes to the 4 pre-existing Windows converter test failures"
+    ],
+    "planFiles": [
+        "tasks/2026-11-07-auth-session-ux/acceptance-criteria.md",
+        "tasks/2026-11-07-auth-session-ux/developer-overview.md",
+        "tasks/2026-11-07-auth-session-ux/plan-review-request.md",
+        "tasks/2026-11-07-auth-session-ux/plan-review.json",
+        "tasks/2026-11-07-auth-session-ux/plan.manifest.json",
+        "tasks/2026-11-07-auth-session-ux/plan.md",
+        "tasks/2026-11-07-auth-session-ux/specification.md",
+        "tasks/2026-11-07-auth-session-ux/tier-request.json",
+        "tasks/2026-11-07-auth-session-ux/tier-resolution.json"
+    ]
+}

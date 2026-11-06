@@ -1,8 +1,9 @@
 // Фича-контроллер profile (2026-11-01-settings): правка профиля и смена
 // пароля обновляют пользователя через ШОВ refreshUser (свежий снимок делает
-// auth-фича), logoutAll после порта цепляет инъекцированный logout, возврат в
-// чат делегируется chats-фиче шовом rejoinChat, хранилище возвращается как
-// приехало. До связывания шовы — noop: обёртки не падают.
+// auth-фича), logoutAll после порта цепляет ЛОКАЛЬНЫЙ выход (шов
+// localSignOut — куки уже сняты бэкендом), возврат в чат делегируется
+// chats-фиче шовом rejoinChat, хранилище возвращается как приехало.
+// До связывания шовы — noop: обёртки не падают.
 
 import { expect } from 'chai'
 import sinon from 'sinon'
@@ -40,7 +41,7 @@ function makePort(overrides: Partial<ProfilePort> = {}): ProfilePort {
 
 // noop-швы между тестами (прецедент contacts-шва в chats.test.ts)
 function resetSeams(): void {
-    setProfileSeams({ refreshUser: () => {}, logout: () => {}, rejoinChat: () => {} })
+    setProfileSeams({ refreshUser: () => {}, logout: () => {}, localSignOut: () => {}, rejoinChat: () => {} })
 }
 
 describe('profile feature boundary', () => {
@@ -58,7 +59,7 @@ describe('profile feature boundary', () => {
         const refreshUser = sinon.stub().resolves()
         const controller = new ProfileFeatureController(makePort({ changeProfile }))
 
-        setProfileSeams({ refreshUser, logout: () => {}, rejoinChat: () => {} })
+        setProfileSeams({ refreshUser, logout: () => {}, localSignOut: () => {}, rejoinChat: () => {} })
 
         await controller.changeUserInfo({ display_name: 'Ada Lovelace', phone: '+7 000' })
 
@@ -72,7 +73,7 @@ describe('profile feature boundary', () => {
         const errorSpy = sinon.stub(console, 'error')
         const controller = new ProfileFeatureController(makePort({ changeProfile }))
 
-        setProfileSeams({ refreshUser, logout: () => {}, rejoinChat: () => {} })
+        setProfileSeams({ refreshUser, logout: () => {}, localSignOut: () => {}, rejoinChat: () => {} })
 
         try {
             await controller.changeUserInfo({ display_name: 'Ada Lovelace' })
@@ -89,7 +90,7 @@ describe('profile feature boundary', () => {
         const refreshUser = sinon.stub().resolves()
         const controller = new ProfileFeatureController(makePort({ changePassword }))
 
-        setProfileSeams({ refreshUser, logout: () => {}, rejoinChat: () => {} })
+        setProfileSeams({ refreshUser, logout: () => {}, localSignOut: () => {}, rejoinChat: () => {} })
 
         await controller.changePassword({ old_password: 'OldPassword12', new_password: 'NewPassword12' })
 
@@ -97,26 +98,31 @@ describe('profile feature boundary', () => {
         expect(refreshUser.calledOnce).to.be.true
     })
 
-    it('logs out everywhere through the port and then chains the injected logout', async () => {
+    it('logout-all chains the LOCAL sign-out seam, not a second server logout', async () => {
+        // 2026-11-07: /auth/logout-all сам снимает все куки — следующий POST
+        // /auth/logout едет с пустым csrf и падает 403; локальный выход
+        // (сброс стора + редирект) делает отдельный шов localSignOut
         const logoutAll = sinon.stub().resolves()
         const logout = sinon.stub().resolves()
+        const localSignOut = sinon.stub().resolves()
         const controller = new ProfileFeatureController(makePort({ logoutAll }))
 
-        setProfileSeams({ refreshUser: () => {}, logout, rejoinChat: () => {} })
+        setProfileSeams({ refreshUser: () => {}, logout, localSignOut, rejoinChat: () => {} })
 
         await controller.logoutAll()
 
         expect(logoutAll.calledOnce).to.be.true
-        expect(logout.calledOnce).to.be.true
+        expect(localSignOut.calledOnce).to.be.true
+        expect(logout.notCalled).to.be.true
     })
 
-    it('skips the local logout when logout-all fails on the port', async () => {
+    it('skips the local sign-out when logout-all fails on the port', async () => {
         const logoutAll = sinon.stub().rejects(new Error('network'))
-        const logout = sinon.stub().resolves()
+        const localSignOut = sinon.stub().resolves()
         const errorSpy = sinon.stub(console, 'error')
         const controller = new ProfileFeatureController(makePort({ logoutAll }))
 
-        setProfileSeams({ refreshUser: () => {}, logout, rejoinChat: () => {} })
+        setProfileSeams({ refreshUser: () => {}, logout: () => {}, localSignOut, rejoinChat: () => {} })
 
         try {
             await controller.logoutAll()
@@ -124,7 +130,7 @@ describe('profile feature boundary', () => {
             errorSpy.restore()
         }
 
-        expect(logout.notCalled).to.be.true
+        expect(localSignOut.notCalled).to.be.true
     })
 
     it('returns the fetched usage as is', async () => {
@@ -156,7 +162,7 @@ describe('profile feature boundary', () => {
         const rejoinChat = sinon.spy()
         const controller = new ProfileFeatureController(makePort())
 
-        setProfileSeams({ refreshUser: () => {}, logout: () => {}, rejoinChat })
+        setProfileSeams({ refreshUser: () => {}, logout: () => {}, localSignOut: () => {}, rejoinChat })
 
         controller.rejoinChat(3)
 
@@ -167,7 +173,7 @@ describe('profile feature boundary', () => {
         const logout = sinon.stub().resolves()
         const controller = new ProfileFeatureController(makePort())
 
-        setProfileSeams({ refreshUser: () => {}, logout, rejoinChat: () => {} })
+        setProfileSeams({ refreshUser: () => {}, logout, localSignOut: () => {}, rejoinChat: () => {} })
 
         await controller.logout()
 

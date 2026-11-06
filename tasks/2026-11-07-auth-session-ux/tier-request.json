@@ -1,0 +1,28 @@
+{
+    "capabilityHints": [
+        "fastapi",
+        "starlette",
+        "pytest",
+        "typescript",
+        "handlebars",
+        "mocha",
+        "jsdom"
+    ],
+    "executableOwners": [
+        "worker-backend-csrf",
+        "worker-frontend-auth-ux"
+    ],
+    "externalSpecification": false,
+    "requirementsBytes": 8600,
+    "riskFlags": {
+        "architecture": false,
+        "browser": true,
+        "data": false,
+        "external": false,
+        "migration": false,
+        "performance": false,
+        "release": false,
+        "security": true
+    },
+    "taskCount": 2
+}

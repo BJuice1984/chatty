@@ -13,6 +13,9 @@ import { profileSlice } from './store.ts'
 export interface ProfileSeams {
     refreshUser(): void | Promise<void>
     logout(): void | Promise<void>
+    // локальный выход без серверного запроса — для logout-all (куки уже
+    // сняты бэкендом, повторный POST /auth/logout падает по пустому csrf)
+    localSignOut(): void | Promise<void>
     // eslint-disable-next-line no-unused-vars
     rejoinChat(chatId: number): void | Promise<void>
 }
@@ -20,6 +23,7 @@ export interface ProfileSeams {
 const noopSeams: ProfileSeams = {
     refreshUser: () => {},
     logout: () => {},
+    localSignOut: () => {},
     rejoinChat: () => {},
 }
 
@@ -73,12 +77,13 @@ export class ProfileFeatureController {
         }
     }
 
-    // «Выйти со всех устройств»: бэкенд отзывает все сессии и сбрасывает
-    // cookie; локальный выход (сброс стора + редирект) делает шов logout
+    // «Выйти со всех устройств»: бэкенд отзывает все сессии и сам снимает
+    // cookie (csrf в том числе) — локальный выход делает шов localSignOut
+    // (сброс стора + редирект БЕЗ повторного POST /auth/logout)
     async logoutAll(): Promise<void> {
         try {
             await this.port.logoutAll()
-            await seams.logout()
+            await seams.localSignOut()
         } catch (e: unknown) {
             console.error('Ошибка при выходе со всех устройств:', e)
         }

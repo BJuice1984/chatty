@@ -19,6 +19,10 @@ export interface AppState {
     // человекочитаемая ошибка последнего запроса авторизации (сеть/бэкенд):
     // контроллер auth пишет, страницы входа/регистрации показывают под формой
     authError?: string | null
+    // запрос авторизации в полёте (2026-11-07-auth-session-ux): страницы
+    // входа/регистрации блокируют submit-кнопку и меняют её лейбл; поле
+    // только отражает состояние — механики стора не меняются
+    authLoading?: boolean
     // Пользователь (2026-11-01-settings): display_name/phone несут РЕАЛЬНЫЕ
     // значения бэкенда (адаптеры фич применяют фолбэки «локальная часть
     // email»/'' для NULL — синтеза display_name=email больше нет),
@@ -46,6 +50,7 @@ export interface ComponentProps {
     selectedChatUsers?: ChatUser[]
     messages?: Message[]
     authError?: string | null
+    authLoading?: boolean
     user?: {
         first_name?: string
         second_name?: string

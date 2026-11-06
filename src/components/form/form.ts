@@ -5,6 +5,10 @@ export interface FormInputs {
     label: string
     name: string
     validateMessage: string
+    // живое значение инпута (2026-11-07-auth-session-ux): страницы входа/
+    // регистрации восстанавливают введённое после перерисовки ошибкой;
+    // профиль-формы поле не передают — рендер атрибута пропускается
+    value?: string
     // eslint-disable-next-line no-unused-vars
     validate: (value: string) => boolean
 }
@@ -12,6 +16,10 @@ export interface FormInputs {
 export interface FormButton {
     label: string
     classType: string
+    type: 'submit' | 'button'
+    // атрибут disabled кнопки (полёт запроса); со стилевым classType
+    // 'disabled' не связан (2026-11-07-auth-session-ux)
+    disabled?: boolean
     onClick?: () => void
     // eslint-disable-next-line no-unused-vars
     handleSubmitClick?: (value: { [key: string]: unknown }) => void

@@ -41,6 +41,7 @@ setProfileController(new ProfileFeatureController(profilePort))
 setProfileSeams({
     refreshUser: () => authController.fetchUser(),
     logout: () => authController.logout(),
+    localSignOut: () => authController.localSignOut(),
     rejoinChat: chatId => ChatsController.rejoinChat(chatId),
 })
 

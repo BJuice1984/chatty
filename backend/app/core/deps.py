@@ -32,10 +32,27 @@ def validate_origin(request: Request, settings: Settings) -> None:
 
 def require_csrf(request: Request, settings: Settings) -> None:
     validate_origin(request, settings)
-    expected = request.cookies.get(settings.csrf_cookie_name)
-    actual = request.headers.get(settings.csrf_header_name)
-    if not expected or not actual or not secrets_equal(expected, actual):
+    submitted = request.headers.get(settings.csrf_header_name)
+    cookie_values = _csrf_cookie_values(request.headers.getlist('cookie'), settings.csrf_cookie_name)
+    if not submitted or not any(secrets_equal(value, submitted) for value in cookie_values):
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail='csrf_failed')
+
+
+def _csrf_cookie_values(cookie_headers: list[str], name: str) -> list[str]:
+    """Every value of the named cookie across the Cookie headers: a browser
+    may legitimately carry duplicates (a stale path-scoped copy shadowing the
+    fresh one — Request.cookies sees only the first header, and within one
+    header the last duplicate wins), so double-submit must match the header
+    against any copy the site issued, not just the first one."""
+    values: list[str] = []
+    for header in cookie_headers:
+        for entry in header.split(';'):
+            separator = entry.find('=')
+            if separator == -1:
+                continue
+            if entry[:separator].strip() == name:
+                values.append(entry[separator + 1:].strip())
+    return values
 
 
 def secrets_equal(left: str, right: str) -> bool:
