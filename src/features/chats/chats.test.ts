@@ -1102,8 +1102,12 @@ describe('chats controller bot run', () => {
     it('retries a network-failed run request without surfacing an error', async () => {
         setupAiChat()
         const runBot = sinon.stub()
-            .onFirstCall().rejects(new TransportError('Ошибка сети. Запрос не выполнен', 'network'))
-            .onSecondCall().resolves({ id: 1, status: 'succeeded', error_kind: null })
+            .onFirstCall().callsFake(() => new Promise((_resolve, reject) => {
+                setTimeout(() => reject(new TransportError('Ошибка сети. Запрос не выполнен', 'network')), 20)
+            }))
+            .onSecondCall().callsFake(() => new Promise(resolve => {
+                setTimeout(() => resolve({ id: 1, status: 'succeeded', error_kind: null }), 30)
+            }))
         const controller = new ChatsFeatureController(
             makePort({ runBot }),
             makeMessages(),
@@ -1115,19 +1119,96 @@ describe('chats controller bot run', () => {
         echoOwnMessage()
         await sent
         await until(() => hasPending())
+        await until(() => runBot.calledTwice)
+        await until(() => !hasPending())
+
+        // единичный сброс сокета (keep-alive) — ретрай-невидимка: оверлея
+        // не было вовсе, живой сервер не пугает лоадером (2026-11-06)
+        expect(document.getElementById('busy-overlay')).to.be.null
+
+        expect(runBot.calledTwice).to.be.true
+        expect(runBot.secondCall.calledWith(38, 101)).to.be.true
+        expect(errorMessage()).to.be.undefined
+    })
+
+    // Ран ещё идёт (queued/running) — не терминальный исход (2026-11-06,
+    // live: обрыв POST на чтении ответа; ретрай возвращал идущий ран, а
+    // контроллер гасил pending — «печатает…» исчезало, UI молчал): плашка
+    // живёт весь поллинг, ответ доставляется по завершении рана
+    it('keeps the pending tail while the run is in progress and finishes on completion', async () => {
+        setupAiChat()
+        const runBot = sinon.stub()
+            .onFirstCall().resolves({ id: 1, status: 'running', error_kind: null })
+            .onSecondCall().resolves({ id: 1, status: 'succeeded', error_kind: null })
+        const controller = new ChatsFeatureController(
+            makePort({ runBot }),
+            makeMessages(),
+            { botRunRetryDelaysMs: [10], botRunPollIntervalMs: 10 }
+        )
+
+        const sent = controller.sendMessage(38, 'вопрос')
+
+        echoOwnMessage()
+        await sent
         await until(() => runBot.calledOnce)
 
-        // сетевой ретрай не молчит: между попытками reconnect-оверлей открыт
-        expect(document.getElementById('busy-overlay')).to.be.not.null
+        // ран идёт — «печатает…» на месте, никаких молчаливых уходов
+        expect(hasPending()).to.be.true
 
         await until(() => runBot.calledTwice)
         await until(() => !hasPending())
 
-        // после восстановления оверлей снят (grace-удаление — тик)
-        await until(() => document.getElementById('busy-overlay') === null)
+        expect(errorMessage()).to.be.undefined
+    })
 
-        expect(runBot.calledTwice).to.be.true
-        expect(runBot.secondCall.calledWith(38, 101)).to.be.true
+    it('surfaces an overdue error when the run never completes', async () => {
+        setupAiChat()
+        const runBot = sinon.stub().resolves({ id: 1, status: 'running', error_kind: null })
+        const controller = new ChatsFeatureController(
+            makePort({ runBot }),
+            makeMessages(),
+            { botRunRetryDelaysMs: [10], botRunPollIntervalMs: 10, botRunPollBudgetMs: 35 }
+        )
+
+        const sent = controller.sendMessage(38, 'вопрос')
+
+        echoOwnMessage()
+        await sent
+        await until(() => errorMessage() !== undefined)
+
+        expect(errorMessage()?.content).to.contain('не получен за отведённое время')
+        expect(hasPending()).to.be.false
+    })
+
+    // Двойной сетевой фейл — настоящий обрыв: reconnect-оверлей открывается
+    // перед попытками с паузой и закрывается на восстановлении
+    it('shows the reconnect overlay only after two consecutive network failures', async () => {
+        setupAiChat()
+        const runBot = sinon.stub()
+            .onFirstCall().rejects(new TransportError('Ошибка сети. Запрос не выполнен', 'network'))
+            .onSecondCall().rejects(new TransportError('Ошибка сети. Запрос не выполнен', 'network'))
+            .onThirdCall().resolves({ id: 1, status: 'succeeded', error_kind: null })
+        const controller = new ChatsFeatureController(
+            makePort({ runBot }),
+            makeMessages(),
+            { botRunRetryDelaysMs: [50] }
+        )
+
+        const sent = controller.sendMessage(38, 'вопрос')
+
+        echoOwnMessage()
+        await sent
+
+        // между второй попыткой и третьей (пауза из бюджета) оверлей открыт
+        await until(() => runBot.calledTwice && document.getElementById('busy-overlay') !== null)
+
+        await until(() => runBot.calledThrice)
+        await until(() => !hasPending())
+
+        // после восстановления оверлей снят
+        expect(document.getElementById('busy-overlay')).to.be.null
+
+        expect(runBot.calledThrice).to.be.true
         expect(errorMessage()).to.be.undefined
     })
 
@@ -1146,8 +1227,8 @@ describe('chats controller bot run', () => {
         await sent
         await until(() => errorMessage() !== undefined)
 
-        // исходная попытка + один ретрай по бюджету [10]
-        expect(runBot.calledTwice).to.be.true
+        // исходная попытка + мгновенный ретрай + ретрай по бюджету [10]
+        expect(runBot.calledThrice).to.be.true
         expect(errorMessage()?.content).to.contain('Ошибка сети')
         expect(hasPending()).to.be.false
 

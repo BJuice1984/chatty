@@ -47,6 +47,14 @@ const BOT_ECHO_WAIT_TICK_MS = 25
 // повторный вызов вернёт тот же ран и не создаст второй ответ
 const BOT_RUN_RETRY_DELAYS_MS: readonly number[] = [5_000, 15_000]
 
+// Поллинг идущего рана (2026-11-06): повторный POST против queued/running
+// возвращает ран как есть (бэкенд не исполняет его дважды), время ответа
+// модели непредсказуемо — pending-хвост «печатает…» живёт весь поллинг.
+// Бюджет — не таймаут ответа, а защита от вечного «печатает…» при ране,
+// который никогда не завершится
+const BOT_RUN_POLL_INTERVAL_MS = 5_000
+const BOT_RUN_POLL_BUDGET_MS = 10 * 60_000
+
 let contactsIntegration: ContactsIntegration = noopContactsIntegration
 
 // Композиция (features/index.ts) вызывает это до первого рендера.
@@ -73,6 +81,15 @@ let documentSearchIntegration: DocumentSearchIntegration = noopDocumentSearch
 
 export function setDocumentSearch(integration: DocumentSearchIntegration): void {
     documentSearchIntegration = integration
+}
+
+// Результат рана ассистента (контракт ChatsPort.runBot, локальный alias:
+// компоненты не тянут типы из api-слоя — guard-предупреждение)
+interface BotRunResult {
+    id: number
+    status: string
+    error_kind: string | null
+    response_message_id?: number | null
 }
 
 // Применяет дельту события реакции к сводке одного сообщения (чистая функция):
@@ -167,14 +184,24 @@ export class ChatsFeatureController {
 
     private readonly botRunRetryDelaysMs: readonly number[]
 
+    private readonly botRunPollIntervalMs: number
+
+    private readonly botRunPollBudgetMs: number
+
     constructor(
         port: ChatsPort = chatsPort,
         messages: ChatMessagesPort = chatMessagesPort,
-        options: { botRunRetryDelaysMs?: readonly number[] } = {}
+        options: {
+            botRunRetryDelaysMs?: readonly number[],
+            botRunPollIntervalMs?: number,
+            botRunPollBudgetMs?: number,
+        } = {}
     ) {
         this.port = port
         this.messages = messages
         this.botRunRetryDelaysMs = options.botRunRetryDelaysMs ?? BOT_RUN_RETRY_DELAYS_MS
+        this.botRunPollIntervalMs = options.botRunPollIntervalMs ?? BOT_RUN_POLL_INTERVAL_MS
+        this.botRunPollBudgetMs = options.botRunPollBudgetMs ?? BOT_RUN_POLL_BUDGET_MS
 
         // WS-события реакции/удаления чата приходят в адаптер — бизнес-логика
         // здесь (паттерн attachPort из history-модуля; прямой импорт дал бы цикл)
@@ -625,32 +652,35 @@ export class ChatsFeatureController {
     // Сетевой обрыв POST /bot/runs — не приговор прогону: запрос мог дойти
     // (ран выполняется, ответ придёт WS-broadcast'ом) или не дойти вовсе.
     // Идемпотентный ретрай закрывает оба случая; http-ошибки (4xx/5xx) и
-    // непредвиденные выбросы не ретраятся. Пока идут сетевые ретраи, экран
-    // закрывает reconnect-оверлей — иначе восстановление происходит молча
-    // и обрыв виден только в консоли (live-инцидент 2026-11-03: ран 48
-    // долечился за 134с, пользователь видел «CORS did not succeed»)
-    private async runBotWithNetworkRetry(chatId: number, messageId: number) {
+    // непредвиденные выбросы не ретраятся. Первый мгновенный ретрай —
+    // молчащий: единичный сброс keep-alive сокета (браузер маскирует его
+    // под «CORS did not succeed») при живом сервере и ретрае-невидимке не
+    // должен пугать лоадером (2026-11-06, live: ран succeeded, а оверлей
+    // уже открылся). Reconnect-оверлей открывается только перед попытками
+    // с паузой — дважды подряд упавший запрос и есть настоящий обрыв
+    // (live-инцидент 2026-11-03: ран 48 долечился за 134с без индикации)
+    private async runBotWithNetworkRetry(chatId: number, messageId: number): Promise<BotRunResult | null> {
         let overlayShown = false
         let lastError: unknown
 
         try {
-            for (const delay of [0, ...this.botRunRetryDelaysMs]) {
+            for (const delay of [0, 0, ...this.botRunRetryDelaysMs]) {
                 if (delay > 0) {
+                    if (!overlayShown) {
+                        overlayShown = true
+                        showBusyOverlay('reconnect')
+                    }
+
                     await new Promise(resolve => setTimeout(resolve, delay))
                 }
 
                 try {
-                    return await this.port.runBot?.(chatId, messageId)
+                    return (await this.port.runBot?.(chatId, messageId)) ?? null
                 } catch (error) {
                     lastError = error
 
                     if (!(error instanceof TransportError) || (error.kind !== 'network' && error.kind !== 'timeout')) {
                         throw error
-                    }
-
-                    if (!overlayShown) {
-                        overlayShown = true
-                        showBusyOverlay('reconnect')
                     }
                 }
             }
@@ -661,6 +691,29 @@ export class ChatsFeatureController {
                 hideBusyOverlay()
             }
         }
+    }
+
+    // Ран в статусе queued/running — не терминальный исход (2026-11-06,
+    // live: ретрай оборванного POST возвращал уже идущий ран, контроллер
+    // гасил pending — «печатает…» исчезало, UI молчал до позднего
+    // WS-broadcast ответа). Поллим идемпотентный POST до succeeded/failed;
+    // каждая попытка — под сетевой защитой runBotWithNetworkRetry. Бюджет
+    // исчерпан — выброс: общий catch превратит его в честную плашку,
+    // вечного «печатает…» не бывает
+    private async pollBotRun(chatId: number, messageId: number): Promise<BotRunResult | null> {
+        const deadline = Date.now() + this.botRunPollBudgetMs
+        let run = await this.runBotWithNetworkRetry(chatId, messageId)
+
+        while (run != null && (run.status === 'queued' || run.status === 'running')) {
+            if (Date.now() >= deadline) {
+                throw new Error('ответ ассистента не получен за отведённое время')
+            }
+
+            await new Promise(resolve => setTimeout(resolve, this.botRunPollIntervalMs))
+            run = await this.runBotWithNetworkRetry(chatId, messageId)
+        }
+
+        return run
     }
 
     private async runBotForLastOwnMessage(chatId: number): Promise<void> {
@@ -727,7 +780,7 @@ export class ChatsFeatureController {
                 },
             ])
 
-            const run = await this.runBotWithNetworkRetry(chatId, target)
+            const run = await this.pollBotRun(chatId, target)
 
             if (run?.status === 'failed') {
                 pushError(run.error_kind ?? 'unknown')
