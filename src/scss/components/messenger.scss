@@ -43,7 +43,7 @@
   &__empty-hint-text {
     @include reset;
 
-    color: var(--secondary-text-color);
+    color: var(--main-text-color);
     font-size: 14px;
     line-height: 1.5;
   }
@@ -636,13 +636,18 @@
       &::after {
         content: '';
         display: block;
-        width: 5px;
-        height: 5px;
+        width: 31px;
+        height: 8px;
         margin-top: 6px;
-        border-radius: 50%;
-        background-color: var(--second-text-color);
-        box-shadow: -11px 0 0 var(--second-text-color), 11px 0 0 var(--second-text-color);
-        animation: messenger-typing-dots 0.9s ease-in-out infinite;
+        align-self: flex-end;
+        background-image:
+          radial-gradient(circle, var(--second-text-color) 2.5px, transparent 3px),
+          radial-gradient(circle, var(--second-text-color) 2.5px, transparent 3px),
+          radial-gradient(circle, var(--second-text-color) 2.5px, transparent 3px);
+        background-repeat: no-repeat;
+        background-size: 5px 5px;
+        background-position: 0 3px, 13px 3px, 26px 3px;
+        animation: messenger-typing-wave 1.4s ease-in-out infinite;
       }
     }
   }
@@ -943,14 +948,25 @@
   }
 }
 
-@keyframes messenger-typing-dots {
+@keyframes messenger-typing-wave {
 
-  0%,
-  100% {
-    transform: translateY(0);
+  0% {
+    background-position: 0 3px, 13px 3px, 26px 3px;
+  }
+
+  30% {
+    background-position: 0 0, 13px 3px, 26px 3px;
   }
 
   50% {
-    transform: translateY(-3px);
+    background-position: 0 3px, 13px 0, 26px 3px;
+  }
+
+  70% {
+    background-position: 0 3px, 13px 3px, 26px 0;
+  }
+
+  100% {
+    background-position: 0 3px, 13px 3px, 26px 3px;
   }
 }
