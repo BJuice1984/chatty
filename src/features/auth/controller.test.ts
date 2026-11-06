@@ -1,8 +1,10 @@
 // Регрессия (сеть/бэкенд недоступны): ошибки запросов авторизации должны
 // попадать в стор (authError) и показываться на страницах входа/регистрации,
 // а не оставаться только в console («кнопка молчит»). Сетевой сбой несёт свой
-// текст, HTTP-отказ — message бэкенда, 401 на /auth/me — тишина (легитимная
-// неавторизованность, гард сам уводит на страницу входа).
+// текст, известные HTTP-статусы (401/409/422) — человекочитаемый текст карты
+// (детали бэкенда — машинные коды), незнакомые — message бэкенда, 401 на
+// /auth/me — тишина (легитимная неавторизованность, гард сам уводит на
+// страницу входа).
 
 import { expect } from 'chai'
 import { JSDOM } from 'jsdom'
@@ -53,14 +55,52 @@ describe('auth controller: ошибки запросов видны в стор�
         expect(store.getState().authError).to.eq(AUTH_NETWORK_ERROR_MESSAGE)
     })
 
-    it('HTTP-отказ входа несёт message бэкенда (401)', async () => {
+    it('401 входа — человекочитаемый текст, а не код бэкенда (invalid_credentials)', async () => {
         const controller = new AuthFeatureController(makePort({
-            signin: () => Promise.reject(new TransportError('Неверные учётные данные', 'http', 401)),
+            signin: () => Promise.reject(new TransportError('invalid_credentials', 'http', 401, { detail: 'invalid_credentials' })),
         }))
 
         await controller.signin({ login: 'ada@example.com', password: 'wrong-password' })
 
-        expect(store.getState().authError).to.eq('Неверные учётные данные')
+        expect(store.getState().authError).to.eq('Неверный email или пароль')
+    })
+
+    it('409 регистрации — текст о занятом email', async () => {
+        const controller = new AuthFeatureController(makePort({
+            signup: () => Promise.reject(new TransportError('email_already_registered', 'http', 409)),
+        }))
+
+        await controller.signup({
+            email: 'ada@example.com',
+            password: 'LongPassword1',
+            confirm_password: 'LongPassword1',
+        })
+
+        expect(store.getState().authError).to.eq('Этот email уже зарегистрирован')
+    })
+
+    it('422 — текст о проверке полей (email/пароль от 12 символов)', async () => {
+        const controller = new AuthFeatureController(makePort({
+            signup: () => Promise.reject(new TransportError('Validation error', 'http', 422)),
+        }))
+
+        await controller.signup({
+            email: 'not-an-email',
+            password: 'short',
+            confirm_password: 'short',
+        })
+
+        expect(store.getState().authError).to.eq('Проверьте поля: email — корректный адрес, пароль — минимум 12 символов')
+    })
+
+    it('незнакомый HTTP-статус остаётся с message бэкенда', async () => {
+        const controller = new AuthFeatureController(makePort({
+            signin: () => Promise.reject(new TransportError('Сервер отклонил запрос', 'http', 403)),
+        }))
+
+        await controller.signin({ login: 'ada@example.com', password: 'wrong-password' })
+
+        expect(store.getState().authError).to.eq('Сервер отклонил запрос')
     })
 
     it('сетевой сбой регистрации виден так же', async () => {
@@ -80,12 +120,12 @@ describe('auth controller: ошибки запросов видны в стор�
     it('повторная попытка затирает прошлую ошибку актуальной', async () => {
         store.set('authError', 'старая ошибка')
         const controller = new AuthFeatureController(makePort({
-            signin: () => Promise.reject(new TransportError('Новые учётные данные', 'http', 401)),
+            signin: () => Promise.reject(new TransportError('Новая ошибка', 'http', 403)),
         }))
 
         await controller.signin({ login: 'ada@example.com', password: 'wrong-password' })
 
-        expect(store.getState().authError).to.eq('Новые учётные данные')
+        expect(store.getState().authError).to.eq('Новая ошибка')
     })
 
     it('bootstrap /auth/me при сетевом сбое: пользователь сброшен, ошибка видна', async () => {

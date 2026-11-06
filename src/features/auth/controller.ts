@@ -14,9 +14,19 @@ import { authSlice } from './store.ts'
 
 export const AUTH_NETWORK_ERROR_MESSAGE = 'Нет связи с сервером. Проверьте подключение и попробуйте позже'
 
+// HTTP-статусы форм входа/регистрации → человекочитаемый текст: detail
+// own-бэкенда — машинный код ('invalid_credentials'), показывать его
+// пользователю нельзя. Незнакомый статус остаётся с message бэкенда
+// (getHttpErrorMessage уже вытащил reason/detail)
+const AUTH_HTTP_ERROR_TEXTS: Record<number, string> = {
+    401: 'Неверный email или пароль',
+    409: 'Этот email уже зарегистрирован',
+    422: 'Проверьте поля: email — корректный адрес, пароль — минимум 12 символов',
+}
+
 // Человекочитаемое сообщение для формы: сетевые сбои (сервер не поднят,
-// CORS) — свой текст; HTTP-ошибки — message от бэкенда (getHttpErrorMessage
-// уже вытащил reason/detail); прочее — нейтральный fallback
+// CORS) — свой текст; известные HTTP-статусы — текст из карты выше;
+// прочие HTTP-ошибки — message от бэкенда; остальное — нейтральный fallback
 function authErrorMessage(error: unknown): string {
     if (error instanceof TransportError) {
         if (error.kind === 'network') {
@@ -28,7 +38,7 @@ function authErrorMessage(error: unknown): string {
         }
 
         if (error.kind === 'http') {
-            return error.message
+            return (error.status !== undefined ? AUTH_HTTP_ERROR_TEXTS[error.status] : undefined) ?? error.message
         }
     }
 
