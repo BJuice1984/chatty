@@ -1,0 +1,51 @@
+{
+    "schemaVersion": "agent-plan-specification.v1",
+    "package": "2026-11-06-llm-chat-autotitle",
+    "tier": "S2",
+    "status": "DRAFT",
+    "intent": "One-shot LLM chat auto-naming: every newly created auto_titled chat (one-click user chats seeded 'Чат с' AND AI-assistant chats seeded 'AI ассистент') gets a short contextual title generated from its own messages by the local model, exactly once. After the model's title lands, auto_titled is cleared and only a manual double-click rename can change the title afterwards. The mechanical member-name append (013) keeps working until the LLM rename fires and never fires again afterwards.",
+    "requirements": [
+        {
+            "id": "REQ-BE-AUTOTITLE",
+            "title": "Backend: single ChatAutoTitleService — threshold gate, model call via provider seam, one-shot CAS rename, WS chat_renamed fan-out",
+            "description": "New app/services/chat_autotitle.py (sync service, no hub import — the review F-5 grep pin): maybe_rename(chat_id) -> str | None runs (a) config gate CHATTY_AUTOTITLE_ENABLED (default true, operator kill-switch); (b) chat gate: auto_titled AND not is_dm AND total messages < CHATTY_AUTOTITLE_MAX_CHAT_MESSAGES (tail guard, default 40); (c) threshold gate counted over USER messages only (user_id != bot_user_id, kind IS NULL, non-empty content): count >= CHATTY_AUTOTITLE_MIN_USER_MESSAGES (2) AND summed length >= CHATTY_AUTOTITLE_MIN_USER_CHARS (120) — greeting-only exchanges ('Привет, как дела?') never reach the model because bot answers and system lines do not count; (d) context build: last CHATTY_AUTOTITLE_CONTEXT_MESSAGES (10) kind-NULL non-empty messages (system lines and file-only rows stay out of the transcript) capped at CHATTY_AUTOTITLE_CONTEXT_CHARS (2000) rendered with user/bot roles by user_id == bot_user_id, fed to a title prompt (2-4 words, language of the dialogue, explicit NONE escape when no topic); (e) provider call reusing the bot provider seam (same provider API/URL/model, app.state.bot_provider injection respected) through a new optional complete_short(messages, max_tokens, timeout_seconds) method — Ollama: think:false + options.num_predict; OpenAI-compatible: max_tokens + chat_template_kwargs.enable_thinking:false; the CHATTY_AUTOTITLE_TIMEOUT_SECONDS budget reaches the short path through the shared _provider_timeout; getattr fallback to complete() keeps scripted fakes working (the complete_stream precedent in BotService._answer; the fallback keeps the provider's own timeout); (f) answer hygiene: strip, drop wrapping quotes and a trailing dot, reject empty/NONE/multiline/over CHATTY_AUTOTITLE_MAX_TITLE_CHARS (48) — rejection leaves auto_titled untouched (natural retry on the next message); (g) one-shot CAS: UPDATE chats SET title, auto_titled=false WHERE id AND auto_titled=true; rowcount 0 (a manual rename won the race or the flag is already cleared) -> silent skip. No system message (quiet rename — the 013 member-append precedent also writes none). Trigger: BOTH frontend send paths — the WS message event (app/ws/router.py, after the broadcast) and HTTP POST /chats/{id}/messages (the AI-assistant askBot seam, src/features/ai-assistant/api/own.ts) — share one scheduler module app/ws/autotitle.py: per-process in-flight set guards duplicate tasks, the service runs in to_thread on a fresh session_factory session, and a successful rename fans out the EXISTING {'type':'chat_renamed','content':{chat_id,title}} event to ACTIVE members (active_user_ids filter). The scheduler lives in the WS layer because app/services must never import app.ws.hub (review F-5 grep pin); endpoints importing ws modules is the existing precedent (the hub import in endpoints/chats.py).",
+            "priority": "P1",
+            "source": "operator decision 2026-11-06: one unified service for ALL new auto-filled chats (AI and user), auto-fill switches off after the model answers, manual dblclick rename only afterwards",
+            "acceptanceIds": ["AC-BE-GATE", "AC-BE-TITLE", "AC-BE-CONTEXT"],
+            "evidenceIds": ["EV-BE-1"]
+        },
+        {
+            "id": "REQ-FE-AUTOTITLE",
+            "title": "Frontend: chat_renamed finalizes the auto-title input; AI chats are born auto_titled",
+            "description": "Two small deltas riding existing seams. (1) ChatsController.handleChatRenamedEvent currently patches only title and skips identical titles; it must also clear auto_titled in the chats slice — the server clears the flag in the same transaction as the LLM rename, so ANY chat_renamed event (LLM rename, another member's manual rename, even a same-title one) finalizes the header: the auto-title input becomes the static h2 and only dblclick renames afterwards. The identical-title skip stays for title but must NOT skip the auto_titled clearing when the slice still has auto_titled=true (an LLM answer equal to the current title still clears the flag server-side). (2) The AI-assistant empty-state button creates its chat WITHOUT auto_titled today; it starts passing auto_titled: true through the existing seam — assistant page -> AiAssistantController.createAiChat -> AiAssistantPort.createChat type extended with auto_titled?: boolean -> own adapter adds it to the POST /chats payload only when explicitly set (the mirror of src/features/chats/api/own.ts createChat). The messenger auto-title input mechanics (messenger.ts autoTitleInput) are NOT touched — clearing the flag in the slice is what swaps the input back to h2.",
+            "priority": "P1",
+            "source": "operator decision 2026-11-06 (unified auto-fill for AI and user chats) + architectural consequence: the slice flag drives the header input",
+            "acceptanceIds": ["AC-FE-SLICE", "AC-FE-AI-SEED"],
+            "evidenceIds": ["EV-FE-1"]
+        }
+    ],
+    "goal": "Fresh chats stop being indistinguishable 'Чат с'/'AI ассистент' rows: after a short exchange the local model names the chat once from its own content, every connected client sees the new title live, and from that moment the title is fully user-owned (manual rename only).",
+    "constraints": [
+        "No DB migration: auto_titled already exists (013); alembic heads stay 013_chat_auto_title.",
+        "No file under app/services may import app.ws.hub (review F-5 grep pin in test_chat_ai_toggle_api.py stays green); the fan-out lives in the WS layer (app/ws/autotitle.py).",
+        "The provider seam is reused, not duplicated: same CHATTY_BOT_PROVIDER_API/URL/MODEL instance; autotitle owns only its own knobs (CHATTY_AUTOTITLE_*), never a second provider stack.",
+        "Scripted provider fakes in existing bot tests keep working: the service reaches complete_short via getattr with a complete() fallback (complete_stream precedent).",
+        "The model call is fire-and-forget: message delivery latency never includes it; failures are logged and swallowed; per-process in-flight set prevents duplicate calls for one chat.",
+        "Accepted race (plan review F-3): the 013 member-name append reads the flag from its in-memory chat row, so a member added inside the seconds-wide model-call window may overwrite the just-committed LLM title with the mechanical one while the flag is already cleared — one-shot consumed, mechanical title kept; accepted degradation, not fixed here (the reverse race — LLM overwriting a MANUAL rename — is excluded by the CAS).",
+        "Frontend layers only downward; AppState/utils/Store.ts not edited; DTO types from api/ stay out of UI; guard-architecture --all --strict stays green.",
+        "Existing suites stay green; counts grow from the recorded base (mocha 712 passing, pytest 307 passed on the Linux stand).",
+        "Existing auto-title behavior is preserved: one-click creation with NEW_CHAT_TITLE seed, member-name append, manual rename clearing the flag, the auto-title input itself."
+    ],
+    "nonGoals": [
+        "re-titling on demand or on a schedule (exactly one LLM rename per chat)",
+        "an LLM rename for manually titled chats, DMs or chats where auto_titled was cleared",
+        "a persisted attempt counter / new tables (retries ride the next user message; the MAX_CHAT_MESSAGES tail guard bounds the window)",
+        "an attempt budget migration when the model is down: each further user message retries once, connect-fails cost ~5s in the background",
+        "hardening the 013-append vs LLM-CAS race beyond the documented degradation (see constraints)",
+        "changing the WS event contract: the existing chat_renamed {chat_id, title} shape is reused as-is",
+        "frontend changes to the messenger header input mechanics (messenger.ts/messenger.hbs untouched)",
+        "replacing or removing the 013 member-name append (it keeps enriching the seed until the LLM rename clears the flag)",
+        "compose redeploy / operator env changes in this package (defaults are safe: enabled=true; the stack rebuild is the operator's standing runbook step)"
+    ],
+    "scope": "backend only in app/bot (config knobs, provider.complete_short, title prompt) + app/services/chat_autotitle.py + app/ws/autotitle.py scheduler + the two trigger call sites (app/ws/router.py, app/api/v1/endpoints/chats.py) + backend/.env.example + pytest (unit + integration); frontend: src/features/chats/controller.ts chat_renamed handler, src/features/ai-assistant (page/controller/port/own adapter) auto_titled seeding + tests; docs: progress_log entry; receipts under work/2026-11-06-llm-chat-autotitle/."
+}
