@@ -1,0 +1,30 @@
+{
+    "capabilityHints": [
+        "typescript",
+        "handlebars",
+        "scss",
+        "mocha",
+        "sinon",
+        "jsdom",
+        "python",
+        "pytest",
+        "fastapi"
+    ],
+    "executableOwners": [
+        "worker-backend-bot-marker",
+        "worker-frontend-mobile-ux"
+    ],
+    "externalSpecification": false,
+    "requirementsBytes": 11800,
+    "riskFlags": {
+        "architecture": false,
+        "browser": true,
+        "data": false,
+        "external": false,
+        "migration": false,
+        "performance": false,
+        "release": false,
+        "security": false
+    },
+    "taskCount": 2
+}
