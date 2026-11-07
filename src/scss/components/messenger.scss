@@ -226,14 +226,7 @@
       }
 
       &_active {
-        cursor: default;
         background-color: var(--chat-ai-accent);
-
-        &:hover,
-        &:active {
-          background-color: var(--chat-ai-accent);
-          transform: none;
-        }
       }
     }
 

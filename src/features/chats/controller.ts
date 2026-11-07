@@ -291,6 +291,33 @@ export class ChatsFeatureController {
         }
     }
 
+    // Обратный «+AI» (2026-11-07): активная кнопка выключает бота — тот же
+    // оптимистичный is_ai-патч (false) и откат (true) по ошибке порта; бот
+    // остаётся в участниках, ран бота больше не стартует (серверный гейт)
+    async disableAi(chatId: number): Promise<void> {
+        const chats = (store.getState().chats ?? []) as ChatInfo[]
+
+        store.set('chats', chats.map(chat =>
+            chat.id === chatId
+                ? { ...chat, is_ai: false }
+                : chat
+        ))
+
+        try {
+            await this.port.disableAi(chatId)
+        } catch (e: unknown) {
+            console.error('Ошибка при выключении AI в чате:', e)
+
+            const fresh = (store.getState().chats ?? []) as ChatInfo[]
+
+            store.set('chats', fresh.map(chat =>
+                chat.id === chatId
+                    ? { ...chat, is_ai: true }
+                    : chat
+            ))
+        }
+    }
+
     async fetchChats(): Promise<void> {
         let chats: ChatInfo[] = []
 

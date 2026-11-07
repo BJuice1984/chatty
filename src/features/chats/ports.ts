@@ -67,6 +67,11 @@ export interface ChatsPort {
     // разъезжается остальным участникам
     // eslint-disable-next-line no-unused-vars
     enableAi(chatId: number): Promise<void>
+    // Обратный «+AI» (2026-11-07): активная кнопка выключает бота тем же
+    // PUT ({is_ai: false}); бот остаётся в участниках, ран больше не
+    // стартует; WS chat_ai_toggled разъезжается остальным участникам
+    // eslint-disable-next-line no-unused-vars
+    disableAi(chatId: number): Promise<void>
     // «Пометить всё прочитанными» (2026-11-05-messenger-ux-pack): bulk-upsert
     // маркеров чтения по всем чатам вьюера (активным и архивным)
     readAll(): Promise<{ updated: number }>

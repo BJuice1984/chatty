@@ -187,6 +187,12 @@ export const ownChatsPort: ChatsPort = {
         // контроллере, чужие приедут событием)
         await http.put(`/${chatId}`, { data: { is_ai: true }, csrfToken: readCsrfToken() })
     },
+    async disableAi(chatId: number) {
+        // обратный «+AI»: гасит флаг бота тем же PUT; бот остаётся в
+        // участниках, ран больше не стартует; WS chat_ai_toggled приедет и
+        // нам (идемпотентный патч), и остальным участникам
+        await http.put(`/${chatId}`, { data: { is_ai: false }, csrfToken: readCsrfToken() })
+    },
     async readAll() {
         // «Пометить всё прочитанными»: bulk-upsert маркеров чтения по всем
         // чатам вьюера; {updated} — число чатов с сообщениями (фронт гасит

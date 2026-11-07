@@ -1748,9 +1748,10 @@ describe('messenger auto-title input, empty hint and +AI button', () => {
         }
     })
 
-    it('+AI: click fires onEnableAi; an AI chat renders the active non-clickable state', () => {
+    it('+AI: click fires onEnableAi; the active AI button fires onDisableAi', () => {
         const onEnableAi = sinon.spy()
-        const messenger = new Messenger({ onEnableAi } as never)
+        const onDisableAi = sinon.spy()
+        const messenger = new Messenger({ onEnableAi, onDisableAi } as never)
 
         try {
             seedChat()
@@ -1767,8 +1768,11 @@ describe('messenger auto-title input, empty hint and +AI button', () => {
 
             expect(active?.classList.contains('ai_active')).to.be.true
 
+            // активная кнопка ВЫКЛЮЧАЕТ бота (2026-11-07): onDisableAi
+            // уходит, повторного onEnableAi нет
             active?.dispatchEvent(new (view().MouseEvent)('click', { bubbles: true }))
 
+            expect(onDisableAi.calledOnceWith(5)).to.be.true
             expect(onEnableAi.calledOnce).to.be.true
         } finally {
             messenger.destroy()

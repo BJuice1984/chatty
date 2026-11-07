@@ -302,6 +302,20 @@ describe('chats api social operations (fake XHR)', () => {
         expect(call.headers['X-CSRF-Token']).to.eq('token-1')
     })
 
+    // обратный «+AI» (2026-11-07): тот же PUT с is_ai false
+    it('disables the bot over PUT /chats/{id} with is_ai false and csrf', async () => {
+        FakeXHR.responses.push({ status: 200, response: { id: 7, is_ai: false } })
+
+        await ownChatsPort.disableAi(7)
+
+        const call = FakeXHR.calls[0]
+
+        expect(call.method).to.eq('PUT')
+        expect(call.url).to.contain('/chats/7')
+        expect(call.body).to.eq(JSON.stringify({ is_ai: false }))
+        expect(call.headers['X-CSRF-Token']).to.eq('token-1')
+    })
+
     it('searches users by the login prefix over GET /users', async () => {
         FakeXHR.responses.push({
             status: 200,

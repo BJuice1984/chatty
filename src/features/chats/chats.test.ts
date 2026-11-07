@@ -23,6 +23,7 @@ function makePort(overrides: Partial<ChatsPort> = {}): ChatsPort {
         deleteChat: async () => undefined,
         renameChat: async () => undefined,
         enableAi: async () => undefined,
+        disableAi: async () => undefined,
         readAll: async () => ({ updated: 0 }),
         // eslint-disable-next-line no-unused-vars
         getToken: async (chatId: number) => ({ token: `token-${chatId}` }),
@@ -337,6 +338,22 @@ describe('chats controller create-and-select and enable-ai', () => {
         await pending
 
         expect((chatsSlice.getChats().find(chat => chat.id === 7) as ChatInfo).is_ai).to.eq(false)
+    })
+
+    // обратный «+AI» (2026-11-07): активная кнопка выключает бота — тот же
+    // оптимистичный патч (false) и откат (true) по ошибке порта
+    it('disableAi patches is_ai to false optimistically and reverts on port error', async () => {
+        chatsSlice.setChats([chatRow({ id: 7, is_ai: true })])
+        const disableAi = sinon.stub().rejects(new Error('boom'))
+        const controller = new ChatsFeatureController(makePort({ disableAi }), makeMessages())
+
+        const pending = controller.disableAi(7)
+
+        expect((chatsSlice.getChats().find(chat => chat.id === 7) as ChatInfo).is_ai).to.eq(false)
+
+        await pending
+
+        expect((chatsSlice.getChats().find(chat => chat.id === 7) as ChatInfo).is_ai).to.eq(true)
     })
 
     it('chat_ai_toggled event patches is_ai in the slice (other clients)', async () => {

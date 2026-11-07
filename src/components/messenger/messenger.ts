@@ -119,6 +119,9 @@ interface MessengerProps {
     // «+AI» (2026-11-06-chat-create-flow): включает бота в текущем чате
     // eslint-disable-next-line no-unused-vars
     onEnableAi?: (chatId: number) => void
+    // обратное действие (2026-11-07): клик по активной кнопке выключает бота
+    // eslint-disable-next-line no-unused-vars
+    onDisableAi?: (chatId: number) => void
     // UI-флаг «заголовок в режиме инпута» (controller-free, поднимается setProps)
     renamingTitle?: boolean
     // controller-free UI-состояние (внутреннее, поднимается через setProps):
@@ -873,19 +876,23 @@ class MessengerBase extends Block {
             .filter((id): id is number => typeof id === 'number' && id !== props.meId)
         const emptyChatHint = !archived && !isAiChat && (props.messages ?? []).length === 0 && coMembers.length === 0
         // «+AI» первым в ряду кнопок: включает бота в текущем чате; в AI-чате
-        // кнопка уже активна (подсветка, клики игнорирует), архивный чат её
-        // не показывает вовсе (вместе с cross)
+        // кнопка активна (подсветка) и клик её ВЫКЛЮЧАЕТ (2026-11-07);
+        // архивный чат её не показывает вовсе (вместе с cross)
         const aiButton = {
             extraClass: isAiChat ? 'ai ai_active' : 'ai',
-            handleClick: isAiChat
-                ? () => {}
-                : () => {
-                    const live = this.props as MessengerProps
+            handleClick: () => {
+                const live = this.props as MessengerProps
 
-                    if (typeof live.selectedChat === 'number') {
-                        live.onEnableAi?.(live.selectedChat)
-                    }
-                },
+                if (typeof live.selectedChat !== 'number') {
+                    return
+                }
+
+                if (isAiChat) {
+                    live.onDisableAi?.(live.selectedChat)
+                } else {
+                    live.onEnableAi?.(live.selectedChat)
+                }
+            },
         }
         const headerButtons = (props.headerButtons as { extraClass?: string }[] | undefined) ?? []
         const visibleHeaderButtons = (archived

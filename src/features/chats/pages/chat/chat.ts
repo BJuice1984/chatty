@@ -492,9 +492,13 @@ class ChatPageBase extends Block {
                 void ChatsController.renameChat(chatId, title)
             },
             // «+AI» из шапки мессенджера (2026-11-06-chat-create-flow):
-            // оптимистичный is_ai-патч и откат — в контроллере
+            // оптимистичный is_ai-патч и откат — в контроллере; активная
+            // кнопка выключает бота тем же механизмом (2026-11-07)
             onEnableAi: (chatId: number) => {
                 void ChatsController.enableAi(chatId)
+            },
+            onDisableAi: (chatId: number) => {
+                void ChatsController.disableAi(chatId)
             },
             // «Пометить всё прочитанными» — иконка в шапке списка
             // (2026-11-05-messenger-ux-pack): активна только при непрочитанных
