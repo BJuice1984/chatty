@@ -415,10 +415,9 @@
     "validation": {
         "commands": [
             "npm run verify",
-            "PYTHON_BIN=<backend-venv-python> bash backend/verify.sh",
+            "PYTHON_BIN=<backend-venv-python> bash backend/verify.sh — D-11 stand seam: npm run verify:backend does not resolve on this Windows stand; the canonical invocation is bash backend/verify.sh with PYTHON_BIN pointing at the backend venv interpreter (exact stand path in the operator runbook and the evidence log). PASS verdict = every test green EXCEPT exactly the 4 known POSIX-only ingestion failures (tests/unit/ingestion/test_converter.py, WinError 193, identical before and after, outside the write-set), zero new failures, zero deleted tests; full output before/after retained in evidence.",
             "node .claude/hooks/scripts/guard-architecture.mjs --all --strict"
-        ],
-        "backendGateRule": "D-11 stand seam: npm run verify:backend does not resolve on this Windows stand; the canonical invocation is bash backend/verify.sh with PYTHON_BIN pointing at the backend venv interpreter (exact stand path in the operator runbook and the evidence log). PASS verdict = every test green EXCEPT exactly the 4 known POSIX-only ingestion failures (tests/unit/ingestion/test_converter.py, WinError 193, identical before and after, outside the write-set), zero new failures, zero deleted tests; full output before/after retained in evidence."
+        ]
     },
     "orchestration": {
         "startMode": "reviewed-plan",
