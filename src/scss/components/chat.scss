@@ -209,6 +209,10 @@
         margin-bottom: -7px;
     }
 
+    &__disclaimer-icon[src='/images/add-user-icon.svg'] {
+        margin-bottom: -10px;
+    }
+
     &__container-profile {
       display: flex;
       flex-direction: row;
