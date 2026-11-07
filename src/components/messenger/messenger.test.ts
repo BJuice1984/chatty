@@ -1032,7 +1032,7 @@ describe('messenger member menu', () => {
             // кнопка «+» скрыта, удаление чата остаётся (owner-only на бэке)
             const headerButtons = messenger.element?.querySelector('.messenger__header-buttons-container')
 
-            expect(headerButtons?.querySelector('.cross')).to.not.exist
+            expect(headerButtons?.querySelector('img[alt="Иконка. Добавить пользователей"]')).to.not.exist
             expect(headerButtons?.querySelector('.close')).to.exist
 
             // композер скрыт, история остаётся скроллимой
@@ -1047,7 +1047,7 @@ describe('messenger member menu', () => {
         const messenger = new Messenger({} as never)
 
         try {
-            expect(messenger.element?.querySelector('.messenger__header-buttons-container .cross')).to.exist
+            expect(messenger.element?.querySelector('.messenger__header-buttons-container img[alt="Иконка. Добавить пользователей"]')).to.exist
             expect(messenger.element?.querySelector('.messenger__composer')).to.exist
         } finally {
             messenger.destroy()
@@ -1734,6 +1734,10 @@ describe('messenger auto-title input, empty hint and +AI button', () => {
         try {
             seedChat()
 
+            // в тексте подсказки — иконка кнопки «+» шапки (один svg-образ
+            // на оба места, узор кнопки «Создать чат»)
+            expect(hint(messenger)?.querySelector('img.chat__disclaimer-icon[src="/images/add-user-icon.svg"]')).to.not.be.null
+
             const button = messenger.element?.querySelector<HTMLElement>('[data-testid="empty-chat-add"]')
 
             button?.dispatchEvent(new (view().MouseEvent)('click', { bubbles: true }))
@@ -1778,7 +1782,7 @@ describe('messenger auto-title input, empty hint and +AI button', () => {
             seedChat({ leftAt: '2026-11-01T10:00:00Z' })
 
             expect(aiButton(messenger)).to.be.null
-            expect(messenger.element?.querySelector('.messenger__header-buttons-container .cross')).to.be.null
+            expect(messenger.element?.querySelector('.messenger__header-buttons-container img[alt="Иконка. Добавить пользователей"]')).to.be.null
         } finally {
             messenger.destroy()
         }

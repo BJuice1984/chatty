@@ -74,8 +74,8 @@
     @include reset;
 
     position: absolute;
-    top: -6px;
-    right: 0;
+    top: 1px;
+    right: 180px;
     z-index: 3;
     padding: 2px 8px;
     border-radius: 10px;
@@ -184,10 +184,10 @@
     gap: 6px;
 
     /* Иконочные кнопки хедера: круглые, с фоновой подложкой и мягким
-       hover; .cross — добавить пользователя, .close — удалить чат
-       (опасное действие — тёплый hover) */
+       hover; .close — удалить чат (опасное действие — тёплый hover).
+       Кнопка добавления пользователя — HeaderIcon-иконка add-user-icon
+       (узор «Создать чат»), не круглая кнопка */
 
-    .cross,
     .close,
     .ai {
       width: 30px;
@@ -234,33 +234,6 @@
           background-color: var(--chat-ai-accent);
           transform: none;
         }
-      }
-    }
-
-    .cross {
-
-      &::before,
-      &::after {
-        content: '';
-        position: absolute;
-        background-color: var(--main-text-color);
-        border-radius: 1px;
-      }
-
-      &::before {
-        width: 12px;
-        height: 2px;
-        top: 50%;
-        left: 50%;
-        transform: translate(-50%, -50%);
-      }
-
-      &::after {
-        width: 2px;
-        height: 12px;
-        top: 50%;
-        left: 50%;
-        transform: translate(-50%, -50%);
       }
     }
 

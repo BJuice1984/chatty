@@ -32,14 +32,20 @@
             </div>
             <div class="messenger__header-buttons-container">
               {{#each headerButtons}}
-                {{{ headerButton extraClass=this.extraClass handleClick=this.handleClick }}}
+                {{#if this.src}}
+                  {{{ HeaderIcon src=this.src alt=this.alt onClick=this.handleClick }}}
+                {{else}}
+                  {{{ headerButton extraClass=this.extraClass handleClick=this.handleClick }}}
+                {{/if}}
               {{/each}}
             </div>
         </div>
         <ul class="messenger__container">
           {{#if emptyChatHint}}
             <li class="messenger__empty-hint" data-testid="empty-chat-hint">
-              <p class="messenger__empty-hint-text">Добавьте пользователей с помощью кнопки + в верхнем меню, либо нажмите «добавить»</p>
+              <p class="messenger__empty-hint-text">Добавьте пользователей с помощью кнопки
+                <img class="chat__header-icon chat__disclaimer-icon" src="/images/add-user-icon.svg" alt="Иконка. Добавить пользователей">
+                в верхнем меню, либо нажмите «добавить»</p>
               <button type="button" class="messenger__empty-hint-button" data-testid="empty-chat-add">добавить</button>
             </li>
           {{/if}}
