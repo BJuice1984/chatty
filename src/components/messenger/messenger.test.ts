@@ -124,6 +124,17 @@ describe('mapTypedMessages day markers', () => {
         messenger.destroy()
     })
 
+    // фикс мигания (2026-11-07): пока список чатов грузится, панель пуста —
+    // пустая ветка шаблона компилируется в пустой фрагмент (element null),
+    // ни «Выберите чат», ни «создайте чат» не мигают до ответа /chats
+    it('renders neither disclaimer variant while the chats list is loading', () => {
+        const messenger = new Messenger({ chatsLoading: true } as never)
+
+        expect(messenger.element).to.eq(null)
+
+        messenger.destroy()
+    })
+
     // Локальная ISO-метка без зоны: день метки не зависит от таймзоны машины
     const iso = (date: Date) => {
         const pad = (value: number) => String(value).padStart(2, '0')

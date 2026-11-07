@@ -1,3 +1,29 @@
+# 2026-11-07 — Fix(messenger): центрирование пустых состояний панели + гейт загрузки дисклеймера
+
+Хвосты ux-pack-2 по запросу оператора (доп. коммит в ту же ветку/PR).
+Стили: (1) h2-дисклеймер «Выберите чат чтобы отправить сообщение» —
+flex-центрирование в панели (height:100% + align/justify-content:center)
+вместо прижатого к верху текста, шрифт выровнен с подсказкой «создайте
+чат»: 400 14px/21px, --main-text-color (было 500 12px серым). (2)
+chat__disclaimer-empty (пустое состояние «создайте чат») — height:100% +
+justify-content:center: .messenger__empty-hint уже flex-column с
+margin:auto, но панель .chat__container-chats — обычный блок, вертикальный
+auto-margin в нём не работает, блок был прижат к верху. (3) Иконка «создать»
+внутри текста (chat__disclaimer-icon): padding: 0 5px, margin-bottom:
+-7px — 32px-иконка от chat__header-icon вписана в строку 14px-текста
+(размер и hover-подсветка остались — решение оператора). Фикс мигания:
+при входе/роутинге, пока /chats в полёте (chatsLoading либо chats
+undefined), Messenger рендерил h2 «Выберите чат», который через секунду
+подменялся на «создайте чат» (hasNoChats ложен до первого ответа);
+страница теперь прокидывает chatsLoading в Messenger (chat.hbs), шаблон
+на время загрузки рендерит пустую панель (пустой фрагмент — element
+null; вариант «пустая панель» из трёх выбрал оператор). Тесты: пин
+«панель пуста при chatsLoading» в messenger.test (element null) +
+пины предзагрузочного окна на уровне страницы в chat.test (нет
+.chat__disclaimer и disclaimer-empty). Гейты: npm run verify PASS
+(mocha 757→758, 0 failing), guard --all --strict 0.
+
+
 # 2026-11-07 — ALK 2026-11-07-messenger-ux-pack-2: 10 пунктов UX мессенджера
 
 Полный ALK-цикл (S2, план-пакет tasks/2026-11-07-messenger-ux-pack-2, 3

@@ -74,7 +74,8 @@
         {{{ Modal title='Удалить чат' isOpen=this.deleteModalOpen onClose=this.onCloseDelete content=this.deleteContent }}}
     </div>
 {{else}}
-  {{#if this.hasNoChats}}
+  {{#if this.chatsLoading}}
+  {{else if this.hasNoChats}}
     <div class="messenger__empty-hint chat__disclaimer-empty" data-testid="disclaimer-empty">
       <p class="messenger__empty-hint-text">Chatty: создайте чат с помощью кнопки
         <img class="chat__header-icon chat__disclaimer-icon" src="/images/start-chat-icon.svg" alt="Иконка. Создать чат">

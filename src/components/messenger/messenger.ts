@@ -78,6 +78,9 @@ interface MessengerProps {
     // пустое состояние без чатов (2026-11-07): кнопка «создать» в
     // дисклеймере — дубль one-click создания (страница прокидывает контроллер)
     hasNoChats?: boolean
+    // список чатов в полёте (2026-11-07): панель пуста — дисклеймер не
+    // мигает «Выберите чат» до первого ответа /chats
+    chatsLoading?: boolean
     onCreateChat?: () => void
     // eslint-disable-next-line no-unused-vars
     onDeleteChat?: (id: number) => void

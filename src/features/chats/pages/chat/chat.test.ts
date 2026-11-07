@@ -117,6 +117,11 @@ describe('chat page mobile pane switch', () => {
             // предзагрузочное окно: chats ещё не приезжали — лоадер сразу
             expect(page.element?.querySelector('[data-testid="chats-loading"]')).to.be.not.null
 
+            // панель сообщений в это окно пуста: гейт chatsLoading не даёт
+            // дисклеймеру «Выберите чат» мигать до первого ответа /chats
+            expect(page.element?.querySelector('.chat__disclaimer')).to.eq(null)
+            expect(page.element?.querySelector('[data-testid="disclaimer-empty"]')).to.eq(null)
+
             store.set('chats', [])
             store.set('chatsLoading', true)
 

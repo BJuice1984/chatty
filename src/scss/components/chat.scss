@@ -189,10 +189,24 @@
     &__disclaimer {
         @include reset;
         @include text;
-        @include text-format(500, 12px, 12px);
-        
-        color: var(--second-text-color);
+        @include text-format(400, 14px, 21px);
+
+        height: 100%;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        color: var(--main-text-color);
         text-align: center;
+    }
+
+    &__disclaimer-empty {
+        height: 100%;
+        justify-content: center;
+    }
+
+    &__disclaimer-icon {
+        padding: 0 5px;
+        margin-bottom: -7px;
     }
 
     &__container-profile {
