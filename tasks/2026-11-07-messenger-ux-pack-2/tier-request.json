@@ -1,0 +1,27 @@
+{
+    "capabilityHints": [
+        "typescript",
+        "handlebars",
+        "scss",
+        "mocha",
+        "sinon",
+        "jsdom",
+        "websocket"
+    ],
+    "executableOwners": [
+        "worker-frontend-messenger-ux"
+    ],
+    "externalSpecification": false,
+    "requirementsBytes": 9800,
+    "riskFlags": {
+        "architecture": false,
+        "browser": true,
+        "data": false,
+        "external": false,
+        "migration": false,
+        "performance": false,
+        "release": false,
+        "security": false
+    },
+    "taskCount": 1
+}

@@ -1,0 +1,494 @@
+{
+    "schemaVersion": "agent-plan-manifest.v1",
+    "status": "FROZEN",
+    "planRevision": 3,
+    "package": {
+        "id": "2026-11-07-messenger-ux-pack-2",
+        "title": "Messenger UX pack 2: icon rollback, list loader, ws-death tint, disclaimer, forms gating, sent checkmark (10 operator items)",
+        "workspaceRoot": ".",
+        "artifactRoot": "work/2026-11-07-messenger-ux-pack-2",
+        "planArtifactRoot": "tasks/2026-11-07-messenger-ux-pack-2"
+    },
+    "packageIntegrity": {
+        "required": true,
+        "lockSchemaVersion": "agent-plan-lock.v2",
+        "inventorySource": "planFiles",
+        "undeclaredTopLevelFiles": "reject",
+        "allowedUnlistedFiles": [
+            "plan.lock.json",
+            "plan-review.json"
+        ]
+    },
+    "author": {
+        "id": "claude-code",
+        "surface": "agent-first-planning",
+        "runId": "2026-11-07-messenger-ux-pack-2-draft"
+    },
+    "baseRevision": {
+        "ref": "origin/dev",
+        "sha": "6eef4f0a99f696b7b5faa4eab4382627b607473f"
+    },
+    "specification": {
+        "tier": "S2",
+        "intent": "Ten operator-reported messenger UX items of 2026-11-07 after PR #56: (1) restore the header's second-icon VISUAL from branch main (settings-icon.svg) while keeping the mark-all-read feature and its gating; (2) an inline three-dot loader in chat__container-users-list while the initial chats fetch runs and the list is empty; (3) a colored underlay under the change-profile avatar pencil so translucent SVG avatars stop bleeding through; (4) profile Submit changes / Change password disabled and unclickable until the form is dirty AND valid, live per keystroke; (5) the main profile row loses hover reactivity and the chat__container-profile-arrow chevron; (6) per-chat WS-death state surfaced as a red row tint (composed with ai/archived styles) plus an error-style service bubble «⚠ Чат недоступен» on entering/while-open, both reverted on socket recovery, never for intentional closes; (7) chat__disclaimer styled in the empty-hint family with a no-chats variant carrying the start-chat icon image and a «создать» button duplicating createAndSelect; (8) auto-title-hint text switched to the DEFINED light token --second-text-color (the referenced --secondary-text-color does not exist repo-wide) with the chip absolutely positioned above the title input; (9) chat-list-user__ai-badge restructured out of the truncating title into a non-clipping flex sibling; (10) optimistic own-message entry with an in-flight marker, replaced by the server echo, and a single sent checkmark on own messages carrying a server id. Operator pre-authorized execution and delegated blocker resolution to the controller — decisions journaled in decisions.md.",
+        "status": "DRAFT",
+        "requirements": [
+            {
+                "id": "REQ-ICON",
+                "title": "Second header icon visual restored from main, feature intact",
+                "description": "src/components/headerIcons/headerIcons.ts: the mark-all-read entry's src becomes '/images/settings-icon.svg' (the branch-main visual; decision D-1 — the only graphics change in the feature's own history was a stroke-color fix, and the operator explicitly said 'look in main'). The feature stays byte-identical: onClick markAllRead, disabled gating by hasUnread, aria/alt describing the action ('Иконка. Пометить всё прочитанными'). headerIcons.test.ts pins the restored src and the unchanged gating. public/images/mark-all-read-icon.svg stays untouched (rollback hint D-1).",
+                "priority": "P1",
+                "source": "operator item 1 + git history research (f6e839d, 6b690b0) + decision D-1",
+                "acceptanceIds": ["AC-ICON"],
+                "evidenceIds": ["EV-1"],
+                "owner": "WS-ALL"
+            },
+            {
+                "id": "REQ-LOADER",
+                "title": "Chats-list inline loader during the initial fetch",
+                "description": "AppState gains optional chatsLoading?: boolean (field only — authLoading precedent). ChatsFeatureController.fetchChats sets true at entry and false in a finally. withChats maps the flag; chat.hbs renders, while chatsLoading && chats.length===0, an li[data-testid=chats-loading][role=status] with three pulsing dots (chat__list-loading/-dot classes + keyframes in chat.scss, zero comments). Search mode never shows the loader. Tests: flag true renders the li, flag false or non-empty list does not.",
+                "priority": "P1",
+                "source": "operator item 2; research: no loading state today (withChats renders empty ul)",
+                "acceptanceIds": ["AC-LOADER"],
+                "evidenceIds": ["EV-1"],
+                "owner": "WS-ALL"
+            },
+            {
+                "id": "REQ-AVATAR",
+                "title": "Pencil underlay on the change-profile avatar; quiet main profile row",
+                "description": "chat.scss: (a) _type_change-profile gains a colored circle underlay (overlay-token family) between the fading img and the pencil so translucent SVG avatars do not bleed through; (b) the MAIN profile row loses hover affordance — the pencil background and img hover-opacity rules become scoped to the change-profile modifier; (c) profile.hbs drops the chat__container-profile-arrow img and chat.scss removes its block (:282-288). The change-profile variant keeps all affordances (decision D-6). Tests: DOM pin — no chat__container-profile-arrow element; underlay element present in the change-profile markup (class/structure pin); stylelint green.",
+                "priority": "P1",
+                "source": "operator items 3+5; research: no pseudo-element exists today, hover = img opacity over ava pencil background",
+                "acceptanceIds": ["AC-AVATAR"],
+                "evidenceIds": ["EV-1"],
+                "owner": "WS-ALL"
+            },
+            {
+                "id": "REQ-FORMS",
+                "title": "Profile submit buttons disabled until dirty AND valid, live",
+                "description": "ProfilePage constructor creates both submit buttons with disabled: true. A delegated page-level input listener (decision D-7 — imperative attribute toggle, NO re-render per keystroke) recomputes: account form dirty = serialized display_name/phone differ from the seeded user values; valid = every input's validator passes. Password form dirty = any of the three fields non-empty; valid = old non-empty + new passes passwordValidator + repeat equals new. The listener sets button.disabled via this.element querySelector. RESET SEMANTICS (review F-4, documented): the page re-renders on every store emit, registerComponent rebuilds the form and _setProfile reseeds values, and the buttons return from their descriptor (disabled:true) in the same render — self-consistent; a background emit wipes an in-progress edit exactly like the input drafts behave today. Tests: both forms' enable/disable transitions incl. revert-to-seed, invalid-phone, mismatch-repeat, AND the F-4 pin (a store emit mid-edit reseeds inputs and returns the button to disabled — an enabled button never survives over reseeded inputs).",
+                "priority": "P1",
+                "source": "operator item 4; research: no dirty state, blur-only validation, register.ts remap precedent rejected (focus loss) — D-7",
+                "acceptanceIds": ["AC-FORMS"],
+                "evidenceIds": ["EV-2"],
+                "owner": "WS-ALL"
+            },
+            {
+                "id": "REQ-WSDEAD",
+                "title": "Per-chat ws-death red tint + «⚠ Чат недоступен» bubble with recovery revert",
+                "description": "Controller publishes the existing wsDeadChats set (controller.ts:179-183) to a chats-slice store key (array of ids, cast-idiom like chatSearch — NOT a ChatInfo field: fetchChats replaces the chats array): handleWsDied adds+publishes, handleWsReconnected/forgetWsDeath remove+publish. withChats maps each chat with isDead; chatListUser.hbs adds chat-list-user_dead composed after _ai/_archived (dead visually wins — red tint respecting the row style: AI rows keep the badge/star and take the red treatment); chat-list-user.scss defines _dead (red border/background family tokens). Notice: synthetic Message {chat_id, time now, type 'message', user_id: -1, content '⚠ Чат недоступен', isError: true, isChatUnavailable: true} — new client-only flag isChatUnavailable on Message (sibling of isPending/isError). Pushed IDEMPOTENTLY (review F-6) in selectChat when the target chat is dead (only if no isChatUnavailable entry exists yet — repeated opens never stack), and in handleWsDied when the dead chat is currently selected; handleWsReconnected/forgetWsDeath filter isChatUnavailable entries out (dropPending pattern). Intentional closes never tint/notify (existing adapter marks — unchanged). Tests extend the ws-death describe (chats.test.ts:1459): publish/retract the dead key, row modifier end-to-end (chat.test.ts page-level precedent :505), notice on open + while open, double-open idempotency pin, removal on recovery, negative pins for intentional closes.",
+                "priority": "P1",
+                "source": "operator item 6 + ws research (dead set exists, UI surfacing missing; busy-overlay untouched — strictly additive)",
+                "acceptanceIds": ["AC-WSDEAD"],
+                "evidenceIds": ["EV-2"],
+                "owner": "WS-ALL"
+            },
+            {
+                "id": "REQ-DISCLAIMER",
+                "title": "Disclaimer restyle + no-chats variant with a create action",
+                "description": "messenger.hbs else-branch: withChats supplies hasNoChats = !chatsLoading && chats.length === 0. Default variant keeps «Chatty: Выберите чат чтобы отправить сообщение»; the no-chats variant renders «Chatty: создайте чат с помощью кнопки» + inline img.chat__header-icon /images/start-chat-icon.svg + «либо нажмите» + button[data-testid=disclaimer-create] «создать» (empty-hint-button visual family, messenger.scss:29-71). Click delegation in messenger.ts (empty-chat-add precedent :557-564) calls the onCreateChat prop threaded chat.hbs → chat.ts → () => { void ChatsController.createAndSelect() } (header onClick precedent :443-450). Both variants styled in the empty-hint text family (centered, main text color for the primary line). Tests: variant switch by hasNoChats; disclaimer-create click fires onCreateChat (stub).",
+                "priority": "P1",
+                "source": "operator item 7; research: bare h2 today, two in-repo precedents for the action",
+                "acceptanceIds": ["AC-DISCLAIMER"],
+                "evidenceIds": ["EV-1"],
+                "owner": "WS-ALL"
+            },
+            {
+                "id": "REQ-HINT",
+                "title": "auto-title-hint: defined light token + absolute raised chip",
+                "description": "messenger.scss:73-84 — color switches from the UNDEFINED --secondary-text-color (bug-fund: the token does not exist repo-wide) to --second-text-color (decision D-5); the chip becomes position: absolute, raised slightly above the title input (slight overlap acceptable; offsets chosen to clear the header layout). A test/regex pin asserts no '--secondary-text-color' remains in src/scss and the chip rule carries --second-text-color.",
+                "priority": "P2",
+                "source": "operator item 8 + research (undefined token found)",
+                "acceptanceIds": ["AC-HINT"],
+                "evidenceIds": ["EV-1"],
+                "owner": "WS-ALL"
+            },
+            {
+                "id": "REQ-BADGE",
+                "title": "AI badge always visible next to long titles",
+                "description": "chatListUser.hbs: the ai-badge span moves OUT of the truncating h4 __title; the content header becomes a flex row — a title span carrying min-width:0 + the existing ellipsis rules and the badge span flex:0 0 auto (never clipped). chat-list-user.scss updated accordingly (single-line truncation preserved). Tests: existing ai-badge/archived describes stay green; NEW pin — with a very long title the badge is a flex sibling of the title span (not inside it) and the title span keeps text-overflow: ellipsis.",
+                "priority": "P2",
+                "source": "operator item 9; research: badge is inline content inside the overflow:hidden h4",
+                "acceptanceIds": ["AC-BADGE"],
+                "evidenceIds": ["EV-1"],
+                "owner": "WS-ALL"
+            },
+            {
+                "id": "REQ-CHECK",
+                "title": "Optimistic own message + sent checkmark",
+                "description": "Message DTO gains client-only ownTempId?: string (sibling of isPending; types.ts). controller.sendMessage appends, BEFORE the WS send, {chat_id, time now, type 'message', user_id: me, content, replyTo (when replying — review F-8), ownTempId} to messages.${chatId} (one store emit; module-counter ids tmp-N). The ws Message handler (own.ts:220-245) replace condition (review F-3): incoming user_id === viewer id (the adapter already reads store.getState().user?.id at own.ts:82/:162) AND an ownTempId entry exists for that chat — the OLDEST such temp is replaced with the incoming server message in the same store emit; content equality is NEVER the primary matcher (another member's identical text must not consume a pending own temp) and may only tie-break among multiple own temps; the server-id dedup check stays. messageCacheKey (messenger.ts:46-52) maps ownTempId → `owntmp:${id}` (instance reuse in flight). message.hbs: own bubbles render a status marker — an in-flight dot for temp entries and a single «✓» (sent — accepted by the server, not read) for own messages with a numeric id; messenger.scss styles the marker (zero comments). AI pending tail and waitForOwnEcho untouched (temp carries no numeric id; knownIds snapshot unchanged). Tests: controller append/replace-without-duplicate; adapter replace gated by viewer id (incl. the foreign-same-text negative); component ✓ / in-flight markers; mapper owntmp key.",
+                "priority": "P1",
+                "source": "operator item 10 + research (nothing renders pre-echo today, no sent marker exists)",
+                "acceptanceIds": ["AC-CHECK"],
+                "evidenceIds": ["EV-2"],
+                "owner": "WS-ALL"
+            },
+            {
+                "id": "REQ-PROCESS",
+                "title": "Gates, journal and bookkeeping",
+                "description": "npm run verify exit 0 with mocha grown from the 733 baseline and zero deleted tests; node .claude/hooks/scripts/guard-architecture.mjs --all --strict exit 0; ownership audit clean; docs/progress/progress_log.md run record on top; decisions.md carries every controller-resolved blocker (operator delegation); conventional commits without co-author trailers on feature/2026-11-07-messenger-ux-pack-2 from dev @ 6eef4f0.",
+                "priority": "P1",
+                "source": "repository gate contract + operator delegation message",
+                "acceptanceIds": ["AC-PROCESS"],
+                "evidenceIds": ["EV-3"],
+                "owner": "WS-ALL"
+            }
+        ],
+        "goal": "The operator's ten rough edges are closed: the header icon matches what they remember, the chat list never sits empty-silent while loading, the avatar pencil sits on a clean underlay, profile forms cannot submit garbage, the profile row stops pretending to be clickable, dead sockets are visible at a glance (red rows + an honest «Чат недоступен» bubble that clears on recovery), the empty state offers chat creation, the auto-title chip reads correctly and sits above the input, the AI badge survives long titles, and every own message shows an honest in-flight→✓ lifecycle.",
+        "constraints": [
+            "No backend changes; no WS protocol changes; no new dependencies.",
+            "Store additions are exactly: AppState.chatsLoading?: boolean, the chats-slice dead-ids key (cast-idiom, NOT a ChatInfo field), Message.ownTempId?: string and Message.isChatUnavailable?: boolean (client-only siblings of isPending/isError).",
+            "busyOverlay refcount semantics untouched; per-chat tint strictly additive.",
+            "Change-profile avatar keeps its affordances; only the main profile row is de-hovered.",
+            "The sent checkmark means accepted-by-server; no read receipts.",
+            "No comments in new/edited scss; imports with .ts extension; eslint:fix/stylelint:fix before commit; pre-commit verify is strict.",
+            "Existing suites stay green; no test deleted; mocha counts grow from 733.",
+            "Conventional commits without co-author trailers; plan package committed; work/ never committed."
+        ],
+        "nonGoals": [
+            "read receipts / delivery-to-peer states",
+            "per-message retry UI for failed sends in non-AI chats",
+            "multi-line title truncation",
+            "reconnect-overlay captions or connectivity-watcher changes",
+            "restoring the branch-main settings BEHAVIOR (only the visual asset returns)",
+            "server-side client_message_id echo support"
+        ],
+        "scope": "one frontend workstream owning the full write-set (decision D-2): headerIcons + assets reference, chat list page/templates/styles, chats controller/store/ws adapter, messenger and message components/styles, profile page/templates/styles, types, tests across all of them, progress log + decisions journal; evidence under work/2026-11-07-messenger-ux-pack-2/."
+    },
+    "readOnly": [
+        "AGENTS.md",
+        "tasks/README.md",
+        "tasks/2026-11-04-bot-wait-offline/plan.md",
+        "src/core/Block.ts",
+        "src/utils/WSTransport.ts",
+        "src/utils/busyOverlay.ts"
+    ],
+    "forbiddenWrites": [
+        ".env",
+        ".env.development",
+        ".env.own",
+        ".env.compose.local",
+        "docs/project-principles.json",
+        "backend",
+        "src/utils/HTTPTransport.ts",
+        "src/utils/WSTransport.ts",
+        "src/utils/busyOverlay.ts",
+        "src/utils/Router.ts",
+        "src/features/auth",
+        "src/scss/libs",
+        "src/scss/utils",
+        ".github/workflows",
+        "netlify.toml",
+        "server/server.js"
+    ],
+    "leadOwned": [
+        {
+            "path": "tasks/2026-11-07-messenger-ux-pack-2",
+            "owner": "controller",
+            "reason": "Controller owns plan-package artifacts."
+        }
+    ],
+    "workstreams": [
+        {
+            "id": "WS-ALL",
+            "title": "Messenger UX pack 2 — full frontend owner (10 items)",
+            "owner": "worker-frontend-messenger-ux",
+            "reviewer": "independent-release-reviewer",
+            "dependsOn": [],
+            "writes": [
+                "src/components/headerIcons/headerIcons.ts",
+                "src/components/headerIcons/headerIcons.test.ts",
+                "src/components/chatListUser/chatListUser.hbs",
+                "src/components/chatListUser/chatListUser.test.ts",
+                "src/scss/components/chat-list-user.scss",
+                "src/features/chats/pages/chat/chat.ts",
+                "src/features/chats/pages/chat/chat.hbs",
+                "src/features/chats/pages/chat/chat.test.ts",
+                "src/features/chats/controller.ts",
+                "src/features/chats/store.ts",
+                "src/features/chats/chats.test.ts",
+                "src/features/chats/ws/own.ts",
+                "src/features/chats/ws/ws.test.ts",
+                "src/utils/Store.ts",
+                "src/utils/types.ts",
+                "src/components/messenger/messenger.ts",
+                "src/components/messenger/messenger.hbs",
+                "src/components/messenger/messenger.test.ts",
+                "src/components/message/message.hbs",
+                "src/components/message/message.ts",
+                "src/components/message/message.test.ts",
+                "src/scss/components/messenger.scss",
+                "src/scss/components/chat.scss",
+                "src/features/profile/pages/profile/profile.hbs",
+                "src/features/profile/pages/profile/profile.ts",
+                "src/features/profile/pages/profile/profile.test.ts",
+                "docs/progress/progress_log.md"
+            ],
+            "readOnly": [
+                "src/core/Block.ts",
+                "src/core/registerComponent.ts",
+                "src/utils/WSTransport.ts",
+                "src/utils/busyOverlay.ts",
+                "public/images/settings-icon.svg"
+            ],
+            "forbiddenWrites": [],
+            "launchGate": "branch feature/2026-11-07-messenger-ux-pack-2 at 6eef4f0; npm run verify green at base (mocha 733); guard strict 0; operator pre-authorization received (session message, journaled in decisions.md).",
+            "capabilityHints": ["typescript", "handlebars", "scss", "mocha", "sinon", "jsdom"],
+            "requiredTools": ["node", "npm"],
+            "contextRefs": ["plan.md", "acceptance-criteria.md", "developer-overview.md", "specification.md", "decisions.md"],
+            "acceptanceIds": ["AC-ICON", "AC-LOADER", "AC-AVATAR", "AC-HINT", "AC-BADGE", "AC-DISCLAIMER", "AC-WSDEAD", "AC-FORMS", "AC-CHECK", "AC-PROCESS"],
+            "evidenceIds": ["EV-1", "EV-2", "EV-3"],
+            "executionPolicy": {
+                "maxAttempts": 3,
+                "maxWallSeconds": 7200
+            },
+            "artifactPaths": {
+                "result": "work/2026-11-07-messenger-ux-pack-2/evidence/WS-ALL/task-result-{attempt}.json",
+                "review": "work/2026-11-07-messenger-ux-pack-2/evidence/WS-ALL/task-review-{attempt}.json"
+            },
+            "required": true,
+            "plannedItems": [
+                "ICON: src → /images/settings-icon.svg (main visual), feature plumbing intact, test re-pinned",
+                "LOADER: AppState.chatsLoading field + fetchChats true/finally-false + withChats map + li[data-testid=chats-loading] three pulsing dots + chat.scss keyframes",
+                "AVATAR: change-profile underlay circle; main profile row de-hovered (pencil/opacity scoped to the change-profile modifier); arrow img + scss block removed",
+                "FORMS: both submit buttons disabled:true at construct; delegated input listener toggles the disabled attributes imperatively (no re-render); account dirty+valid vs seeded values; password old non-empty + new valid + repeat match; tests for every transition",
+                "WSDEAD: dead-ids store key published from wsDeadChats transitions; withChats isDead; chat-list-user_dead composed over _ai/_archived; «⚠ Чат недоступен» isError+isChatUnavailable bubble on open/while-open; recovery filters it out; intentional-close negative pins",
+                "DISCLAIMER: hasNoChats variant with inline start-chat icon image + «создать» button (empty-hint-button family) → onCreateChat → createAndSelect; both variants in the empty-hint text family",
+                "HINT: --second-text-color (undefined token removed repo-wide from scss) + absolute raised chip",
+                "BADGE: badge as flex sibling of an ellipsized title span; long-title pin",
+                "CHECK: Message.ownTempId client flag; optimistic append before WS send; echo replaces the OLDEST temp in one emit; messageCacheKey owntmp:*; message.hbs in-flight marker + «✓» for own+id; AI tail untouched; controller/adapter/component/mapper tests",
+                "gates: npm run verify green (mocha 733→), guard strict 0, progress_log record"
+            ],
+            "qualityFloor": "npm run verify green with mocha grown from 733; guard strict 0; no file outside the write-set touched; no test deleted."
+        }
+    ],
+    "acceptance": {
+        "criteria": [
+            {
+                "id": "AC-ICON",
+                "title": "Header second-icon visual restored, feature intact",
+                "requirementIds": ["REQ-ICON"],
+                "evidenceIds": ["EV-1"],
+                "independentEvidenceIds": [],
+                "statement": "headerIcons renders '/images/settings-icon.svg' for the second icon with the mark-all-read onClick/disabled gating unchanged; headerIcons.test.ts pins the src and gating; mark-all-read-icon.svg file untouched.",
+                "description": "Frontend unit tests.",
+                "source": "acceptance-criteria.md",
+                "priority": "P1"
+            },
+            {
+                "id": "AC-LOADER",
+                "title": "Chats-list loader proven by mocha",
+                "requirementIds": ["REQ-LOADER"],
+                "evidenceIds": ["EV-1"],
+                "independentEvidenceIds": [],
+                "statement": "chatsLoading && empty list renders li[data-testid=chats-loading] role=status with three dots; loaded (even empty) or search mode does not.",
+                "description": "Frontend unit tests.",
+                "source": "acceptance-criteria.md",
+                "priority": "P1"
+            },
+            {
+                "id": "AC-AVATAR",
+                "title": "Pencil underlay + quiet profile row proven by mocha/stylelint",
+                "requirementIds": ["REQ-AVATAR"],
+                "evidenceIds": ["EV-1"],
+                "independentEvidenceIds": [],
+                "statement": "Change-profile avatar markup carries the underlay layer; the main profile row has no hover affordance and no chat__container-profile-arrow element (DOM pin); the arrow scss block is gone; stylelint green.",
+                "description": "Frontend unit tests + style gate.",
+                "source": "acceptance-criteria.md",
+                "priority": "P1"
+            },
+            {
+                "id": "AC-HINT",
+                "title": "Auto-title chip token and position",
+                "requirementIds": ["REQ-HINT"],
+                "evidenceIds": ["EV-1"],
+                "independentEvidenceIds": [],
+                "statement": "The chip rule uses --second-text-color and position:absolute raised above the title input; no --secondary-text-color remains under src/scss (grep pin); stylelint green.",
+                "description": "Static/style gates.",
+                "source": "acceptance-criteria.md",
+                "priority": "P2"
+            },
+            {
+                "id": "AC-BADGE",
+                "title": "AI badge visibility proven by mocha",
+                "requirementIds": ["REQ-BADGE"],
+                "evidenceIds": ["EV-1"],
+                "independentEvidenceIds": [],
+                "statement": "The badge is a flex sibling of the ellipsized title span (never inside the truncating element) with a long-title pin; existing ai-badge/archived describes stay green.",
+                "description": "Frontend unit tests.",
+                "source": "acceptance-criteria.md",
+                "priority": "P2"
+            },
+            {
+                "id": "AC-DISCLAIMER",
+                "title": "Disclaimer variants + create action proven by mocha",
+                "requirementIds": ["REQ-DISCLAIMER"],
+                "evidenceIds": ["EV-1"],
+                "independentEvidenceIds": [],
+                "statement": "Default and no-chats variants switch on hasNoChats; the create variant carries the inline start-chat icon image and button[data-testid=disclaimer-create] whose click fires onCreateChat (stub); both variants styled in the empty-hint family.",
+                "description": "Frontend unit tests.",
+                "source": "acceptance-criteria.md",
+                "priority": "P1"
+            },
+            {
+                "id": "AC-WSDEAD",
+                "title": "Dead-chat tint + notice + recovery revert proven by mocha",
+                "requirementIds": ["REQ-WSDEAD"],
+                "evidenceIds": ["EV-2"],
+                "independentEvidenceIds": [],
+                "statement": "Unexpected close publishes the dead id and tints the row (composed with _ai/_archived); opening a dead chat or a death while open pushes the «⚠ Чат недоступен» isError bubble; Connected/forget removes id and bubble; intentional closes never tint or notify (negative pins).",
+                "description": "Frontend unit tests.",
+                "source": "acceptance-criteria.md",
+                "priority": "P1"
+            },
+            {
+                "id": "AC-FORMS",
+                "title": "Submit gating proven by mocha",
+                "requirementIds": ["REQ-FORMS"],
+                "evidenceIds": ["EV-2"],
+                "independentEvidenceIds": [],
+                "statement": "Both buttons start disabled; valid change enables; revert-to-seed disables; invalid phone keeps disabled; password form enables only on old non-empty + valid new + matching repeat.",
+                "description": "Frontend unit tests.",
+                "source": "acceptance-criteria.md",
+                "priority": "P1"
+            },
+            {
+                "id": "AC-CHECK",
+                "title": "Sent checkmark lifecycle proven by mocha",
+                "requirementIds": ["REQ-CHECK"],
+                "evidenceIds": ["EV-2"],
+                "independentEvidenceIds": [],
+                "statement": "Send appends the temp entry (in-flight marker rendered); the echo replaces it without duplication (FIFO for identical texts); own messages with a server id render «✓»; owntmp cache key reuses the instance; AI pending tail unaffected.",
+                "description": "Frontend unit tests.",
+                "source": "acceptance-criteria.md",
+                "priority": "P1"
+            },
+            {
+                "id": "AC-PROCESS",
+                "title": "Gates and bookkeeping",
+                "requirementIds": ["REQ-PROCESS"],
+                "evidenceIds": ["EV-3"],
+                "independentEvidenceIds": [],
+                "statement": "npm run verify exit 0 (mocha ≥ 733 grown, zero deletions); guard --all --strict 0; ownership audit clean; progress_log record on top; decisions.md journal complete; conventional commits without co-author trailers on the feature branch from 6eef4f0.",
+                "description": "Gate runs captured as evidence.",
+                "source": "acceptance-criteria.md",
+                "priority": "P1"
+            }
+        ]
+    },
+    "validation": {
+        "commands": [
+            "npm run verify",
+            "node .claude/hooks/scripts/guard-architecture.mjs --all --strict"
+        ]
+    },
+    "orchestration": {
+        "startMode": "reviewed-plan",
+        "remediationMode": "ask",
+        "maxPlanReviewRounds": 3,
+        "maxTaskAttempts": 3,
+        "maxParallelTasks": 1,
+        "maxValidationRunsPerTask": 2,
+        "stateFile": "work/2026-11-07-messenger-ux-pack-2/run.state.json",
+        "eventLog": "work/2026-11-07-messenger-ux-pack-2/events.jsonl",
+        "stepReviewRequired": true,
+        "finalAuditRequired": true
+    },
+    "implementationAudit": {
+        "required": true,
+        "finalRequired": true
+    },
+    "developerOverview": "tasks/2026-11-07-messenger-ux-pack-2/developer-overview.md",
+    "releaseTarget": {
+        "kind": "local-only",
+        "environment": "Vite own mode + compose own-backend",
+        "productionPromotionClaimed": false
+    },
+    "releaseImpact": "Frontend-only: one header icon asset reference swap; a list-loading flag and inline loader; avatar/profile-row scss restructure; live submit-button gating on the profile forms; per-chat ws-death store surfacing with a row tint and an error-style availability bubble that revert on recovery; disclaimer empty-state with a create action; chip token/position fix; badge layout restructure; optimistic own-message entries replaced by server echoes with an in-flight→✓ marker. No backend, WS-protocol, transport-policy or busy-overlay changes.",
+    "finalAuditGates": [
+        "[AC-ICON|EV-1] settings-icon visual + intact feature — mocha, verify green",
+        "[AC-LOADER|EV-1] loading state in the list — mocha, verify green",
+        "[AC-AVATAR|EV-1] underlay + quiet row + no arrow — mocha/stylelint",
+        "[AC-HINT|EV-1] defined token + absolute chip, no undefined variable left — grep/stylelint",
+        "[AC-BADGE|EV-1] badge never clipped — mocha",
+        "[AC-DISCLAIMER|EV-1] both variants + create action — mocha",
+        "[AC-WSDEAD|EV-2] tint + «⚠ Чат недоступен» + recovery revert + intentional-close negatives — mocha",
+        "[AC-FORMS|EV-2] live dirty+valid gating both forms — mocha",
+        "[AC-CHECK|EV-2] optimistic entry → echo replace → ✓ — mocha",
+        "[AC-PROCESS|EV-3] verify green (733→), guard strict 0, ownership clean, progress_log + decisions journal, clean commits"
+    ],
+    "securityGates": [
+        {
+            "id": "SEC-NO-TRANSPORT-CHANGES",
+            "statement": "WSTransport, HTTPTransport, busyOverlay and the auth feature are forbidden writes; the per-chat tint rides the existing gateway events only.",
+            "evidenceIds": ["EV-2"]
+        },
+        {
+            "id": "SEC-OPTIMISTIC-NO-INJECTION",
+            "statement": "The optimistic entry renders through the same escape-html message pipeline as every bubble (titleHtml/content escaping untouched); the echo replace matches by user/chat/oldest-temp and never trusts client content as markup.",
+            "evidenceIds": ["EV-2"]
+        }
+    ],
+    "budgetPolicy": {
+        "units": "tokens-and-resources",
+        "reroute": "pause-and-review",
+        "maxTotalTokens": 90000,
+        "maxParallelWorkstreams": 1,
+        "maxRunWallSeconds": 14400,
+        "criticalPathWallSeconds": 10800,
+        "aggregateWorkstreamWallSeconds": 10800,
+        "retryReserveWallSeconds": 3600
+    },
+    "budgets": {
+        "defaultWorkstreamTokens": 30000,
+        "maxEvidenceBytesPerRun": 4194304
+    },
+    "contextLimits": {
+        "profile": "small-context-profile.v1",
+        "maxPlanContextBytes": 120000,
+        "maxRenderedPacketBytes": 40000,
+        "smallContextPacketBytes": 30000,
+        "maxReferenceFilesPerPacket": 12,
+        "includeOnlyOwnedWrites": true,
+        "excludeRuntimeWorkArtifacts": true
+    },
+    "tierResolution": {
+        "status": "RESOLVED",
+        "tier": "S2",
+        "requestedTier": "S2",
+        "reason": "browser-risk resolved by agent-lifecycle tier resolve",
+        "independentReviewRequired": true,
+        "requestPath": "tasks/2026-11-07-messenger-ux-pack-2/tier-request.json",
+        "resolutionPath": "tasks/2026-11-07-messenger-ux-pack-2/tier-resolution.json",
+        "requestDigest": "b7a26fbe8d5f462c400492549e1485288433a7cd1ee17788ed58515ca6b2bbec"
+    },
+    "planReview": {
+        "required": true,
+        "reviewerClass": "independent-plan-reviewer",
+        "maxRounds": 3,
+        "implementationAuthorized": false,
+        "report": "tasks/2026-11-07-messenger-ux-pack-2/plan-review.json",
+        "reviewedRevision": 3,
+        "verdict": "READY_TO_FREEZE"
+    },
+    "nonGoals": [
+        "read receipts / delivery-to-peer states",
+        "per-message retry UI for failed non-AI sends",
+        "multi-line title truncation",
+        "reconnect-overlay captions or connectivity-watcher changes",
+        "restoring the main-branch settings BEHAVIOR (visual asset only)",
+        "server-side client_message_id echo support"
+    ],
+    "planFiles": [
+        "tasks/2026-11-07-messenger-ux-pack-2/acceptance-criteria.md",
+        "tasks/2026-11-07-messenger-ux-pack-2/decisions.md",
+        "tasks/2026-11-07-messenger-ux-pack-2/developer-overview.md",
+        "tasks/2026-11-07-messenger-ux-pack-2/plan-review-request.md",
+        "tasks/2026-11-07-messenger-ux-pack-2/plan-review.json",
+        "tasks/2026-11-07-messenger-ux-pack-2/plan.manifest.json",
+        "tasks/2026-11-07-messenger-ux-pack-2/plan.md",
+        "tasks/2026-11-07-messenger-ux-pack-2/specification.md",
+        "tasks/2026-11-07-messenger-ux-pack-2/tier-request.json",
+        "tasks/2026-11-07-messenger-ux-pack-2/tier-resolution.json"
+    ]
+}
