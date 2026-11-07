@@ -1026,6 +1026,33 @@ describe('profile forms submit gating', () => {
         }
     })
 
+    it('an empty old password keeps Change password disabled even with valid new + repeat (review F-3)', () => {
+        const page = new ProfilePage({} as never)
+
+        try {
+            typeInto(page, 'new_password', 'NewPassword123')
+            typeInto(page, 'repeat_password', 'NewPassword123')
+
+            expect(passwordSubmit(page)?.disabled).to.be.true
+
+            typeInto(page, 'old_password', 'OldPassword123')
+
+            expect(passwordSubmit(page)?.disabled).to.be.false
+        } finally {
+            page.destroy()
+        }
+    })
+
+    it('the profile row carries no chevron arrow (review F-1 DOM pin)', () => {
+        const page = new ProfilePage({} as never)
+
+        try {
+            expect(page.element?.querySelector('.chat__container-profile .chat__container-profile-arrow')).to.eq(null)
+        } finally {
+            page.destroy()
+        }
+    })
+
     it('a store emit mid-edit reseeds inputs and returns the button to disabled (F-4)', () => {
         const page = new ProfilePage({} as never)
 

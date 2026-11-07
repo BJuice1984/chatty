@@ -536,25 +536,48 @@ describe('own ws adapter social events', () => {
 
         const { socket } = await connectedSocket()
 
+        // Эхо с ДРУГИМ контентом (чистый FIFO без тай-брейка): заменяется
+        // старейший темп именно по порядку, не по совпадению текста
         socket.triggerMessage(JSON.stringify({
             type: 'message',
             content: {
                 id: 101,
                 chat_id: 3,
                 user_id: 7,
-                content: 'привет',
+                content: 'совсем другой текст',
                 file_id: null,
                 client_message_id: null,
                 created_at: '2026-11-07T00:00:00Z',
             },
         }))
 
-        const list = (store.getState().messages?.[3] ?? []) as { id?: number, ownTempId?: string, content?: string }[]
+        let list = (store.getState().messages?.[3] ?? []) as { id?: number, ownTempId?: string, content?: string }[]
 
         expect(list).to.have.length(2)
         expect(list[0]?.id).to.eq(101)
         expect(list[0]?.ownTempId).to.eq(undefined)
         expect(list[1]?.ownTempId).to.eq('tmp-2')
+
+        // второе эхо тем же контентом, что второй темп (тай-брейкер): замена
+        // оставшегося темпа, дублей нет
+        socket.triggerMessage(JSON.stringify({
+            type: 'message',
+            content: {
+                id: 102,
+                chat_id: 3,
+                user_id: 7,
+                content: 'ещё',
+                file_id: null,
+                client_message_id: null,
+                created_at: '2026-11-07T00:00:01Z',
+            },
+        }))
+
+        list = (store.getState().messages?.[3] ?? []) as { id?: number, ownTempId?: string }[]
+
+        expect(list).to.have.length(2)
+        expect(list.map(item => item.id)).to.deep.eq([101, 102])
+        expect(list.every(item => item.ownTempId === undefined)).to.be.true
     })
 
     it('a foreign same-text message never consumes an own temp entry (viewer-id gate)', async () => {

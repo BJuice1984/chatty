@@ -1600,34 +1600,15 @@ describe('chats controller optimistic own message (2026-11-07-messenger-ux-pack-
         expect(list[0]?.id).to.eq(undefined)
     })
 
-    it('replaceOwnTempMessage swaps the OLDEST temp with the server echo', () => {
+    it('appendOwnTempMessage carries replyTo for replies', () => {
         store.set('user', { id: 7, login: 'a@example.com' } as never)
         const controller = new ChatsFeatureController(makePort(), makeMessages())
 
-        controller.appendOwnTempMessage(3, 'первое')
-        controller.appendOwnTempMessage(3, 'второе')
+        controller.appendOwnTempMessage(3, 'ответ', 21)
 
-        controller.replaceOwnTempMessage(3, { chat_id: 3, time: 't', type: 'message', user_id: 7, content: 'первое', id: 101 } as never)
+        const list = (store.getState().messages?.[3] ?? []) as { replyToId?: number }[]
 
-        const list = (store.getState().messages?.[3] ?? []) as { content?: string, id?: number, ownTempId?: string }[]
-
-        expect(list).to.have.length(2)
-        expect(list[0]?.id).to.eq(101)
-        expect(list[0]?.ownTempId).to.eq(undefined)
-        expect(list[1]?.ownTempId).to.be.a('string')
-    })
-
-    it('no temp entries — replace is a no-op', () => {
-        const controller = new ChatsFeatureController(makePort(), makeMessages())
-
-        store.set('messages.3', [{ chat_id: 3, time: 't', type: 'message', user_id: 8, content: 'чужое', id: 55 } as never])
-
-        controller.replaceOwnTempMessage(3, { chat_id: 3, time: 't2', type: 'message', user_id: 7, content: 'эхо', id: 56 } as never)
-
-        const list = (store.getState().messages?.[3] ?? []) as { id?: number }[]
-
-        expect(list).to.have.length(1)
-        expect(list[0]?.id).to.eq(55)
+        expect(list[0]?.replyToId).to.eq(21)
     })
 })
 

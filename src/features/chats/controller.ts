@@ -735,7 +735,7 @@ export class ChatsFeatureController {
         }
 
         // оптимистичная запись до WS-отправки (2026-11-07): пузырь с маркером
-        // «отправляется»; эхо заменит её (replaceOwnTempMessage)
+        // «отправляется»; эхо заменит её в WS-адаптере (own.ts)
         this.appendOwnTempMessage(chatId, message, replyToId)
 
         const result = this.messages.sendMessage(chatId, message, replyToId)
@@ -748,8 +748,9 @@ export class ChatsFeatureController {
     }
 
     // Оптимистичная запись своего сообщения (2026-11-07): пузырь виден
-    // сразу с маркером «отправляется»; серверное эхо заменяет запись
-    // (id появляется, маркер гаснет в «✓»). Темп-ид — счётчик сессии;
+    // сразу с маркером «отправляется»; эхо заменяет её в WS-адаптере
+    // (own.ts: viewer-id гейт + oldest-temp — единственная реализация,
+    // review F-2). Темп-ид — счётчик сессии;
     // numeric id у записи нет — waitForOwnEcho и дедуп не замечают её
     appendOwnTempMessage(chatId: number, message: string, replyToId?: number): void {
         const meId = store.getState().user?.id
@@ -772,23 +773,6 @@ export class ChatsFeatureController {
                 ownTempId: `tmp-${ownTempCounter += 1}`,
             },
         ])
-    }
-
-    // Замена оптимистичной записи серверным эхом: вызывается адаптером WS
-    // (viewer-id гейт — только СВОЁ эхо); заменяемая — старейший темп чата
-    // (FIFO стабилен для быстрых повторов одинакового текста)
-    replaceOwnTempMessage(chatId: number, server: Message): void {
-        const list = (store.getState().messages?.[chatId] ?? [])
-        const index = list.findIndex(item => item.ownTempId != null)
-
-        if (index === -1) {
-            return
-        }
-
-        const next = [...list]
-
-        next[index] = server
-        store.set(`messages.${chatId}`, next)
     }
 
     // Сетевой обрыв POST /bot/runs — не приговор прогону: запрос мог дойти
