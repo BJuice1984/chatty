@@ -1,3 +1,17 @@
+# 2026-11-07 — Fix(chats): невидимый лоадер списка получил стили
+
+Лоадер списка чатов из ux-pack-2 (три точки chat__list-loading при
+chatsLoading на пустом списке) существовал только в DOM: SCSS-классы
+chat__list-loading / chat__list-loading-dot не были написаны — пустые
+span'ы рендерились нулевым размером, поэтому оператор лоадер не видел
+(тест пинил узел по data-testid, гейт был зелёным). Добавлены стили:
+flex-строка точек по центру (gap 8px, padding 18px 0), точки 8×8
+--second-text-color с пульсацией chat-list-loading-pulse (1.2s
+ease-in-out infinite) и каскадной задержкой 0.2s у второй и третьей —
+волна как у pending-хвоста бота. Гейты: npm run verify PASS (mocha 760,
+stylelint чист).
+
+
 # 2026-11-07 — Feat(messenger): активная «+AI» выключает бота
 
 Правка оператора. Активная кнопка «+AI» (ai ai_active) больше не
