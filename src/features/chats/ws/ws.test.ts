@@ -463,6 +463,77 @@ describe('own ws adapter social events', () => {
         expect(socket.readyState).to.eq(FakeWebSocket.OPEN)
     })
 
+    // 2026-11-07: kind-строка состава (chat_member_*) — это обычное
+    // 'message'-событие: строка ложится в ленту (служебная строка UI), а
+    // шлюз дополнительно дергает контроллер на живой рефетч состава; сокет жив
+    it('lays a chat_member kind message into the feed and notifies the members listener', async () => {
+        const onChatMembersChanged = sinon.spy()
+
+        setChatsEventListeners({ onChatMembersChanged })
+        store.set('messages', { 3: [] })
+
+        const { socket } = await connectedSocket()
+
+        socket.triggerMessage(JSON.stringify({
+            type: 'message',
+            content: { ...ownResponse, id: 91, user_id: 42, content: 'вася добавил машу', kind: 'chat_member_added' },
+        }))
+
+        expect(onChatMembersChanged.calledOnceWith(3)).to.be.true
+        const feed = (store.getState().messages as Record<number, Message[]>)[3]
+
+        expect(feed).to.have.length(1)
+        expect(feed[0].kind).to.eq('chat_member_added')
+        expect(socket.readyState).to.eq(FakeWebSocket.OPEN)
+
+        // повторная доставка того же id — дедуп: ни дубля в ленте, ни
+        // второго рефетча состава
+        socket.triggerMessage(JSON.stringify({
+            type: 'message',
+            content: { ...ownResponse, id: 91, user_id: 42, content: 'вася добавил машу', kind: 'chat_member_added' },
+        }))
+
+        expect(onChatMembersChanged.calledOnce).to.be.true
+        expect((store.getState().messages as Record<number, Message[]>)[3]).to.have.length(1)
+    })
+
+    // 2026-11-07: kind-строки НЕ состава (rename/ai-toggle/аватар) слушателя
+    // состава не дергают — рефетч только у member-событий
+    it('keeps non-member kind messages off the members listener', async () => {
+        const onChatMembersChanged = sinon.spy()
+
+        setChatsEventListeners({ onChatMembersChanged })
+        store.set('messages', { 3: [] })
+
+        const { socket } = await connectedSocket()
+
+        socket.triggerMessage(JSON.stringify({
+            type: 'message',
+            content: { ...ownResponse, id: 92, user_id: 42, content: 'вася переименовал чат', kind: 'chat_renamed' },
+        }))
+
+        expect(onChatMembersChanged.called).to.be.false
+        expect((store.getState().messages as Record<number, Message[]>)[3]).to.have.length(1)
+    })
+
+    // 2026-11-07: смена аватара чата — патч-событие уходит контроллеру как
+    // есть, сокет жив (узор chat_renamed)
+    it('forwards chat_avatar_updated to the gateway listener and keeps the socket open', async () => {
+        const onChatAvatarUpdated = sinon.spy()
+
+        setChatsEventListeners({ onChatAvatarUpdated })
+
+        const { socket } = await connectedSocket()
+
+        socket.triggerMessage(JSON.stringify({
+            type: 'chat_avatar_updated',
+            content: { chat_id: 3, avatar: '77/download' },
+        }))
+
+        expect(onChatAvatarUpdated.calledOnceWith({ chat_id: 3, avatar: '77/download' })).to.be.true
+        expect(socket.readyState).to.eq(FakeWebSocket.OPEN)
+    })
+
     // 2026-11-04 offline (review F-3): chat_deleted закрывает сокет адаптера
     // собственным путём — марка намеренного закрытия стоит, индикатор молчит
     it('chat_deleted close raises NO ws-death indicator (intentional)', async () => {

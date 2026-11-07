@@ -8,7 +8,7 @@ import { NEW_CHAT_TITLE } from '../../utils/constants.ts'
 import { ChatsFeatureController, applyReactionDelta, setContactsIntegration, setDocumentSearch, toggleOwnReaction } from './controller.ts'
 import { ownChatsPort } from './api/own.ts'
 import { chatSearchSlice, chatsSlice } from './store.ts'
-import { notifyChatAiToggled, notifyChatDeleted, notifyChatRenamed, notifyReactionEvent, notifyWsConnected, notifyWsUnexpectedClose } from './ws/gateway.ts'
+import { notifyChatAiToggled, notifyChatAvatarUpdated, notifyChatDeleted, notifyChatMembersChanged, notifyChatRenamed, notifyReactionEvent, notifyWsConnected, notifyWsUnexpectedClose } from './ws/gateway.ts'
 import { OwnWsAdapter } from './ws/own.ts'
 import type { ChatsPort } from './ports.ts'
 import type { ChatInfo, ChatSearchMatch, Message, ReactionSummary } from '../../utils/types.ts'
@@ -391,6 +391,47 @@ describe('chats controller create-and-select and enable-ai', () => {
         await new Promise(resolve => setTimeout(resolve, 0))
 
         expect(getChatUsers.callCount).to.eq(1)
+    })
+
+    // 2026-11-07: kind-строки состава (chat_member_*) — рефетч состава
+    // ОТКРЫТОГО чата: новый участник появляется в шапке, ушедший гаснет по
+    // left_at, кикнутый исчезает; чужой чат шапку не трогает
+    it('chat_member kind event refetches members of the OPEN chat only', async () => {
+        chatsSlice.setChats([chatRow({ id: 7 })])
+        store.set('selectedChat', 7)
+        const getChatUsers = sinon.stub().resolves([])
+        new ChatsFeatureController(makePort({ getChatUsers }), makeMessages())
+
+        notifyChatMembersChanged(7)
+        await new Promise(resolve => setTimeout(resolve, 0))
+
+        expect(getChatUsers.calledOnceWith(7)).to.be.true
+
+        // событие другого чата не затирает состав открытого
+        notifyChatMembersChanged(9)
+        await new Promise(resolve => setTimeout(resolve, 0))
+
+        expect(getChatUsers.callCount).to.eq(1)
+    })
+
+    // 2026-11-07: смена аватара чата другим клиентом — точечный avatar-патч
+    // слайса (плитка списка + шапка), значение-равное — идемпотентный пропуск
+    it('chat_avatar_updated event patches the chat avatar in the slice', async () => {
+        chatsSlice.setChats([chatRow({ id: 7 })])
+        new ChatsFeatureController(makePort(), makeMessages())
+
+        notifyChatAvatarUpdated({ chat_id: 7, avatar: '77/download' })
+
+        expect((chatsSlice.getChats().find(chat => chat.id === 7) as ChatInfo).avatar).to.eq('77/download')
+
+        notifyChatAvatarUpdated({ chat_id: 7, avatar: '77/download' })
+
+        expect((chatsSlice.getChats().find(chat => chat.id === 7) as ChatInfo).avatar).to.eq('77/download')
+
+        // чат вне слайса — тихий пропуск
+        notifyChatAvatarUpdated({ chat_id: 99, avatar: 'x/download' })
+
+        expect(chatsSlice.getChats()).to.have.length(1)
     })
 
     // 2026-11-06-quick: вход в чат с непрочитанными при живом сокете —

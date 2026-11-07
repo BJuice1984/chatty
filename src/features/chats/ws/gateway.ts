@@ -37,6 +37,18 @@ type ChatRenamedListener = (event: { chat_id: number, title: string }) => void
 // eslint-disable-next-line no-unused-vars
 type ChatAiToggledListener = (event: { chat_id: number, is_ai: boolean }) => void
 
+// Состав чата изменился (2026-11-07): kind-строки chat_member_* приезжают
+// обычным 'message'-событием — шлюз дергает слушателя, контроллер рефетчит
+// состав открытого чата (новый участник появляется, ушедший гаснет по
+// left_at, кикнутый исчезает)
+// eslint-disable-next-line no-unused-vars
+type ChatMembersChangedListener = (chatId: number) => void
+
+// Аватар чата обновлён (2026-11-07): {chat_id, avatar} — патч chats-слайса
+// у остальных клиентов (плитка списка и шапка без рефетча)
+// eslint-disable-next-line no-unused-vars
+type ChatAvatarUpdatedListener = (event: { chat_id: number, avatar: string }) => void
+
 // eslint-disable-next-line no-unused-vars
 type WsUnexpectedCloseListener = (chatId: number) => void
 // eslint-disable-next-line no-unused-vars
@@ -52,6 +64,10 @@ export interface ChatsEventListeners {
 
     onChatAiToggled?: ChatAiToggledListener
 
+    onChatMembersChanged?: ChatMembersChangedListener
+
+    onChatAvatarUpdated?: ChatAvatarUpdatedListener
+
     // Индикатор смерти WS (2026-11-04 offline, review F-3): Close транспорта
     // без payload неотличим от исчерпания реконнектов — адаптер дифференцирует
     // намеренность собственными марками и нотифицирует ТОЛЬКО немаркированные
@@ -65,6 +81,8 @@ let reactionListener: ReactionListener | null = null
 let chatDeletedListener: ChatDeletedListener | null = null
 let chatRenamedListener: ChatRenamedListener | null = null
 let chatAiToggledListener: ChatAiToggledListener | null = null
+let chatMembersChangedListener: ChatMembersChangedListener | null = null
+let chatAvatarUpdatedListener: ChatAvatarUpdatedListener | null = null
 let wsUnexpectedCloseListener: WsUnexpectedCloseListener | null = null
 let wsConnectedListener: WsConnectedListener | null = null
 
@@ -85,6 +103,14 @@ export function setChatsEventListeners(listeners: ChatsEventListeners): void {
 
     if (listeners.onChatAiToggled !== undefined) {
         chatAiToggledListener = listeners.onChatAiToggled
+    }
+
+    if (listeners.onChatMembersChanged !== undefined) {
+        chatMembersChangedListener = listeners.onChatMembersChanged
+    }
+
+    if (listeners.onChatAvatarUpdated !== undefined) {
+        chatAvatarUpdatedListener = listeners.onChatAvatarUpdated
     }
 
     if (listeners.onWsUnexpectedClose !== undefined) {
@@ -110,6 +136,14 @@ export function notifyChatRenamed(event: { chat_id: number, title: string }): vo
 
 export function notifyChatAiToggled(event: { chat_id: number, is_ai: boolean }): void {
     chatAiToggledListener?.(event)
+}
+
+export function notifyChatMembersChanged(chatId: number): void {
+    chatMembersChangedListener?.(chatId)
+}
+
+export function notifyChatAvatarUpdated(event: { chat_id: number, avatar: string }): void {
+    chatAvatarUpdatedListener?.(event)
 }
 
 export function notifyWsUnexpectedClose(chatId: number): void {

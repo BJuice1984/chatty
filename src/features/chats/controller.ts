@@ -229,6 +229,8 @@ export class ChatsFeatureController {
             onChatDeleted: chatId => this.handleChatDeleted(chatId),
             onChatRenamed: event => this.handleChatRenamedEvent(event),
             onChatAiToggled: event => this.handleChatAiToggledEvent(event),
+            onChatMembersChanged: chatId => this.handleChatMembersChanged(chatId),
+            onChatAvatarUpdated: event => this.handleChatAvatarUpdatedEvent(event),
             onWsUnexpectedClose: chatId => this.handleWsDied(chatId),
             onWsConnected: chatId => this.handleWsReconnected(chatId),
         })
@@ -646,6 +648,38 @@ export class ChatsFeatureController {
         if (event.is_ai) {
             void this.getChatUsers(event.chat_id)
         }
+    }
+
+    // kind-строки состава (chat_member_*, 2026-11-07): лента уже получила
+    // служебную строку — здесь живой UI шапки. Рефетч только ОТКРЫТОГО чата:
+    // getChatUsers пишет в общий chatUsers, событие невыбранного чата не
+    // должно затирать состав открытого
+    private handleChatMembersChanged(chatId: number): void {
+        if (store.getState().selectedChat !== chatId) {
+            return
+        }
+
+        void this.getChatUsers(chatId)
+    }
+
+    // WS chat_avatar_updated (2026-11-07): смена аватара чата одним
+    // участником обновляет плитку списка и шапку у остальных — точечный
+    // avatar-патч chats-слайса (узор handleChatRenamedEvent; свой аплоад
+    // уже применил патч из REST-ответа — значение-равный идемпотентный
+    // пропуск)
+    private handleChatAvatarUpdatedEvent(event: { chat_id: number, avatar: string }): void {
+        const chats = (store.getState().chats ?? []) as ChatInfo[]
+        const current = chats.find(chat => chat.id === event.chat_id)
+
+        if (current == null || current.avatar === event.avatar) {
+            return
+        }
+
+        store.set('chats', chats.map(chat =>
+            chat.id === event.chat_id
+                ? { ...chat, avatar: event.avatar }
+                : chat
+        ))
     }
 
     // Сокет чата исчерпал реконнекты (обрыв без восстановления): первый

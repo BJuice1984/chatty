@@ -23,29 +23,11 @@ from app.schemas.reaction import ReactionSet, ReactionSummaryResponse
 from app.services.chats import ChatService
 from app.services.messages import MessageService
 from app.ws.autotitle import schedule_autotitle
+from app.ws.feed import broadcast_feed_message as _broadcast_feed_message
 from app.ws.hub import hub
 
 
 router = APIRouter(prefix='/chats', tags=['chats'])
-
-
-async def _broadcast_feed_message(
-    db: Session,
-    chat_id: int,
-    message,
-    viewer_id: int,
-    active_user_ids: set[int],
-) -> None:
-    """Служебная строка ленты вживую (2026-11-07): kind-сообщения rename/
-    ai-toggle/member events фан-аутятся событием 'message' АКТИВНЫМ
-    участникам — единая точка для всех путей, исторические клиенты читают
-    их из GET /messages (kind рендерится служебной строкой)."""
-    presented = MessageService(db).present_one(message, viewer_id)
-    await hub.broadcast(
-        chat_id,
-        {'type': 'message', 'content': presented.model_dump(mode='json')},
-        active_user_ids=active_user_ids,
-    )
 
 
 @router.post('', response_model=ChatResponse, status_code=status.HTTP_201_CREATED)

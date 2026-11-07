@@ -192,6 +192,22 @@ class ChatService:
             kind=kind,
         ))
 
+    def chat_avatar_event(self, chat_id: int, author_id: int) -> Message:
+        """Служебная строка ленты о смене аватара чата (2026-11-07):
+        «X обновил аватар чата», kind='chat_avatar_updated' — узор
+        member-событий (своя транзакция: аватар уже закоммичен
+        set_chat_avatar, строка — здесь); вызывающий эндпоинт
+        (files.upload_avatar) сам фан-аутит строку событием 'message' и
+        патч-событие 'chat_avatar_updated' АКТИВНЫМ участникам."""
+        event = self._member_event_message(
+            chat_id,
+            author_id,
+            f'{self.user_display_name(author_id)} обновил аватар чата',
+            'chat_avatar_updated',
+        )
+        self.session.commit()
+        return event
+
     def ensure_bot_membership(self, chat: Chat) -> str | None:
         """Посадить бота в участники (2026-11-06-quick): бот-юзер ищется по
         CHATTY_BOT_USER_EMAIL; пустой display_name дополняется «AI» (имя в
