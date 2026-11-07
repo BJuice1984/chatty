@@ -40,6 +40,12 @@
       }
     }
 
+    &_dead {
+      border-left: 3px solid var(--span-error-color);
+      background-color: var(--danger-hover-background);
+      background-image: none;
+    }
+
     &__container {
       @include size(56px, 56px);
       @include flex-center-center;
@@ -102,18 +108,28 @@
       box-shadow: $boxShadowLogin;
     }
 
+    &__title-row {
+      display: flex;
+      align-items: center;
+      justify-content: flex-start;
+      gap: 4px;
+      width: 100%;
+      min-width: 0;
+    }
+
     &__title {
       @include reset;
       @include text;
       @include text-format(400, 14px, 16px);
 
       color: var(--main-text-color);
-      width: 100%;
+      flex: 1 1 auto;
+      min-width: 0;
       overflow: hidden;
       text-overflow: ellipsis;
       white-space: nowrap;
       text-align: left;
-      padding: 5px;
+      padding: 5px 0;
     }
 
     /* Сниппет под заголовком (2026-10-26-chat-search): последняя реплика

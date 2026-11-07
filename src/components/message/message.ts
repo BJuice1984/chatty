@@ -64,6 +64,9 @@ interface MessageProps {
     // плейсхолдер прогона бота: пульсирующий пузырь «Ассистент печатает…»,
     // пока POST /bot/runs в полёте; без id — действия не рендерятся
     isPending?: boolean
+    // оптимистичная запись своего сообщения (2026-11-07): WS-эхо ещё не
+    // приехало — маркер «отправляется»; серверный id гасит его в «✓»
+    isSending?: boolean
     // eslint-disable-next-line no-unused-vars
     onSetReaction?: (chatId: number, messageId: number, emoji: string) => void
     // eslint-disable-next-line no-unused-vars

@@ -32,6 +32,7 @@ import type { Button, ChangeUserData, ChatInfo, Input } from '../../../../utils/
 import { getPreferences, notificationPermission, setPreference } from '../../../../utils/preferences.ts'
 import { type Theme, getTheme, setTheme } from '../../../../utils/theme.ts'
 import { getProfileController } from '../../controller.ts'
+import { profileSlice } from '../../store.ts'
 import type { FilesUsage } from '../../ports.ts'
 
 export type SettingsSection = 'account' | 'chats' | 'appearance' | 'notification' | 'privacy' | 'data'
@@ -178,6 +179,10 @@ class ProfilePageBase extends Block<ProfilePageProps> {
                     label: 'Submit changes',
                     classType: 'disabled',
                     type: 'submit',
+                    // 2026-11-07-messenger-ux-pack-2: кнопка спит, пока в
+                    // форме нет изменений или есть ошибка валидации —
+                    // оживляет делегированный input-листенер страницы
+                    disabled: true,
                     handleSubmitClick: (value: ChangeUserData) => {
                         void getProfileController().changeUserInfo(value)
                     },
@@ -216,6 +221,8 @@ class ProfilePageBase extends Block<ProfilePageProps> {
                     label: 'Change password',
                     classType: 'secondary',
                     type: 'submit',
+                    // спит до валидного и непустого набора полей
+                    disabled: true,
                     handleSubmitClick: (value: Record<string, string>) => {
                         this.handleSubmitPassword(value)
                     },
@@ -252,6 +259,13 @@ class ProfilePageBase extends Block<ProfilePageProps> {
             // узлы секций (тумблеры, «Вернуться», кнопки модалки) не дотягиваются
             // пропсами — слушатели переживают перерисовки
             events: {
+                // 2026-11-07-messenger-ux-pack-2: живой гейт submit-кнопок —
+                // пересчёт на каждое нажатие, без перерисовки (фокус и
+                // черновик формы не страдают; store-эмит пересеивает форму
+                // и кнопки согласованно — reset-семантика F-4)
+                input: () => {
+                    this.updateSubmitButtons()
+                },
                 click: (event: Event) => {
                     const target = event.target as HTMLElement | null
 
@@ -379,6 +393,48 @@ class ProfilePageBase extends Block<ProfilePageProps> {
             old_password: value.old_password ?? '',
             new_password: value.new_password ?? '',
         })
+    }
+
+    // Живой гейт submit-кнопок форм профиля (2026-11-07-messenger-ux-pack-2):
+    // обе спят, пока форма чиста или невалидна. Пересчёт читает DOM напрямую
+    // (значения форм живут только там) и переключает атрибуты императивно —
+    // БЕЗ setProps/перерисовки, чтобы ввод не терял фокус. Store-эмит
+    // пересеивает форму целиком и кнопки возвращаются из дескрипторов
+    // (disabled) в том же рендере — согласованно (review F-4)
+    private updateSubmitButtons(): void {
+        const root = this.element
+
+        if (root == null) {
+            return
+        }
+
+        const user = profileSlice.getUser()
+
+        // аккаунт-форма: изменения относительно сид-значений профиля
+        const displayName = root.querySelector<HTMLInputElement>('input[name="display_name"]')?.value ?? ''
+        const phone = root.querySelector<HTMLInputElement>('input[name="phone"]')?.value ?? ''
+        const accountDirty = displayName !== (user?.display_name ?? '') || phone !== (user?.phone ?? '')
+        const accountValid = emptyValidator(displayName) && optionalPhoneValidator(phone)
+
+        const accountSubmit = root.querySelector<HTMLButtonElement>('[data-testid="account-form"] button[type="submit"]')
+
+        if (accountSubmit != null) {
+            accountSubmit.disabled = !(accountDirty && accountValid)
+        }
+
+        // форма пароля: непустой старый + валидный новый + совпадающий повтор
+        const oldPassword = root.querySelector<HTMLInputElement>('input[name="old_password"]')?.value ?? ''
+        const newPassword = root.querySelector<HTMLInputElement>('input[name="new_password"]')?.value ?? ''
+        const repeatPassword = root.querySelector<HTMLInputElement>('input[name="repeat_password"]')?.value ?? ''
+        const passwordReady = oldPassword !== ''
+            && passwordValidator(newPassword)
+            && newPassword === repeatPassword
+
+        const passwordSubmit = root.querySelector<HTMLButtonElement>('[data-testid="password-form"] button[type="submit"]')
+
+        if (passwordSubmit != null) {
+            passwordSubmit.disabled = !passwordReady
+        }
     }
 
     // Хранилище грузится при ВХОДЕ в секцию (не при каждом рендере) — вторичная

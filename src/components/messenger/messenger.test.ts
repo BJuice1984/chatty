@@ -90,6 +90,40 @@ describe('mapTypedMessages day markers', () => {
         store.set('messages', {})
     })
 
+    // 2026-11-07-messenger-ux-pack-2: пустое состояние без чатов — вариант
+    // «создайте чат» с кнопкой-дублем one-click создания; обычный дисклеймер
+    // остаётся при наличии чатов
+    it('renders the no-chats create variant and fires onCreateChat from «создать»', () => {
+        const onCreateChat = sinon.spy()
+        const messenger = new Messenger({ hasNoChats: true, onCreateChat } as never)
+
+        // дисклеймер — сам корневой элемент Messenger (else-ветка шаблона);
+        // кнопка «создать» — потомок с testid
+        expect(messenger.element?.classList.contains('chat__disclaimer-empty')).to.be.true
+        expect(messenger.element?.classList.contains('messenger__empty-hint')).to.be.true
+        expect(messenger.element?.querySelector('[data-testid="disclaimer-create"]')).to.be.not.null
+
+        const createButton = messenger.element?.querySelector<HTMLButtonElement>('[data-testid="disclaimer-create"]')
+
+        expect(createButton?.textContent?.trim()).to.eq('создать')
+
+        createButton?.click()
+
+        expect(onCreateChat.calledOnce).to.be.true
+
+        messenger.destroy()
+    })
+
+    it('renders the plain disclaimer when chats exist', () => {
+        const messenger = new Messenger({} as never)
+
+        expect(messenger.element?.classList.contains('chat__disclaimer')).to.be.true
+        expect(messenger.element?.textContent).to.contain('Выберите чат')
+        expect(messenger.element?.querySelector('[data-testid="disclaimer-create"]')).to.eq(null)
+
+        messenger.destroy()
+    })
+
     // Локальная ISO-метка без зоны: день метки не зависит от таймзоны машины
     const iso = (date: Date) => {
         const pad = (value: number) => String(value).padStart(2, '0')
@@ -173,6 +207,21 @@ describe('mapTypedMessages day markers', () => {
         expect(typed[1]?.cacheKey).to.eq(PENDING_TAIL_CACHE_KEY)
         expect(typed[1]?.cacheKey).to.eq('pending:tail')
         expect(typed[2]?.cacheKey).to.eq(undefined)
+    })
+
+    // 2026-11-07-messenger-ux-pack-2: оптимистичная запись своего сообщения
+    // получает ключ owntmp:<n> (инстанс живёт от сабмита до эха) и флаг
+    // isSending; серверная запись темп-ключ не несёт и isSending не имеет
+    it('keys optimistic own entries owntmp:<n> and flags them isSending', () => {
+        const typed = mapTypedMessages([
+            { chat_id: 1, time: 't1', type: 'message', user_id: 7, content: 'летит', ownTempId: 'tmp-9' },
+            { chat_id: 1, time: 't2', type: 'message', user_id: 7, content: 'дошло', id: 77 },
+        ], 7)
+
+        expect(typed[0]?.cacheKey).to.eq('owntmp:tmp-9')
+        expect(typed[0]?.isSending).to.eq(true)
+        expect(typed[1]?.cacheKey).to.eq('id:77')
+        expect(typed[1]?.isSending).to.eq(false)
     })
 })
 

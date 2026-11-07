@@ -100,6 +100,46 @@ describe('chat page mobile pane switch', () => {
         }
     })
 
+    // 2026-11-07-messenger-ux-pack-2: пустой список на первичной загрузке
+    // показывает лоадер-точки вместо мёртвой пустоты; после загрузки (даже
+    // пустой) и при живом списке лоадера нет. Стор-поля приезжают в страницу
+    // через setProps (withStore), поэтому поток теста — живые store.set
+    it('shows the chats-list loader only while the initial fetch runs on an empty list', () => {
+        const fetchChats = sinon.stub(ChatsController, 'fetchChats').resolves()
+
+        try {
+            store.set('chats', [])
+            store.set('chatsLoading', false)
+
+            const page = new ChatPage({} as never)
+
+            expect(page.element?.querySelector('[data-testid="chats-loading"]')).to.eq(null)
+
+            store.set('chatsLoading', true)
+
+            const loader = page.element?.querySelector('[data-testid="chats-loading"]')
+
+            expect(loader).to.be.not.null
+            expect(loader?.getAttribute('role')).to.eq('status')
+
+            store.set('chatsLoading', false)
+
+            expect(page.element?.querySelector('[data-testid="chats-loading"]')).to.eq(null)
+
+            // refresh с непустым списком: лоадер не мигает поверх карточек
+            store.set('chats', [{ id: 1, title: 'Чат', avatar: '', unread_count: 0 } as never])
+            store.set('chatsLoading', true)
+
+            expect(page.element?.querySelector('[data-testid="chats-loading"]')).to.eq(null)
+
+            page.destroy()
+        } finally {
+            fetchChats.restore()
+            store.set('chatsLoading', undefined)
+            store.set('chats', [])
+        }
+    })
+
     // 2026-11-01-contacts: вход на страницу с живым выбором (навигация из
     // /contacts после openDm) открывает панель чата, а не список
     it('starts with the pane open when a chat is already selected', () => {

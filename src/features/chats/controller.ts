@@ -40,6 +40,9 @@ const noopContactsIntegration: ContactsIntegration = {
 // чтобы плейсхолдер «печатает…» вставал сразу за вопросом
 const BOT_ECHO_WAIT_MS = 5_000
 const BOT_ECHO_WAIT_TICK_MS = 25
+// счётчик клиентских идентификаторов оптимистичных записей (2026-11-07):
+// уникальность в рамках сессии достаточна — темп живёт до серверного эха
+let ownTempCounter = 0
 
 // Паузы между повторами POST /bot/runs после сетевого обрыва (2026-11-02:
 // браузерный XHR длинного прогона рвался «Ошибка сети», хотя сервер ран
@@ -281,27 +284,36 @@ export class ChatsFeatureController {
     async fetchChats(): Promise<void> {
         let chats: ChatInfo[] = []
 
+        // лоадер списка (2026-11-07-messenger-ux-pack-2): честное состояние
+        // полёта на весь цикл запрос+коннекты; гасим в finally — и на успех,
+        // и на любой сбой
+        chatsSlice.setChatsLoading(true)
+
         try {
-            // meId для правила «единственный собеседник» в аватарах списка:
-            // адаптер стор не читает, идентичность передаём параметром
-            chats = await this.port.fetchChats(store.getState().user?.id)
-        } catch (e: unknown) {
-            console.error('Ошибка при получении списка чата:', e)
-        }
-
-        for (const chat of chats) {
             try {
-                const res = await this.port.getToken(chat.id)
-
-                await this.messages.connect(chat.id, res.token)
+                // meId для правила «единственный собеседник» в аватарах списка:
+                // адаптер стор не читает, идентичность передаём параметром
+                chats = await this.port.fetchChats(store.getState().user?.id)
             } catch (e: unknown) {
-                console.error(`Ошибка при обработке чата с ID ${chat.id}:`, e)
+                console.error('Ошибка при получении списка чата:', e)
             }
-        }
 
-        // аватары диалогов приходят в самом ответе списка (members), отдельных
-        // запросов участников на каждый чат больше нет
-        chatsSlice.setChats(chats)
+            for (const chat of chats) {
+                try {
+                    const res = await this.port.getToken(chat.id)
+
+                    await this.messages.connect(chat.id, res.token)
+                } catch (e: unknown) {
+                    console.error(`Ошибка при обработке чата с ID ${chat.id}:`, e)
+                }
+            }
+
+            // аватары диалогов приходят в самом ответе списка (members), отдельных
+            // запросов участников на каждый чат больше нет
+            chatsSlice.setChats(chats)
+        } finally {
+            chatsSlice.setChatsLoading(false)
+        }
     }
 
     async addUsersToChat(users: number[], chatId: number): Promise<void> {
@@ -574,21 +586,32 @@ export class ChatsFeatureController {
     }
 
     // Сокет чата исчерпал реконнекты (обрыв без восстановления): первый
-    // эпизод показывает оверлей переподключения
+    // эпизод показывает оверлей переподключения; смерть публикуется в стор
+    // (красная строка в списке) и, если чат открыт, лента получает бабл
+    // «Чат недоступен» (2026-11-07-messenger-ux-pack-2)
     private handleWsDied(chatId: number): void {
         if (this.wsDeadChats.size === 0) {
             showBusyOverlay('reconnect')
         }
 
         this.wsDeadChats.add(chatId)
+        this.publishWsDead()
+
+        if (store.getState().selectedChat === chatId) {
+            this.pushChatUnavailable(chatId)
+        }
     }
 
     // Сокет чата (пере)подключился: гасим оверлей, когда восстановились все
-    // умершие — Connected первого коннекта сюда тоже попадает и молчит
+    // умершие — Connected первого коннекта сюда тоже попадает и молчит;
+    // восстановление снимает красную строку и вычищает бабл недоступности
     private handleWsReconnected(chatId: number): void {
         if (!this.wsDeadChats.delete(chatId)) {
             return
         }
+
+        this.publishWsDead()
+        this.dropChatUnavailable(chatId)
 
         if (this.wsDeadChats.size === 0) {
             hideBusyOverlay()
@@ -603,8 +626,53 @@ export class ChatsFeatureController {
             return
         }
 
+        this.publishWsDead()
+        this.dropChatUnavailable(chatId)
+
         if (this.wsDeadChats.size === 0) {
             hideBusyOverlay()
+        }
+    }
+
+    // Публикация множества мёртвых чатов в стор (ключ вне AppState —
+    // каст-идиома chatSearch): список строк читает срез страницы для
+    // модификатора _dead. Не ChatInfo-поле: fetchChats заменяет массив
+    // чатов целиком и стёр бы флаг
+    private publishWsDead(): void {
+        store.set('wsDeadChats', [...this.wsDeadChats])
+    }
+
+    // Бабл «Чат недоступен» в ленте чата (2026-11-07): точный образец
+    // бот-ошибки (isError + user_id -1); идемпотентен — повторные входы в
+    // мёртвый чат не стекуют плашки
+    private pushChatUnavailable(chatId: number): void {
+        const list = (store.getState().messages?.[chatId] ?? [])
+
+        if (list.some(item => item.isChatUnavailable === true)) {
+            return
+        }
+
+        store.set(`messages.${chatId}`, [
+            ...list,
+            {
+                chat_id: chatId,
+                time: new Date().toISOString(),
+                type: 'message',
+                user_id: -1,
+                content: '⚠ Чат недоступен',
+                isError: true,
+                isChatUnavailable: true,
+            },
+        ])
+    }
+
+    // Восстановление/забвение чата убирает плашку недоступности из ленты
+    private dropChatUnavailable(chatId: number): void {
+        const list = (store.getState().messages?.[chatId] ?? [])
+        const filtered = list.filter(item => item.isChatUnavailable !== true)
+
+        if (filtered.length !== list.length) {
+            store.set(`messages.${chatId}`, filtered)
         }
     }
 
@@ -666,6 +734,10 @@ export class ChatsFeatureController {
             }
         }
 
+        // оптимистичная запись до WS-отправки (2026-11-07): пузырь с маркером
+        // «отправляется»; эхо заменит её (replaceOwnTempMessage)
+        this.appendOwnTempMessage(chatId, message, replyToId)
+
         const result = this.messages.sendMessage(chatId, message, replyToId)
 
         if (chat?.is_ai === true) {
@@ -673,6 +745,50 @@ export class ChatsFeatureController {
         }
 
         return result
+    }
+
+    // Оптимистичная запись своего сообщения (2026-11-07): пузырь виден
+    // сразу с маркером «отправляется»; серверное эхо заменяет запись
+    // (id появляется, маркер гаснет в «✓»). Темп-ид — счётчик сессии;
+    // numeric id у записи нет — waitForOwnEcho и дедуп не замечают её
+    appendOwnTempMessage(chatId: number, message: string, replyToId?: number): void {
+        const meId = store.getState().user?.id
+
+        if (meId == null) {
+            return
+        }
+
+        const list = (store.getState().messages?.[chatId] ?? [])
+
+        store.set(`messages.${chatId}`, [
+            ...list,
+            {
+                chat_id: chatId,
+                time: new Date().toISOString(),
+                type: 'message',
+                user_id: meId,
+                content: message,
+                replyToId,
+                ownTempId: `tmp-${ownTempCounter += 1}`,
+            },
+        ])
+    }
+
+    // Замена оптимистичной записи серверным эхом: вызывается адаптером WS
+    // (viewer-id гейт — только СВОЁ эхо); заменяемая — старейший темп чата
+    // (FIFO стабилен для быстрых повторов одинакового текста)
+    replaceOwnTempMessage(chatId: number, server: Message): void {
+        const list = (store.getState().messages?.[chatId] ?? [])
+        const index = list.findIndex(item => item.ownTempId != null)
+
+        if (index === -1) {
+            return
+        }
+
+        const next = [...list]
+
+        next[index] = server
+        store.set(`messages.${chatId}`, next)
     }
 
     // Сетевой обрыв POST /bot/runs — не приговор прогону: запрос мог дойти
@@ -949,6 +1065,12 @@ export class ChatsFeatureController {
 
     selectChat(id: number): void {
         chatsSlice.selectChat(id)
+
+        // мёртвый сокет: лента сразу честно говорит, что чат недоступен
+        // (идемпотентно — повторные входы не стекуют плашки)
+        if (this.wsDeadChats.has(id)) {
+            this.pushChatUnavailable(id)
+        }
 
         // смена чата сбрасывает состав участников прежде ответа
         // getChatUsers (каждый выбор его уже зовёт): устаревший список от

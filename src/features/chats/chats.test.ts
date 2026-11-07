@@ -1,7 +1,7 @@
 import { expect } from 'chai'
 import sinon from 'sinon'
 import { JSDOM } from 'jsdom'
-import store from '../../utils/Store.ts'
+import store, { AppState } from '../../utils/Store.ts'
 import { TransportError } from '../../utils/HTTPTransport.ts'
 import { resetBusyOverlayForTests } from '../../utils/busyOverlay.ts'
 import { NEW_CHAT_TITLE } from '../../utils/constants.ts'
@@ -1466,6 +1466,8 @@ describe('chats controller ws-death indicator', () => {
         store.set('messages', undefined)
         store.set('user', undefined)
         store.set('chats', [])
+        store.set('wsDeadChats', undefined)
+        store.set('selectedChat', undefined)
     })
 
     it('shows the reconnect overlay on unexpected closes and hides it when every dead chat recovers', async () => {
@@ -1497,6 +1499,135 @@ describe('chats controller ws-death indicator', () => {
         notifyWsConnected(3)
 
         expect(document.getElementById('busy-overlay')).to.be.null
+    })
+
+    it('publishes dead ids to the store and retracts them on recovery (2026-11-07)', () => {
+        new ChatsFeatureController(makePort(), makeMessages())
+
+        notifyWsUnexpectedClose(3)
+
+        expect(((store.getState() as AppState & { wsDeadChats?: number[] }).wsDeadChats ?? [])).to.deep.eq([3])
+
+        notifyWsUnexpectedClose(4)
+
+        expect(((store.getState() as AppState & { wsDeadChats?: number[] }).wsDeadChats ?? [])).to.deep.eq([3, 4])
+
+        notifyWsConnected(3)
+
+        expect(((store.getState() as AppState & { wsDeadChats?: number[] }).wsDeadChats ?? [])).to.deep.eq([4])
+
+        notifyWsConnected(4)
+
+        expect(((store.getState() as AppState & { wsDeadChats?: number[] }).wsDeadChats ?? [])).to.deep.eq([])
+    })
+
+    it('opening a dead chat shows the «Чат недоступен» bubble exactly once (idempotent, F-6)', () => {
+        const controller = new ChatsFeatureController(makePort(), makeMessages())
+
+        store.set('chats', [{ id: 7, title: 'Чат', avatar: '', unread_count: 0 } as never])
+
+        notifyWsUnexpectedClose(7)
+
+        controller.selectChat(7)
+
+        const first = (store.getState().messages?.[7] ?? []) as { content?: string, isChatUnavailable?: boolean, isError?: boolean }[]
+
+        expect(first).to.have.length(1)
+        expect(first[0]?.content).to.eq('⚠ Чат недоступен')
+        expect(first[0]?.isChatUnavailable).to.eq(true)
+        expect(first[0]?.isError).to.eq(true)
+
+        // повторное открытие того же мёртвого чата не стекует плашки
+        controller.selectChat(7)
+
+        const second = (store.getState().messages?.[7] ?? []) as unknown[]
+
+        expect(second).to.have.length(1)
+    })
+
+    it('a death while the chat is open pushes the bubble too', () => {
+        const controller = new ChatsFeatureController(makePort(), makeMessages())
+
+        store.set('chats', [{ id: 9, title: 'Чат', avatar: '', unread_count: 0 } as never])
+        controller.selectChat(9)
+
+        notifyWsUnexpectedClose(9)
+
+        const list = (store.getState().messages?.[9] ?? []) as { content?: string }[]
+
+        expect(list).to.have.length(1)
+        expect(list[0]?.content).to.eq('⚠ Чат недоступен')
+    })
+
+    it('recovery removes the bubble and the tint together', () => {
+        const controller = new ChatsFeatureController(makePort(), makeMessages())
+
+        store.set('chats', [{ id: 5, title: 'Чат', avatar: '', unread_count: 0 } as never])
+        controller.selectChat(5)
+        notifyWsUnexpectedClose(5)
+
+        expect((store.getState().messages?.[5] ?? []) as unknown[]).to.have.length(1)
+
+        notifyWsConnected(5)
+
+        expect((store.getState().messages?.[5] ?? []) as unknown[]).to.have.length(0)
+        expect(((store.getState() as AppState & { wsDeadChats?: number[] }).wsDeadChats ?? [])).to.deep.eq([])
+    })
+})
+
+describe('chats controller optimistic own message (2026-11-07-messenger-ux-pack-2)', () => {
+    afterEach(() => {
+        store.set('messages', undefined)
+        store.set('user', undefined)
+        store.set('chats', [])
+    })
+
+    it('sendMessage appends a temp own entry before the WS send', async () => {
+        store.set('user', { id: 7, login: 'a@example.com' } as never)
+        store.set('chats', [{ id: 3, title: 'Чат', avatar: '', unread_count: 0 } as never])
+
+        const sendMessage = sinon.stub().resolves()
+        const controller = new ChatsFeatureController(makePort(), makeMessages({ sendMessage }))
+
+        await controller.sendMessage(3, 'привет')
+
+        const list = (store.getState().messages?.[3] ?? []) as { content?: string, user_id?: number, ownTempId?: string, id?: number }[]
+
+        expect(list).to.have.length(1)
+        expect(list[0]?.content).to.eq('привет')
+        expect(list[0]?.user_id).to.eq(7)
+        expect(list[0]?.ownTempId).to.be.a('string')
+        expect(list[0]?.id).to.eq(undefined)
+    })
+
+    it('replaceOwnTempMessage swaps the OLDEST temp with the server echo', () => {
+        store.set('user', { id: 7, login: 'a@example.com' } as never)
+        const controller = new ChatsFeatureController(makePort(), makeMessages())
+
+        controller.appendOwnTempMessage(3, 'первое')
+        controller.appendOwnTempMessage(3, 'второе')
+
+        controller.replaceOwnTempMessage(3, { chat_id: 3, time: 't', type: 'message', user_id: 7, content: 'первое', id: 101 } as never)
+
+        const list = (store.getState().messages?.[3] ?? []) as { content?: string, id?: number, ownTempId?: string }[]
+
+        expect(list).to.have.length(2)
+        expect(list[0]?.id).to.eq(101)
+        expect(list[0]?.ownTempId).to.eq(undefined)
+        expect(list[1]?.ownTempId).to.be.a('string')
+    })
+
+    it('no temp entries — replace is a no-op', () => {
+        const controller = new ChatsFeatureController(makePort(), makeMessages())
+
+        store.set('messages.3', [{ chat_id: 3, time: 't', type: 'message', user_id: 8, content: 'чужое', id: 55 } as never])
+
+        controller.replaceOwnTempMessage(3, { chat_id: 3, time: 't2', type: 'message', user_id: 7, content: 'эхо', id: 56 } as never)
+
+        const list = (store.getState().messages?.[3] ?? []) as { id?: number }[]
+
+        expect(list).to.have.length(1)
+        expect(list[0]?.id).to.eq(55)
     })
 })
 

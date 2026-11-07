@@ -933,3 +933,116 @@ describe('formatUsageSize', () => {
         expect(formatUsageSize(-10)).to.equal('0 Б')
     })
 })
+
+// 2026-11-07-messenger-ux-pack-2: submit-кнопки форм профиля спят, пока
+// форма чиста или невалидна; оживляет делегированный input-листенер
+// (императивный атрибут, без перерисовки). Reset-семантика F-4: стор-эмит
+// пересеивает форму и возвращает кнопки в disabled согласованно
+describe('profile forms submit gating', () => {
+    beforeEach(() => {
+        setProfileController(controller)
+        store.set('user', { ...user, display_name: 'Ада', phone: '' })
+    })
+
+    afterEach(() => {
+        store.set('user', undefined)
+        store.set('chats', undefined)
+    })
+
+    const typeInto = (page: { element?: Element | null }, name: string, value: string): void => {
+        const field = fieldOf(page, name)
+
+        if (field != null) {
+            field.value = value
+            field.dispatchEvent(new dom.window.Event('input', { bubbles: true }))
+        }
+    }
+
+    const accountSubmit = (page: { element?: Element | null }) =>
+        page.element?.querySelector<HTMLButtonElement>('[data-testid="account-form"] button[type="submit"]') ?? null
+
+    const passwordSubmit = (page: { element?: Element | null }) =>
+        page.element?.querySelector<HTMLButtonElement>('[data-testid="password-form"] button[type="submit"]') ?? null
+
+    it('both submit buttons start disabled', () => {
+        const page = new ProfilePage({} as never)
+
+        try {
+            expect(accountSubmit(page)?.disabled).to.be.true
+            expect(passwordSubmit(page)?.disabled).to.be.true
+        } finally {
+            page.destroy()
+        }
+    })
+
+    it('a valid change enables Submit changes; reverting to the seed disables it again', () => {
+        const page = new ProfilePage({} as never)
+
+        try {
+            typeInto(page, 'display_name', 'Ада Лавлейс')
+
+            expect(accountSubmit(page)?.disabled).to.be.false
+
+            typeInto(page, 'display_name', 'Ада')
+
+            expect(accountSubmit(page)?.disabled).to.be.true
+        } finally {
+            page.destroy()
+        }
+    })
+
+    it('an invalid phone keeps Submit changes disabled', () => {
+        const page = new ProfilePage({} as never)
+
+        try {
+            typeInto(page, 'display_name', 'Ада Лавлейс')
+            typeInto(page, 'phone', '+7 999')
+
+            expect(accountSubmit(page)?.disabled).to.be.true
+
+            typeInto(page, 'phone', '+79990000000')
+
+            expect(accountSubmit(page)?.disabled).to.be.false
+        } finally {
+            page.destroy()
+        }
+    })
+
+    it('Change password wakes only on old non-empty + valid new + matching repeat', () => {
+        const page = new ProfilePage({} as never)
+
+        try {
+            typeInto(page, 'old_password', 'OldPassword123')
+            typeInto(page, 'new_password', 'NewPassword123')
+            typeInto(page, 'repeat_password', 'DifferentPassword123')
+
+            expect(passwordSubmit(page)?.disabled).to.be.true
+
+            typeInto(page, 'repeat_password', 'NewPassword123')
+
+            expect(passwordSubmit(page)?.disabled).to.be.false
+        } finally {
+            page.destroy()
+        }
+    })
+
+    it('a store emit mid-edit reseeds inputs and returns the button to disabled (F-4)', () => {
+        const page = new ProfilePage({} as never)
+
+        try {
+            typeInto(page, 'display_name', 'Ада Лавлейс')
+
+            expect(accountSubmit(page)?.disabled).to.be.false
+
+            // реальное изменение пользователя в сторе (Store.set не эмитит
+            // JSON-идентичные записи): форма пересеивается целиком и кнопки
+            // возвращаются из дескрипторов (disabled) — согласованно
+            store.set('user', { ...user, display_name: 'Ада Вторая', phone: '' })
+
+            expect(fieldOf(page, 'display_name')?.value).to.eq('Ада Вторая')
+            expect(accountSubmit(page)?.disabled).to.be.true
+        } finally {
+            page.destroy()
+        }
+    })
+})

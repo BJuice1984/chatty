@@ -67,6 +67,61 @@ describe('chat list user archived modifier', () => {
     })
 })
 
+// 2026-11-07-messenger-ux-pack-2: бейдж AI вынесен из обрезающего заголовка
+// в flex-сиблинг — при сколь угодно длинном названии бейдж всегда виден
+describe('chat list user badge visibility', () => {
+    it('keeps the badge OUTSIDE the truncating title element as a flex sibling', () => {
+        const user = new User({
+            id: 5,
+            title: 'Очень длинное название чата, которое обрезается эллипсисом в одну строку',
+            avatar: '',
+            unread_count: 0,
+            is_ai: true,
+        })
+
+        const title = user.element?.querySelector('.chat-list-user__title')
+        const row = user.element?.querySelector('.chat-list-user__title-row')
+        const badge = user.element?.querySelector('[data-testid="ai-badge"]')
+
+        expect(badge?.parentElement?.classList.contains('chat-list-user__title-row')).to.be.true
+        expect(title?.contains(badge as Node)).to.be.false
+        expect(row).to.be.not.null
+
+        user.destroy()
+    })
+})
+
+// 2026-11-07-messenger-ux-pack-2: мёртвый сокет подсвечивает строку красным
+// модификатором (в композиции с ai/archived) — источник: стор-ключ wsDeadChats
+describe('chat list user dead modifier', () => {
+    it('renders the red dead modifier for a socket-dead chat', () => {
+        const user = new User({
+            id: 6,
+            title: 'Оборванный чат',
+            avatar: '',
+            unread_count: 0,
+            isDead: true,
+        })
+
+        expect(user.element?.classList.contains('chat-list-user_dead')).to.be.true
+
+        user.destroy()
+    })
+
+    it('keeps the plain row for a live chat', () => {
+        const user = new User({
+            id: 7,
+            title: 'Живой чат',
+            avatar: '',
+            unread_count: 0,
+        })
+
+        expect(user.element?.classList.contains('chat-list-user_dead')).to.be.false
+
+        user.destroy()
+    })
+})
+
 // 2026-11-05-messenger-ux-pack: карточка списка больше НЕ кнопка смены
 // аватара — ни скрытого file-инпута, ни кликабельного аватара; аффорданс
 // переехал в шапку мессенджера (owner-only)

@@ -33,6 +33,28 @@ describe('message bubble', () => {
         message.destroy()
     })
 
+    // 2026-11-07-messenger-ux-pack-2: жизненный цикл своей реплики —
+    // оптимистичная запись pulse-точкой «отправляется», серверное эхо (id)
+    // гасит её в одиночную галочку; чужим сообщениям маркеров нет
+    it('own temp entry renders the sending dot; own id-carrying message renders the sent check', () => {
+        const sending = new Message({ content: 'летит', user_id: 1, isMine: true, isSending: true, time: localIso(new Date()) })
+        const sent = new Message({ content: 'дошло', user_id: 1, isMine: true, id: 42, time: localIso(new Date()) })
+        const foreign = new Message({ content: 'чужое', user_id: 2, isMine: false, id: 43, time: localIso(new Date()) })
+
+        expect(sending.element?.querySelector('[data-testid="message-status-sending"]')).to.be.not.null
+        expect(sending.element?.querySelector('[data-testid="message-status-sent"]')).to.eq(null)
+
+        expect(sent.element?.querySelector('[data-testid="message-status-sent"]')?.textContent?.trim()).to.eq('✓')
+        expect(sent.element?.querySelector('[data-testid="message-status-sending"]')).to.eq(null)
+
+        expect(foreign.element?.querySelector('[data-testid="message-status-sent"]')).to.eq(null)
+        expect(foreign.element?.querySelector('[data-testid="message-status-sending"]')).to.eq(null)
+
+        sending.destroy()
+        sent.destroy()
+        foreign.destroy()
+    })
+
     it('left side: theirs modifier on the li', () => {
         const message = new Message({ content: 'привет', user_id: 2, isMine: false, time: localIso(new Date()) })
 

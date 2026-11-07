@@ -522,6 +522,72 @@ describe('own ws adapter social events', () => {
         expect((list[0] as { id?: number }).id).to.eq(21)
     })
 
+    // 2026-11-07-messenger-ux-pack-2: эхо своего сообщения заменяет
+    // старейшую оптимистичную запись (ownTempId) — без дубля; гейт viewer-id
+    // строгий: чужое совпадающее по тексту сообщение НЕ поглощает темп
+    it('own echo replaces the oldest temp entry instead of appending', async () => {
+        store.set('user', { id: 7, login: 'a@example.com' } as never)
+        store.set('messages', {
+            3: [
+                { chat_id: 3, time: 't1', type: 'message', user_id: 7, content: 'привет', ownTempId: 'tmp-1' },
+                { chat_id: 3, time: 't2', type: 'message', user_id: 7, content: 'ещё', ownTempId: 'tmp-2' },
+            ] as never[],
+        })
+
+        const { socket } = await connectedSocket()
+
+        socket.triggerMessage(JSON.stringify({
+            type: 'message',
+            content: {
+                id: 101,
+                chat_id: 3,
+                user_id: 7,
+                content: 'привет',
+                file_id: null,
+                client_message_id: null,
+                created_at: '2026-11-07T00:00:00Z',
+            },
+        }))
+
+        const list = (store.getState().messages?.[3] ?? []) as { id?: number, ownTempId?: string, content?: string }[]
+
+        expect(list).to.have.length(2)
+        expect(list[0]?.id).to.eq(101)
+        expect(list[0]?.ownTempId).to.eq(undefined)
+        expect(list[1]?.ownTempId).to.eq('tmp-2')
+    })
+
+    it('a foreign same-text message never consumes an own temp entry (viewer-id gate)', async () => {
+        store.set('user', { id: 7, login: 'a@example.com' } as never)
+        store.set('messages', {
+            3: [
+                { chat_id: 3, time: 't1', type: 'message', user_id: 7, content: 'привет', ownTempId: 'tmp-1' },
+            ] as never[],
+        })
+
+        const { socket } = await connectedSocket()
+
+        socket.triggerMessage(JSON.stringify({
+            type: 'message',
+            content: {
+                id: 102,
+                chat_id: 3,
+                user_id: 42,
+                content: 'привет',
+                file_id: null,
+                client_message_id: null,
+                created_at: '2026-11-07T00:00:00Z',
+            },
+        }))
+
+        const list = (store.getState().messages?.[3] ?? []) as { id?: number, user_id?: number, ownTempId?: string }[]
+
+        expect(list).to.have.length(2)
+        expect(list[0]?.ownTempId).to.eq('tmp-1')
+        expect(list[1]?.id).to.eq(102)
+        expect(list[1]?.user_id).to.eq(42)
+    })
+
     it('closes through the adapter closeChat without reconnect', async () => {
         const { adapter, socket } = await connectedSocket()
 

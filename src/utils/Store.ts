@@ -43,6 +43,10 @@ export interface AppState {
     chats?: {
         [key: string]: unknown
     }[]
+    // первичная загрузка списка чатов (2026-11-07-messenger-ux-pack-2):
+    // страницы показывают лоадер вместо пустого списка; поле только
+    // отражает состояние — механика стора не меняется
+    chatsLoading?: boolean
 }
 
 export interface ComponentProps {

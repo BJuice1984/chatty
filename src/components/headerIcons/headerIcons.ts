@@ -4,6 +4,8 @@
 // иконка настроек: настройки живут на /settings через BottomBar). Кнопка
 // прочитанных активна только при наличии пилюль — без них потушена
 // (модификатор disabled на HeaderIcon + гейт клика).
+// 2026-11-07-messenger-ux-pack-2 (решение D-1): визуал второй иконки
+// возвращён к прежней шестерёнке из main — поведение фичи не менялось.
 
 import Block from '../../core/Block.ts'
 import template from './headerIcons.hbs'
@@ -30,7 +32,7 @@ export class HeaderIcons extends Block {
                     onClick: props.onClick,
                 },
                 {
-                    src: '/images/mark-all-read-icon.svg',
+                    src: '/images/settings-icon.svg',
                     alt: 'Иконка. Пометить всё прочитанными',
                     // потушенная иконка не кликается: гейт на месте колбэка,
                     // CSS дополнительно гасит pointer-events

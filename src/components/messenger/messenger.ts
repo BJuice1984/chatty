@@ -40,15 +40,19 @@ export const USER_SEARCH_DEBOUNCE_MS = 300
 export const PENDING_TAIL_CACHE_KEY = 'pending:tail'
 
 // Ключ переиспользования Message-инстанса: реальному сообщению — id:<n>;
-// isPending-хвосту без id — фиксированный pending:tail; сообщению без
-// идентичности — undefined (кэш не участвует, инстанс строится каждым
-// рендером заново, как до keyed-кэша)
+// isPending-хвосту без id — фиксированный pending:tail; оптимистичной
+// записи своего сообщения — owntmp:<n> (2026-11-07: инстанс живёт от
+// сабмита до серверного эха); сообщению без идентичности — undefined
 function messageCacheKey(message: Message): string | undefined {
     if (typeof message.id === 'number') {
         return `id:${message.id}`
     }
 
-    return message.isPending === true ? PENDING_TAIL_CACHE_KEY : undefined
+    if (message.isPending === true) {
+        return PENDING_TAIL_CACHE_KEY
+    }
+
+    return message.ownTempId != null ? `owntmp:${message.ownTempId}` : undefined
 }
 
 // Черновик ответа: id цели (REST требует message_id) и сниппет для превью
@@ -71,6 +75,10 @@ interface MessengerProps {
     messages: Message[]
     inputs: Input[]
     buttons: Button<{ message: string }>[]
+    // пустое состояние без чатов (2026-11-07): кнопка «создать» в
+    // дисклеймере — дубль one-click создания (страница прокидывает контроллер)
+    hasNoChats?: boolean
+    onCreateChat?: () => void
     // eslint-disable-next-line no-unused-vars
     onDeleteChat?: (id: number) => void
     // клик по найденному пользователю добавляет его в чат
@@ -287,6 +295,7 @@ export function mapTypedMessages(
             attachments,
             showDate,
             cacheKey: messageCacheKey(message),
+            isSending: message.ownTempId != null,
         }
     })
 }
@@ -559,6 +568,16 @@ class MessengerBase extends Block {
                     if (target?.closest('[data-testid="empty-chat-add"]') != null) {
                         this.setProps({ addUserOpen: true, addUserQuery: '', addUserResults: [], addUserFeedback: '' })
                         this.refocusSearchInput()
+
+                        return
+                    }
+
+                    // пустое состояние без чатов (2026-11-07-messenger-ux-
+                    // pack-2): кнопка «создать» — дубль one-click создания
+                    if (target?.closest('[data-testid="disclaimer-create"]') != null) {
+                        const onCreateChat = (this.props as MessengerProps).onCreateChat
+
+                        onCreateChat?.()
 
                         return
                     }
