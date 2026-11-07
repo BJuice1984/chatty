@@ -235,6 +235,10 @@ async def test_ai_toggle_seats_the_bot_and_appends_seed(client, app, session_fac
     assert len(bot_rows) == 1
     assert bot_rows[0]['display_name'] == 'AI'
 
+    # 2026-11-08-mobile-messenger-ux: бот-строка несёт is_bot=True, люди — False
+    assert bot_rows[0]['is_bot'] is True
+    assert all(row['is_bot'] is False for row in members if row['login'] != 'bot@chatty.local')
+
     listed = await chat_list(client)
     assert listed[chat['id']]['title'] == 'Чат с AI'
 

@@ -58,6 +58,9 @@ class ChatMemberBrief(BaseModel):
     login: str
     display_name: str
     avatar_url: str | None = None
+    # бот-аккаунт ассистента (email совпадает с настроенным bot user):
+    # считается в to_member_brief, клиент метит его сообщения AI-плашкой
+    is_bot: bool = False
     # архивное членство (участник покинул чат): null — активный; заполняется
     # только одиночным эндпоинтом участников, краткие составы GET /chats
     # всегда отдают null (карточкам не нужно)
