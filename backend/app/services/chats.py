@@ -139,7 +139,7 @@ class ChatService:
 
         title = payload.title.strip() if payload.title is not None else None
         if title is not None and title != chat.title:
-            actor_name = self.actor_display_name(requester_id)
+            actor_name = self.user_display_name(requester_id)
             chat.title = title
             # ручное название гасит авто-режим навсегда (фундамент LLM-нейминга:
             # контекстное переименование — только пока название автоматическое)
@@ -153,7 +153,7 @@ class ChatService:
 
         if payload.is_ai is not None and payload.is_ai != chat.is_ai:
             if actor_name is None:
-                actor_name = self.actor_display_name(requester_id)
+                actor_name = self.user_display_name(requester_id)
             chat.is_ai = payload.is_ai
             ai_changed = True
             verb = 'включил' if chat.is_ai else 'выключил'
@@ -171,14 +171,26 @@ class ChatService:
             self.session.refresh(chat)
         return chat, system_message, ai_message, ai_changed, auto_title
 
-    def actor_display_name(self, requester_id: int) -> str:
-        """Отображаемое имя автора служебного сообщения (rename/ai-toggle):
-        display_name fallback — правило to_member_brief (локальная часть
-        email), неизвестный пользователь — строковый id."""
-        actor = self.users.get_by_id(requester_id)
+    def user_display_name(self, user_id: int) -> str:
+        """Отображаемое имя участника для служебных строк ленты
+        (rename/ai-toggle/member events): display_name fallback — правило
+        to_member_brief (локальная часть email), неизвестный пользователь —
+        строковый id."""
+        user = self.users.get_by_id(user_id)
 
-        return (actor.display_name if actor is not None and actor.display_name else None) \
-            or (actor.email.split('@')[0] if actor is not None else str(requester_id))
+        return (user.display_name if user is not None and user.display_name else None) \
+            or (user.email.split('@')[0] if user is not None else str(user_id))
+
+    def _member_event_message(self, chat_id: int, author_id: int, content: str, kind: str) -> Message:
+        """Служебная строка ленты о составе чата (2026-11-07): пишется в
+        транзакции вызывающего (add/kick/leave/rejoin), фан-аут 'message'
+        принадлежит эндпоинту — узор chat_renamed."""
+        return self.messages_repo.add(Message(
+            chat_id=chat_id,
+            user_id=author_id,
+            content=content,
+            kind=kind,
+        ))
 
     def ensure_bot_membership(self, chat: Chat) -> str | None:
         """Посадить бота в участники (2026-11-06-quick): бот-юзер ищется по
@@ -434,50 +446,76 @@ class ChatService:
         self.chats.delete(chat)
         self.session.commit()
 
-    def kick_member(self, chat_id: int, requester_id: int, user_id: int) -> None:
+    def kick_member(self, chat_id: int, requester_id: int, user_id: int) -> Message | None:
         """Owner-only kick (the delete-chat precedent): hard-deletes the
         membership row — the kicked user loses the chat entirely (no
         archive row: GET /chats and WS connect refuse), a later re-add
         starts a FRESH row. The owner's own archived state does not matter
-        (require_owned checks owner_id only)."""
+        (require_owned checks owner_id only). 2026-11-07: в ленту пишется
+        служебная строка kind='chat_member_removed' («X удалил Y») — её
+        фан-аутит эндпоинт."""
 
         self.require_owned(chat_id, requester_id)
         if not self.chats.remove_member(chat_id, user_id):
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail='member_not_found')
+        event = self._member_event_message(
+            chat_id,
+            requester_id,
+            f'{self.user_display_name(requester_id)} удалил {self.user_display_name(user_id)}',
+            'chat_member_removed',
+        )
         self.session.commit()
+        return event
 
-    def leave(self, chat_id: int, user_id: int) -> None:
+    def leave(self, chat_id: int, user_id: int) -> Message | None:
         """Self-leave ARCHIVES the membership: left_at = now, the row (and
         with it the readable history and the dimmed list entry) stays.
         Repeat leave on an archived row is an idempotent no-write; a
         never-member gets the membership 403; the chat itself lives on
-        (owner_id stays historical)."""
+        (owner_id stays historical). 2026-11-07: в ленту пишется служебная
+        строка kind='chat_member_left' («X удалился из чата»)."""
 
         self.require_chat(chat_id)
         member = self.chats.get_member(chat_id, user_id)
         if member is None:
             raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail='chat_membership_required')
         if member.left_at is not None:
-            return
+            return None
         member.left_at = datetime.now(UTC)
+        event = self._member_event_message(
+            chat_id,
+            user_id,
+            f'{self.user_display_name(user_id)} удалился из чата',
+            'chat_member_left',
+        )
         self.session.commit()
+        return event
 
-    def rejoin(self, chat_id: int, user_id: int) -> None:
+    def rejoin(self, chat_id: int, user_id: int) -> Message | None:
         """Self-rejoin after a self-leave: reactivates the caller's OWN
         archived membership row through the shared helper (left_at -> NULL
         on the same row — writes and live pushes resume, joined_at kept).
         A missing row (kicked or never-member) gets the membership 403,
         an already-active row is an idempotent no-write, an unknown chat
-        the usual 404."""
+        the usual 404. 2026-11-07: реальная реактивация пишет в ленту
+        kind='chat_member_rejoined' («X вернулся в чат»)."""
 
         self.require_chat(chat_id)
         member = self.chats.get_member(chat_id, user_id)
         if member is None:
             raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail='chat_membership_required')
-        if self.chats.reactivate_member(member):
-            self.session.commit()
+        if not self.chats.reactivate_member(member):
+            return None
+        event = self._member_event_message(
+            chat_id,
+            user_id,
+            f'{self.user_display_name(user_id)} вернулся в чат',
+            'chat_member_rejoined',
+        )
+        self.session.commit()
+        return event
 
-    def add_member(self, chat_id: int, requester_id: int, user_id: int) -> tuple[ChatMember, str | None, bool]:
+    def add_member(self, chat_id: int, requester_id: int, user_id: int) -> tuple[ChatMember, str | None, bool, Message | None]:
         """Member addition plus the implicit contact capture: EVERY successful
         resolution records the contact requester -> user (skipped for
         self-add) via the idempotent get-then-insert upsert — the fresh
@@ -494,14 +532,20 @@ class ChatService:
         013: the FRESH-insert branch additionally appends the added member's
         name to an auto-titled non-DM chat's title (the existing/reactivated
         early return never touches the title — a repeated add must not
-        duplicate the name). Returns (member, new_title | None, ai_changed);
-        the WS fan-out for a non-None new_title (and the AI toggle) belongs
-        to the ENDPOINT (the repo precedent: services never import the hub).
+        duplicate the name). Returns (member, new_title | None, ai_changed,
+        member_event); the WS fan-out for a non-None new_title (and the AI
+        toggle) belongs to the ENDPOINT (the repo precedent: services never
+        import the hub).
 
         2026-11-06-quick: добавление БОТА участником (кнопка «+» с адресом
         бота) включает чату is_ai — «то же самое», что «+AI»: карточка
         помечается ✦AI, пустой display_name бота дополняется «AI» (append
-        даст «Чат с AI»), endpoint фан-аутит chat_ai_toggled."""
+        даст «Чат с AI»), endpoint фан-аутит chat_ai_toggled.
+
+        2026-11-07: свежая вставка (и реальная реактивация) НЕ-бота пишет в
+        ленту kind='chat_member_added' («X добавил Y») — идемпотентный
+        повтор молчит; бот не пишется отдельно (его семантика — «включил
+        бота» у PUT-toggle)."""
         chat = self.require_active_member(chat_id, requester_id)
         user = self.users.get_by_id(user_id)
         if user is None:
@@ -522,9 +566,17 @@ class ChatService:
             ai_changed = is_bot and not chat.is_ai
             if ai_changed:
                 chat.is_ai = True
-            if reactivated or user_id != requester_id or ai_changed:
+            member_event = None
+            if reactivated and not is_bot:
+                member_event = self._member_event_message(
+                    chat_id,
+                    requester_id,
+                    f'{self.user_display_name(requester_id)} добавил {self.user_display_name(user_id)}',
+                    'chat_member_added',
+                )
+            if reactivated or user_id != requester_id or ai_changed or member_event is not None:
                 self.session.commit()
-            return existing, None, ai_changed
+            return existing, None, ai_changed, member_event
         member = ChatMember(chat_id=chat_id, user_id=user_id)
         try:
             self.chats.add_member(member)
@@ -534,15 +586,23 @@ class ChatService:
             ai_changed = is_bot and not chat.is_ai
             if ai_changed:
                 chat.is_ai = True
+            member_event = None
+            if not is_bot:
+                member_event = self._member_event_message(
+                    chat_id,
+                    requester_id,
+                    f'{self.user_display_name(requester_id)} добавил {self.user_display_name(user_id)}',
+                    'chat_member_added',
+                )
             self.session.commit()
         except IntegrityError:
             self.session.rollback()
             existing = self.chats.get_member(chat_id, user_id)
             if existing is None:
                 raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail='member_conflict')
-            return existing, None, False
+            return existing, None, False, None
         self.session.refresh(member)
-        return member, new_title, ai_changed
+        return member, new_title, ai_changed, member_event
 
     def _auto_title_append(self, chat: Chat, user_id: int) -> str | None:
         """Дописывает имя СВЕЖЕГО участника в авто-название чата (013):

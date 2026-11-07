@@ -195,6 +195,10 @@ def test_auto_title_append_broadcasts_chat_renamed(app):
             added = owner_client.post(f"/api/v1/chats/{chat_id}/members", json={'user_id': bob['id']})
             assert added.status_code == 201
 
+            # 2026-11-07: строка состава приезжает первой, append-переименование — за ней
+            feed_line = owner_ws.receive_json()
+            assert feed_line['type'] == 'message'
+            assert feed_line['content']['content'] == 'append-ws-owner добавил append-ws-bob'
             renamed = owner_ws.receive_json()
             assert renamed == {
                 'type': 'chat_renamed',

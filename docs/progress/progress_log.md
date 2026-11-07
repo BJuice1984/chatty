@@ -1,3 +1,29 @@
+# 2026-11-07 — Feat(chats): служебные строки состава — add/kick/leave/rejoin
+
+Правка оператора (продолжение строк ленты): события состава чата пишут
+персистентные kind-сообщения тем же узором, что rename/ai-toggle.
+Тексты: «X добавил Y» (kind=chat_member_added), «X удалил Y»
+(chat_member_removed), «Y удалился из чата» (chat_member_left), «Y
+вернулся в чат» (chat_member_rejoined); имя — user_display_name
+(бывший actor_display_name, display_name → локальная часть email).
+Механика: строки пишутся в транзакции сервисных методов (add_member —
+только свежая вставка И реальная реактивация; идемпотентные повторы
+молчат; бот «+» отдельной строки не получает — его семантика у
+PUT-toggle), kick_member/leave/rejoin возвращают Message эндпоинту;
+единый хелпер _broadcast_feed_message фан-аутит строку событием
+'message' АКТИВНЫМ участникам (его же теперь зовут rename/ai-toggle в
+PUT). Кикнутый/ушедший строку не получают (вне active-фильтра), свои
+leave/rejoin-строки не создают unread (свои не считаем). Фронт без
+правок: kind-сообщение рендерится служебной строкой
+(messenger__message-system-text) и живёт в WS-потоке 'message'.
+Существующие тесты, читавшие ленту/WS-очереди, актуализированы под
+строки (leave/read-all/rename-guards/auto-title-WS/settings-receipts).
+Новый integration-пин: все четыре строки + идемпотентное молчание +
+бот без member-строки. Гейты: verify:backend 336 passed (4 известных
+Windows-only ingestion-падения конвертера не относятся), guard
+--all --strict 0.
+
+
 # 2026-11-07 — Feat(bot): отмена рана выключением, системные строки toggle, подсветка кнопки
 
 Правка оператора, три части. (1) Отмена: «выключить» бота при идущем

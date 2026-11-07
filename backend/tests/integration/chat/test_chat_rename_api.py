@@ -131,7 +131,14 @@ async def test_rename_guards(client, app):
         assert denied.status_code == 403
         assert denied.json() == {'detail': 'chat_membership_required'}
         page = await history(client, chat_id)
-        assert len(page['messages']) == 1  # только сообщение о переименовании Боба
+        # 2026-11-07: строки состава («добавил bob», «bob удалился») + строка
+        # переименования Боба — переименованной остаётся одна из трёх
+        assert len(page['messages']) == 3
+        assert [item['kind'] for item in page['messages']] == [
+            'chat_member_left',
+            'chat_renamed',
+            'chat_member_added',
+        ]
 
 
 def test_rename_broadcasts_message_and_chat_renamed_to_active_only(app):

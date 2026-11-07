@@ -213,6 +213,8 @@ async def test_archived_member_reads_still_pass(client, app):
         assert [item['content'] for item in history.json()['messages']] == [
             'second after the leave',
             'posted after the leave',
+            'read-bob удалился из чата',
+            'read-owner добавил read-bob',
         ]
         # pagination (cursor pages) stays a READ for archived members too
         first_page = await bob_client.get(f'/api/v1/chats/{chat_id}/messages', params={'limit': 1})
@@ -257,11 +259,13 @@ async def test_mark_read_is_noop_for_archived_rows(client, app):
         await leave(bob_client, chat_id)
         await post_message(client, chat_id, 'unread for the archived')
 
-        assert (await chat_list(bob_client))[chat_id]['unread_count'] == 1
+        # 1 чужое обычное + 2 чужие служебные строки состава (свою leave-строку
+        # не считаем): «добавил bob» и «добавил dave» чужие для боба (автор owner)
+        assert (await chat_list(bob_client))[chat_id]['unread_count'] == 3
 
         # the history read itself passes; the inline mark_read is a no-op
         assert (await bob_client.get(f'/api/v1/chats/{chat_id}/messages')).status_code == 200
-        assert (await chat_list(bob_client))[chat_id]['unread_count'] == 1
+        assert (await chat_list(bob_client))[chat_id]['unread_count'] == 3
 
         # contrast: the active member's history read moves the marker to 0
         assert (await dave_client.get(f'/api/v1/chats/{chat_id}/messages')).status_code == 200
@@ -410,7 +414,13 @@ def test_two_sockets_active_receives_archived_silent_and_close_is_user_scoped(ap
             archived_ws.send_json({'type': 'history', 'content': {'limit': 10}})
             history = archived_ws.receive_json()
             assert history['type'] == 'history'
-            assert [item['content'] for item in history['content']['messages']] == ['seed']
+            assert [item['content'] for item in history['content']['messages']] == [
+                'seed',
+                'fanout-archived удалился из чата',
+                'fanout-owner добавил fanout-dave',
+                'fanout-owner добавил fanout-archived',
+                'fanout-owner добавил fanout-active',
+            ]
 
             # WS send guard: archived write gets an explicit error, no broadcast
             archived_ws.send_json(
@@ -452,10 +462,14 @@ def test_two_sockets_active_receives_archived_silent_and_close_is_user_scoped(ap
             assert dave_ws.receive_json()['type'] == 'reaction'
             assert_alive(archived_ws)
 
-            # kick closes ONLY the kicked user's socket
+            # kick closes ONLY the kicked user's socket; the kick line reaches
+            # the remaining ACTIVE socket (dave) before the close frame
             assert owner_client.delete(f"/api/v1/chats/{chat_id}/members/{active['id']}").status_code == 204
             with pytest.raises(WebSocketDisconnect):
                 active_ws.receive_json()
+            kick_line = dave_ws.receive_json()
+            assert kick_line['type'] == 'message'
+            assert kick_line['content']['content'] == 'fanout-owner удалил fanout-active'
             assert_alive(archived_ws)
             assert_alive(dave_ws)
 
@@ -464,3 +478,67 @@ def test_two_sockets_active_receives_archived_silent_and_close_is_user_scoped(ap
             with pytest.raises(WebSocketDisconnect):
                 dave_ws.receive_json()
             assert_alive(archived_ws)
+
+
+# --- membership feed lines (2026-11-07) ---------------------------------------
+
+
+async def feed_lines(client, chat_id: int) -> list[tuple[str, str]]:
+    """Служебные строки ленты (kind, content), новые сверху (DESC)."""
+    page = (await client.get(f'/api/v1/chats/{chat_id}/messages')).json()
+
+    return [
+        (message['kind'], message['content'])
+        for message in page['messages']
+        if message.get('kind')
+    ]
+
+
+async def test_membership_events_leave_feed_system_lines(client, app):
+    """2026-11-07: add/kick/leave/rejoin пишут в ленту служебные строки (узор
+    chat_renamed): «X добавил Y» / «X удалил Y» / «Y удалился из чата» /
+    «Y вернулся в чат»; идемпотентные повторы молчат, добавление бота «+»
+    отдельной member-строки не пишет (его семантика — «включил бота»)."""
+    owner = await register(client, 'feed-owner@example.com')
+    chat_id = await make_chat(client, 'Feed lines')
+    async with user_client(app) as bob_client:
+        bob = await register(bob_client, 'feed-bob@example.com')
+
+        await add_member(client, chat_id, bob['id'])
+        # повторное добавление активного участника — идемпотентный 201 без строки
+        await add_member(client, chat_id, bob['id'])
+
+        assert await feed_lines(client, chat_id) == [
+            ('chat_member_added', 'feed-owner добавил feed-bob'),
+        ]
+
+        assert (await bob_client.post(f'/api/v1/chats/{chat_id}/leave')).status_code == 204
+        # повторный leave на архивной строке — идемпотентный no-write
+        assert (await bob_client.post(f'/api/v1/chats/{chat_id}/leave')).status_code == 204
+        assert (await bob_client.post(f'/api/v1/chats/{chat_id}/rejoin')).status_code == 204
+        # повторный rejoin активного — идемпотентный no-write
+        assert (await bob_client.post(f'/api/v1/chats/{chat_id}/rejoin')).status_code == 204
+
+        assert await feed_lines(client, chat_id) == [
+            ('chat_member_rejoined', 'feed-bob вернулся в чат'),
+            ('chat_member_left', 'feed-bob удалился из чата'),
+            ('chat_member_added', 'feed-owner добавил feed-bob'),
+        ]
+
+    assert (await kick(client, chat_id, bob['id'])).status_code == 204
+
+    assert (await feed_lines(client, chat_id))[0] == (
+        'chat_member_removed',
+        'feed-owner удалил feed-bob',
+    )
+
+    # бот, добавленный «+», включает AI без member-строки в ленте
+    async with user_client(app) as bot_client:
+        bot = await register(bot_client, 'bot@chatty.local')
+
+    assert (await add_member(client, chat_id, bot['id']))['user_id'] == bot['id']
+
+    assert (await feed_lines(client, chat_id))[0] == (
+        'chat_member_removed',
+        'feed-owner удалил feed-bob',
+    )
