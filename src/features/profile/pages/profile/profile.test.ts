@@ -17,6 +17,7 @@ import type Block from '../../../../core/Block.ts'
 import { registerComponent } from '../../../../core/registerComponent.ts'
 import * as Components from '../../../../components/components.ts'
 import store from '../../../../utils/Store.ts'
+import Router from '../../../../utils/Router.ts'
 import { getPreferences, initPreferences, setPreference } from '../../../../utils/preferences.ts'
 import { applyTheme } from '../../../../utils/theme.ts'
 import { ProfileFeatureController, setProfileController } from '../../controller.ts'
@@ -1069,6 +1070,93 @@ describe('profile forms submit gating', () => {
             expect(fieldOf(page, 'display_name')?.value).to.eq('Ада Вторая')
             expect(accountSubmit(page)?.disabled).to.be.true
         } finally {
+            page.destroy()
+        }
+    })
+})
+
+// 2026-11-08-mobile-messenger-ux: свайп-возврат из настроек — вправо при
+// открытой секции закрывает её (та же ветка, что settings-back), на корне
+// — Router.back(); жест внутри модалки игнорируется (узор F-4)
+describe('settings page swipe back', () => {
+    beforeEach(() => {
+        setProfileController(controller)
+        store.set('user', { ...user })
+        window.localStorage.removeItem('chatty-preferences')
+        initPreferences()
+        sinon.stub(controller, 'fetchUsage').resolves(undefined)
+    })
+
+    afterEach(() => {
+        sinon.restore()
+        store.set('user', undefined)
+        store.set('chats', undefined)
+        window.localStorage.removeItem('chatty-preferences')
+        initPreferences()
+        window.localStorage.removeItem('chatty-theme')
+        applyTheme('system')
+    })
+
+    const touchOn = (element: Element, type: 'touchstart' | 'touchend', x: number, y: number) => {
+        const event = new dom.window.Event(type, { bubbles: true, cancelable: true })
+
+        Object.defineProperty(event, 'changedTouches', { value: [{ clientX: x, clientY: y }], configurable: true })
+        element.dispatchEvent(event)
+    }
+
+    const swipeRight = (page: { element?: Element | null }) => {
+        touchOn(page.element!, 'touchstart', 0, 0)
+        touchOn(page.element!, 'touchend', 120, 8)
+    }
+
+    it('swipe right closes an open section keeping it current', () => {
+        const page = new ProfilePage({} as never)
+
+        try {
+            clickItem(page, 'Appearance')
+            expect(page.element?.classList.contains('chat_pane-open')).to.be.true
+
+            swipeRight(page)
+
+            expect(page.element?.classList.contains('chat_pane-open')).to.be.false
+            expect(page.element?.querySelector('[data-testid="settings-section-appearance"]')).to.exist
+        } finally {
+            page.destroy()
+        }
+    })
+
+    it('swipe right on the settings root goes back through the router', () => {
+        const back = sinon.stub(Router, 'back')
+        const page = new ProfilePage({} as never)
+
+        try {
+            swipeRight(page)
+
+            expect(back.calledOnce).to.be.true
+        } finally {
+            back.restore()
+            page.destroy()
+        }
+    })
+
+    it('a gesture starting inside the logout-all modal is ignored', () => {
+        const back = sinon.stub(Router, 'back')
+        const page = new ProfilePage({} as never)
+
+        try {
+            clickItem(page, 'Account')
+            click(page.element?.querySelector('[data-testid="logout-all-open"]'))
+
+            const modal = page.element?.querySelector('[data-testid="modal"]') as HTMLElement
+
+            expect(modal).to.exist
+
+            touchOn(modal, 'touchstart', 0, 0)
+            touchOn(page.element!, 'touchend', 200, 0)
+
+            expect(back.called).to.be.false
+        } finally {
+            back.restore()
             page.destroy()
         }
     })

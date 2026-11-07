@@ -39,6 +39,7 @@
                 {{/if}}
               {{/each}}
             </div>
+            <button type="button" class="messenger__header-kebab" data-testid="header-kebab" aria-label="Действия чата">⋮</button>
         </div>
         <ul class="messenger__container">
           {{#if emptyChatHint}}
@@ -51,7 +52,7 @@
           {{/if}}
           {{{ ChatHistory }}}
           {{#each messages}}
-            {{{ Message content=this.content user_id=this.user_id chat_id=this.chat_id id=this.id kind=this.kind isMine=this.isMine isError=this.isError isPending=this.isPending isSending=this.isSending fileUrl=this.fileUrl attachments=this.attachments autoDownload=../this.autoDownload time=this.time showDate=this.showDate replyTo=this.replyTo reactions=this.reactions onSetReaction=../this.onSetReaction onReply=../this.onReplyToMessage cacheKey=this.cacheKey }}}
+            {{{ Message content=this.content user_id=this.user_id chat_id=this.chat_id id=this.id kind=this.kind isMine=this.isMine isError=this.isError isPending=this.isPending isSending=this.isSending fileUrl=this.fileUrl attachments=this.attachments autoDownload=../this.autoDownload time=this.time showDate=this.showDate replyTo=this.replyTo reactions=this.reactions authorBadge=this.authorBadge isBot=this.isBot onSetReaction=../this.onSetReaction onReply=../this.onReplyToMessage cacheKey=this.cacheKey }}}
           {{/each}}
         </ul>
         {{#if replyDraft}}
@@ -76,6 +77,7 @@
         </div>
         {{/unless}}
         {{{ Modal title='Добавить пользователя' isOpen=this.addUserOpen onClose=this.onCloseAddUser content=this.addUserContent }}}
+        {{{ Modal title='Действия' isOpen=this.kebabOpen onClose=this.onCloseKebab content=this.kebabContent }}}
         {{{ Modal title=this.menuTitle isOpen=this.menuOpen onClose=this.onCloseMemberMenu content=this.menuContent }}}
         {{{ Modal title='Удалить чат' isOpen=this.deleteModalOpen onClose=this.onCloseDelete content=this.deleteContent }}}
     </div>

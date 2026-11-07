@@ -241,6 +241,9 @@ export const ownChatsPort: ChatsPort = {
                 login: string
                 display_name: string
                 avatar_url?: string | null
+                // бот-аккаунт ассистента (2026-11-08): сообщения бота
+                // получают чип «✦ AI»
+                is_bot?: boolean
                 // архивное членство (покинул чат) — шапка гасит иконку
                 left_at?: string | null
             }[]
@@ -256,6 +259,7 @@ export const ownChatsPort: ChatsPort = {
             phone: '',
             // реальный аватар участника, иначе pool-фолбэк
             avatar: member.avatar_url ?? avatarPoolUrl(member.id),
+            is_bot: member.is_bot === true,
             left_at: member.left_at ?? null,
         }))
     },

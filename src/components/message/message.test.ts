@@ -442,3 +442,52 @@ describe('message system line', () => {
         hostile.destroy()
     })
 })
+
+// 2026-11-08-mobile-messenger-ux: мета-строка над пузырём — плашка автора
+// (аватар + логин, title=email) и AI-чип ответов бота
+describe('message author plate and ai chip', () => {
+    const badge = { login: 'alice@x.io', email: 'alice@x.io', avatar: '/alice.png' }
+
+    it('renders the author plate with the avatar, login and email tooltip', () => {
+        const message = new Message({ content: 'привет', user_id: 8, isMine: false, authorBadge: badge, time: localIso(new Date()) })
+
+        const plate = message.element?.querySelector('[data-testid="message-author-badge"]')
+
+        expect(plate?.textContent).to.contain('alice@x.io')
+        expect(plate?.getAttribute('title')).to.eq('alice@x.io')
+        expect(plate?.querySelector('img.messenger__message-author-avatar')?.getAttribute('src')).to.eq('/alice.png')
+
+        message.destroy()
+    })
+
+    it('renders the ai chip alone for a bot answer', () => {
+        const message = new Message({ content: 'ответ бота', user_id: 9, isMine: false, isBot: true, time: localIso(new Date()) })
+
+        expect(message.element?.querySelector('[data-testid="message-ai-badge"]')?.textContent?.trim()).to.eq('✦ AI')
+        expect(message.element?.querySelector('[data-testid="message-author-badge"]')).to.eq(null)
+
+        message.destroy()
+    })
+
+    it('renders the plate and the chip together in one meta row', () => {
+        const message = new Message({ content: 'в группе', user_id: 9, isMine: false, authorBadge: badge, isBot: true, time: localIso(new Date()) })
+
+        const meta = message.element?.querySelector('[data-testid="message-meta"]')
+
+        expect(meta?.querySelector('[data-testid="message-author-badge"]')).to.not.eq(null)
+        expect(meta?.querySelector('[data-testid="message-ai-badge"]')).to.not.eq(null)
+
+        message.destroy()
+    })
+
+    it('plain human messages and system lines render no meta row', () => {
+        const human = new Message({ content: 'привет', user_id: 2, isMine: false, time: localIso(new Date()) })
+        const system = new Message({ content: 'переименовал чат', user_id: 2, kind: 'chat_renamed', time: localIso(new Date()) })
+
+        expect(human.element?.querySelector('[data-testid="message-meta"]')).to.eq(null)
+        expect(system.element?.querySelector('[data-testid="message-meta"]')).to.eq(null)
+
+        human.destroy()
+        system.destroy()
+    })
+})
