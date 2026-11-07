@@ -217,6 +217,14 @@ class BotService:
         run.bot_user_id = bot_user.id
         self.session.commit()
 
+        # Отмена рана выключением бота (2026-11-07): is_ai гасится другим
+        # запросом (PUT toggle), пока наш ран идёт, — свежий перечит флага
+        # из БД (expire): выключенный чат не тратит инференс и не постит
+        # ответ; вторая проверка после инференса закрывает окно генерации
+        self.session.expire(chat)
+        if not chat.is_ai:
+            return fail('bot_disabled')
+
         try:
             found = self.rag_search(
                 chat_id=chat.id,
@@ -244,6 +252,10 @@ class BotService:
         except BotProviderError as exc:
             return fail(exc.kind)
         content = answer.strip()[: self.bot.max_answer_chars]
+
+        self.session.expire(chat)
+        if not chat.is_ai:
+            return fail('bot_disabled')
 
         try:
             response = self.message_service.create(

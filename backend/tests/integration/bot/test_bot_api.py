@@ -10,11 +10,12 @@ from types import SimpleNamespace
 
 import pytest
 from httpx import ASGITransport, AsyncClient
-from sqlalchemy import select
+from sqlalchemy import select, update
 
 from app.bot.provider import BotProviderError
 from app.ingestion.embeddings import EmbeddingError
 from app.models.bot_run import BotRun
+from app.models.chat import Chat
 from app.models.user import User
 from app.services.files import DownloadedObject
 
@@ -210,6 +211,43 @@ async def test_duplicate_delivery_returns_existing_run_without_reexecution(clien
     assert second.json()['status'] == 'succeeded'
     assert len(provider.calls) == 1
     assert len(await bot_messages(client, chat_id, bot_user_id(session_factory))) == 1
+
+
+async def test_disabling_the_chat_mid_run_cancels_the_answer(client, app, session_factory):
+    """2026-11-07: «выключить» бота при идущем прогоне отменяет его — свежий
+    перечит is_ai после инференса: ран failed/bot_disabled, ответ в ленту
+    не пишется и не фан-аутится («ответ не показывать»)."""
+    chat_id_holder: dict[str, int] = {}
+
+    class DisablingProvider(FakeBotProvider):
+        """Провайдер, «пользователь» которого жмёт «выключить» ровно в
+        середине генерации: чат гасится из отдельной сессии, как это сделал
+        бы параллельный PUT-toggle."""
+
+        def complete(self, messages: list[dict]) -> str:
+            with session_factory() as session:
+                session.execute(
+                    update(Chat).where(Chat.id == chat_id_holder['chat_id']).values(is_ai=False)
+                )
+                session.commit()
+            return super().complete(messages)
+
+    bot_ready(app, DisablingProvider(answers=[ANSWER]))
+    chat_id, _file = await setup_ai_chat_with_document(
+        client, app, session_factory, email='owner-cancel@example.com'
+    )
+    chat_id_holder['chat_id'] = chat_id
+    await register_bot_user(app)
+    message = await post_message(client, chat_id, 'Cancel me mid-flight.')
+
+    response = await client.post(f"/api/v1/chats/{chat_id}/bot/runs", json={'message_id': message['id']})
+
+    assert response.status_code == 200, response.text
+    run = response.json()
+    assert run['status'] == 'failed'
+    assert run['error_kind'] == 'bot_disabled'
+    assert run['response_message_id'] is None
+    assert await bot_messages(client, chat_id, bot_user_id(session_factory)) == []
 
 
 async def test_provider_failure_then_retry_within_budget(client, app, session_factory):

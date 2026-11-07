@@ -189,6 +189,12 @@ export class ChatsFeatureController {
     // последним восстановлением — пары show/hide сбалансированы per-эпизод
     private readonly wsDeadChats = new Set<number>()
 
+    // Отменённые прогоны бота (2026-11-07): «выключить» при летящем POST
+    // /bot/runs помечает прогон отменённым — поллинг и сетевые ретраи
+    // прекращаются, результат (даже succeeded) не показывается, ошибка не
+    // рисуется: причина — решение пользователя, а не сбой
+    private readonly cancelledBotRuns = new Set<number>()
+
     // Revival-цикл (2026-11-07-messenger-ux-pack-2, live): истощённый сокет
     // сам не поднимается (bounded-реконнект закончен) — пока есть мёртвые
     // чаты, периодически дропаем их и открываем заново; Connected гасит
@@ -293,8 +299,28 @@ export class ChatsFeatureController {
 
     // Обратный «+AI» (2026-11-07): активная кнопка выключает бота — тот же
     // оптимистичный is_ai-патч (false) и откат (true) по ошибке порта; бот
-    // остаётся в участниках, ран бота больше не стартует (серверный гейт)
+    // остаётся в участниках, ран бота больше не стартует (серверный гейт).
+    // Идущий прогон отменяется: pending-хвост дропается сразу (композер
+    // разблокируется в тот же кадр), прогон помечается отменённым — его
+    // результат не показывается (сервер вдогонку гасит и свой broadcast)
     async disableAi(chatId: number): Promise<void> {
+        const pendingList = (store.getState().messages?.[chatId] ?? []) as
+            ({ isPending?: boolean, pending_for?: number }[])
+
+        for (const item of pendingList) {
+            if (item.isPending === true) {
+                if (typeof item.pending_for === 'number') {
+                    this.cancelledBotRuns.add(item.pending_for)
+                }
+            }
+        }
+
+        if (pendingList.some(item => item.isPending === true)) {
+            store.set(`messages.${chatId}`, pendingList.filter(
+                item => item.isPending !== true
+            ))
+        }
+
         const chats = (store.getState().chats ?? []) as ChatInfo[]
 
         store.set('chats', chats.map(chat =>
@@ -860,6 +886,11 @@ export class ChatsFeatureController {
 
         try {
             for (const delay of [0, 0, ...this.botRunRetryDelaysMs]) {
+                // отменённый прогон («выключить» бота) не ретраится вовсе
+                if (this.cancelledBotRuns.has(messageId)) {
+                    return null
+                }
+
                 if (delay > 0) {
                     if (!overlayShown) {
                         overlayShown = true
@@ -900,6 +931,12 @@ export class ChatsFeatureController {
         let run = await this.runBotWithNetworkRetry(chatId, messageId)
 
         while (run != null && (run.status === 'queued' || run.status === 'running')) {
+            // отменённый прогон не поллится: тихий null — верхний слой по
+            // флагу отличит отмену от отсутствия рана
+            if (this.cancelledBotRuns.has(messageId)) {
+                return null
+            }
+
             if (Date.now() >= deadline) {
                 throw new Error('ответ ассистента не получен за отведённое время')
             }
@@ -976,6 +1013,12 @@ export class ChatsFeatureController {
             ])
 
             const run = await this.pollBotRun(chatId, target)
+
+            // прогон отменён выключением бота: тихий выход — ни ошибки
+            // («Ассистент недоступен» здесь врёт), ни доставки ответа
+            if (this.cancelledBotRuns.delete(target)) {
+                return
+            }
 
             if (run?.status === 'failed') {
                 pushError(run.error_kind ?? 'unknown')

@@ -146,11 +146,13 @@ async def update_chat(
     kind-bearing 'message' event (live feed append) and 'chat_renamed'
     (other clients refresh their list titles). The identical-title call is
     an idempotent no-op without a message and without clearing the flag. A
-    provided is_ai flips the bot flag and fans out the NEW 'chat_ai_toggled'
-    event (a state patch — no system message); a value-equal call is a 200
-    without a second broadcast. At least one field must be present (422)."""
+    provided is_ai flips the bot flag: the toggle lands in the feed as a
+    kind='chat_ai_toggled' system message ('message' event, 2026-11-07),
+    then the NEW 'chat_ai_toggled' event follows as a state patch; a
+    value-equal call is a 200 without a second broadcast. At least one
+    field must be present (422)."""
     chats_service = ChatService(db)
-    chat, system_message, ai_changed, auto_title = chats_service.update(chat_id, current_user.id, payload)
+    chat, system_message, ai_message, ai_changed, auto_title = chats_service.update(chat_id, current_user.id, payload)
     if system_message is not None:
         presented = MessageService(db).present_one(system_message, current_user.id)
         await hub.broadcast(
@@ -172,6 +174,13 @@ async def update_chat(
             active_user_ids=chats_service.active_member_ids(chat_id),
         )
     if ai_changed:
+        if ai_message is not None:
+            presented_ai = MessageService(db).present_one(ai_message, current_user.id)
+            await hub.broadcast(
+                chat_id,
+                {'type': 'message', 'content': presented_ai.model_dump(mode='json')},
+                active_user_ids=chats_service.active_member_ids(chat_id),
+            )
         await hub.broadcast(
             chat_id,
             {'type': 'chat_ai_toggled', 'content': {'chat_id': chat_id, 'is_ai': chat.is_ai}},

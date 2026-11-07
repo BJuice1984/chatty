@@ -1136,6 +1136,39 @@ describe('chats controller bot run', () => {
         expect(hasPending()).to.be.false
     })
 
+    // Отмена рана выключением бота (2026-11-07): «выключить» при летящем
+    // POST — pending-хвост дропается сразу (композер разблокирован в тот
+    // же кадр), прогон помечается отменённым: завершившийся уже после
+    // отмены ран (даже failed) не рисует плашку «Ассистент недоступен» и
+    // не дёргает доставку ответа; ретраев отменённого прогона нет
+    it('disabling the bot mid-run drops the pending tail and stays silent on the outcome', async () => {
+        setupAiChat()
+        let resolveRun!: (value: { id: number, status: string, error_kind: string | null }) => void
+        const runBot = sinon.stub().returns(new Promise<{ id: number, status: string, error_kind: string | null }>(resolve => {
+            resolveRun = resolve
+        }))
+        const controller = new ChatsFeatureController(
+            makePort({ runBot, disableAi: async () => undefined }),
+            makeMessages()
+        )
+
+        const sent = controller.sendMessage(38, 'вопрос')
+
+        echoOwnMessage()
+        await sent
+        await until(() => hasPending())
+
+        await controller.disableAi(38)
+
+        expect(hasPending()).to.be.false
+
+        resolveRun({ id: 1, status: 'failed', error_kind: 'bot_disabled' })
+        await new Promise(resolve => setTimeout(resolve, 30))
+
+        expect(errorMessage()).to.be.undefined
+        expect(runBot.calledOnce).to.be.true
+    })
+
     it('shows the failure message when the run request itself rejects (timeout/network)', async () => {
         setupAiChat()
         const controller = new ChatsFeatureController(

@@ -111,33 +111,35 @@ class ChatService:
         chat_id: int,
         requester_id: int,
         payload: ChatUpdate,
-    ) -> tuple[Chat, Message | None, bool, str | None]:
+    ) -> tuple[Chat, Message | None, Message | None, bool, str | None]:
         """Обобщённое тело PUT (013): прежняя rename-семантика для заданного
         ИЗМЕНИВШЕГОСЯ title (require_active_member — write-гвард, архивы
         read-only; идентичный title — идемпотентный no-op без сообщения) И
         гашение auto_titled (ручное название отключает авто-режим навсегда),
-        плюс флаг is_ai для заданного значения. Возвращает (chat,
-        system_message | None, ai_changed, auto_title | None) — ВЕСЬ WS
-        fan-out принадлежит эндпоинту (прецедент репозитория: сервисы не
-        импортируют hub).
+        плюс флаг is_ai для заданного значения. Возвращает (chat, system_message,
+        ai_message, ai_changed, auto_title) — ВЕСЬ WS fan-out принадлежит
+        эндпоинту (прецедент репозитория: сервисы не импортируют hub).
 
         2026-11-06-quick: включение AI сразу сажает бота в участники
         (ensure_bot_membership — бот виден в шапке с аватаркой, а не после
         первого ответа), а auto_titled-сид дополняется «AI» («Чат с» ->
         «Чат с AI») через ту же 013-append-механику; auto_title возвращается
-        эндпоинту для fan-out chat_renamed."""
+        эндпоинту для fan-out chat_renamed.
+
+        2026-11-07: смена is_ai пишет в ленту системное сообщение
+        kind='chat_ai_toggled' («X включил/выключил бота») — узор
+        chat_renamed; эндпоинт фан-аутит его событием 'message'."""
 
         chat = self.require_active_member(chat_id, requester_id)
         system_message: Message | None = None
+        ai_message: Message | None = None
         ai_changed = False
         auto_title: str | None = None
+        actor_name: str | None = None
 
         title = payload.title.strip() if payload.title is not None else None
         if title is not None and title != chat.title:
-            actor = self.users.get_by_id(requester_id)
-            # display_name fallback — правило to_member_brief (локальная часть email)
-            actor_name = (actor.display_name if actor is not None and actor.display_name else None) \
-                or (actor.email.split('@')[0] if actor is not None else str(requester_id))
+            actor_name = self.actor_display_name(requester_id)
             chat.title = title
             # ручное название гасит авто-режим навсегда (фундамент LLM-нейминга:
             # контекстное переименование — только пока название автоматическое)
@@ -150,15 +152,33 @@ class ChatService:
             ))
 
         if payload.is_ai is not None and payload.is_ai != chat.is_ai:
+            if actor_name is None:
+                actor_name = self.actor_display_name(requester_id)
             chat.is_ai = payload.is_ai
             ai_changed = True
+            verb = 'включил' if chat.is_ai else 'выключил'
+            ai_message = self.messages_repo.add(Message(
+                chat_id=chat_id,
+                user_id=requester_id,
+                content=f'{actor_name} {verb} бота',
+                kind='chat_ai_toggled',
+            ))
             if chat.is_ai and not chat.is_dm:
                 auto_title = self.ensure_bot_membership(chat)
 
         if system_message is not None or ai_changed:
             self.session.commit()
             self.session.refresh(chat)
-        return chat, system_message, ai_changed, auto_title
+        return chat, system_message, ai_message, ai_changed, auto_title
+
+    def actor_display_name(self, requester_id: int) -> str:
+        """Отображаемое имя автора служебного сообщения (rename/ai-toggle):
+        display_name fallback — правило to_member_brief (локальная часть
+        email), неизвестный пользователь — строковый id."""
+        actor = self.users.get_by_id(requester_id)
+
+        return (actor.display_name if actor is not None and actor.display_name else None) \
+            or (actor.email.split('@')[0] if actor is not None else str(requester_id))
 
     def ensure_bot_membership(self, chat: Chat) -> str | None:
         """Посадить бота в участники (2026-11-06-quick): бот-юзер ищется по
