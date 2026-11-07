@@ -78,6 +78,10 @@ interface ChatPageProps {
     // есть ли хоть одна пилюля непрочитанных (2026-11-05): гейт иконки
     // «Пометить всё прочитанными» в шапке списка
     hasUnread?: boolean
+    // лоадер списка (2026-11-07): предзагрузочное состояние и первичная
+    // загрузка; пустое состояние — для дисклеймера «создайте чат»
+    chatsLoading?: boolean
+    hasNoChats?: boolean
 }
 
 // Карточка списка чатов в пропсах страницы: ChatInfo + декорации
@@ -406,6 +410,10 @@ class ChatPageBase extends Block {
     }
     constructor(propsFromStore: ChatPageProps) {
         super({
+            // стор-поля в ПЕРВОМ рендере (2026-11-07): лоадер списка и
+            // предзагрузочное состояние видны сразу, без первого эмита
+            chatsLoading: propsFromStore.chatsLoading,
+            hasNoChats: propsFromStore.hasNoChats,
             // 2026-11-01-contacts: страница, смонтированная с уже выбранным
             // чатом (возврат на /messenger после openDm из /contacts),
             // стартует с открытой панелью — раньше живой выбор игнорировался
@@ -783,11 +791,14 @@ const withChats = withStore((state: AppState) => {
         ownerId,
         // есть ли непрочитанные: гейтит иконку «Пометить всё прочитанными»
         hasUnread: allChats.some(chat => chat.unread_count > 0),
-        // лоадер списка (2026-11-07): первичная загрузка при пустом списке
-        chatsLoading: state.chatsLoading === true,
+        // лоадер списка (2026-11-07): первичная загрузка при пустом списке;
+        // ПРЕДЗАГРУЗОЧНОЕ состояние (chats ещё undefined до первого ответа)
+        // тоже показывает лоадер — иначе между монтированием страницы и
+        // ответом /chats список мигает пустотой (даже на быстром хосте)
+        chatsLoading: state.chatsLoading === true || state.chats === undefined,
         // пустое состояние дисклеймера (2026-11-07): чатов нет вовсе и
         // загрузка завершена — «создайте чат»
-        hasNoChats: state.chatsLoading !== true && allChats.length === 0,
+        hasNoChats: state.chats != null && state.chats.length === 0 && state.chatsLoading !== true,
     }
 })
 

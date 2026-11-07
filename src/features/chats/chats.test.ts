@@ -1457,11 +1457,15 @@ describe('chats controller bot echo timeout', () => {
 // на первом падении и гасит на последнем восстановлении (парность show/hide
 // per-эпизод, refcount busyOverlay остаётся сбалансированным)
 describe('chats controller ws-death indicator', () => {
+    let controllers: ChatsFeatureController[] = []
+
     beforeEach(() => {
         resetBusyOverlayForTests()
+        controllers = []
     })
 
     afterEach(() => {
+        controllers.forEach(controller => controller.stopWsReviveLoop())
         resetBusyOverlayForTests()
         store.set('messages', undefined)
         store.set('user', undefined)
@@ -1472,6 +1476,8 @@ describe('chats controller ws-death indicator', () => {
 
     it('shows the reconnect overlay on unexpected closes and hides it when every dead chat recovers', async () => {
         const controller = new ChatsFeatureController(makePort(), makeMessages())
+
+        controllers.push(controller)
 
         notifyWsUnexpectedClose(3)
 
@@ -1494,7 +1500,7 @@ describe('chats controller ws-death indicator', () => {
     })
 
     it('a first-time Connected is a no-op: no overlay, no stray hide', async () => {
-        new ChatsFeatureController(makePort(), makeMessages())
+        controllers.push(new ChatsFeatureController(makePort(), makeMessages()))
 
         notifyWsConnected(3)
 
@@ -1502,7 +1508,7 @@ describe('chats controller ws-death indicator', () => {
     })
 
     it('publishes dead ids to the store and retracts them on recovery (2026-11-07)', () => {
-        new ChatsFeatureController(makePort(), makeMessages())
+        controllers.push(new ChatsFeatureController(makePort(), makeMessages()))
 
         notifyWsUnexpectedClose(3)
 
@@ -1523,6 +1529,8 @@ describe('chats controller ws-death indicator', () => {
 
     it('opening a dead chat shows the «Чат недоступен» bubble exactly once (idempotent, F-6)', () => {
         const controller = new ChatsFeatureController(makePort(), makeMessages())
+
+        controllers.push(controller)
 
         store.set('chats', [{ id: 7, title: 'Чат', avatar: '', unread_count: 0 } as never])
 
@@ -1548,6 +1556,8 @@ describe('chats controller ws-death indicator', () => {
     it('a death while the chat is open pushes the bubble too', () => {
         const controller = new ChatsFeatureController(makePort(), makeMessages())
 
+        controllers.push(controller)
+
         store.set('chats', [{ id: 9, title: 'Чат', avatar: '', unread_count: 0 } as never])
         controller.selectChat(9)
 
@@ -1561,6 +1571,8 @@ describe('chats controller ws-death indicator', () => {
 
     it('recovery removes the bubble and the tint together', () => {
         const controller = new ChatsFeatureController(makePort(), makeMessages())
+
+        controllers.push(controller)
 
         store.set('chats', [{ id: 5, title: 'Чат', avatar: '', unread_count: 0 } as never])
         controller.selectChat(5)

@@ -17,7 +17,7 @@ import type { ChatInfo, Message, ReactionSummary } from '../../utils/types.ts'
 import { chatsPort } from './api/index.ts'
 import type { ChatMessagesPort, ChatReactionEvent, ChatsPort, ChatsUserSearchResult } from './ports.ts'
 import { chatSearchSlice, chatsSlice } from './store.ts'
-import { chatMessagesPort, setChatsEventListeners } from './ws/gateway.ts'
+import { chatMessagesPort, reconnectAllChatSockets, setChatsEventListeners } from './ws/gateway.ts'
 
 // Контактный шов (2026-11-01-chat-leave): «Добавить в контакты» из меню
 // участника и бутстрап списка контактов — логика contacts-фичи. Шов живёт
@@ -43,6 +43,10 @@ const BOT_ECHO_WAIT_TICK_MS = 25
 // счётчик клиентских идентификаторов оптимистичных записей (2026-11-07):
 // уникальность в рамках сессии достаточна — темп живёт до серверного эха
 let ownTempCounter = 0
+
+// период revival-цикла мёртвых сокетов (2026-11-07): мягче лестницы
+// реконнектов (1с..16с), до поднятия сервера
+const WS_REVIVE_INTERVAL_MS = 10_000
 
 // Паузы между повторами POST /bot/runs после сетевого обрыва (2026-11-02:
 // браузерный XHR длинного прогона рвался «Ошибка сети», хотя сервер ран
@@ -184,6 +188,12 @@ export class ChatsFeatureController {
     // «пробуем переподключиться» показывается на первом падении и гасится
     // последним восстановлением — пары show/hide сбалансированы per-эпизод
     private readonly wsDeadChats = new Set<number>()
+
+    // Revival-цикл (2026-11-07-messenger-ux-pack-2, live): истощённый сокет
+    // сам не поднимается (bounded-реконнект закончен) — пока есть мёртвые
+    // чаты, периодически дропаем их и открываем заново; Connected гасит
+    // смерть, пустое множество останавливает цикл
+    private wsReviveTimer: ReturnType<typeof setInterval> | null = null
 
     private readonly botRunRetryDelaysMs: readonly number[]
 
@@ -596,9 +606,40 @@ export class ChatsFeatureController {
 
         this.wsDeadChats.add(chatId)
         this.publishWsDead()
+        this.ensureWsReviveLoop()
 
         if (store.getState().selectedChat === chatId) {
             this.pushChatUnavailable(chatId)
+        }
+    }
+
+    // Пока есть мёртвые чаты — раз в 10с форс-дроп мёртвых сокетов и полный
+    // рефетч (reconnectAll закрывает только не-OPEN записи и метит их
+    // намеренными; ПОВТОРНОЕ открытие делает fetchChats — узор connectivity
+    // online-пути). Connected у живого сервера снимает смерть; пустое
+    // множество останавливает цикл
+    private ensureWsReviveLoop(): void {
+        if (this.wsReviveTimer != null) {
+            return
+        }
+
+        this.wsReviveTimer = setInterval(() => {
+            if (this.wsDeadChats.size === 0) {
+                this.stopWsReviveLoop()
+
+                return
+            }
+
+            reconnectAllChatSockets()
+            void this.fetchChats()
+        }, WS_REVIVE_INTERVAL_MS)
+    }
+
+    // Тестовый крюк и внутренняя гигиена: остановка revival-цикла
+    stopWsReviveLoop(): void {
+        if (this.wsReviveTimer != null) {
+            clearInterval(this.wsReviveTimer)
+            this.wsReviveTimer = null
         }
     }
 
@@ -615,6 +656,7 @@ export class ChatsFeatureController {
 
         if (this.wsDeadChats.size === 0) {
             hideBusyOverlay()
+            this.stopWsReviveLoop()
         }
     }
 

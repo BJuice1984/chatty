@@ -101,20 +101,23 @@ describe('chat page mobile pane switch', () => {
     })
 
     // 2026-11-07-messenger-ux-pack-2: пустой список на первичной загрузке
-    // показывает лоадер-точки вместо мёртвой пустоты; после загрузки (даже
-    // пустой) и при живом списке лоадера нет. Стор-поля приезжают в страницу
-    // через setProps (withStore), поэтому поток теста — живые store.set
-    it('shows the chats-list loader only while the initial fetch runs on an empty list', () => {
+    // показывает лоадер-точки вместо мёртвой пустоты; ПРЕДЗАГРУЗОЧНОЕ
+    // состояние (chats undefined до первого ответа) — тоже лоадер (иначе
+    // пустота мигает даже на быстром хосте); после загрузки (даже пустой)
+    // и при живом списке лоадера нет
+    it('shows the chats-list loader while the initial fetch runs on an empty list', () => {
         const fetchChats = sinon.stub(ChatsController, 'fetchChats').resolves()
 
         try {
-            store.set('chats', [])
+            store.set('chats', undefined)
             store.set('chatsLoading', false)
 
             const page = new ChatPage({} as never)
 
-            expect(page.element?.querySelector('[data-testid="chats-loading"]')).to.eq(null)
+            // предзагрузочное окно: chats ещё не приезжали — лоадер сразу
+            expect(page.element?.querySelector('[data-testid="chats-loading"]')).to.be.not.null
 
+            store.set('chats', [])
             store.set('chatsLoading', true)
 
             const loader = page.element?.querySelector('[data-testid="chats-loading"]')
