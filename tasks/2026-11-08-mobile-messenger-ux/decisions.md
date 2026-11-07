@@ -152,3 +152,25 @@ services/chats.py, два тест-файла), повлиять на них н�
 
 Обе правки видны в re-freeze коммите; reviewedPlanHash перевыпущен на
 итоговый digest.
+
+## D-14 — амендмент write-set: chat.hbs (обнаружен на snapshot, rev 3 → 4)
+
+При подаче результата WS-FE-MOBILE снапшот показал 23 изменённых файла
+против 24 заявленных в write-set: `src/features/chats/pages/chat/chat.hbs`
+отсутствовал в манифесте — пропуск авторства плана (файл-проп в списке
+writes), а не открытие исполнения: правка файла (прокидка
+`onSwipe=this.onSwipeViewer` в вызов StoryViewer) mechanically необходима
+REQ-SWIPES и была закоммичена в 9d51518. Без write-set-члена аудит
+класифицирует файл как unowned → implementation audit FAIL (write-set
+gap; официальный маршрут ALK — reopen и refreeze).
+
+Решение контроллера: амендмент rev 3 → 4 — единственная правка
+манифеста «+chat.hbs в writes WS-FE-MOBILE», вердикт независимого
+ревьюера на дельту, re-lock, `workflow adopt-plan
+--preserve-accepted-compatible` (WS-BE-BOT остаётся ACCEPTED — его
+write-set не тронут; WS-FE-MOBILE продолжается attempt 1 по
+амендированному пакету). D-10 формально относит write-set к контрактным
+изменениям с WAITING-остановкой; автономный мандат оператора («блокеры
+решай сам, но записывай») здесь управляет: изменение аддитивное, ровно
+один файл, скоуп/гейты/DAG не тронуты, независимый ревью подтверждает
+дельту, полная трассировка в этом журнале и re-freeze коммите.

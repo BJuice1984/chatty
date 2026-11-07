@@ -1,7 +1,7 @@
 {
     "schemaVersion": "agent-plan-manifest.v1",
     "status": "FROZEN",
-    "planRevision": 3,
+    "planRevision": 4,
     "package": {
         "id": "2026-11-08-mobile-messenger-ux",
         "title": "Mobile messenger UX: stories overflow, swipes, kebab menu, author plates, AI badge (8 operator items + bot marker)",
@@ -253,6 +253,7 @@
                 "src/components/profile-settings/profile-settings.hbs",
                 "src/components/profile-settings/profile-settings.test.ts",
                 "src/features/chats/pages/chat/chat.ts",
+                "src/features/chats/pages/chat/chat.hbs",
                 "src/features/chats/pages/chat/chat.test.ts",
                 "src/features/profile/pages/profile/profile.ts",
                 "src/features/profile/pages/profile/profile.test.ts",
@@ -502,10 +503,10 @@
     "planReview": {
         "required": true,
         "reviewerClass": "independent-plan-reviewer",
-        "maxRounds": 3,
+        "maxRounds": 4,
         "implementationAuthorized": false,
         "report": "tasks/2026-11-08-mobile-messenger-ux/plan-review.json",
-        "reviewedRevision": 3,
+        "reviewedRevision": 4,
         "verdict": "READY_TO_FREEZE"
     },
     "nonGoals": [
