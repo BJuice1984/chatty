@@ -1,3 +1,26 @@
+# 2026-11-07 — Fix(db): расширение messages.kind до VARCHAR(32) (миграция 014)
+
+Регрессия 0a64213 на прод-стеке: новые kind-литералы строк состава длиннее
+планированной под единственный 'chat_renamed' ширины VARCHAR(16) —
+'chat_member_added'/'chat_member_left' (17), 'chat_member_removed' (19),
+'chat_member_rejoined' (20). PostgreSQL отвергал INSERT со
+StringDataRightTruncation → живые 500 на POST/DELETE /chats/{id}/members
+(в консоли фронта выглядит как «Ошибка сети», xhr.onerror у 500 без
+CORS-заголовков). Почему гейт не поймал: pytest-гейт гоняется на SQLite
+(sqlite:// + create_all), а SQLite не ограничивает длину varchar — усечение
+проявляется только на реальном PG. Фикс: модель Message.kind String(32),
+миграция 014_message_kind_widen (batch-alter, на PG metadata-only, без
+бэкфилла; downgrade сознательно падает на длинных значениях), применена на
+живой стек (alembic_version=014, information_schema даёт 32). Новые пины:
+сегментный раундтрип 014 (16→32 через downgrade/upgrade на scratch-SQLite,
+по прецеденту 012/013) и unit-grep test_feed_kind_fits_column — все
+kind-литералы services/*.py сверяются с шириной колонки модели, чтобы
+следующий длинный kind падал в гейте, а не в проде. Живой смоук после
+миграции: POST members → 201, DELETE members → 204, обе строки состава
+читаются из истории. verify:backend 338 passed (4 известных Windows-only
+ingestion-падения не относятся).
+
+
 # 2026-11-07 — Feat(chats): служебные строки состава — add/kick/leave/rejoin
 
 Правка оператора (продолжение строк ленты): события состава чата пишут
