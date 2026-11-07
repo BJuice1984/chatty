@@ -19,6 +19,8 @@ from app.repositories.files import FileRepository
 from app.schemas.file import AvatarUploadResponse, FileResponse
 from app.services.chats import ChatService
 from app.services.files import FileService, get_object_storage
+from app.ws.feed import broadcast_feed_message
+from app.ws.hub import hub
 
 
 router = APIRouter(prefix='/files', tags=['files'])
@@ -100,8 +102,26 @@ async def upload_avatar(
 
     if kind == 'chat':
         files.set_chat_avatar(chat, prepared.file)
-    else:
-        files.set_user_avatar(current_user, prepared.file)
+        # 2026-11-07: смена аватара чата — та же система служебных строк и
+        # live-фан-аута, что rename/состав: «X обновил аватар чата» в ленту
+        # событием 'message' + патч-событие 'chat_avatar_updated' (другие
+        # клиенты обновляют плитку/шапку без рефетча списка) — АКТИВНЫМ
+        # участникам; архивный владелец require_owned уже отсёк
+        chats_service = ChatService(db)
+        avatar_event = chats_service.chat_avatar_event(chat_id, current_user.id)
+        avatar = files.avatar_response(prepared.file)
+        await broadcast_feed_message(
+            db, chat_id, avatar_event, current_user.id,
+            chats_service.active_member_ids(chat_id),
+        )
+        await hub.broadcast(
+            chat_id,
+            {'type': 'chat_avatar_updated', 'content': {'chat_id': chat_id, 'avatar': avatar.avatar_url}},
+            active_user_ids=chats_service.active_member_ids(chat_id),
+        )
+        return avatar
+
+    files.set_user_avatar(current_user, prepared.file)
 
     return files.avatar_response(prepared.file)
 

@@ -73,11 +73,14 @@
   &__header-title-hint {
     @include reset;
 
-    align-self: center;
+    position: absolute;
+    top: 1px;
+    right: 180px;
+    z-index: 3;
     padding: 2px 8px;
     border-radius: 10px;
     background-color: var(--chat-ai-accent);
-    color: var(--secondary-text-color);
+    color: var(--second-text-color);
     font-size: 11px;
     line-height: 1.4;
     white-space: nowrap;
@@ -164,6 +167,7 @@
   }
 
   &__header-container {
+    position: relative;
     display: flex;
     flex-direction: row;
     justify-content: space-between;
@@ -180,10 +184,10 @@
     gap: 6px;
 
     /* Иконочные кнопки хедера: круглые, с фоновой подложкой и мягким
-       hover; .cross — добавить пользователя, .close — удалить чат
-       (опасное действие — тёплый hover) */
+       hover; .close — удалить чат (опасное действие — тёплый hover).
+       Кнопка добавления пользователя — HeaderIcon-иконка add-user-icon
+       (узор «Создать чат»), не круглая кнопка */
 
-    .cross,
     .close,
     .ai {
       width: 30px;
@@ -222,41 +226,8 @@
       }
 
       &_active {
-        cursor: default;
         background-color: var(--chat-ai-accent);
-
-        &:hover,
-        &:active {
-          background-color: var(--chat-ai-accent);
-          transform: none;
-        }
-      }
-    }
-
-    .cross {
-
-      &::before,
-      &::after {
-        content: '';
-        position: absolute;
-        background-color: var(--main-text-color);
-        border-radius: 1px;
-      }
-
-      &::before {
-        width: 12px;
-        height: 2px;
-        top: 50%;
-        left: 50%;
-        transform: translate(-50%, -50%);
-      }
-
-      &::after {
-        width: 2px;
-        height: 12px;
-        top: 50%;
-        left: 50%;
-        transform: translate(-50%, -50%);
+        box-shadow: 0 0 8px 2px var(--icon-accent-glow);
       }
     }
 
@@ -663,6 +634,27 @@
     color: var(--bubble-time-text-color);
   }
 
+  &__message-status {
+    @include reset;
+    @include text-format(400, 10px, 14px);
+
+    align-self: flex-end;
+    margin-top: 2px;
+    margin-left: 4px;
+
+    &_sent {
+      color: var(--bubble-time-text-color);
+    }
+
+    &_sending {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background-color: var(--bubble-time-text-color);
+      animation: messenger-status-pulse 0.9s ease-in-out infinite;
+    }
+  }
+
   /* Сторона пузыря — align-self на самом пункте; контейнер списка не трогаем:
      там же живёт статус-строка li.chat-history, её вид остаётся прежним */
 
@@ -945,6 +937,18 @@
 
   50% {
     opacity: 0.55;
+  }
+}
+
+@keyframes messenger-status-pulse {
+
+  0%,
+  100% {
+    opacity: 0.35;
+  }
+
+  50% {
+    opacity: 1;
   }
 }
 

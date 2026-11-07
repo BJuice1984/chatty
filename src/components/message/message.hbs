@@ -28,6 +28,13 @@
             {{#if formattedTime}}
                 <time class="messenger__message-time" datetime="{{time}}">{{formattedTime}}</time>
             {{/if}}
+            {{#if isMine}}
+                {{#if isSending}}
+                    <span class="messenger__message-status messenger__message-status_sending" data-testid="message-status-sending" aria-label="Отправляется"></span>
+                {{else if id}}
+                    <span class="messenger__message-status messenger__message-status_sent" data-testid="message-status-sent" aria-label="Отправлено">✓</span>
+                {{/if}}
+            {{/if}}
         </div>
         {{#if id}}
             <div class="messenger__message-actions" data-testid="message-actions">

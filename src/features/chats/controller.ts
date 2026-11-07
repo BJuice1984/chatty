@@ -17,7 +17,7 @@ import type { ChatInfo, Message, ReactionSummary } from '../../utils/types.ts'
 import { chatsPort } from './api/index.ts'
 import type { ChatMessagesPort, ChatReactionEvent, ChatsPort, ChatsUserSearchResult } from './ports.ts'
 import { chatSearchSlice, chatsSlice } from './store.ts'
-import { chatMessagesPort, setChatsEventListeners } from './ws/gateway.ts'
+import { chatMessagesPort, reconnectAllChatSockets, setChatsEventListeners } from './ws/gateway.ts'
 
 // Контактный шов (2026-11-01-chat-leave): «Добавить в контакты» из меню
 // участника и бутстрап списка контактов — логика contacts-фичи. Шов живёт
@@ -40,6 +40,13 @@ const noopContactsIntegration: ContactsIntegration = {
 // чтобы плейсхолдер «печатает…» вставал сразу за вопросом
 const BOT_ECHO_WAIT_MS = 5_000
 const BOT_ECHO_WAIT_TICK_MS = 25
+// счётчик клиентских идентификаторов оптимистичных записей (2026-11-07):
+// уникальность в рамках сессии достаточна — темп живёт до серверного эха
+let ownTempCounter = 0
+
+// период revival-цикла мёртвых сокетов (2026-11-07): мягче лестницы
+// реконнектов (1с..16с), до поднятия сервера
+const WS_REVIVE_INTERVAL_MS = 10_000
 
 // Паузы между повторами POST /bot/runs после сетевого обрыва (2026-11-02:
 // браузерный XHR длинного прогона рвался «Ошибка сети», хотя сервер ран
@@ -182,6 +189,18 @@ export class ChatsFeatureController {
     // последним восстановлением — пары show/hide сбалансированы per-эпизод
     private readonly wsDeadChats = new Set<number>()
 
+    // Отменённые прогоны бота (2026-11-07): «выключить» при летящем POST
+    // /bot/runs помечает прогон отменённым — поллинг и сетевые ретраи
+    // прекращаются, результат (даже succeeded) не показывается, ошибка не
+    // рисуется: причина — решение пользователя, а не сбой
+    private readonly cancelledBotRuns = new Set<number>()
+
+    // Revival-цикл (2026-11-07-messenger-ux-pack-2, live): истощённый сокет
+    // сам не поднимается (bounded-реконнект закончен) — пока есть мёртвые
+    // чаты, периодически дропаем их и открываем заново; Connected гасит
+    // смерть, пустое множество останавливает цикл
+    private wsReviveTimer: ReturnType<typeof setInterval> | null = null
+
     private readonly botRunRetryDelaysMs: readonly number[]
 
     private readonly botRunPollIntervalMs: number
@@ -210,6 +229,8 @@ export class ChatsFeatureController {
             onChatDeleted: chatId => this.handleChatDeleted(chatId),
             onChatRenamed: event => this.handleChatRenamedEvent(event),
             onChatAiToggled: event => this.handleChatAiToggledEvent(event),
+            onChatMembersChanged: chatId => this.handleChatMembersChanged(chatId),
+            onChatAvatarUpdated: event => this.handleChatAvatarUpdatedEvent(event),
             onWsUnexpectedClose: chatId => this.handleWsDied(chatId),
             onWsConnected: chatId => this.handleWsReconnected(chatId),
         })
@@ -278,30 +299,86 @@ export class ChatsFeatureController {
         }
     }
 
-    async fetchChats(): Promise<void> {
-        let chats: ChatInfo[] = []
+    // Обратный «+AI» (2026-11-07): активная кнопка выключает бота — тот же
+    // оптимистичный is_ai-патч (false) и откат (true) по ошибке порта; бот
+    // остаётся в участниках, ран бота больше не стартует (серверный гейт).
+    // Идущий прогон отменяется: pending-хвост дропается сразу (композер
+    // разблокируется в тот же кадр), прогон помечается отменённым — его
+    // результат не показывается (сервер вдогонку гасит и свой broadcast)
+    async disableAi(chatId: number): Promise<void> {
+        const pendingList = (store.getState().messages?.[chatId] ?? []) as
+            ({ isPending?: boolean, pending_for?: number }[])
 
-        try {
-            // meId для правила «единственный собеседник» в аватарах списка:
-            // адаптер стор не читает, идентичность передаём параметром
-            chats = await this.port.fetchChats(store.getState().user?.id)
-        } catch (e: unknown) {
-            console.error('Ошибка при получении списка чата:', e)
-        }
-
-        for (const chat of chats) {
-            try {
-                const res = await this.port.getToken(chat.id)
-
-                await this.messages.connect(chat.id, res.token)
-            } catch (e: unknown) {
-                console.error(`Ошибка при обработке чата с ID ${chat.id}:`, e)
+        for (const item of pendingList) {
+            if (item.isPending === true) {
+                if (typeof item.pending_for === 'number') {
+                    this.cancelledBotRuns.add(item.pending_for)
+                }
             }
         }
 
-        // аватары диалогов приходят в самом ответе списка (members), отдельных
-        // запросов участников на каждый чат больше нет
-        chatsSlice.setChats(chats)
+        if (pendingList.some(item => item.isPending === true)) {
+            store.set(`messages.${chatId}`, pendingList.filter(
+                item => item.isPending !== true
+            ))
+        }
+
+        const chats = (store.getState().chats ?? []) as ChatInfo[]
+
+        store.set('chats', chats.map(chat =>
+            chat.id === chatId
+                ? { ...chat, is_ai: false }
+                : chat
+        ))
+
+        try {
+            await this.port.disableAi(chatId)
+        } catch (e: unknown) {
+            console.error('Ошибка при выключении AI в чате:', e)
+
+            const fresh = (store.getState().chats ?? []) as ChatInfo[]
+
+            store.set('chats', fresh.map(chat =>
+                chat.id === chatId
+                    ? { ...chat, is_ai: true }
+                    : chat
+            ))
+        }
+    }
+
+    async fetchChats(): Promise<void> {
+        let chats: ChatInfo[] = []
+
+        // лоадер списка (2026-11-07-messenger-ux-pack-2): честное состояние
+        // полёта на весь цикл запрос+коннекты; гасим в finally — и на успех,
+        // и на любой сбой
+        chatsSlice.setChatsLoading(true)
+
+        try {
+            try {
+                // meId для правила «единственный собеседник» в аватарах списка:
+                // адаптер стор не читает, идентичность передаём параметром
+                chats = await this.port.fetchChats(store.getState().user?.id)
+            } catch (e: unknown) {
+                console.error('Ошибка при получении списка чата:', e)
+            }
+
+            for (const chat of chats) {
+                try {
+                    const res = await this.port.getToken(chat.id)
+
+                    await this.messages.connect(chat.id, res.token)
+                } catch (e: unknown) {
+                    console.error(`Ошибка при обработке чата с ID ${chat.id}:`, e)
+                }
+            }
+
+            // аватары диалогов приходят в самом ответе списка (members), отдельных
+            // запросов участников на каждый чат больше нет
+            chatsSlice.setChats(chats)
+        } finally {
+            chatsSlice.setChatsLoading(false)
+        }
     }
 
     async addUsersToChat(users: number[], chatId: number): Promise<void> {
@@ -573,25 +650,100 @@ export class ChatsFeatureController {
         }
     }
 
+    // kind-строки состава (chat_member_*, 2026-11-07): лента уже получила
+    // служебную строку — здесь живой UI шапки. Рефетч только ОТКРЫТОГО чата:
+    // getChatUsers пишет в общий chatUsers, событие невыбранного чата не
+    // должно затирать состав открытого
+    private handleChatMembersChanged(chatId: number): void {
+        if (store.getState().selectedChat !== chatId) {
+            return
+        }
+
+        void this.getChatUsers(chatId)
+    }
+
+    // WS chat_avatar_updated (2026-11-07): смена аватара чата одним
+    // участником обновляет плитку списка и шапку у остальных — точечный
+    // avatar-патч chats-слайса (узор handleChatRenamedEvent; свой аплоад
+    // уже применил патч из REST-ответа — значение-равный идемпотентный
+    // пропуск)
+    private handleChatAvatarUpdatedEvent(event: { chat_id: number, avatar: string }): void {
+        const chats = (store.getState().chats ?? []) as ChatInfo[]
+        const current = chats.find(chat => chat.id === event.chat_id)
+
+        if (current == null || current.avatar === event.avatar) {
+            return
+        }
+
+        store.set('chats', chats.map(chat =>
+            chat.id === event.chat_id
+                ? { ...chat, avatar: event.avatar }
+                : chat
+        ))
+    }
+
     // Сокет чата исчерпал реконнекты (обрыв без восстановления): первый
-    // эпизод показывает оверлей переподключения
+    // эпизод показывает оверлей переподключения; смерть публикуется в стор
+    // (красная строка в списке) и, если чат открыт, лента получает бабл
+    // «Чат недоступен» (2026-11-07-messenger-ux-pack-2)
     private handleWsDied(chatId: number): void {
         if (this.wsDeadChats.size === 0) {
             showBusyOverlay('reconnect')
         }
 
         this.wsDeadChats.add(chatId)
+        this.publishWsDead()
+        this.ensureWsReviveLoop()
+
+        if (store.getState().selectedChat === chatId) {
+            this.pushChatUnavailable(chatId)
+        }
+    }
+
+    // Пока есть мёртвые чаты — раз в 10с форс-дроп мёртвых сокетов и полный
+    // рефетч (reconnectAll закрывает только не-OPEN записи и метит их
+    // намеренными; ПОВТОРНОЕ открытие делает fetchChats — узор connectivity
+    // online-пути). Connected у живого сервера снимает смерть; пустое
+    // множество останавливает цикл
+    private ensureWsReviveLoop(): void {
+        if (this.wsReviveTimer != null) {
+            return
+        }
+
+        this.wsReviveTimer = setInterval(() => {
+            if (this.wsDeadChats.size === 0) {
+                this.stopWsReviveLoop()
+
+                return
+            }
+
+            reconnectAllChatSockets()
+            void this.fetchChats()
+        }, WS_REVIVE_INTERVAL_MS)
+    }
+
+    // Тестовый крюк и внутренняя гигиена: остановка revival-цикла
+    stopWsReviveLoop(): void {
+        if (this.wsReviveTimer != null) {
+            clearInterval(this.wsReviveTimer)
+            this.wsReviveTimer = null
+        }
     }
 
     // Сокет чата (пере)подключился: гасим оверлей, когда восстановились все
-    // умершие — Connected первого коннекта сюда тоже попадает и молчит
+    // умершие — Connected первого коннекта сюда тоже попадает и молчит;
+    // восстановление снимает красную строку и вычищает бабл недоступности
     private handleWsReconnected(chatId: number): void {
         if (!this.wsDeadChats.delete(chatId)) {
             return
         }
 
+        this.publishWsDead()
+        this.dropChatUnavailable(chatId)
+
         if (this.wsDeadChats.size === 0) {
             hideBusyOverlay()
+            this.stopWsReviveLoop()
         }
     }
 
@@ -603,8 +755,53 @@ export class ChatsFeatureController {
             return
         }
 
+        this.publishWsDead()
+        this.dropChatUnavailable(chatId)
+
         if (this.wsDeadChats.size === 0) {
             hideBusyOverlay()
+        }
+    }
+
+    // Публикация множества мёртвых чатов в стор (ключ вне AppState —
+    // каст-идиома chatSearch): список строк читает срез страницы для
+    // модификатора _dead. Не ChatInfo-поле: fetchChats заменяет массив
+    // чатов целиком и стёр бы флаг
+    private publishWsDead(): void {
+        store.set('wsDeadChats', [...this.wsDeadChats])
+    }
+
+    // Бабл «Чат недоступен» в ленте чата (2026-11-07): точный образец
+    // бот-ошибки (isError + user_id -1); идемпотентен — повторные входы в
+    // мёртвый чат не стекуют плашки
+    private pushChatUnavailable(chatId: number): void {
+        const list = (store.getState().messages?.[chatId] ?? [])
+
+        if (list.some(item => item.isChatUnavailable === true)) {
+            return
+        }
+
+        store.set(`messages.${chatId}`, [
+            ...list,
+            {
+                chat_id: chatId,
+                time: new Date().toISOString(),
+                type: 'message',
+                user_id: -1,
+                content: '⚠ Чат недоступен',
+                isError: true,
+                isChatUnavailable: true,
+            },
+        ])
+    }
+
+    // Восстановление/забвение чата убирает плашку недоступности из ленты
+    private dropChatUnavailable(chatId: number): void {
+        const list = (store.getState().messages?.[chatId] ?? [])
+        const filtered = list.filter(item => item.isChatUnavailable !== true)
+
+        if (filtered.length !== list.length) {
+            store.set(`messages.${chatId}`, filtered)
         }
     }
 
@@ -666,6 +863,10 @@ export class ChatsFeatureController {
             }
         }
 
+        // оптимистичная запись до WS-отправки (2026-11-07): пузырь с маркером
+        // «отправляется»; эхо заменит её в WS-адаптере (own.ts)
+        this.appendOwnTempMessage(chatId, message, replyToId)
+
         const result = this.messages.sendMessage(chatId, message, replyToId)
 
         if (chat?.is_ai === true) {
@@ -673,6 +874,34 @@ export class ChatsFeatureController {
         }
 
         return result
+    }
+
+    // Оптимистичная запись своего сообщения (2026-11-07): пузырь виден
+    // сразу с маркером «отправляется»; эхо заменяет её в WS-адаптере
+    // (own.ts: viewer-id гейт + oldest-temp — единственная реализация,
+    // review F-2). Темп-ид — счётчик сессии;
+    // numeric id у записи нет — waitForOwnEcho и дедуп не замечают её
+    appendOwnTempMessage(chatId: number, message: string, replyToId?: number): void {
+        const meId = store.getState().user?.id
+
+        if (meId == null) {
+            return
+        }
+
+        const list = (store.getState().messages?.[chatId] ?? [])
+
+        store.set(`messages.${chatId}`, [
+            ...list,
+            {
+                chat_id: chatId,
+                time: new Date().toISOString(),
+                type: 'message',
+                user_id: meId,
+                content: message,
+                replyToId,
+                ownTempId: `tmp-${ownTempCounter += 1}`,
+            },
+        ])
     }
 
     // Сетевой обрыв POST /bot/runs — не приговор прогону: запрос мог дойти
@@ -691,6 +920,11 @@ export class ChatsFeatureController {
 
         try {
             for (const delay of [0, 0, ...this.botRunRetryDelaysMs]) {
+                // отменённый прогон («выключить» бота) не ретраится вовсе
+                if (this.cancelledBotRuns.has(messageId)) {
+                    return null
+                }
+
                 if (delay > 0) {
                     if (!overlayShown) {
                         overlayShown = true
@@ -731,6 +965,12 @@ export class ChatsFeatureController {
         let run = await this.runBotWithNetworkRetry(chatId, messageId)
 
         while (run != null && (run.status === 'queued' || run.status === 'running')) {
+            // отменённый прогон не поллится: тихий null — верхний слой по
+            // флагу отличит отмену от отсутствия рана
+            if (this.cancelledBotRuns.has(messageId)) {
+                return null
+            }
+
             if (Date.now() >= deadline) {
                 throw new Error('ответ ассистента не получен за отведённое время')
             }
@@ -807,6 +1047,12 @@ export class ChatsFeatureController {
             ])
 
             const run = await this.pollBotRun(chatId, target)
+
+            // прогон отменён выключением бота: тихий выход — ни ошибки
+            // («Ассистент недоступен» здесь врёт), ни доставки ответа
+            if (this.cancelledBotRuns.delete(target)) {
+                return
+            }
 
             if (run?.status === 'failed') {
                 pushError(run.error_kind ?? 'unknown')
@@ -949,6 +1195,12 @@ export class ChatsFeatureController {
 
     selectChat(id: number): void {
         chatsSlice.selectChat(id)
+
+        // мёртвый сокет: лента сразу честно говорит, что чат недоступен
+        // (идемпотентно — повторные входы не стекуют плашки)
+        if (this.wsDeadChats.has(id)) {
+            this.pushChatUnavailable(id)
+        }
 
         // смена чата сбрасывает состав участников прежде ответа
         // getChatUsers (каждый выбор его уже зовёт): устаревший список от

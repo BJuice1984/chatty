@@ -37,7 +37,7 @@ import type { HistoryMessage } from '../history/types.ts'
 // в бандл через импорт ws-адаптера (components фичи не импортируют —
 // guard-блокер).
 import '../history/view.ts'
-import { appendMessages, notifyChatAiToggled, notifyChatDeleted, notifyChatRenamed, notifyReactionEvent, notifyWsConnected, notifyWsUnexpectedClose } from './gateway.ts'
+import { appendMessages, notifyChatAiToggled, notifyChatAvatarUpdated, notifyChatDeleted, notifyChatMembersChanged, notifyChatRenamed, notifyReactionEvent, notifyWsConnected, notifyWsUnexpectedClose } from './gateway.ts'
 
 interface OwnWsEvent {
     type: string
@@ -233,6 +233,41 @@ export class OwnWsAdapter {
                     return
                 }
 
+                // События состава (2026-11-07): kind-строки add/kick/leave/
+                // rejoin дергают контроллер — рефетч состава открытого чата
+                // (новый участник появляется, ушедший гаснет по left_at,
+                // кикнутый исчезает); после дедуп-гарда — повторная доставка
+                // не гоняет рефетч
+                if (typeof raw.kind === 'string' && raw.kind.startsWith('chat_member_')) {
+                    notifyChatMembersChanged(id)
+                }
+
+                // Эхо своего сообщения (2026-11-07): заменяем старейшую
+                // оптимистичную запись (ownTempId) серверной — гейт viewer-id
+                // строгий, контент НИКОГДА не матчер (чужое совпадающее
+                // сообщение не должно поглощать чужой темп); контент —
+                // только тай-брейкер среди нескольких своих темпов
+                const viewerId = store.getState().user?.id
+
+                if (message.user_id === viewerId) {
+                    const list = (store.getState().messages?.[id] ?? [])
+                    const tempIndex = list.findIndex(item => item.ownTempId != null)
+                    const tieIndex = tempIndex !== -1 && message.content != null
+                        ? list.findIndex(item => item.ownTempId != null && item.content === message.content)
+                        : -1
+                    const index = tieIndex !== -1 ? tieIndex : tempIndex
+
+                    if (index !== -1) {
+                        const next = [...list]
+
+                        next[index] = message
+                        store.set(`messages.${id}`, next)
+                        liftLastMessage(id, raw)
+
+                        return
+                    }
+                }
+
                 store.set(`messages.${id}`, appendMessages(
                     store.getState().messages?.[id] ?? [],
                     message
@@ -345,6 +380,15 @@ export class OwnWsAdapter {
                 const content = wsEvent.content as { chat_id: number, is_ai: boolean }
 
                 notifyChatAiToggled({ chat_id: content.chat_id, is_ai: content.is_ai })
+            }
+
+            // Аватар чата обновлён (2026-11-07): патч chats-слайса (плитка
+            // списка и шапка) делает контроллер через gateway-слушатель;
+            // сокет жив — событие чисто информационное, узор chat_renamed
+            if (wsEvent.type === 'chat_avatar_updated' && wsEvent.content != null) {
+                const content = wsEvent.content as { chat_id: number, avatar: string }
+
+                notifyChatAvatarUpdated({ chat_id: content.chat_id, avatar: content.avatar })
             }
         })
         wsTransport.on(WSTransportEvents.Close, () => {

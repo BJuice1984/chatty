@@ -16,6 +16,7 @@ from app.core.config import Settings
 from app.core.deps import get_current_user, get_db, get_settings
 from app.ingestion.config import rag_settings_from_env
 from app.ingestion.embeddings import get_provider
+from app.models.chat import Chat
 from app.models.user import User
 from app.repositories.bot_runs import BotRunRepository
 from app.repositories.messages import MessageRepository
@@ -125,12 +126,18 @@ async def create_bot_run(
         on_delta=on_delta,
     )
     if not already_succeeded and run.status == 'succeeded' and run.response_message_id is not None:
-        message = MessageRepository(db).get_by_id(run.response_message_id)
-        if message is not None:
-            response = MessageService(db).present_one(message, current_user.id).model_dump(mode='json')
-            await hub.broadcast(
-                chat_id,
-                {'type': 'message', 'content': response},
-                active_user_ids=ChatService(db).active_member_ids(chat_id),
-            )
+        # Гонка отмены (2026-11-07): ответ успел записаться, но чат уже
+        # выключили PUT-toggle — свежий перечит флага: broadcast не идёт,
+        # выключивший бот клиент не должен увидеть ответ мёртвого рана
+        db.expire_all()
+        chat_row = db.get(Chat, chat_id)
+        if chat_row is not None and chat_row.is_ai:
+            message = MessageRepository(db).get_by_id(run.response_message_id)
+            if message is not None:
+                response = MessageService(db).present_one(message, current_user.id).model_dump(mode='json')
+                await hub.broadcast(
+                    chat_id,
+                    {'type': 'message', 'content': response},
+                    active_user_ids=ChatService(db).active_member_ids(chat_id),
+                )
     return BotRunResponse.model_validate(run)

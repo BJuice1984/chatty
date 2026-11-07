@@ -1,3 +1,230 @@
+# 2026-11-07 — Feat(chats): живой UI состава и аватара чата у всех участников
+
+Правка оператора: строки состава уже едут в ленты, но UI второго участника
+на них не реагировал. (1) Состав: own-адаптер при 'message' с
+kind=chat_member_* дергает notifyChatMembersChanged (после дедуп-гарда —
+повторная доставка рефетч не гоняет); контроллер рефетчит chatUsers
+ТОЛЬКО открытого чата (getChatUsers пишет в общий слайс — событие чужого
+чата не должно затирать шапку). Рендер без правок: новый участник
+появляется, сам ушедший гаснет по left_at
+(chat__container-profile-chat-ava_archived уже в шаблоне), кикнутый
+исчезает (hard-delete строки); бонусом живёт подсказка пустого чата
+(coMembers). (2) Аватар чата: upload_avatar kind=chat пишет serveсную
+строку «X обновил аватар чата» (kind=chat_avatar_updated, своя транзакция
+в ChatService.chat_avatar_event) и фан-аутит ДВА события активным:
+'message' со строкой и патч-событие 'chat_avatar_updated'
+{chat_id, avatar}. Хелпер фан-аута вынесен из chats.py в app/ws/feed.py
+(broadcast_feed_message — ws-слой, эндпоинты зовут свободно, сервисы
+по-прежнему без hub). Фронт: notifyChatAvatarUpdated → точечный
+avatar-патч chats-слайса (узор rename; плитка списка и шапка без
+рефетча, значение-равное — идемпотентный пропуск; свой аплоад уже применил
+REST-патч). Тесты: ws — kind-строка в ленте + слушатель состава, дедуп-
+молчание, не-member kind не дергает, chat_avatar_updated форвардится;
+контроллер — рефетч только открытого чата, avatar-патч; бэкенд — строка в
+истории (отказ outsider строки не пишет), WS-пин двух событий активным и
+молчание архивного (two-socket прецедент). Гейты: mocha 766, media/
+ai-toggle/leave/rename/auto-title/kind-pin 40 passed. Без миграций
+(chat_avatar_updated — 20 симв ≤ 32).
+
+
+# 2026-11-07 — Fix(db): расширение messages.kind до VARCHAR(32) (миграция 014)
+
+Регрессия 0a64213 на прод-стеке: новые kind-литералы строк состава длиннее
+планированной под единственный 'chat_renamed' ширины VARCHAR(16) —
+'chat_member_added'/'chat_member_left' (17), 'chat_member_removed' (19),
+'chat_member_rejoined' (20). PostgreSQL отвергал INSERT со
+StringDataRightTruncation → живые 500 на POST/DELETE /chats/{id}/members
+(в консоли фронта выглядит как «Ошибка сети», xhr.onerror у 500 без
+CORS-заголовков). Почему гейт не поймал: pytest-гейт гоняется на SQLite
+(sqlite:// + create_all), а SQLite не ограничивает длину varchar — усечение
+проявляется только на реальном PG. Фикс: модель Message.kind String(32),
+миграция 014_message_kind_widen (batch-alter, на PG metadata-only, без
+бэкфилла; downgrade сознательно падает на длинных значениях), применена на
+живой стек (alembic_version=014, information_schema даёт 32). Новые пины:
+сегментный раундтрип 014 (16→32 через downgrade/upgrade на scratch-SQLite,
+по прецеденту 012/013) и unit-grep test_feed_kind_fits_column — все
+kind-литералы services/*.py сверяются с шириной колонки модели, чтобы
+следующий длинный kind падал в гейте, а не в проде. Живой смоук после
+миграции: POST members → 201, DELETE members → 204, обе строки состава
+читаются из истории. verify:backend 338 passed (4 известных Windows-only
+ingestion-падения не относятся).
+
+
+# 2026-11-07 — Feat(chats): служебные строки состава — add/kick/leave/rejoin
+
+Правка оператора (продолжение строк ленты): события состава чата пишут
+персистентные kind-сообщения тем же узором, что rename/ai-toggle.
+Тексты: «X добавил Y» (kind=chat_member_added), «X удалил Y»
+(chat_member_removed), «Y удалился из чата» (chat_member_left), «Y
+вернулся в чат» (chat_member_rejoined); имя — user_display_name
+(бывший actor_display_name, display_name → локальная часть email).
+Механика: строки пишутся в транзакции сервисных методов (add_member —
+только свежая вставка И реальная реактивация; идемпотентные повторы
+молчат; бот «+» отдельной строки не получает — его семантика у
+PUT-toggle), kick_member/leave/rejoin возвращают Message эндпоинту;
+единый хелпер _broadcast_feed_message фан-аутит строку событием
+'message' АКТИВНЫМ участникам (его же теперь зовут rename/ai-toggle в
+PUT). Кикнутый/ушедший строку не получают (вне active-фильтра), свои
+leave/rejoin-строки не создают unread (свои не считаем). Фронт без
+правок: kind-сообщение рендерится служебной строкой
+(messenger__message-system-text) и живёт в WS-потоке 'message'.
+Существующие тесты, читавшие ленту/WS-очереди, актуализированы под
+строки (leave/read-all/rename-guards/auto-title-WS/settings-receipts).
+Новый integration-пин: все четыре строки + идемпотентное молчание +
+бот без member-строки. Гейты: verify:backend 336 passed (4 известных
+Windows-only ingestion-падения конвертера не относятся), guard
+--all --strict 0.
+
+
+# 2026-11-07 — Feat(bot): отмена рана выключением, системные строки toggle, подсветка кнопки
+
+Правка оператора, три части. (1) Отмена: «выключить» бота при идущем
+прогоне отменяет его. Сервер: BotService._execute свежо перечитывает
+chat.is_ai (session.expire) до и после инференса — выключенный посреди
+ран завершается failed/bot_disabled без записи ответа; endpoint
+/chats/{id}/bot/runs перед финальным broadcast тоже проверяет флаг
+(db.expire_all): ответ, записанный до выключения, не фан-аутится.
+Фронт: disableAi дропает pending-хвост немедленно (композер
+разблокируется в тот же кадр) и помечает прогон отменённым
+(cancelledBotRuns) — сетевые ретраи и поллинг прекращаются, результат
+(даже succeeded/failed) не показывается, плашки «Ассистент недоступен»
+нет: причина — решение пользователя, не сбой. (2) Системные строки:
+PUT-toggle is_ai пишет в ленту персистентное сообщение
+kind='chat_ai_toggled' («X включил/выключил бота», actor_display_name
+вынесен в общий хелпер) и фан-аутит его событием 'message' ПЕРЕД
+state-патчем chat_ai_toggled — фронт рендерит служебной строкой без
+правок (kind-контракт messages). (3) Подсветка: ai_active получил
+внешний glow (box-shadow var(--icon-accent-glow), узор bottom-bar
+active). Тесты: бэкенд — отменённый ран (DisablingProvider гасит чат
+из отдельной сессии прямо в complete(): failed/bot_disabled, ответа
+нет), персистентные строки toggle вкл/выкл + value-equal молчание,
+WS-порядок message→chat_ai_toggled; фронт — disableAi mid-run: хвост
+снят, завершившийся failed-ран молчит, ретраев нет. Гейты: npm run
+verify PASS (mocha 760→761), verify:backend 335 passed (4 известных
+Windows-only ingestion-падения конвертера не относятся).
+
+
+# 2026-11-07 — Fix(chats): невидимый лоадер списка получил стили
+
+Лоадер списка чатов из ux-pack-2 (три точки chat__list-loading при
+chatsLoading на пустом списке) существовал только в DOM: SCSS-классы
+chat__list-loading / chat__list-loading-dot не были написаны — пустые
+span'ы рендерились нулевым размером, поэтому оператор лоадер не видел
+(тест пинил узел по data-testid, гейт был зелёным). Добавлены стили:
+flex-строка точек по центру (gap 8px, padding 18px 0), точки 8×8
+--second-text-color с пульсацией chat-list-loading-pulse (1.2s
+ease-in-out infinite) и каскадной задержкой 0.2s у второй и третьей —
+волна как у pending-хвоста бота. Гейты: npm run verify PASS (mocha 760,
+stylelint чист).
+
+
+# 2026-11-07 — Feat(messenger): активная «+AI» выключает бота
+
+Правка оператора. Активная кнопка «+AI» (ai ai_active) больше не
+игнорирует клики — она выключает бота. Серверная часть уже существовала
+(PUT /chats/{id} {is_ai: false} из 013: флаг гасится, fan-out WS
+chat_ai_toggled активным участникам; бот остаётся в участниках, ран
+больше не стартует по серверному гейту chat.is_ai). Фронт симметричен
+включению: порт disableAi + own-адаптер (тот же PUT с is_ai: false),
+контроллер disableAi — оптимистичный is_ai-патч (false) и откат (true)
+по ошибке порта; Messenger-кнопка в активном состоянии зовёт
+onDisableAi (пропс через страницу), неактивном — onEnableAi как прежде;
+стили ai_active расторможены (cursor: default и замороженные
+hover/active сняты — осталась подсветка фоном, hover от общей .ai).
+Собственный WS-эхо-патч идемпотентно пропускается, чужие toggles (в
+обе стороны) жили в handleChatAiToggledEvent с 2026-11-06. Тесты:
+контроллер-пин disableAi (оптимизм + откат), адаптер-пин PUT {is_ai:
+false}, messenger-пин переписан с «активная некликабельна» на «активная
+зовёт onDisableAi без onEnableAi». Гейты: npm run verify PASS (mocha
+758→760, 0 failing), guard --all --strict 0.
+
+
+# 2026-11-07 — Fix(messenger): иконка добавления пользователей + координаты чипа авто-названия
+
+Вторая пачка правок оператора. Кнопка «+» шапки мессенджера (бывший
+div.cross с CSS-крестом) переведена на HeaderIcon-иконку по узору кнопки
+«Создать чат» (messenger.hbs рендерит HeaderIcon для элементов
+headerButtons с src): один svg-образ /images/add-user-icon.svg работает в
+двух местах — сама кнопка шапки и текст подсказки пустого чата «Добавьте
+пользователей с помощью кнопки [иконка] в верхнем меню» (прежде голый
+символ «+»; в тексте плюс-иконка опущена глубже иконки «создать чат» —
+margin-bottom: -10px поверх базовых -7px у chat__disclaimer-icon, у
+круглой кнопки визуальный центр креста выше центра картинки). Вид иконки
+сохранён как у прежней кнопки (оператор: «стили,
+как были»): svg рисует круглую кнопку с подложкой rgb(255 255 255 / 8%)
+(--overlay-background) и крестом 10×10 — CSS-крест .cross и его стили
+удалены из messenger.scss, hover у иконки — hover-opacity от
+chat__header-icon; extraClass 'cross' остаётся полем-маркером архивного
+фильтра в render() (архивный чат иконку не показывает). Тесты: пины
+кнопки переведены с .cross на img[alt="Иконка. Добавить пользователей"]
+(архив — нет, активный — есть), новый пин иконки в подсказке пустого
+чата. Прочее по оператору: чип авто-названия messenger__header-title-hint
+переехал top: -6px/right: 0 → top: 1px/right: 180px; список чатов
+chat__container-users-list — margin-left: 8px → 4px. Гейты: npm run
+verify PASS (mocha 758, 0 failing), guard --all --strict 0.
+
+
+# 2026-11-07 — Fix(messenger): центрирование пустых состояний панели + гейт загрузки дисклеймера
+
+Хвосты ux-pack-2 по запросу оператора (доп. коммит в ту же ветку/PR).
+Стили: (1) h2-дисклеймер «Выберите чат чтобы отправить сообщение» —
+flex-центрирование в панели (height:100% + align/justify-content:center)
+вместо прижатого к верху текста, шрифт выровнен с подсказкой «создайте
+чат»: 400 14px/21px, --main-text-color (было 500 12px серым). (2)
+chat__disclaimer-empty (пустое состояние «создайте чат») — height:100% +
+justify-content:center: .messenger__empty-hint уже flex-column с
+margin:auto, но панель .chat__container-chats — обычный блок, вертикальный
+auto-margin в нём не работает, блок был прижат к верху. (3) Иконка «создать»
+внутри текста (chat__disclaimer-icon): padding: 0 5px, margin-bottom:
+-7px — 32px-иконка от chat__header-icon вписана в строку 14px-текста
+(размер и hover-подсветка остались — решение оператора). Фикс мигания:
+при входе/роутинге, пока /chats в полёте (chatsLoading либо chats
+undefined), Messenger рендерил h2 «Выберите чат», который через секунду
+подменялся на «создайте чат» (hasNoChats ложен до первого ответа);
+страница теперь прокидывает chatsLoading в Messenger (chat.hbs), шаблон
+на время загрузки рендерит пустую панель (пустой фрагмент — element
+null; вариант «пустая панель» из трёх выбрал оператор). Тесты: пин
+«панель пуста при chatsLoading» в messenger.test (element null) +
+пины предзагрузочного окна на уровне страницы в chat.test (нет
+.chat__disclaimer и disclaimer-empty). Гейты: npm run verify PASS
+(mocha 757→758, 0 failing), guard --all --strict 0.
+
+
+# 2026-11-07 — ALK 2026-11-07-messenger-ux-pack-2: 10 пунктов UX мессенджера
+
+Полный ALK-цикл (S2, план-пакет tasks/2026-11-07-messenger-ux-pack-2, 3
+раунда план-ревью, freeze rev 3, операторская пред-авторизация): один
+фронтовый воркстрим WS-ALL (решение D-2 — файловые сеты пунктов
+пересекаются), журнал делегированных решений decisions.md (D-1..D-9).
+(1) Иконка второй позиции шапки возвращена к шестерёнке settings-icon.svg
+из main (D-1: фича mark-all-read осталась нетронутой; графика фичи в
+истории менялась только цветом stroke). (2) Лоадер списка чатов:
+chatsLoading-флаг стора + три пульсирующие точки вместо пустоты.
+(3) Подложка карандаша аватара-смены — два background-слоя (radial +
+pencil, F-5). (5) Главная строка профиля потеряла hover и стрелку.
+(4) Submit changes / Change password спят до dirty+валидного состояния:
+делегированный input-листенер переключает атрибуты императивно (без
+перерисовки); reset-семантика F-4 задокументирована и запинена.
+(6) Мёртвые сокеты: wsDeadChats публикуется в стор (красная строка
+chat-list-user_dead в композиции с ai/archived), вход/смерть открытого
+чата добавляют бабл «⚠ Чат недоступен» (isError+isChatUnavailable,
+идемпотентно, F-6), восстановление снимает всё. (7) Дисклеймер:
+пустое состояние «создайте чат с помощью кнопки … либо нажмите создать»
+с дублем createAndSelect (data-testid=disclaimer-create). (8) Чип
+авто-названия: несуществующий --secondary-text-color заменен на
+определённый --second-text-color (баг-фонд), чип absolute над инпутом.
+(9) AI-бейдж вынесен из обрезающего h4 в flex-сиблинг (min-width:0 у
+текста). (10) Оптимистичная запись своего сообщения (ownTempId, маркер
+«отправляется», owntmp-ключ кэша) заменяется эхом по viewer-id гейту
+(F-3: контент никогда не матчер, чужое совпадение безвредно), серверный
+id несёт «✓». Гейты: npm run verify PASS (mocha 733→755, +22), guard
+strict 0; живой смоук headless Edge: иконка, ✓, disabled-кнопки,
+стрелка — всё подтверждено. CLI-урок: venv-зависимости хостовых
+тестов живут в backend/.venv (PYTHONIOENCODING=utf-8 для вывода с
+юникодом в cp1251-консоль).
+
+
+
 # 2026-11-07 — Fix(profile): локальный выход после logout-all + danger-кнопки настроек
 
 Живой браузерный репро (headless Edge): «Sign out everywhere» давал

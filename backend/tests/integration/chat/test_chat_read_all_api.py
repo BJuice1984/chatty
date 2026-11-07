@@ -71,17 +71,18 @@ async def test_read_all_zeroes_active_and_archived_and_counts_updated(client, ap
         await post_message(client, noisy, 'two')
         await post_message(client, archived, 'missed while away')
 
-        # unread present in both the active and the archived chat
+        # unread present in both the active and the archived chat; 2026-11-07:
+        # служебные строки состава — тоже сообщения (чужие для боба), quiet
+        # теперь несёт строку добавления (своя leave-строка не в счёт)
         bob_chats = await chat_list(bob_client)
-        assert bob_chats[noisy]['unread_count'] == 2
-        assert bob_chats[archived]['unread_count'] == 1
-        assert bob_chats[quiet]['unread_count'] == 0
+        assert bob_chats[noisy]['unread_count'] == 3  # one, two + «добавил bob»
+        assert bob_chats[archived]['unread_count'] == 2  # missed + «добавил bob»
+        assert bob_chats[quiet]['unread_count'] == 1  # только «добавил bob»
 
-        # BOB's read-all covers his two chats with messages (noisy +
-        # archived); quiet has none — no row, not counted
+        # BOB's read-all covers all his three chats with messages
         response = await read_all(bob_client)
         assert response.status_code == 200
-        assert response.json() == {'updated': 2}
+        assert response.json() == {'updated': 3}
 
         bob_chats = await chat_list(bob_client)
         assert bob_chats[noisy]['unread_count'] == 0

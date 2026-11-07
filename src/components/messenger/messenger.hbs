@@ -32,20 +32,26 @@
             </div>
             <div class="messenger__header-buttons-container">
               {{#each headerButtons}}
-                {{{ headerButton extraClass=this.extraClass handleClick=this.handleClick }}}
+                {{#if this.src}}
+                  {{{ HeaderIcon src=this.src alt=this.alt onClick=this.handleClick }}}
+                {{else}}
+                  {{{ headerButton extraClass=this.extraClass handleClick=this.handleClick }}}
+                {{/if}}
               {{/each}}
             </div>
         </div>
         <ul class="messenger__container">
           {{#if emptyChatHint}}
             <li class="messenger__empty-hint" data-testid="empty-chat-hint">
-              <p class="messenger__empty-hint-text">Добавьте пользователей с помощью кнопки + в верхнем меню, либо нажмите «добавить»</p>
+              <p class="messenger__empty-hint-text">Добавьте пользователей с помощью кнопки
+                <img class="chat__header-icon chat__disclaimer-icon" src="/images/add-user-icon.svg" alt="Иконка. Добавить пользователей">
+                в верхнем меню, либо нажмите «добавить»</p>
               <button type="button" class="messenger__empty-hint-button" data-testid="empty-chat-add">добавить</button>
             </li>
           {{/if}}
           {{{ ChatHistory }}}
           {{#each messages}}
-            {{{ Message content=this.content user_id=this.user_id chat_id=this.chat_id id=this.id kind=this.kind isMine=this.isMine isError=this.isError isPending=this.isPending fileUrl=this.fileUrl attachments=this.attachments autoDownload=../this.autoDownload time=this.time showDate=this.showDate replyTo=this.replyTo reactions=this.reactions onSetReaction=../this.onSetReaction onReply=../this.onReplyToMessage cacheKey=this.cacheKey }}}
+            {{{ Message content=this.content user_id=this.user_id chat_id=this.chat_id id=this.id kind=this.kind isMine=this.isMine isError=this.isError isPending=this.isPending isSending=this.isSending fileUrl=this.fileUrl attachments=this.attachments autoDownload=../this.autoDownload time=this.time showDate=this.showDate replyTo=this.replyTo reactions=this.reactions onSetReaction=../this.onSetReaction onReply=../this.onReplyToMessage cacheKey=this.cacheKey }}}
           {{/each}}
         </ul>
         {{#if replyDraft}}
@@ -74,5 +80,15 @@
         {{{ Modal title='Удалить чат' isOpen=this.deleteModalOpen onClose=this.onCloseDelete content=this.deleteContent }}}
     </div>
 {{else}}
+  {{#if this.chatsLoading}}
+  {{else if this.hasNoChats}}
+    <div class="messenger__empty-hint chat__disclaimer-empty" data-testid="disclaimer-empty">
+      <p class="messenger__empty-hint-text">Chatty: создайте чат с помощью кнопки
+        <img class="chat__header-icon chat__disclaimer-icon" src="/images/start-chat-icon.svg" alt="Иконка. Создать чат">
+        либо нажмите</p>
+      <button type="button" class="messenger__empty-hint-button" data-testid="disclaimer-create">создать</button>
+    </div>
+  {{else}}
     <h2 class="chat__disclaimer">Chatty: Выберите чат чтобы отправить сообщение</h2>
+  {{/if}}
 {{/if}}

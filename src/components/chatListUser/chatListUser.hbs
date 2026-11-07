@@ -1,14 +1,19 @@
-<li class="chat-list-user {{#if is_ai}}chat-list-user_ai{{/if}}{{#if isActive}} chat-list-user_active{{/if}}{{#if this.leftAt}} chat-list-user_archived{{/if}}">
+<li class="chat-list-user {{#if is_ai}}chat-list-user_ai{{/if}}{{#if isActive}} chat-list-user_active{{/if}}{{#if this.leftAt}} chat-list-user_archived{{/if}}{{#if this.isDead}} chat-list-user_dead{{/if}}">
   <div class="chat-list-user__container {{extraClass}}">
     <div class="chat-list-user__img-container chat-list-user__img-container-ava">
       {{{ ChatAvatar src=this.src alt=this.alt }}}
     </div>
   </div>
   <div class="chat-list-user__container-content {{extraClass}}">
-    <h4 class="chat-list-user__title">
-      {{#if this.titleHtml}}{{{this.titleHtml}}}{{else}}{{title}}{{/if}}
+    {{!-- 2026-11-07-messenger-ux-pack-2: заголовок и AI-бейдж — flex-строка;
+      текст обрезается эллипсисом в своём спане (min-width: 0), бейдж
+      flex-сиблинг и больше никогда не прячется за длинным названием --}}
+    <div class="chat-list-user__title-row">
+      <h4 class="chat-list-user__title">
+        {{#if this.titleHtml}}{{{this.titleHtml}}}{{else}}{{title}}{{/if}}
+      </h4>
       {{#if is_ai}}<span class="chat-list-user__ai-badge" data-testid="ai-badge"><span class="chat-list-user__ai-badge-star" aria-hidden="true">✦</span>AI</span>{{/if}}
-    </h4>
+    </div>
     {{!-- Сниппет: во время поиска — подсвеченное окно совпадения, иначе
       последняя реплика; свой класс вместо дубля __title, та же строка
       с эллипсисом --}}

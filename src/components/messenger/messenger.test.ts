@@ -90,6 +90,51 @@ describe('mapTypedMessages day markers', () => {
         store.set('messages', {})
     })
 
+    // 2026-11-07-messenger-ux-pack-2: пустое состояние без чатов — вариант
+    // «создайте чат» с кнопкой-дублем one-click создания; обычный дисклеймер
+    // остаётся при наличии чатов
+    it('renders the no-chats create variant and fires onCreateChat from «создать»', () => {
+        const onCreateChat = sinon.spy()
+        const messenger = new Messenger({ hasNoChats: true, onCreateChat } as never)
+
+        // дисклеймер — сам корневой элемент Messenger (else-ветка шаблона);
+        // кнопка «создать» — потомок с testid
+        expect(messenger.element?.classList.contains('chat__disclaimer-empty')).to.be.true
+        expect(messenger.element?.classList.contains('messenger__empty-hint')).to.be.true
+        expect(messenger.element?.querySelector('[data-testid="disclaimer-create"]')).to.be.not.null
+
+        const createButton = messenger.element?.querySelector<HTMLButtonElement>('[data-testid="disclaimer-create"]')
+
+        expect(createButton?.textContent?.trim()).to.eq('создать')
+
+        createButton?.click()
+
+        expect(onCreateChat.calledOnce).to.be.true
+
+        messenger.destroy()
+    })
+
+    it('renders the plain disclaimer when chats exist', () => {
+        const messenger = new Messenger({} as never)
+
+        expect(messenger.element?.classList.contains('chat__disclaimer')).to.be.true
+        expect(messenger.element?.textContent).to.contain('Выберите чат')
+        expect(messenger.element?.querySelector('[data-testid="disclaimer-create"]')).to.eq(null)
+
+        messenger.destroy()
+    })
+
+    // фикс мигания (2026-11-07): пока список чатов грузится, панель пуста —
+    // пустая ветка шаблона компилируется в пустой фрагмент (element null),
+    // ни «Выберите чат», ни «создайте чат» не мигают до ответа /chats
+    it('renders neither disclaimer variant while the chats list is loading', () => {
+        const messenger = new Messenger({ chatsLoading: true } as never)
+
+        expect(messenger.element).to.eq(null)
+
+        messenger.destroy()
+    })
+
     // Локальная ISO-метка без зоны: день метки не зависит от таймзоны машины
     const iso = (date: Date) => {
         const pad = (value: number) => String(value).padStart(2, '0')
@@ -173,6 +218,21 @@ describe('mapTypedMessages day markers', () => {
         expect(typed[1]?.cacheKey).to.eq(PENDING_TAIL_CACHE_KEY)
         expect(typed[1]?.cacheKey).to.eq('pending:tail')
         expect(typed[2]?.cacheKey).to.eq(undefined)
+    })
+
+    // 2026-11-07-messenger-ux-pack-2: оптимистичная запись своего сообщения
+    // получает ключ owntmp:<n> (инстанс живёт от сабмита до эха) и флаг
+    // isSending; серверная запись темп-ключ не несёт и isSending не имеет
+    it('keys optimistic own entries owntmp:<n> and flags them isSending', () => {
+        const typed = mapTypedMessages([
+            { chat_id: 1, time: 't1', type: 'message', user_id: 7, content: 'летит', ownTempId: 'tmp-9' },
+            { chat_id: 1, time: 't2', type: 'message', user_id: 7, content: 'дошло', id: 77 },
+        ], 7)
+
+        expect(typed[0]?.cacheKey).to.eq('owntmp:tmp-9')
+        expect(typed[0]?.isSending).to.eq(true)
+        expect(typed[1]?.cacheKey).to.eq('id:77')
+        expect(typed[1]?.isSending).to.eq(false)
     })
 })
 
@@ -972,7 +1032,7 @@ describe('messenger member menu', () => {
             // кнопка «+» скрыта, удаление чата остаётся (owner-only на бэке)
             const headerButtons = messenger.element?.querySelector('.messenger__header-buttons-container')
 
-            expect(headerButtons?.querySelector('.cross')).to.not.exist
+            expect(headerButtons?.querySelector('img[alt="Иконка. Добавить пользователей"]')).to.not.exist
             expect(headerButtons?.querySelector('.close')).to.exist
 
             // композер скрыт, история остаётся скроллимой
@@ -987,7 +1047,7 @@ describe('messenger member menu', () => {
         const messenger = new Messenger({} as never)
 
         try {
-            expect(messenger.element?.querySelector('.messenger__header-buttons-container .cross')).to.exist
+            expect(messenger.element?.querySelector('.messenger__header-buttons-container img[alt="Иконка. Добавить пользователей"]')).to.exist
             expect(messenger.element?.querySelector('.messenger__composer')).to.exist
         } finally {
             messenger.destroy()
@@ -1674,6 +1734,10 @@ describe('messenger auto-title input, empty hint and +AI button', () => {
         try {
             seedChat()
 
+            // в тексте подсказки — иконка кнопки «+» шапки (один svg-образ
+            // на оба места, узор кнопки «Создать чат»)
+            expect(hint(messenger)?.querySelector('img.chat__disclaimer-icon[src="/images/add-user-icon.svg"]')).to.not.be.null
+
             const button = messenger.element?.querySelector<HTMLElement>('[data-testid="empty-chat-add"]')
 
             button?.dispatchEvent(new (view().MouseEvent)('click', { bubbles: true }))
@@ -1684,9 +1748,10 @@ describe('messenger auto-title input, empty hint and +AI button', () => {
         }
     })
 
-    it('+AI: click fires onEnableAi; an AI chat renders the active non-clickable state', () => {
+    it('+AI: click fires onEnableAi; the active AI button fires onDisableAi', () => {
         const onEnableAi = sinon.spy()
-        const messenger = new Messenger({ onEnableAi } as never)
+        const onDisableAi = sinon.spy()
+        const messenger = new Messenger({ onEnableAi, onDisableAi } as never)
 
         try {
             seedChat()
@@ -1703,8 +1768,11 @@ describe('messenger auto-title input, empty hint and +AI button', () => {
 
             expect(active?.classList.contains('ai_active')).to.be.true
 
+            // активная кнопка ВЫКЛЮЧАЕТ бота (2026-11-07): onDisableAi
+            // уходит, повторного onEnableAi нет
             active?.dispatchEvent(new (view().MouseEvent)('click', { bubbles: true }))
 
+            expect(onDisableAi.calledOnceWith(5)).to.be.true
             expect(onEnableAi.calledOnce).to.be.true
         } finally {
             messenger.destroy()
@@ -1718,7 +1786,7 @@ describe('messenger auto-title input, empty hint and +AI button', () => {
             seedChat({ leftAt: '2026-11-01T10:00:00Z' })
 
             expect(aiButton(messenger)).to.be.null
-            expect(messenger.element?.querySelector('.messenger__header-buttons-container .cross')).to.be.null
+            expect(messenger.element?.querySelector('.messenger__header-buttons-container img[alt="Иконка. Добавить пользователей"]')).to.be.null
         } finally {
             messenger.destroy()
         }

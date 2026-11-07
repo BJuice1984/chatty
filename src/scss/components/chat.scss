@@ -157,7 +157,7 @@
       //правка оператора: полная ширина с внутренними отступами вместо
 
       //обрезки — hover-эффекты пунктов не должны резаться краем списка
-      margin-left: 8px;
+      margin-left: 4px;
         display: grid;
         grid-template-columns: minmax(0, 1fr);
         row-gap: 16px;
@@ -177,6 +177,32 @@
         @include scrollbar-slim;
     }
 
+    &__list-loading {
+        @include reset;
+
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        gap: 8px;
+        padding: 18px 0;
+    }
+
+    &__list-loading-dot {
+        @include size(8px, 8px);
+
+        border-radius: 50%;
+        background-color: var(--second-text-color);
+        animation: chat-list-loading-pulse 1.2s ease-in-out infinite;
+
+        &:nth-child(2) {
+            animation-delay: 0.2s;
+        }
+
+        &:nth-child(3) {
+            animation-delay: 0.4s;
+        }
+    }
+
     &__container-chats {
         width: auto;
 
@@ -189,10 +215,28 @@
     &__disclaimer {
         @include reset;
         @include text;
-        @include text-format(500, 12px, 12px);
-        
-        color: var(--second-text-color);
+        @include text-format(400, 14px, 21px);
+
+        height: 100%;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        color: var(--main-text-color);
         text-align: center;
+    }
+
+    &__disclaimer-empty {
+        height: 100%;
+        justify-content: center;
+    }
+
+    &__disclaimer-icon {
+        padding: 0 5px;
+        margin-bottom: -7px;
+    }
+
+    &__disclaimer-icon[src='/images/add-user-icon.svg'] {
+        margin-bottom: -10px;
     }
 
     &__container-profile {
@@ -209,16 +253,15 @@
         @include size(50px, 50px);
 
         display: flex;
-        background-image: url("../../images/pencil.svg");
-        background-repeat: no-repeat;
-        background-size: 20px;
-        background-position: center;
 
         &_type_change-profile {
           @include size(150px, 150px);
 
-          background-size: 30px;
           align-self: center;
+          background-image: radial-gradient(circle at center, var(--overlay-background) 0 34%, transparent 35%), url("../../images/pencil.svg");
+          background-repeat: no-repeat;
+          background-size: 150px, 30px;
+          background-position: center;
         }
       }
 
@@ -245,18 +288,18 @@
         height: 50px;
         object-fit: cover;
         margin: 0;
-        cursor: pointer;
         transition: 0.2s ease-in-out;
-
-        &:hover {
-          opacity: 0.2;
-          transition: 0.2s ease-in-out;
-        }
 
         &_type_change-profile {
           border-radius: 150px;
           width: 150px;
           height: 150px;
+          cursor: pointer;
+
+          &:hover {
+            opacity: 0.15;
+            transition: 0.2s ease-in-out;
+          }
         }
       }
 
@@ -274,17 +317,9 @@
           cursor: default;
 
           &_type_tel {
-            opacity: 0.4; 
+            opacity: 0.4;
           }
         }
-      }
-      
-      &-arrow {
-        position: absolute;
-        align-self: center;
-        right: 10px;
-
-        @include hover-opacity;
       }
     }
 
@@ -404,5 +439,17 @@
             border-color: var(--third-color);
             box-shadow: 0 0 10px 2px var(--bottom-bar-active-glow), inset 0 0 6px var(--bottom-bar-active-inset);
         }
+    }
+}
+
+@keyframes chat-list-loading-pulse {
+
+    0%,
+    100% {
+        opacity: 0.35;
+    }
+
+    50% {
+        opacity: 1;
     }
 }

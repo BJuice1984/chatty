@@ -23,6 +23,7 @@ from app.schemas.reaction import ReactionSet, ReactionSummaryResponse
 from app.services.chats import ChatService
 from app.services.messages import MessageService
 from app.ws.autotitle import schedule_autotitle
+from app.ws.feed import broadcast_feed_message as _broadcast_feed_message
 from app.ws.hub import hub
 
 
@@ -146,17 +147,16 @@ async def update_chat(
     kind-bearing 'message' event (live feed append) and 'chat_renamed'
     (other clients refresh their list titles). The identical-title call is
     an idempotent no-op without a message and without clearing the flag. A
-    provided is_ai flips the bot flag and fans out the NEW 'chat_ai_toggled'
-    event (a state patch — no system message); a value-equal call is a 200
-    without a second broadcast. At least one field must be present (422)."""
+    provided is_ai flips the bot flag: the toggle lands in the feed as a
+    kind='chat_ai_toggled' system message ('message' event, 2026-11-07),
+    then the NEW 'chat_ai_toggled' event follows as a state patch; a
+    value-equal call is a 200 without a second broadcast. At least one
+    field must be present (422)."""
     chats_service = ChatService(db)
-    chat, system_message, ai_changed, auto_title = chats_service.update(chat_id, current_user.id, payload)
+    chat, system_message, ai_message, ai_changed, auto_title = chats_service.update(chat_id, current_user.id, payload)
     if system_message is not None:
-        presented = MessageService(db).present_one(system_message, current_user.id)
-        await hub.broadcast(
-            chat_id,
-            {'type': 'message', 'content': presented.model_dump(mode='json')},
-            active_user_ids=chats_service.active_member_ids(chat_id),
+        await _broadcast_feed_message(
+            db, chat_id, system_message, current_user.id, chats_service.active_member_ids(chat_id)
         )
         await hub.broadcast(
             chat_id,
@@ -172,6 +172,10 @@ async def update_chat(
             active_user_ids=chats_service.active_member_ids(chat_id),
         )
     if ai_changed:
+        if ai_message is not None:
+            await _broadcast_feed_message(
+                db, chat_id, ai_message, current_user.id, chats_service.active_member_ids(chat_id)
+            )
         await hub.broadcast(
             chat_id,
             {'type': 'chat_ai_toggled', 'content': {'chat_id': chat_id, 'is_ai': chat.is_ai}},
@@ -214,12 +218,18 @@ async def add_chat_member(
     'chat_renamed' event fans out to ACTIVE members (other clients refresh
     their list titles through the already-shipped frontend path)."""
     chats_service = ChatService(db)
-    member, new_title, ai_changed = chats_service.add_member(chat_id, current_user.id, payload.user_id)
+    member, new_title, ai_changed, member_event = chats_service.add_member(
+        chat_id, current_user.id, payload.user_id
+    )
+    active_user_ids = chats_service.active_member_ids(chat_id)
+    if member_event is not None:
+        # 2026-11-07: «X добавил Y» — раньше события состояния, лента живая
+        await _broadcast_feed_message(db, chat_id, member_event, current_user.id, active_user_ids)
     if new_title is not None:
         await hub.broadcast(
             chat_id,
             {'type': 'chat_renamed', 'content': {'chat_id': chat_id, 'title': new_title}},
-            active_user_ids=chats_service.active_member_ids(chat_id),
+            active_user_ids=active_user_ids,
         )
     if ai_changed:
         # 2026-11-06-quick: бот добавлен «+» — чат становится AI для всех
@@ -227,7 +237,7 @@ async def add_chat_member(
         await hub.broadcast(
             chat_id,
             {'type': 'chat_ai_toggled', 'content': {'chat_id': chat_id, 'is_ai': True}},
-            active_user_ids=chats_service.active_member_ids(chat_id),
+            active_user_ids=active_user_ids,
         )
     return ChatMemberResponse.model_validate(member)
 
@@ -245,7 +255,13 @@ async def remove_chat_member(
     segments cannot collide with the int routes: single-segment /{chat_id}
     patterns never match this three-segment path (the /search, /dm
     precedents run the other way — literals must come first)."""
-    ChatService(db).kick_member(chat_id, current_user.id, user_id)
+    chats_service = ChatService(db)
+    member_event = chats_service.kick_member(chat_id, current_user.id, user_id)
+    if member_event is not None:
+        # 2026-11-07: «X удалил Y» — кикнутый уже вне active-фильтра
+        await _broadcast_feed_message(
+            db, chat_id, member_event, current_user.id, chats_service.active_member_ids(chat_id)
+        )
     # только сокеты исключённого пользователя (close_chat убил бы чат у всех)
     await hub.close_user_chat(chat_id, user_id)
 
@@ -262,7 +278,13 @@ async def leave_chat(
     /{chat_id}/members and /{chat_id}/messages — a different literal, so
     the int routes cannot shadow it (no single-segment POST /{chat_id}
     exists)."""
-    ChatService(db).leave(chat_id, current_user.id)
+    chats_service = ChatService(db)
+    member_event = chats_service.leave(chat_id, current_user.id)
+    if member_event is not None:
+        # 2026-11-07: «X удалился из чата» — ушедший уже вне active-фильтра
+        await _broadcast_feed_message(
+            db, chat_id, member_event, current_user.id, chats_service.active_member_ids(chat_id)
+        )
     await hub.close_user_chat(chat_id, current_user.id)
 
 
@@ -279,7 +301,13 @@ async def rejoin_chat(
     sits beside /{chat_id}/leave and /{chat_id}/members — a different
     literal, so the int routes cannot shadow it (no single-segment POST
     /{chat_id} exists; the /search, /dm precedents run the other way)."""
-    ChatService(db).rejoin(chat_id, current_user.id)
+    chats_service = ChatService(db)
+    member_event = chats_service.rejoin(chat_id, current_user.id)
+    if member_event is not None:
+        # 2026-11-07: «X вернулся в чат» — вернувшийся снова в active-фильтре
+        await _broadcast_feed_message(
+            db, chat_id, member_event, current_user.id, chats_service.active_member_ids(chat_id)
+        )
 
 
 @router.get('/{chat_id}/messages', response_model=MessagePage)

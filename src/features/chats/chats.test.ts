@@ -1,14 +1,14 @@
 import { expect } from 'chai'
 import sinon from 'sinon'
 import { JSDOM } from 'jsdom'
-import store from '../../utils/Store.ts'
+import store, { AppState } from '../../utils/Store.ts'
 import { TransportError } from '../../utils/HTTPTransport.ts'
 import { resetBusyOverlayForTests } from '../../utils/busyOverlay.ts'
 import { NEW_CHAT_TITLE } from '../../utils/constants.ts'
 import { ChatsFeatureController, applyReactionDelta, setContactsIntegration, setDocumentSearch, toggleOwnReaction } from './controller.ts'
 import { ownChatsPort } from './api/own.ts'
 import { chatSearchSlice, chatsSlice } from './store.ts'
-import { notifyChatAiToggled, notifyChatDeleted, notifyChatRenamed, notifyReactionEvent, notifyWsConnected, notifyWsUnexpectedClose } from './ws/gateway.ts'
+import { notifyChatAiToggled, notifyChatAvatarUpdated, notifyChatDeleted, notifyChatMembersChanged, notifyChatRenamed, notifyReactionEvent, notifyWsConnected, notifyWsUnexpectedClose } from './ws/gateway.ts'
 import { OwnWsAdapter } from './ws/own.ts'
 import type { ChatsPort } from './ports.ts'
 import type { ChatInfo, ChatSearchMatch, Message, ReactionSummary } from '../../utils/types.ts'
@@ -23,6 +23,7 @@ function makePort(overrides: Partial<ChatsPort> = {}): ChatsPort {
         deleteChat: async () => undefined,
         renameChat: async () => undefined,
         enableAi: async () => undefined,
+        disableAi: async () => undefined,
         readAll: async () => ({ updated: 0 }),
         // eslint-disable-next-line no-unused-vars
         getToken: async (chatId: number) => ({ token: `token-${chatId}` }),
@@ -339,6 +340,22 @@ describe('chats controller create-and-select and enable-ai', () => {
         expect((chatsSlice.getChats().find(chat => chat.id === 7) as ChatInfo).is_ai).to.eq(false)
     })
 
+    // обратный «+AI» (2026-11-07): активная кнопка выключает бота — тот же
+    // оптимистичный патч (false) и откат (true) по ошибке порта
+    it('disableAi patches is_ai to false optimistically and reverts on port error', async () => {
+        chatsSlice.setChats([chatRow({ id: 7, is_ai: true })])
+        const disableAi = sinon.stub().rejects(new Error('boom'))
+        const controller = new ChatsFeatureController(makePort({ disableAi }), makeMessages())
+
+        const pending = controller.disableAi(7)
+
+        expect((chatsSlice.getChats().find(chat => chat.id === 7) as ChatInfo).is_ai).to.eq(false)
+
+        await pending
+
+        expect((chatsSlice.getChats().find(chat => chat.id === 7) as ChatInfo).is_ai).to.eq(true)
+    })
+
     it('chat_ai_toggled event patches is_ai in the slice (other clients)', async () => {
         chatsSlice.setChats([chatRow({ id: 7 })])
         new ChatsFeatureController(makePort(), makeMessages())
@@ -374,6 +391,47 @@ describe('chats controller create-and-select and enable-ai', () => {
         await new Promise(resolve => setTimeout(resolve, 0))
 
         expect(getChatUsers.callCount).to.eq(1)
+    })
+
+    // 2026-11-07: kind-строки состава (chat_member_*) — рефетч состава
+    // ОТКРЫТОГО чата: новый участник появляется в шапке, ушедший гаснет по
+    // left_at, кикнутый исчезает; чужой чат шапку не трогает
+    it('chat_member kind event refetches members of the OPEN chat only', async () => {
+        chatsSlice.setChats([chatRow({ id: 7 })])
+        store.set('selectedChat', 7)
+        const getChatUsers = sinon.stub().resolves([])
+        new ChatsFeatureController(makePort({ getChatUsers }), makeMessages())
+
+        notifyChatMembersChanged(7)
+        await new Promise(resolve => setTimeout(resolve, 0))
+
+        expect(getChatUsers.calledOnceWith(7)).to.be.true
+
+        // событие другого чата не затирает состав открытого
+        notifyChatMembersChanged(9)
+        await new Promise(resolve => setTimeout(resolve, 0))
+
+        expect(getChatUsers.callCount).to.eq(1)
+    })
+
+    // 2026-11-07: смена аватара чата другим клиентом — точечный avatar-патч
+    // слайса (плитка списка + шапка), значение-равное — идемпотентный пропуск
+    it('chat_avatar_updated event patches the chat avatar in the slice', async () => {
+        chatsSlice.setChats([chatRow({ id: 7 })])
+        new ChatsFeatureController(makePort(), makeMessages())
+
+        notifyChatAvatarUpdated({ chat_id: 7, avatar: '77/download' })
+
+        expect((chatsSlice.getChats().find(chat => chat.id === 7) as ChatInfo).avatar).to.eq('77/download')
+
+        notifyChatAvatarUpdated({ chat_id: 7, avatar: '77/download' })
+
+        expect((chatsSlice.getChats().find(chat => chat.id === 7) as ChatInfo).avatar).to.eq('77/download')
+
+        // чат вне слайса — тихий пропуск
+        notifyChatAvatarUpdated({ chat_id: 99, avatar: 'x/download' })
+
+        expect(chatsSlice.getChats()).to.have.length(1)
     })
 
     // 2026-11-06-quick: вход в чат с непрочитанными при живом сокете —
@@ -1119,6 +1177,39 @@ describe('chats controller bot run', () => {
         expect(hasPending()).to.be.false
     })
 
+    // Отмена рана выключением бота (2026-11-07): «выключить» при летящем
+    // POST — pending-хвост дропается сразу (композер разблокирован в тот
+    // же кадр), прогон помечается отменённым: завершившийся уже после
+    // отмены ран (даже failed) не рисует плашку «Ассистент недоступен» и
+    // не дёргает доставку ответа; ретраев отменённого прогона нет
+    it('disabling the bot mid-run drops the pending tail and stays silent on the outcome', async () => {
+        setupAiChat()
+        let resolveRun!: (value: { id: number, status: string, error_kind: string | null }) => void
+        const runBot = sinon.stub().returns(new Promise<{ id: number, status: string, error_kind: string | null }>(resolve => {
+            resolveRun = resolve
+        }))
+        const controller = new ChatsFeatureController(
+            makePort({ runBot, disableAi: async () => undefined }),
+            makeMessages()
+        )
+
+        const sent = controller.sendMessage(38, 'вопрос')
+
+        echoOwnMessage()
+        await sent
+        await until(() => hasPending())
+
+        await controller.disableAi(38)
+
+        expect(hasPending()).to.be.false
+
+        resolveRun({ id: 1, status: 'failed', error_kind: 'bot_disabled' })
+        await new Promise(resolve => setTimeout(resolve, 30))
+
+        expect(errorMessage()).to.be.undefined
+        expect(runBot.calledOnce).to.be.true
+    })
+
     it('shows the failure message when the run request itself rejects (timeout/network)', async () => {
         setupAiChat()
         const controller = new ChatsFeatureController(
@@ -1457,19 +1548,27 @@ describe('chats controller bot echo timeout', () => {
 // на первом падении и гасит на последнем восстановлении (парность show/hide
 // per-эпизод, refcount busyOverlay остаётся сбалансированным)
 describe('chats controller ws-death indicator', () => {
+    let controllers: ChatsFeatureController[] = []
+
     beforeEach(() => {
         resetBusyOverlayForTests()
+        controllers = []
     })
 
     afterEach(() => {
+        controllers.forEach(controller => controller.stopWsReviveLoop())
         resetBusyOverlayForTests()
         store.set('messages', undefined)
         store.set('user', undefined)
         store.set('chats', [])
+        store.set('wsDeadChats', undefined)
+        store.set('selectedChat', undefined)
     })
 
     it('shows the reconnect overlay on unexpected closes and hides it when every dead chat recovers', async () => {
         const controller = new ChatsFeatureController(makePort(), makeMessages())
+
+        controllers.push(controller)
 
         notifyWsUnexpectedClose(3)
 
@@ -1492,11 +1591,127 @@ describe('chats controller ws-death indicator', () => {
     })
 
     it('a first-time Connected is a no-op: no overlay, no stray hide', async () => {
-        new ChatsFeatureController(makePort(), makeMessages())
+        controllers.push(new ChatsFeatureController(makePort(), makeMessages()))
 
         notifyWsConnected(3)
 
         expect(document.getElementById('busy-overlay')).to.be.null
+    })
+
+    it('publishes dead ids to the store and retracts them on recovery (2026-11-07)', () => {
+        controllers.push(new ChatsFeatureController(makePort(), makeMessages()))
+
+        notifyWsUnexpectedClose(3)
+
+        expect(((store.getState() as AppState & { wsDeadChats?: number[] }).wsDeadChats ?? [])).to.deep.eq([3])
+
+        notifyWsUnexpectedClose(4)
+
+        expect(((store.getState() as AppState & { wsDeadChats?: number[] }).wsDeadChats ?? [])).to.deep.eq([3, 4])
+
+        notifyWsConnected(3)
+
+        expect(((store.getState() as AppState & { wsDeadChats?: number[] }).wsDeadChats ?? [])).to.deep.eq([4])
+
+        notifyWsConnected(4)
+
+        expect(((store.getState() as AppState & { wsDeadChats?: number[] }).wsDeadChats ?? [])).to.deep.eq([])
+    })
+
+    it('opening a dead chat shows the «Чат недоступен» bubble exactly once (idempotent, F-6)', () => {
+        const controller = new ChatsFeatureController(makePort(), makeMessages())
+
+        controllers.push(controller)
+
+        store.set('chats', [{ id: 7, title: 'Чат', avatar: '', unread_count: 0 } as never])
+
+        notifyWsUnexpectedClose(7)
+
+        controller.selectChat(7)
+
+        const first = (store.getState().messages?.[7] ?? []) as { content?: string, isChatUnavailable?: boolean, isError?: boolean }[]
+
+        expect(first).to.have.length(1)
+        expect(first[0]?.content).to.eq('⚠ Чат недоступен')
+        expect(first[0]?.isChatUnavailable).to.eq(true)
+        expect(first[0]?.isError).to.eq(true)
+
+        // повторное открытие того же мёртвого чата не стекует плашки
+        controller.selectChat(7)
+
+        const second = (store.getState().messages?.[7] ?? []) as unknown[]
+
+        expect(second).to.have.length(1)
+    })
+
+    it('a death while the chat is open pushes the bubble too', () => {
+        const controller = new ChatsFeatureController(makePort(), makeMessages())
+
+        controllers.push(controller)
+
+        store.set('chats', [{ id: 9, title: 'Чат', avatar: '', unread_count: 0 } as never])
+        controller.selectChat(9)
+
+        notifyWsUnexpectedClose(9)
+
+        const list = (store.getState().messages?.[9] ?? []) as { content?: string }[]
+
+        expect(list).to.have.length(1)
+        expect(list[0]?.content).to.eq('⚠ Чат недоступен')
+    })
+
+    it('recovery removes the bubble and the tint together', () => {
+        const controller = new ChatsFeatureController(makePort(), makeMessages())
+
+        controllers.push(controller)
+
+        store.set('chats', [{ id: 5, title: 'Чат', avatar: '', unread_count: 0 } as never])
+        controller.selectChat(5)
+        notifyWsUnexpectedClose(5)
+
+        expect((store.getState().messages?.[5] ?? []) as unknown[]).to.have.length(1)
+
+        notifyWsConnected(5)
+
+        expect((store.getState().messages?.[5] ?? []) as unknown[]).to.have.length(0)
+        expect(((store.getState() as AppState & { wsDeadChats?: number[] }).wsDeadChats ?? [])).to.deep.eq([])
+    })
+})
+
+describe('chats controller optimistic own message (2026-11-07-messenger-ux-pack-2)', () => {
+    afterEach(() => {
+        store.set('messages', undefined)
+        store.set('user', undefined)
+        store.set('chats', [])
+    })
+
+    it('sendMessage appends a temp own entry before the WS send', async () => {
+        store.set('user', { id: 7, login: 'a@example.com' } as never)
+        store.set('chats', [{ id: 3, title: 'Чат', avatar: '', unread_count: 0 } as never])
+
+        const sendMessage = sinon.stub().resolves()
+        const controller = new ChatsFeatureController(makePort(), makeMessages({ sendMessage }))
+
+        await controller.sendMessage(3, 'привет')
+
+        const list = (store.getState().messages?.[3] ?? []) as { content?: string, user_id?: number, ownTempId?: string, id?: number }[]
+
+        expect(list).to.have.length(1)
+        expect(list[0]?.content).to.eq('привет')
+        expect(list[0]?.user_id).to.eq(7)
+        expect(list[0]?.ownTempId).to.be.a('string')
+        expect(list[0]?.id).to.eq(undefined)
+    })
+
+    it('appendOwnTempMessage carries replyTo for replies', () => {
+        store.set('user', { id: 7, login: 'a@example.com' } as never)
+        const controller = new ChatsFeatureController(makePort(), makeMessages())
+
+        controller.appendOwnTempMessage(3, 'ответ', 21)
+
+        const list = (store.getState().messages?.[3] ?? []) as { replyToId?: number }[]
+
+        expect(list[0]?.replyToId).to.eq(21)
     })
 })
 

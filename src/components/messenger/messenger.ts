@@ -40,15 +40,19 @@ export const USER_SEARCH_DEBOUNCE_MS = 300
 export const PENDING_TAIL_CACHE_KEY = 'pending:tail'
 
 // Ключ переиспользования Message-инстанса: реальному сообщению — id:<n>;
-// isPending-хвосту без id — фиксированный pending:tail; сообщению без
-// идентичности — undefined (кэш не участвует, инстанс строится каждым
-// рендером заново, как до keyed-кэша)
+// isPending-хвосту без id — фиксированный pending:tail; оптимистичной
+// записи своего сообщения — owntmp:<n> (2026-11-07: инстанс живёт от
+// сабмита до серверного эха); сообщению без идентичности — undefined
 function messageCacheKey(message: Message): string | undefined {
     if (typeof message.id === 'number') {
         return `id:${message.id}`
     }
 
-    return message.isPending === true ? PENDING_TAIL_CACHE_KEY : undefined
+    if (message.isPending === true) {
+        return PENDING_TAIL_CACHE_KEY
+    }
+
+    return message.ownTempId != null ? `owntmp:${message.ownTempId}` : undefined
 }
 
 // Черновик ответа: id цели (REST требует message_id) и сниппет для превью
@@ -71,6 +75,13 @@ interface MessengerProps {
     messages: Message[]
     inputs: Input[]
     buttons: Button<{ message: string }>[]
+    // пустое состояние без чатов (2026-11-07): кнопка «создать» в
+    // дисклеймере — дубль one-click создания (страница прокидывает контроллер)
+    hasNoChats?: boolean
+    // список чатов в полёте (2026-11-07): панель пуста — дисклеймер не
+    // мигает «Выберите чат» до первого ответа /chats
+    chatsLoading?: boolean
+    onCreateChat?: () => void
     // eslint-disable-next-line no-unused-vars
     onDeleteChat?: (id: number) => void
     // клик по найденному пользователю добавляет его в чат
@@ -108,6 +119,9 @@ interface MessengerProps {
     // «+AI» (2026-11-06-chat-create-flow): включает бота в текущем чате
     // eslint-disable-next-line no-unused-vars
     onEnableAi?: (chatId: number) => void
+    // обратное действие (2026-11-07): клик по активной кнопке выключает бота
+    // eslint-disable-next-line no-unused-vars
+    onDisableAi?: (chatId: number) => void
     // UI-флаг «заголовок в режиме инпута» (controller-free, поднимается setProps)
     renamingTitle?: boolean
     // controller-free UI-состояние (внутреннее, поднимается через setProps):
@@ -287,6 +301,7 @@ export function mapTypedMessages(
             attachments,
             showDate,
             cacheKey: messageCacheKey(message),
+            isSending: message.ownTempId != null,
         }
     })
 }
@@ -563,6 +578,16 @@ class MessengerBase extends Block {
                         return
                     }
 
+                    // пустое состояние без чатов (2026-11-07-messenger-ux-
+                    // pack-2): кнопка «создать» — дубль one-click создания
+                    if (target?.closest('[data-testid="disclaimer-create"]') != null) {
+                        const onCreateChat = (this.props as MessengerProps).onCreateChat
+
+                        onCreateChat?.()
+
+                        return
+                    }
+
                     // клик по аватару участника в шапке: меню участника.
                     // Архивный чат (leftAt) — меню нет вовсе; участник ищется
                     // в selectedChatUsers по data-user-id обёртки аватара
@@ -716,7 +741,14 @@ class MessengerBase extends Block {
                     },
                 },
                 {
+                    // иконка добавления пользователя (2026-11-07, оператор):
+                    // образ кнопки «+» вынесен в svg и рендерится HeaderIcon
+                    // (узор кнопки «Создать чат») — тот же файл живёт в
+                    // подсказке пустого чата; extraClass 'cross' остаётся
+                    // маркером архивного фильтра в render()
                     extraClass: 'cross',
+                    src: '/images/add-user-icon.svg',
+                    alt: 'Иконка. Добавить пользователей',
                     handleClick: () => {
                         // открытие модалки поиска: черновой запрос прошлого
                         // сеанса не тянется в новый, ввод начинается сразу —
@@ -844,19 +876,23 @@ class MessengerBase extends Block {
             .filter((id): id is number => typeof id === 'number' && id !== props.meId)
         const emptyChatHint = !archived && !isAiChat && (props.messages ?? []).length === 0 && coMembers.length === 0
         // «+AI» первым в ряду кнопок: включает бота в текущем чате; в AI-чате
-        // кнопка уже активна (подсветка, клики игнорирует), архивный чат её
-        // не показывает вовсе (вместе с cross)
+        // кнопка активна (подсветка) и клик её ВЫКЛЮЧАЕТ (2026-11-07);
+        // архивный чат её не показывает вовсе (вместе с cross)
         const aiButton = {
             extraClass: isAiChat ? 'ai ai_active' : 'ai',
-            handleClick: isAiChat
-                ? () => {}
-                : () => {
-                    const live = this.props as MessengerProps
+            handleClick: () => {
+                const live = this.props as MessengerProps
 
-                    if (typeof live.selectedChat === 'number') {
-                        live.onEnableAi?.(live.selectedChat)
-                    }
-                },
+                if (typeof live.selectedChat !== 'number') {
+                    return
+                }
+
+                if (isAiChat) {
+                    live.onDisableAi?.(live.selectedChat)
+                } else {
+                    live.onEnableAi?.(live.selectedChat)
+                }
+            },
         }
         const headerButtons = (props.headerButtons as { extraClass?: string }[] | undefined) ?? []
         const visibleHeaderButtons = (archived

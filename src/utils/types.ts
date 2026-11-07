@@ -13,6 +13,9 @@ export interface Button<T = unknown> {
     label: string
     classType: string
     type: string
+    // атрибут disabled самой кнопки (2026-11-07): полёт запроса или сон
+    // формы до валидных изменений; со стилевым classType не связан
+    disabled?: boolean
     onClick?: () => void
     // eslint-disable-next-line no-unused-vars
     handleSubmitClick?: (value: T) => void
@@ -223,5 +226,13 @@ export interface Message {
     // лента хвостит «Ассистент печатает…» (_pending у bubble, пульсация);
     // контроллер снимает плейсхолдер по завершении прогона
     isPending?: boolean
+    // клиентский маркер «Чат недоступен» (2026-11-07-messenger-ux-pack-2):
+    // сокет чата умер исчерпанием реконнектов — контроллер ставит бабл
+    // ошибки в ленту и убирает его при восстановлении соединения
+    isChatUnavailable?: boolean
+    // клиентский идентификатор оптимистичной записи своего сообщения
+    // (2026-11-07): стоит до серверного эха, маркер «отправляется»;
+    // эхо заменяет запись (взгляд воркера — oldest ownTempId FIFO)
+    ownTempId?: string
     [key: string]: unknown
 }

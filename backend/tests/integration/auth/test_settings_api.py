@@ -333,18 +333,24 @@ async def test_receipts_off_keeps_own_unread_badge_after_history_load(client, ap
         await client.post(f'/api/v1/chats/{chat_id}/messages', json={'content': 'one'})
         await client.post(f'/api/v1/chats/{chat_id}/messages', json={'content': 'two'})
 
-        # both members start unread
-        assert (await chat_list(bob_client))[chat_id]['unread_count'] == 2
+        # both members start unread; 2026-11-07: служебные строки состава —
+        # тоже сообщения (обе строки добавления чужие для каждого участника)
+        assert (await chat_list(bob_client))[chat_id]['unread_count'] == 4
 
         # the receipts-OFF viewer reads the history: the marker does NOT move,
         # their OWN unread badge stays (chat_last_reads has no peer consumer)
         history = await bob_client.get(f'/api/v1/chats/{chat_id}/messages')
         assert history.status_code == 200
-        assert [item['content'] for item in history.json()['messages']] == ['two', 'one']
-        assert (await chat_list(bob_client))[chat_id]['unread_count'] == 2
+        assert [item['content'] for item in history.json()['messages']] == [
+            'two',
+            'one',
+            'receipts-owner добавил receipts-dave',
+            'receipts-owner добавил receipts-bob',
+        ]
+        assert (await chat_list(bob_client))[chat_id]['unread_count'] == 4
 
         # contrast: the receipts-ON viewer's history load clears their badge
-        assert (await chat_list(dave_client))[chat_id]['unread_count'] == 2
+        assert (await chat_list(dave_client))[chat_id]['unread_count'] == 4
         assert (await dave_client.get(f'/api/v1/chats/{chat_id}/messages')).status_code == 200
         assert (await chat_list(dave_client))[chat_id]['unread_count'] == 0
 

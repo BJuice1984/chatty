@@ -14,6 +14,8 @@ import type Block from '../../../../core/Block.ts'
 import { registerComponent } from '../../../../core/registerComponent.ts'
 import * as Components from '../../../../components/components.ts'
 import store from '../../../../utils/Store.ts'
+import AuthController from '../../controller.ts'
+import type { SignInRequest } from '../../ports.ts'
 import { LoginPage } from './login.ts'
 
 const dom = new JSDOM()
@@ -139,5 +141,40 @@ describe('login page: ошибка авторизации из стора', () =
         expect(goStub.calledOnceWith(SIGNUP)).to.be.true
 
         goStub.restore()
+    })
+
+    // FA-1 (финальный аудит auth-session-ux, follow-up): submit доезжает
+    // до обработчика страницы даже через disabled-кнопку (Enter в инпуте) —
+    // гвард обязан молчать, пока authLoading в полёте. Пин дергает сам
+    // handleSubmitClick (уровень гварда), т.к. Form пересоздаётся на каждом
+    // store-эмите и живой submit-путь пинится отдельными Form-тестами
+    it('Enter-сабмит в полёте игнорируется гвардом authLoading (FA-1)', () => {
+        const signin = sinon.stub(AuthController, 'signin').resolves()
+
+        try {
+            const page = new LoginPage({})
+            const submitHandler = () => {
+                const buttons = (page as unknown as { props: { buttons: { type: string, handleSubmitClick?: (value: SignInRequest) => void }[] } }).props.buttons
+                const submit = buttons.find(button => button.type === 'submit')
+
+                submit?.handleSubmitClick?.({ login: 'ada@example.com', password: 'LongPassword1' })
+            }
+
+            store.set('authLoading', true)
+
+            submitHandler()
+
+            expect(signin.called).to.be.false
+
+            store.set('authLoading', false)
+
+            submitHandler()
+
+            expect(signin.calledOnce).to.be.true
+
+            page.destroy()
+        } finally {
+            signin.restore()
+        }
     })
 })

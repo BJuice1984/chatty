@@ -463,6 +463,77 @@ describe('own ws adapter social events', () => {
         expect(socket.readyState).to.eq(FakeWebSocket.OPEN)
     })
 
+    // 2026-11-07: kind-строка состава (chat_member_*) — это обычное
+    // 'message'-событие: строка ложится в ленту (служебная строка UI), а
+    // шлюз дополнительно дергает контроллер на живой рефетч состава; сокет жив
+    it('lays a chat_member kind message into the feed and notifies the members listener', async () => {
+        const onChatMembersChanged = sinon.spy()
+
+        setChatsEventListeners({ onChatMembersChanged })
+        store.set('messages', { 3: [] })
+
+        const { socket } = await connectedSocket()
+
+        socket.triggerMessage(JSON.stringify({
+            type: 'message',
+            content: { ...ownResponse, id: 91, user_id: 42, content: 'вася добавил машу', kind: 'chat_member_added' },
+        }))
+
+        expect(onChatMembersChanged.calledOnceWith(3)).to.be.true
+        const feed = (store.getState().messages as Record<number, Message[]>)[3]
+
+        expect(feed).to.have.length(1)
+        expect(feed[0].kind).to.eq('chat_member_added')
+        expect(socket.readyState).to.eq(FakeWebSocket.OPEN)
+
+        // повторная доставка того же id — дедуп: ни дубля в ленте, ни
+        // второго рефетча состава
+        socket.triggerMessage(JSON.stringify({
+            type: 'message',
+            content: { ...ownResponse, id: 91, user_id: 42, content: 'вася добавил машу', kind: 'chat_member_added' },
+        }))
+
+        expect(onChatMembersChanged.calledOnce).to.be.true
+        expect((store.getState().messages as Record<number, Message[]>)[3]).to.have.length(1)
+    })
+
+    // 2026-11-07: kind-строки НЕ состава (rename/ai-toggle/аватар) слушателя
+    // состава не дергают — рефетч только у member-событий
+    it('keeps non-member kind messages off the members listener', async () => {
+        const onChatMembersChanged = sinon.spy()
+
+        setChatsEventListeners({ onChatMembersChanged })
+        store.set('messages', { 3: [] })
+
+        const { socket } = await connectedSocket()
+
+        socket.triggerMessage(JSON.stringify({
+            type: 'message',
+            content: { ...ownResponse, id: 92, user_id: 42, content: 'вася переименовал чат', kind: 'chat_renamed' },
+        }))
+
+        expect(onChatMembersChanged.called).to.be.false
+        expect((store.getState().messages as Record<number, Message[]>)[3]).to.have.length(1)
+    })
+
+    // 2026-11-07: смена аватара чата — патч-событие уходит контроллеру как
+    // есть, сокет жив (узор chat_renamed)
+    it('forwards chat_avatar_updated to the gateway listener and keeps the socket open', async () => {
+        const onChatAvatarUpdated = sinon.spy()
+
+        setChatsEventListeners({ onChatAvatarUpdated })
+
+        const { socket } = await connectedSocket()
+
+        socket.triggerMessage(JSON.stringify({
+            type: 'chat_avatar_updated',
+            content: { chat_id: 3, avatar: '77/download' },
+        }))
+
+        expect(onChatAvatarUpdated.calledOnceWith({ chat_id: 3, avatar: '77/download' })).to.be.true
+        expect(socket.readyState).to.eq(FakeWebSocket.OPEN)
+    })
+
     // 2026-11-04 offline (review F-3): chat_deleted закрывает сокет адаптера
     // собственным путём — марка намеренного закрытия стоит, индикатор молчит
     it('chat_deleted close raises NO ws-death indicator (intentional)', async () => {
@@ -520,6 +591,95 @@ describe('own ws adapter social events', () => {
 
         expect(list).to.have.length(1)
         expect((list[0] as { id?: number }).id).to.eq(21)
+    })
+
+    // 2026-11-07-messenger-ux-pack-2: эхо своего сообщения заменяет
+    // старейшую оптимистичную запись (ownTempId) — без дубля; гейт viewer-id
+    // строгий: чужое совпадающее по тексту сообщение НЕ поглощает темп
+    it('own echo replaces the oldest temp entry instead of appending', async () => {
+        store.set('user', { id: 7, login: 'a@example.com' } as never)
+        store.set('messages', {
+            3: [
+                { chat_id: 3, time: 't1', type: 'message', user_id: 7, content: 'привет', ownTempId: 'tmp-1' },
+                { chat_id: 3, time: 't2', type: 'message', user_id: 7, content: 'ещё', ownTempId: 'tmp-2' },
+            ] as never[],
+        })
+
+        const { socket } = await connectedSocket()
+
+        // Эхо с ДРУГИМ контентом (чистый FIFO без тай-брейка): заменяется
+        // старейший темп именно по порядку, не по совпадению текста
+        socket.triggerMessage(JSON.stringify({
+            type: 'message',
+            content: {
+                id: 101,
+                chat_id: 3,
+                user_id: 7,
+                content: 'совсем другой текст',
+                file_id: null,
+                client_message_id: null,
+                created_at: '2026-11-07T00:00:00Z',
+            },
+        }))
+
+        let list = (store.getState().messages?.[3] ?? []) as { id?: number, ownTempId?: string, content?: string }[]
+
+        expect(list).to.have.length(2)
+        expect(list[0]?.id).to.eq(101)
+        expect(list[0]?.ownTempId).to.eq(undefined)
+        expect(list[1]?.ownTempId).to.eq('tmp-2')
+
+        // второе эхо тем же контентом, что второй темп (тай-брейкер): замена
+        // оставшегося темпа, дублей нет
+        socket.triggerMessage(JSON.stringify({
+            type: 'message',
+            content: {
+                id: 102,
+                chat_id: 3,
+                user_id: 7,
+                content: 'ещё',
+                file_id: null,
+                client_message_id: null,
+                created_at: '2026-11-07T00:00:01Z',
+            },
+        }))
+
+        list = (store.getState().messages?.[3] ?? []) as { id?: number, ownTempId?: string }[]
+
+        expect(list).to.have.length(2)
+        expect(list.map(item => item.id)).to.deep.eq([101, 102])
+        expect(list.every(item => item.ownTempId === undefined)).to.be.true
+    })
+
+    it('a foreign same-text message never consumes an own temp entry (viewer-id gate)', async () => {
+        store.set('user', { id: 7, login: 'a@example.com' } as never)
+        store.set('messages', {
+            3: [
+                { chat_id: 3, time: 't1', type: 'message', user_id: 7, content: 'привет', ownTempId: 'tmp-1' },
+            ] as never[],
+        })
+
+        const { socket } = await connectedSocket()
+
+        socket.triggerMessage(JSON.stringify({
+            type: 'message',
+            content: {
+                id: 102,
+                chat_id: 3,
+                user_id: 42,
+                content: 'привет',
+                file_id: null,
+                client_message_id: null,
+                created_at: '2026-11-07T00:00:00Z',
+            },
+        }))
+
+        const list = (store.getState().messages?.[3] ?? []) as { id?: number, user_id?: number, ownTempId?: string }[]
+
+        expect(list).to.have.length(2)
+        expect(list[0]?.ownTempId).to.eq('tmp-1')
+        expect(list[1]?.id).to.eq(102)
+        expect(list[1]?.user_id).to.eq(42)
     })
 
     it('closes through the adapter closeChat without reconnect', async () => {

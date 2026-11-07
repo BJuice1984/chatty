@@ -8,6 +8,9 @@ export interface ChatsSlice {
     getChats(): ChatInfo[]
     // eslint-disable-next-line no-unused-vars
     setChats(chats: ChatInfo[]): void
+    // флаг первичной загрузки списка (2026-11-07): лоадер в списке
+    // eslint-disable-next-line no-unused-vars
+    setChatsLoading(value: boolean): void
     getSelectedChat(): number | undefined
     // eslint-disable-next-line no-unused-vars
     selectChat(id: number): void
@@ -23,6 +26,10 @@ export const chatsSlice: ChatsSlice = {
 
     setChats(chats) {
         store.set('chats', chats)
+    },
+
+    setChatsLoading(value) {
+        store.set('chatsLoading', value)
     },
 
     getSelectedChat() {

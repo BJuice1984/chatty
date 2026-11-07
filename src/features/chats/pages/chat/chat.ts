@@ -78,6 +78,10 @@ interface ChatPageProps {
     // есть ли хоть одна пилюля непрочитанных (2026-11-05): гейт иконки
     // «Пометить всё прочитанными» в шапке списка
     hasUnread?: boolean
+    // лоадер списка (2026-11-07): предзагрузочное состояние и первичная
+    // загрузка; пустое состояние — для дисклеймера «создайте чат»
+    chatsLoading?: boolean
+    hasNoChats?: boolean
 }
 
 // Карточка списка чатов в пропсах страницы: ChatInfo + декорации
@@ -406,6 +410,10 @@ class ChatPageBase extends Block {
     }
     constructor(propsFromStore: ChatPageProps) {
         super({
+            // стор-поля в ПЕРВОМ рендере (2026-11-07): лоадер списка и
+            // предзагрузочное состояние видны сразу, без первого эмита
+            chatsLoading: propsFromStore.chatsLoading,
+            hasNoChats: propsFromStore.hasNoChats,
             // 2026-11-01-contacts: страница, смонтированная с уже выбранным
             // чатом (возврат на /messenger после openDm из /contacts),
             // стартует с открытой панелью — раньше живой выбор игнорировался
@@ -448,6 +456,12 @@ class ChatPageBase extends Block {
                 // POST → fetchChats → select)
                 void ChatsController.createAndSelect()
             },
+            // дубль фичи создания из пустого состояния (2026-11-07-
+            // messenger-ux-pack-2): кнопка «создать» в дисклеймере без
+            // чатов ведёт тем же createAndSelect
+            onCreateChat: () => {
+                void ChatsController.createAndSelect()
+            },
             onSelectChat: (id: number) => {
                 // Любой выбор чата открывает панель — chatListUser стреляет
                 // onSelect и на повторном клике по выбранном чате
@@ -478,9 +492,13 @@ class ChatPageBase extends Block {
                 void ChatsController.renameChat(chatId, title)
             },
             // «+AI» из шапки мессенджера (2026-11-06-chat-create-flow):
-            // оптимистичный is_ai-патч и откат — в контроллере
+            // оптимистичный is_ai-патч и откат — в контроллере; активная
+            // кнопка выключает бота тем же механизмом (2026-11-07)
             onEnableAi: (chatId: number) => {
                 void ChatsController.enableAi(chatId)
+            },
+            onDisableAi: (chatId: number) => {
+                void ChatsController.disableAi(chatId)
             },
             // «Пометить всё прочитанными» — иконка в шапке списка
             // (2026-11-05-messenger-ux-pack): активна только при непрочитанных
@@ -747,9 +765,16 @@ const withChats = withStore((state: AppState) => {
     // активный запрос — только найденные чаты в порядке сервера; иначе
     // полный список по активности; ссылка на chats всегда новая — любой
     // стор-эмит (WS-патч, ответ поиска, сброс) перерисовывает список
-    const chats = search != null && search.query !== ''
+    const ordered = search != null && search.query !== ''
         ? searchOrder(allChats, search.query, search.results)
         : activityOrder(allChats)
+    // мёртвые сокеты (2026-11-07-messenger-ux-pack-2): ключ вне AppState
+    // (каст-идиома), контроллер публикует множество wsDeadChats; строка
+    // списка получает isDead для модификатора _dead
+    const dead = new Set((state as AppState & { wsDeadChats?: number[] }).wsDeadChats ?? [])
+    const chats = dead.size === 0
+        ? ordered
+        : ordered.map(chat => (dead.has(chat.id) ? { ...chat, isDead: true } : chat))
     // контакты (2026-11-01-chat-leave): слайс contacts-фичи, ключ в
     // AppState не объявлен — тот же каст-идиом (страница контактов)
     const contacts = (state as AppState & { contacts?: ContactInfo[] }).contacts
@@ -770,6 +795,14 @@ const withChats = withStore((state: AppState) => {
         ownerId,
         // есть ли непрочитанные: гейтит иконку «Пометить всё прочитанными»
         hasUnread: allChats.some(chat => chat.unread_count > 0),
+        // лоадер списка (2026-11-07): первичная загрузка при пустом списке;
+        // ПРЕДЗАГРУЗОЧНОЕ состояние (chats ещё undefined до первого ответа)
+        // тоже показывает лоадер — иначе между монтированием страницы и
+        // ответом /chats список мигает пустотой (даже на быстром хосте)
+        chatsLoading: state.chatsLoading === true || state.chats === undefined,
+        // пустое состояние дисклеймера (2026-11-07): чатов нет вовсе и
+        // загрузка завершена — «создайте чат»
+        hasNoChats: state.chats != null && state.chats.length === 0 && state.chatsLoading !== true,
     }
 })
 

@@ -1,6 +1,7 @@
 // Иконки шапки списка чатов (2026-11-05-messenger-ux-pack): вторая иконка —
 // «Пометить всё прочитанными» (бывшие настройки), активна только при
-// наличии непрочитанных.
+// наличии непрочитанных. 2026-11-07-messenger-ux-pack-2 (D-1): визуал
+// возвращён к прежней шестерёнке из main, поведение фичи не менялось.
 
 import { expect } from 'chai'
 import { JSDOM } from 'jsdom'
@@ -12,14 +13,14 @@ const dom = new JSDOM()
 global.document = dom.window.document
 
 describe('header icons mark-all-read', () => {
-    it('renders the create-chat icon and the mark-all-read icon with the new alt', () => {
+    it('renders the create-chat icon and the restored settings-gear visual for mark-all-read', () => {
         const icons = new HeaderIcons({ src: '', alt: '', onClick: () => {} })
 
         const images = icons.element?.querySelectorAll('img.chat__header-icon')
 
         expect(images?.length).to.eq(2)
         expect(images?.[0]?.getAttribute('src')).to.eq('/images/start-chat-icon.svg')
-        expect(images?.[1]?.getAttribute('src')).to.eq('/images/mark-all-read-icon.svg')
+        expect(images?.[1]?.getAttribute('src')).to.eq('/images/settings-icon.svg')
         expect(images?.[1]?.getAttribute('alt')).to.eq('Иконка. Пометить всё прочитанными')
 
         icons.destroy()

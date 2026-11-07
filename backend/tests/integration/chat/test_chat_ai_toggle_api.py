@@ -170,6 +170,13 @@ def test_ai_toggle_broadcasts_to_active_members(app):
             assert response.status_code == 200
 
             for websocket in (owner_ws, bob_ws):
+                # 2026-11-07: первым в ленту приезжает системная строка
+                # kind='chat_ai_toggled' («X включил бота»), за ней —
+                # state-patch для карточки/кнопки
+                feed_event = websocket.receive_json()
+                assert feed_event['type'] == 'message'
+                assert feed_event['content']['kind'] == 'chat_ai_toggled'
+                assert feed_event['content']['content'] == 'ai-ws-owner включил бота'
                 event = websocket.receive_json()
                 assert event == {
                     'type': 'chat_ai_toggled',
@@ -182,6 +189,31 @@ def test_ai_toggle_broadcasts_to_active_members(app):
             assert_alive(owner_ws)
             assert_alive(bob_ws)
             assert_alive(archived_ws)
+
+
+async def test_ai_toggle_writes_a_feed_system_message(client):
+    """2026-11-07: включение/выключение бота оставляет в ленте персистентную
+    системную строку kind='chat_ai_toggled' («X включил/выключил бота») —
+    узор chat_renamed; value-equal повтор ничего не дописывает."""
+    await register(client, 'ai-note-owner@example.com')
+    chat_id = (await client.post('/api/v1/chats', json={'title': 'Note'})).json()['id']
+
+    enabled = await client.put(f'/api/v1/chats/{chat_id}', json={'is_ai': True})
+    assert enabled.status_code == 200
+    repeat = await client.put(f'/api/v1/chats/{chat_id}', json={'is_ai': True})
+    assert repeat.status_code == 200
+
+    page = (await client.get(f'/api/v1/chats/{chat_id}/messages')).json()
+    contents = [m['content'] for m in page['messages'] if m.get('kind') == 'chat_ai_toggled']
+    assert contents == ['ai-note-owner включил бота']
+
+    disabled = await client.put(f'/api/v1/chats/{chat_id}', json={'is_ai': False})
+    assert disabled.status_code == 200
+
+    # лента отдаёт новые сверху (DESC): «выключил» — свежее сообщение
+    page = (await client.get(f'/api/v1/chats/{chat_id}/messages')).json()
+    contents = [m['content'] for m in page['messages'] if m.get('kind') == 'chat_ai_toggled']
+    assert contents == ['ai-note-owner выключил бота', 'ai-note-owner включил бота']
 
 
 async def test_ai_toggle_seats_the_bot_and_appends_seed(client, app, session_factory):
