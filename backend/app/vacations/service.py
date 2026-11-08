@@ -2,7 +2,7 @@
 
 The matching rule is NEW and deliberately stricter than the substring
 containment of tasks/RAG-docs/vacation_query.py (which would have
-matched «Романов» → «Романова К.В.»): first the FULL normalized name
+matched «Свеклов» → «Свеклова Е.Е.»): first the FULL normalized name
 must be equal (the bot itself asks for initials when surnames collide),
 then the surname token must be equal, then prefix candidates are listed
 for disambiguation, and difflib hints close misses (D-7, review r2).
@@ -92,14 +92,14 @@ class VacationService:
         # 1. full normalized name equality — the уточнение with initials
         #    the bot itself asks for resolves here (review r2 F-R2-2)
         full_hits = [name for name in names if normalize_name(name) == normalized_query]
-        # 2. surname-token equality — «Романов» never matches «Романова»
+        # 2. surname-token equality — «Свеклов» never matches «Свеклова»
         query_surname = normalized_query.split()[0]
         token_hits = [
             name
             for name in names
             if normalize_name(name).split()[0] == query_surname
         ]
-        # 3. surname-prefix candidates — «Гончар» lists both Гончаровы
+        # 3. surname-prefix candidates — «Вишневск» lists both Вишневские
         prefix_hits = [
             name
             for name in names
@@ -120,7 +120,7 @@ class VacationService:
         return Match(kind='not_found', suggestions=suggestions)
 
     def format_periods(self, person: VacationPerson) -> list[str]:
-        """«Сибгатуллин И.Р. с 21.12.2026 на 7 дней», sorted by start date."""
+        """«Абрикосов Т.П. с 21.12.2026 на 7 дней», sorted by start date."""
 
         lines = []
         for start, days in sorted(person.periods):

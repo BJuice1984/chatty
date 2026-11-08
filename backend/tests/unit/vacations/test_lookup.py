@@ -6,8 +6,8 @@ from datetime import date
 
 import pytest
 from sqlalchemy import create_engine
-from sqlalchemy.pool import StaticPool
 from sqlalchemy.orm import Session
+from sqlalchemy.pool import StaticPool
 
 from app.db.base import Base
 from app.models import VacationPeriod, VacationSchedule
@@ -27,17 +27,17 @@ def session():
         active.add(schedule)
         active.flush()
         rows = [
-            ('Сибгатуллин И.Р.', 'DotSpace', date(2026, 4, 20), 7),
-            ('Сибгатуллин И.Р.', 'DotSpace', date(2026, 8, 3), 14),
-            ('Сибгатуллин И.Р.', 'DotSpace', date(2026, 12, 21), 7),
-            ('Гончаров М.О.', 'Отдел ИТ', date(2026, 4, 29), 14),
-            ('Гончаров А.В.', 'Отдел ИТ', date(2026, 7, 1), 7),
-            ('Романов В.А.', 'DotSpace', date(2026, 8, 1), 14),
-            ('Романова К.В.', 'Макросы', date(2026, 3, 9), 14),
-            ('Земцов А.С.', 'Макросы', date(2026, 4, 27), 4),
-            ('Земцов А.С.', 'Макросы', date(2026, 7, 1), 24),
-            ('Корсаков А.Г.', 'Макросы', date(2026, 6, 1), 14),
-            ('Гильванов И.П.', 'Отдел ИТ', date(2026, 6, 18), 1),
+            ('Абрикосов Т.П.', 'Департамент Альфа', date(2026, 4, 20), 7),
+            ('Абрикосов Т.П.', 'Департамент Альфа', date(2026, 8, 3), 14),
+            ('Абрикосов Т.П.', 'Департамент Альфа', date(2026, 12, 21), 7),
+            ('Вишневский О.Н.', 'Департамент Альфа', date(2026, 4, 29), 14),
+            ('Вишневский А.А.', 'Департамент Альфа', date(2026, 7, 1), 7),
+            ('Свеклов Н.Н.', 'Департамент Бета', date(2026, 8, 1), 14),
+            ('Свеклова Е.Е.', 'Департамент Гамма', date(2026, 3, 9), 14),
+            ('Тыквин А.А.', 'Департамент Гамма', date(2026, 4, 27), 4),
+            ('Тыквин А.А.', 'Департамент Гамма', date(2026, 7, 1), 24),
+            ('Персиков В.В.', 'Департамент Гамма', date(2026, 6, 1), 14),
+            ('Клубников Э.Э.', 'Департамент Альфа', date(2026, 6, 18), 1),
         ]
         active.add_all(
             VacationPeriod(
@@ -61,62 +61,62 @@ def service(session: Session) -> VacationService:
 
 
 def test_full_name_with_initials_resolves_uniquely(service: VacationService) -> None:
-    match = service.find('Гончаров А.В.')
+    match = service.find('Вишневский А.А.')
     assert match.kind == 'found'
     assert match.person is not None
-    assert match.person.full_name == 'Гончаров А.В.'
+    assert match.person.full_name == 'Вишневский А.А.'
     assert match.person.periods == ((date(2026, 7, 1), 7),)
 
 
 def test_exact_surname_token_returns_one_person(service: VacationService) -> None:
-    # «Романов» must NOT match «Романова К.В.» (the stricter D-7 rule)
-    match = service.find('Романов')
+    # «Свеклов» must NOT match «Свеклова Е.Е.» (the stricter D-7 rule)
+    match = service.find('Свеклов')
     assert match.kind == 'found'
-    assert match.person.full_name == 'Романов В.А.'
+    assert match.person.full_name == 'Свеклов Н.Н.'
 
 
 def test_bare_surname_with_two_carriers_is_ambiguous(service: VacationService) -> None:
-    match = service.find('Гончаров')
+    match = service.find('Вишневский')
     assert match.kind == 'ambiguous'
-    assert 'Гончаров М.О. (Отдел ИТ)' in match.candidates
-    assert 'Гончаров А.В. (Отдел ИТ)' in match.candidates
+    assert 'Вишневский О.Н. (Департамент Альфа)' in match.candidates
+    assert 'Вишневский А.А. (Департамент Альфа)' in match.candidates
 
 
 def test_surname_prefix_also_lists_candidates(service: VacationService) -> None:
-    match = service.find('Гончар')
+    match = service.find('Вишневск')
     assert match.kind == 'ambiguous'
     assert len(match.candidates) == 2
 
 
 def test_unknown_surname_yields_close_matches(service: VacationService) -> None:
-    match = service.find('Сибгатуллина')
+    match = service.find('Абрикосова')
     assert match.kind == 'not_found'
-    assert 'сибгатуллин' in match.suggestions
+    assert 'абрикосов' in match.suggestions
 
 
 def test_normalization_case_and_yo(service: VacationService) -> None:
-    assert service.find('СИБГАТУЛЛИН').kind == 'found'
-    assert service.find('сибгатуллин и.р.').kind == 'found'
-    assert service.find('Ёлкин') .kind == 'not_found'
+    assert service.find('АБРИКОСОВ').kind == 'found'
+    assert service.find('абрикосов т.п.').kind == 'found'
+    assert service.find('Ёлкин').kind == 'not_found'
 
 
 def test_format_periods_sorted_with_russian_plurals(service: VacationService) -> None:
-    match = service.find('Сибгатуллин')
+    match = service.find('Абрикосов')
     assert match.kind == 'found'
     assert service.format_periods(match.person) == [
-        'Сибгатуллин И.Р. с 20.04.2026 на 7 дней',
-        'Сибгатуллин И.Р. с 03.08.2026 на 14 дней',
-        'Сибгатуллин И.Р. с 21.12.2026 на 7 дней',
+        'Абрикосов Т.П. с 20.04.2026 на 7 дней',
+        'Абрикосов Т.П. с 03.08.2026 на 14 дней',
+        'Абрикосов Т.П. с 21.12.2026 на 7 дней',
     ]
 
-    zemtsov = service.find('Земцов')
-    assert service.format_periods(zemtsov.person) == [
-        'Земцов А.С. с 27.04.2026 на 4 дня',
-        'Земцов А.С. с 01.07.2026 на 24 дня',
+    tykvin = service.find('Тыквин')
+    assert service.format_periods(tykvin.person) == [
+        'Тыквин А.А. с 27.04.2026 на 4 дня',
+        'Тыквин А.А. с 01.07.2026 на 24 дня',
     ]
 
-    gilvanov = service.find('Гильванов')
-    assert service.format_periods(gilvanov.person) == ['Гильванов И.П. с 18.06.2026 на 1 день']
+    klubnikov = service.find('Клубников')
+    assert service.format_periods(klubnikov.person) == ['Клубников Э.Э. с 18.06.2026 на 1 день']
 
 
 def test_days_word_plural_rules() -> None:
@@ -136,8 +136,8 @@ def test_lookup_uses_only_the_latest_snapshot(session: Session, service: Vacatio
     session.add(
         VacationPeriod(
             schedule_id=newer.id,
-            full_name='Сибгатуллин И.Р.',
-            department='DotSpace',
+            full_name='Абрикосов Т.П.',
+            department='Департамент Альфа',
             position=None,
             start_date=date(2027, 3, 2),
             days=14,
@@ -145,6 +145,6 @@ def test_lookup_uses_only_the_latest_snapshot(session: Session, service: Vacatio
     )
     session.commit()
 
-    match = service.find('Сибгатуллин')
+    match = service.find('Абрикосов')
     assert match.kind == 'found'
     assert match.person.periods == ((date(2027, 3, 2), 14),)

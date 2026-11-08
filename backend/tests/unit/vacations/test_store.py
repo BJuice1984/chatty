@@ -50,13 +50,13 @@ def store(session: Session) -> VacationStore:
 def test_surname_upsert_and_delete(store: VacationStore, session: Session, user_id: int) -> None:
     assert store.get_surname(user_id) is None
 
-    store.save_surname(user_id, 'Сибгатуллин И.Р.')
+    store.save_surname(user_id, 'Абрикосов Т.П.')
     session.commit()
-    assert store.get_surname(user_id) == 'Сибгатуллин И.Р.'
+    assert store.get_surname(user_id) == 'Абрикосов Т.П.'
 
-    store.save_surname(user_id, 'Романов В.А.')
+    store.save_surname(user_id, 'Свеклов Н.Н.')
     session.commit()
-    assert store.get_surname(user_id) == 'Романов В.А.'
+    assert store.get_surname(user_id) == 'Свеклов Н.Н.'
 
     assert store.delete_surname(user_id) is True
     session.commit()

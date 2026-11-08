@@ -10,27 +10,27 @@ from openpyxl import Workbook
 from app.vacations.parser import parse_schedule, schedule_year_from_name
 
 
-def build_schedule_xlsx(path: Path, *, second_year_sheet: bool = False) -> None:
+def build_schedule_xlsx(path: Path) -> None:
     """Every dirty format of the real workbook, plus the clean ones."""
 
     workbook = Workbook()
     first = workbook.active
-    first.title = 'Отдел ИТ'
+    first.title = 'Департамент Альфа'
     first.append(['Должность', 'ФИО', 'Дата начала отпуска', 'Количество календарных дней', 'Заместитель'])
-    first.append(['Отдел ИТ'])  # department-only row (column A only)
-    first.append(['Руководитель отдела ИТ', 'Лакизо А.В.', '15/06/2026', 14, None])
-    first.append(['Инженер-программист', 'Гончаров М.О.', datetime(2026, 4, 29), 14, None])
-    first.append(['Инженер-программист', 'Гильванов И.П.', '18.06.2026', 1, None])
-    first.append(['Инженер тех. поддержки', 'Макаров М.Э.', None, None, None])  # name-only -> skipped
-    first.append(['Инженер-программист', 'Веревкин Р.Ю.', '15.06', 14, None])  # truncated, no dot
-    first.append(['Системный аналитик', 'Стародубцев И.С.', '21.09.', 14, 'Мацук В.В.'])  # trailing dot
-    first.append([None, 'Ерошин И.П.', ' ', ' ', None])  # whitespace cells -> skipped
+    first.append(['Департамент Альфа'])  # department-only row (column A only)
+    first.append(['Ведущий инженер', 'Абрикосов Т.П.', '15/06/2026', 14, None])
+    first.append(['Инженер-программист', 'Вишневский О.Н.', datetime(2026, 4, 29), 14, None])
+    first.append(['Инженер-программист', 'Клубников Э.Э.', '18.06.2026', 1, None])
+    first.append(['Инженер тех. поддержки', 'Малинин Р.Р.', None, None, None])  # name-only -> skipped
+    first.append(['Инженер-программист', 'Огурцов С.С.', '15.06', 14, None])  # truncated, no dot
+    first.append(['Системный аналитик', 'Свеклов Н.Н.', '21.09.', 14, 'Тыквин А.А.'])  # trailing dot
+    first.append([None, 'Персиков В.В.', ' ', ' ', None])  # whitespace cells -> skipped
 
-    second = workbook.create_sheet('Отдел продаж')
+    second = workbook.create_sheet('Департамент Бета')
     second.append(['Должность', 'ФИО', 'Дата начала отпуска', 'Количество календарных дней', 'Заместитель'])
-    second.append(['Отдел продаж'])
-    second.append(['Менеджер отдела продаж', 'Луговской К.С.', '23.03.2026', 14, 'нет'])
-    second.append(['Ассистент отдела продаж', 'Арсеньева И.Г.', '01/09/2026', 14, 'нет'])
+    second.append(['Департамент Бета'])
+    second.append(['Менеджер', 'Лимонов Г.Ш.', '23.03.2026', 14, 'нет'])
+    second.append(['Ассистент', 'Морошкин Ю.Ю.', '01/09/2026', 14, 'нет'])
 
     unqualified = workbook.create_sheet('Служебный')
     unqualified.append(['прочее', 'не ФИО'])
@@ -48,41 +48,41 @@ def test_parser_dirty_formats_and_departments(tmp_path: Path) -> None:
     assert parsed.source_name == 'график отпусков 2026.xlsx'
     by_name = {row.full_name: row for row in parsed.rows}
     assert set(by_name) == {
-        'Лакизо А.В.',
-        'Гончаров М.О.',
-        'Гильванов И.П.',
-        'Веревкин Р.Ю.',
-        'Стародубцев И.С.',
-        'Луговской К.С.',
-        'Арсеньева И.Г.',
+        'Абрикосов Т.П.',
+        'Вишневский О.Н.',
+        'Клубников Э.Э.',
+        'Огурцов С.С.',
+        'Свеклов Н.Н.',
+        'Лимонов Г.Ш.',
+        'Морошкин Ю.Ю.',
     }
 
-    lakizo = by_name['Лакизо А.В.']
-    assert (lakizo.start.year, lakizo.start.month, lakizo.start.day) == (2026, 6, 15)
-    assert lakizo.days == 14
-    assert lakizo.department == 'Отдел ИТ'
-    assert lakizo.position == 'Руководитель отдела ИТ'
+    abrikosov = by_name['Абрикосов Т.П.']
+    assert (abrikosov.start.year, abrikosov.start.month, abrikosov.start.day) == (2026, 6, 15)
+    assert abrikosov.days == 14
+    assert abrikosov.department == 'Департамент Альфа'
+    assert abrikosov.position == 'Ведущий инженер'
 
-    goncharov = by_name['Гончаров М.О.']
-    assert (goncharov.start.month, goncharov.start.day) == (4, 29)
+    vishnevsky = by_name['Вишневский О.Н.']
+    assert (vishnevsky.start.month, vishnevsky.start.day) == (4, 29)
 
-    verevkin = by_name['Веревкин Р.Ю.']
-    assert (verevkin.start.year, verevkin.start.month, verevkin.start.day) == (2026, 6, 15)
+    ogurtsov = by_name['Огурцов С.С.']
+    assert (ogurtsov.start.year, ogurtsov.start.month, ogurtsov.start.day) == (2026, 6, 15)
 
-    starodubtsev = by_name['Стародубцев И.С.']
-    assert (starodubtsev.start.year, starodubtsev.start.month) == (2026, 9)
+    sveklov = by_name['Свеклов Н.Н.']
+    assert (sveklov.start.year, sveklov.start.month) == (2026, 9)
 
-    lugovskoy = by_name['Луговской К.С.']
-    assert lugovskoy.department == 'Отдел продаж'
-    assert (lugovskoy.start.day, lugovskoy.start.month) == (23, 3)
+    lemonov = by_name['Лимонов Г.Ш.']
+    assert lemonov.department == 'Департамент Бета'
+    assert (lemonov.start.day, lemonov.start.month) == (23, 3)
 
-    arseneva = by_name['Арсеньева И.Г.']
-    assert (arseneva.start.month, arseneva.start.day) == (9, 1)
+    moroshkin = by_name['Морошкин Ю.Ю.']
+    assert (moroshkin.start.month, moroshkin.start.day) == (9, 1)
 
     # name-only and whitespace rows land in the skip notes, never in rows
     assert len(parsed.skipped) == 2
-    assert any('Макаров М.Э.' in note for note in parsed.skipped)
-    assert any('Ерошин И.П.' in note for note in parsed.skipped)
+    assert any('Малинин Р.Р.' in note for note in parsed.skipped)
+    assert any('Персиков В.В.' in note for note in parsed.skipped)
 
 
 def test_parser_takes_truncated_year_from_file_name(tmp_path: Path) -> None:
@@ -92,11 +92,11 @@ def test_parser_takes_truncated_year_from_file_name(tmp_path: Path) -> None:
 
     assert parsed.year == 2027
     by_name = {row.full_name: row for row in parsed.rows}
-    assert by_name['Веревкин Р.Ю.'].start.year == 2027
-    assert by_name['Стародубцев И.С.'].start.year == 2027
+    assert by_name['Огурцов С.С.'].start.year == 2027
+    assert by_name['Свеклов Н.Н.'].start.year == 2027
     # explicit four-digit dates keep their own year
-    assert by_name['Гончаров М.О.'].start.year == 2026
-    assert by_name['Луговской К.С.'].start.year == 2026
+    assert by_name['Вишневский О.Н.'].start.year == 2026
+    assert by_name['Лимонов Г.Ш.'].start.year == 2026
 
 
 def test_schedule_year_fallback_is_current_year() -> None:

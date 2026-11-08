@@ -17,16 +17,16 @@ sys.path.insert(0, str(BACKEND_DIR / 'scripts'))
 from ingest_vacations import main  # noqa: E402
 
 
-def build_xlsx(path: Path, *, department: str = 'Отдел ИТ') -> None:
+def build_xlsx(path: Path, *, department: str = 'Департамент Альфа') -> None:
     workbook = Workbook()
     sheet = workbook.active
     sheet.title = department
     sheet.append(['Должность', 'ФИО', 'Дата начала отпуска', 'Количество календарных дней', 'Заместитель'])
     sheet.append([department])
-    sheet.append(['Инженер-программист', 'Сибгатуллин И.Р.', '20.04.2026', 7, 'Месеняшин М.К.'])
-    sheet.append(['Инженер-программист', 'Сибгатуллин И.Р.', '03.08.2026', 14, 'Месеняшин М.К.'])
-    sheet.append(['Инженер-программист', 'Сибгатуллин И.Р.', '21.12.2026', 7, 'Месеняшин М.К.'])
-    sheet.append(['Инженер-программист', 'Гильванов И.П.', None, None, None])
+    sheet.append(['Инженер-программист', 'Абрикосов Т.П.', '20.04.2026', 7, 'Огурцов С.С.'])
+    sheet.append(['Инженер-программист', 'Абрикосов Т.П.', '03.08.2026', 14, 'Огурцов С.С.'])
+    sheet.append(['Инженер-программист', 'Абрикосов Т.П.', '21.12.2026', 7, 'Огурцов С.С.'])
+    sheet.append(['Инженер-программист', 'Клубников Э.Э.', None, None, None])
     workbook.save(path)
 
 
@@ -70,7 +70,7 @@ def test_ingest_replaces_same_year_and_adds_new_year(tmp_path: Path):
 
     # a new-year file lands alongside
     schedule_2027 = tmp_path / 'график отпусков 2027.xlsx'
-    build_xlsx(schedule_2027, department='DotSpace')
+    build_xlsx(schedule_2027, department='Департамент Бета')
     assert main(['--file', str(schedule_2027), '--db', database_url]) == 0
     schedules, periods = counts(database_url)
     assert [schedule.year for schedule in schedules] == [2026, 2027]

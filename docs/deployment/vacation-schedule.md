@@ -19,18 +19,18 @@ here is a production claim.
 ## How to ingest / update
 
 Run from the repository root with the backend venv interpreter (the
-stand path from the D-11 gate; the global `py -3.12` does NOT have the
-backend dependencies):
+D-11 gate interpreter; the global `py -3.12` does NOT have the backend
+dependencies):
 
 ```
-<backend-venv-python> backend/scripts/ingest_vacations.py
+backend/.venv/Scripts/python.exe backend/scripts/ingest_vacations.py
 ```
 
 With an explicit file and/or database URL (the operator env carries the
 compose PostgreSQL credentials):
 
 ```
-<backend-venv-python> backend/scripts/ingest_vacations.py --file backend/data/график\ отпусков\ 2026.xlsx --db postgresql+psycopg://chatty:<password>@localhost:5432/chatty
+backend/.venv/Scripts/python.exe backend/scripts/ingest_vacations.py --file backend/data/график\ отпусков\ 2026.xlsx --db postgresql+psycopg://chatty:<password>@localhost:5432/chatty
 ```
 
 - Without `--file` the newest glob match in the data dir is used.
@@ -59,7 +59,7 @@ compose PostgreSQL credentials):
 - One lookup check (scratch sqlite, no live stack needed):
 
 ```
-<backend-venv-python> -c "import sys; sys.path.insert(0, 'backend'); from sqlalchemy import create_engine, select; from sqlalchemy.orm import Session; from app.models import VacationPeriod; e = create_engine('<db-url>'); print(Session(e).scalars(select(VacationPeriod.full_name, VacationPeriod.start_date, VacationPeriod.days).limit(5)).all())"
+backend/.venv/Scripts/python.exe -c "import sys; sys.path.insert(0, 'backend'); from sqlalchemy import create_engine, select; from sqlalchemy.orm import Session; from app.models import VacationPeriod; e = create_engine('<db-url>'); print(Session(e).scalars(select(VacationPeriod.full_name, VacationPeriod.start_date, VacationPeriod.days).limit(5)).all())"
 ```
 
 ## Rollback
