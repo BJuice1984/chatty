@@ -1,0 +1,572 @@
+{
+    "schemaVersion": "agent-plan-manifest.v1",
+    "status": "FROZEN",
+    "planRevision": 4,
+    "package": {
+        "id": "2026-11-08-vacation-skill",
+        "title": "Vacation skill for the AI assistant: deterministic pre-RAG flow over the 2026 vacation schedule xlsx, own-dates lookup, stored surname, LLM-formatted answer",
+        "workspaceRoot": ".",
+        "artifactRoot": "work/2026-11-08-vacation-skill",
+        "planArtifactRoot": "tasks/2026-11-08-vacation-skill"
+    },
+    "packageIntegrity": {
+        "required": true,
+        "lockSchemaVersion": "agent-plan-lock.v2",
+        "inventorySource": "planFiles",
+        "undeclaredTopLevelFiles": "reject",
+        "allowedUnlistedFiles": [
+            "plan.lock.json",
+            "plan-review.json"
+        ]
+    },
+    "author": {
+        "id": "claude-code",
+        "surface": "agent-first-planning",
+        "runId": "2026-11-08-vacation-skill-draft"
+    },
+    "baseRevision": {
+        "ref": "origin/dev",
+        "sha": "dc65e03fc48470b9c9aabf605d09ac3886610642"
+    },
+    "specification": {
+        "tier": "S2",
+        "intent": "Operator request of 2026-11-08: connect the local-LLM chat assistant (own backend, Ollama) to the corporate vacation schedule (график отпусков 2026.xlsx, 5 department sheets, dirty date formats) and keep it UPDATABLE. Four operator clarifications: hybrid LLM role (deterministic keyword flow decides, the parser supplies data, the LLM only phrases the final answer with a template fallback), own dates only (no third-party lookups), the dev PR is HELD until a live smoke with the raised bot stack passes (bot currently down), and the xlsx lives in a gitignored data dir with CLI ingestion into the database. Follow-up operator request (D-13): a durable update mechanism plus a written operator runbook (docs/deployment/vacation-schedule.md) covering file staging, the ingest invocation and per-year replace semantics. Behavior: a generic vacation message gets exactly the offer «Хотите узнать свои даты по графику отпусков?» with a remembered yes/no state (TTL); an explicit schedule message skips the offer and answers immediately; «да» without a stored surname asks for it once, validates against the schedule (token-exact match, ambiguity list, difflib hints, 2 attempts) and persists the canonical schedule name; «нет» runs the normal RAG+LLM path with the ORIGINAL question; unrelated messages reset the pending state; cancel words exit the surname prompt without burning an attempt; a stored surname that vanished from a refreshed snapshot is cleared and re-asked once. The answer is built from DB rows («Сибгатуллин И.Р. с 21.12.2026 на 7 дней», Russian day-number plural) and phrased by the LLM from structured lines only (no RAG chunks); provider failure falls back to the same template. The schedule never enters the RAG pipeline (prior live incident: schedule chunks answered almost any question), real names never enter the repo (synthetic fixtures only; both backend/data/ and tasks/RAG-docs/ gitignored), the frontend is untouched (skill replies ride the existing bot message path).",
+        "status": "DRAFT",
+        "requirements": [
+            {
+                "id": "REQ-DATA",
+                "title": "Storage: four models, migration 015, package config",
+                "description": "backend/app/models/vacation_schedule.py (VacationSchedule: id, source_name String(255), year Integer, ingested_at DateTime, row_count Integer), vacation_period.py (VacationPeriod: id, schedule_id FK vacation_schedules.id ON DELETE CASCADE, full_name String(120), department String(120), position String(120), start_date Date, days Integer, ix(schedule_id, full_name)), vacation_name.py (VacationName: user_id PK FK users.id ON DELETE CASCADE, schedule_name String(120), confirmed_at DateTime), assistant_dialog_state.py (AssistantDialogState: user_id PK FK users.id ON DELETE CASCADE, state String(32), origin_content Text NULL, attempts Integer default 0, updated_at DateTime); constraint names written by hand (no naming convention on metadata, app/db/base.py). backend/alembic/versions/015_vacations.py creates all four tables in one segment, down_revision = the revision id inside 014_message_kind_widen (verified: the literal id '014_message_kind_widen'). app/models/__init__.py exports the four models: the export is the explicit registration act for Base.metadata — tests build the schema with Base.metadata.create_all (conftest) and must not depend on import order; existing non-exported models (Message, Document, BotRun) ride the app.main import chain, which tests cannot rely on for new packages. backend/app/vacations/config.py per the app/bot/config.py pattern: frozen VacationSettings + vacation_settings_from_env() with CHATTY_VACATION_DATA_DIR (default backend/data resolved from __file__, never cwd), CHATTY_VACATION_FILE_GLOB ('график отпусков*.xlsx'), CHATTY_VACATION_DIALOG_TTL_SECONDS (600); entries in backend/.env.example; app/core/config.py untouched. Tests: tests/integration/test_migration_015_vacations_segment.py roundtrip per the test_migration_011_settings_segment.py template (stamp head → downgrade to the segment's own explicit down_revision '014_message_kind_widen' → upgrade head, sqlalchemy.inspect asserts; review r2 F-R2-1).",
+                "priority": "P1",
+                "source": "operator data decision (D-4) + research (users table has no surname; runs are stateless so dialog state must persist; migration convention 011; revision ids verified in review r1)",
+                "acceptanceIds": ["AC-INGEST"],
+                "evidenceIds": ["EV-1"],
+                "owner": "WS-BE-DATA"
+            },
+            {
+                "id": "REQ-PARSE",
+                "title": "Parser for the dirty real-world xlsx",
+                "description": "backend/app/vacations/parser.py — port of the parsing logic already verified against the real file in tasks/RAG-docs/vacation_query.py (readOnly): parse_schedule(path) -> ParsedSchedule(source_name, year, rows[ParsedRow(full_name, department, position, start, days)], skipped[str]). Rules: sheets whose B1 == 'ФИО' (verified: all 5 sheets of the real file qualify); a row with only column A filled is a department header that scopes following rows; dates accepted as datetime/date cells and as strings '%d.%m.%Y', '%d/%m/%Y', '%d.%m.', '%d.%m', '%d/%m' with the year for truncated forms taken from the 20\\d{2} regex over the file name (fallback: current year); days as int(num); rows with a name but no date or no days go to skipped (D-8, not stored); whitespace cells are empty; openpyxl read_only=True, data_only=True. Tests: tests/unit/vacations/test_parser.py with a synthetic fixture builder (openpyxl writes tmp_path) reproducing every format above plus the filename-year case (AC-PARSE).",
+                "priority": "P1",
+                "source": "real-file research (mixed cell formats on 5 sheets; header/department rows) + tasks/RAG-docs/vacation_query.py",
+                "acceptanceIds": ["AC-PARSE"],
+                "evidenceIds": ["EV-1"],
+                "owner": "WS-BE-DATA"
+            },
+            {
+                "id": "REQ-INGEST",
+                "title": "Idempotent ingest CLI with a db override",
+                "description": "backend/scripts/ingest_vacations.py: --file PATH (default: glob of vacation_settings_from_env()) and --db URL (optional override of CHATTY_DATABASE_URL from get_settings() — lets the operator ingest from the host against the compose Postgres using the operator env credentials, no compose changes); sync engine + session; one transaction deletes the VacationSchedule with the same (year, source_name) then inserts the snapshot and its periods; prints a summary (sheets, rows, skipped); exit 1 with a reason when the file is missing or unparsed. No runtime schema changes (migrations stay alembic-only). Tests: tests/integration/vacations/test_ingest_cli.py runs main() against a scratch sqlite in tmp_path (monkeypatch CHATTY_DATABASE_URL; --db tested through the override parameter): first run creates the snapshot, re-run of the same year replaces it without duplicates, a different year is added alongside (AC-INGEST). EV-2: a run on the REAL schedule staged by the operator into backend/data/ (launchGate step, F-6) into a scratch sqlite, cross-checked against the tasks/RAG-docs/vacation_query.py control output on the same file.",
+                "priority": "P1",
+                "source": "operator data decision (D-4: replace-per-year snapshots so stored surnames referencing canonical names survive re-ingest) + D-13 update mechanism",
+                "acceptanceIds": ["AC-INGEST"],
+                "evidenceIds": ["EV-1", "EV-2"],
+                "owner": "WS-BE-DATA"
+            },
+            {
+                "id": "REQ-RUNBOOK",
+                "title": "Operator update runbook for the schedule",
+                "description": "docs/deployment/vacation-schedule.md (new, alongside own-backend.md): (1) where the file lives — backend/data/ (gitignored), real names never committed; (2) how to update — stage the new xlsx into backend/data/, run the ingest with the STAND BACKEND VENV interpreter (D-11 seam: the global py -3.12 lacks sqlalchemy/pydantic-settings — the plan carries the <backend-venv-python> placeholder, the runbook itself writes the actual stand path) and either CHATTY_DATABASE_URL or the --db override from the operator env, read the printed summary; (3) update semantics — the same year+source replaces the snapshot wholesale, a new-year file is added alongside, stored surnames survive re-ingest (canonical names), a person vanished from the new snapshot triggers the bot's re-ask flow (REQ-FLOW stale-surname branch); (4) verification — re-run the summary and one lookup command; (5) rollback — re-run the ingest with the previous file. The runbook steps must match the actually shipped CLI flags (--file/--db) — a mismatch is a finding.",
+                "priority": "P2",
+                "source": "operator request 2026-11-08 (D-13: durable update mechanism + written instruction)",
+                "acceptanceIds": ["AC-RUNBOOK"],
+                "evidenceIds": ["EV-2"],
+                "owner": "WS-BE-DATA"
+            },
+            {
+                "id": "REQ-LOOKUP",
+                "title": "Surname matching and period formatting",
+                "description": "backend/app/vacations/service.py — VacationService(session).find(query): normalize (lower, ё→е, dots→spaces, squeeze); FIRST try equality of the FULL normalized name string (all tokens — «Гончаров А.Б.» must resolve uniquely among two Гончаровы, because the bot itself asks for initials when surnames collide; review r2 F-R2-2), THEN the first-token (surname) equality rule — a NEW rule stricter than the substring containment of tasks/RAG-docs/vacation_query.py (D-7: «Романов» must NOT match «Романова К.В.», which the old substring logic would have matched); only with zero exact hits, candidates are stored surnames STARTING WITH the query token (prefix direction, e.g. «Гончар» → both Гончаровы), returned as an ambiguity list; zero candidates → difflib.get_close_matches hints over stored surname tokens (n=3, cutoff 0.5) — «Сибгатуллина» yields a hint, not a match; result kinds found/ambiguous/not_found. format_periods(person): lines «{full_name} с {DD.MM.YYYY} на {N} {день|дня|дней}» sorted by start_date with the Russian plural rule (1/21… день; 2–4 except 12–14 дня; else дней). Tests: tests/unit/vacations/test_lookup.py (AC-LOOKUP).",
+                "priority": "P1",
+                "source": "D-7 token-exact rule (new, stricter than the vacation_query.py substring matcher; only the PARSER is a port) + real-file plural cases (1/7/14/24 days exist)",
+                "acceptanceIds": ["AC-LOOKUP"],
+                "evidenceIds": ["EV-1"],
+                "owner": "WS-BE-DATA"
+            },
+            {
+                "id": "REQ-STATE",
+                "title": "Surname and dialog-state stores with TTL",
+                "description": "backend/app/vacations/store.py — VacationStore(session): get_surname(user_id), save_surname(user_id, schedule_name) (upsert with confirmed_at=now), delete_surname(user_id) (stale-surname recovery, REQ-FLOW), get_state(user_id) returning None when the state is empty OR updated_at is older than CHATTY_VACATION_DIALOG_TTL_SECONDS (D-5: a stale «да» must not bind to a new topic), set_state(user_id, state, origin_content, attempts), clear_state(user_id), bump_attempts(user_id). State is keyed by user_id only (the flow is personal; runs are stateless and keyed by message_id, so persistence must live in the DB). Tests: tests/unit/vacations/test_store.py (TTL boundary, upsert, delete).",
+                "priority": "P1",
+                "source": "research (bot runs stateless; API restarts lose memory) + D-5 + D-13 stale-surname recovery",
+                "acceptanceIds": ["AC-FLOW"],
+                "evidenceIds": ["EV-1"],
+                "owner": "WS-BE-DATA"
+            },
+            {
+                "id": "REQ-INTENT",
+                "title": "Deterministic intent classifier",
+                "description": "backend/app/vacations/intent.py — pure functions and module constants: SCHEDULE_RE (explicit: «график … отпуск», «отпуск … график», «мои даты», «когда мой отпуск»), VACATION_RE built as \\bотпуск(?:а|у|е|ом|и|ов|ам|ах)?\\b — the trailing word boundary is the verb guard itself: verb continuations («отпускает», «отпускаю», «отпускаешь») never end at a noun suffix, so they cannot match, while «отпуска/отпуске/отпуском» do (D-9; the earlier negative-lookahead formulation was dead code — review F-3), closed YES_WORDS/NO_WORDS and CANCEL_WORDS sets (да/давай/хочу/узнать/покажи/конечно/ага/ок/окей; нет/не хочу/не надо/позже/неа; отмена/отменить/стоп/пропустить). classify(content) -> 'schedule' | 'vacation' | 'yes' | 'no' | 'cancel' | None, checked in that priority order, case-insensitive with ё→е normalization. Tests: tests/unit/vacations/test_intent.py (AC-INTENT).",
+                "priority": "P1",
+                "source": "operator flow (offer vs immediate) + false-positive guard (review r1 F-3: working boundary construction) + F-7 cancel words",
+                "acceptanceIds": ["AC-INTENT"],
+                "evidenceIds": ["EV-3"],
+                "owner": "WS-BE-FLOW"
+            },
+            {
+                "id": "REQ-FLOW",
+                "title": "VacationSkill state machine and the pre-RAG hook in BotService",
+                "description": "backend/app/vacations/skill.py — VacationSkill(session, provider).handle(*, content, user_id) -> SkillOutcome(reply, passthrough_question) | None. With state awaiting_yes: yes → (stored surname? compose the answer : ask for the surname, state=awaiting_surname); no → passthrough_question=origin_content, clear (D-6); cancel → a brief ack and clear; another VACATION/SCHEDULE-classified message → re-offer with refreshed origin_content (the user restated the topic — F-7); anything else → clear and return None (the message takes the normal path on its own). With state awaiting_surname: cancel words → a brief ack and clear without burning an attempt; otherwise the content is a surname candidate — find(): found → save_surname + answer + clear; ambiguous → list «ФИО (отдел)» and bump attempts; not_found → difflib hints and bump attempts; attempts >= 2 → a polite final line and clear. Fresh message: classify — schedule → (stored surname? answer : ask surname); vacation → the exact offer «Хотите узнать свои даты по графику отпусков?» with state awaiting_yes and origin_content=content; yes/no/cancel/None → None. STALE-SURNAME recovery (D-13): composing an answer with a stored surname whose find() now returns not_found (the schedule was updated and the person vanished) deletes the stored surname, tells the user the schedule changed and re-asks once inside the same flow. The hook in backend/app/services/bot.py _execute sits immediately BEFORE the rag_search call (~line 229 — not merely above the rag_min_score threshold at 244): outcome = VacationSkill(self.session, self.provider).handle(content=source_content, user_id=message.user_id) — the provider is the ALREADY-INJECTED BotService attribute (resolved once at the endpoint, api/v1/endpoints/bot.py:106 → services/bot.py:69; no app.state access inside the service, review F-2), the session is the service's own self.session (no factory exists), and user_id is the SOURCE MESSAGE author's id (message.user_id — privacy D-2), not the requester variable; reply → post through the existing MessageService.create path (~line 261) and mark the run succeeded; passthrough_question → run the normal RAG+LLM path with the ORIGINAL question; None → normal path unchanged. Durable-run CAS, statuses, broadcast and the SSE bridge are untouched. Tests: tests/integration/bot/test_vacation_skill_flow.py (AC-FLOW scenarios 1–7).",
+                "priority": "P1",
+                "source": "operator flow + review r1 F-2 (real seam: self.session/self.provider/message.user_id, rag_search anchor 229) + F-7 negatives + D-13 stale surname",
+                "acceptanceIds": ["AC-FLOW"],
+                "evidenceIds": ["EV-3"],
+                "owner": "WS-BE-FLOW"
+            },
+            {
+                "id": "REQ-LLMFMT",
+                "title": "LLM phrasing from structured data with a template fallback",
+                "description": "backend/app/vacations/prompts.py — build_vacation_messages(person_lines): a system block instructing to answer ONLY from the given lines, never invent dates, and address the user by the schedule name, plus one user block with the formatted period lines; no RAG chunks ever enter this prompt (D-10). The answer is composed with provider.complete() (no streaming: the Ollama provider's complete_stream is degenerate anyway — one chunk, provider.py:150-157); BotProviderError or timeout → the plain template of the same format_periods lines, so the bot always answers. Tests inside test_vacation_skill_flow.py: the captured FakeBotProvider prompt contains the structured lines and no RAG chunks; a scripted failing provider still yields the template answer and a succeeded run (AC-LLMFMT).",
+                "priority": "P1",
+                "source": "operator hybrid decision (D-1) + provider research (no tools, degenerate streaming at provider.py:150-157)",
+                "acceptanceIds": ["AC-LLMFMT"],
+                "evidenceIds": ["EV-3"],
+                "owner": "WS-BE-FLOW"
+            },
+            {
+                "id": "REQ-PRIVACY",
+                "title": "Own dates only",
+                "description": "handle() exposes NO lookup path by an arbitrary surname from a fresh message: the only lookup inputs are the user's stored VacationName or a direct answer to the bot's surname question (awaiting_surname). A third-party phrasing («Когда отпуск у Иванова?») classifies as vacation/schedule and routes to the own-dates offer/answer; a session-level query counter pins that no vacation_periods row for a third person was fetched (AC-PRIVACY).",
+                "priority": "P1",
+                "source": "operator privacy decision (D-2)",
+                "acceptanceIds": ["AC-PRIVACY"],
+                "evidenceIds": ["EV-3"],
+                "owner": "WS-BE-FLOW"
+            },
+            {
+                "id": "REQ-PROCESS",
+                "title": "Gates, journal and bookkeeping",
+                "description": "Backend gate per D-11 — bash backend/verify.sh with the stand venv PYTHON_BIN (npm run verify:backend does not resolve on this stand): everything green except exactly the 4 known POSIX-only ingestion failures (tests/unit/ingestion/test_converter.py, identical before/after, outside the write-set), zero new failures, zero deleted tests, pytest base 339 grown, full output before/after in evidence; new vacation tests must pass on Windows (no soffice dependency). Ownership audit clean (audit ownership --fail-on-unowned --fail-on-forbidden). Root .gitignore gains backend/data/ AND tasks/RAG-docs/ (the real schedule and the personal RTF templates sit there untracked today — one git add away from a public leak, review F-5). docs/progress/progress_log.md run record on top; decisions.md carries every controller decision (D-1…D-16); conventional commits WITHOUT co-author trailers (D-12) on feature/2026-11-08-vacation-skill from dev @ dc65e03; plan package committed, work/ never.",
+                "priority": "P1",
+                "source": "repository gate contract + operator rules + review r1 F-5",
+                "acceptanceIds": ["AC-PROCESS"],
+                "evidenceIds": ["EV-3"],
+                "owner": "WS-BE-FLOW"
+            },
+            {
+                "id": "REQ-LIVE",
+                "title": "Deferred live gate (blocks final audit and the dev PR)",
+                "description": "AC-LIVE is NOT worker-executed: the operator raises the compose stack with Ollama and walks the scripted dialog smoke (offer → да → surname → real dates; explicit schedule → immediate answer; нет → normal assistant answer to the original question; third-party query → own-dates offer; repeat entry without the surname question; surname survives an API restart; schedule refresh via the runbook — new summary and answers without a code restart; review r2 F-R2-4). Evidence EV-4 (log/screenshots) lands in work/2026-11-08-vacation-skill/evidence/live/. Until EV-4 exists the final audit verdict is BLOCKED (external wait) and the dev PR is not merged (operator decision D-3; the bot is currently down).",
+                "priority": "P1",
+                "source": "operator acceptance decision (D-3) + live-verification deferral (legality confirmed in review r1 F-14)",
+                "acceptanceIds": ["AC-LIVE"],
+                "evidenceIds": ["EV-4"],
+                "owner": "WS-BE-FLOW"
+            }
+        ],
+        "goal": "A user asking the assistant about vacations gets their own real dates from the 2026 schedule: a gentle offer on a generic question, an immediate answer on an explicit schedule question, a one-time surname question whose answer is validated and persisted, LLM-phrased replies grounded in structured data with a deterministic fallback — the operator can refresh the schedule with one documented command — and none of the real employees' names ever enter the repository.",
+        "constraints": [
+            "The frontend is untouched: no file under src/ is written; skill replies ride the existing bot message path (askBot resolves them by response_message_id).",
+            "The schedule xlsx and the personal RTF templates are NEVER committed: backend/data/ and tasks/RAG-docs/ are gitignored; tests use synthetic fixtures built with openpyxl in tmp_path; real names appear only in local evidence under work/.",
+            "The schedule is NOT ingested through the RAG documents pipeline (prior live incident); app/ingestion stays read-only.",
+            "Durable bot-run semantics (CAS, statuses, broadcast, MessageService posting) are unchanged; the skill only short-circuits content before the rag_search call, using the service's own session and injected provider.",
+            "Existing migrations are never edited; only the new 015_vacations.py file is added.",
+            "No new runtime dependencies (openpyxl is already used by app/ingestion/parsers.py).",
+            "Conventional commits without co-author trailers; plan package committed; work/ and .alk/ never committed."
+        ],
+        "nonGoals": [
+            "tool-calling / function-calling for the model (no provider support; future contour)",
+            "RAG ingestion or embeddings of the vacation schedule",
+            "third-party vacation lookups, department reports, admin tooling",
+            "any frontend change",
+            "user-managed editing/removal of the stored surname",
+            "native streaming of skill answers",
+            "scheduled/cron automatic re-ingest (manual operator run per the runbook is the update mechanism)"
+        ],
+        "scope": "two sequential backend workstreams: WS-BE-DATA owns persistence, data access and the operator update loop (4 models + migration 015 + package config + xlsx parser + idempotent ingest CLI with --db override + matcher/formatter + surname/state stores + the docs/deployment/vacation-schedule.md runbook + their tests); WS-BE-FLOW owns behavior (intent classifier, state-machine skill with stale-surname recovery, pre-RAG hook in BotService, LLM phrasing with template fallback, own-dates privacy, dialog integration tests with FakeBotProvider, gates and journal); evidence under work/2026-11-08-vacation-skill/."
+    },
+    "readOnly": [
+        "AGENTS.md",
+        "tasks/README.md",
+        "tasks/RAG-docs/vacation_query.py",
+        "backend/app/bot/provider.py",
+        "backend/app/bot/config.py",
+        "backend/app/bot/prompts.py",
+        "backend/app/ingestion/parsers.py",
+        "backend/app/db/base.py",
+        "backend/alembic/env.py",
+        "backend/tests/conftest.py",
+        "backend/tests/integration/bot/test_bot_api.py",
+        "backend/tests/integration/test_migration_011_settings_segment.py",
+        "docs/deployment/own-backend.md"
+    ],
+    "forbiddenWrites": [
+        "src",
+        ".env",
+        ".env.development",
+        ".env.own",
+        ".env.compose.local",
+        "docs/project-principles.json",
+        "backend/app/ws",
+        "backend/app/api",
+        "backend/app/core",
+        "backend/app/ingestion",
+        "backend/app/bot",
+        "backend/tests/unit/ingestion",
+        ".github/workflows",
+        "netlify.toml",
+        "server/server.js",
+        "tasks/RAG-docs"
+    ],
+    "leadOwned": [
+        {
+            "path": "tasks/2026-11-08-vacation-skill",
+            "owner": "controller",
+            "reason": "Controller owns plan-package artifacts."
+        }
+    ],
+    "workstreams": [
+        {
+            "id": "WS-BE-DATA",
+            "title": "Backend: vacation storage, parser, ingest, lookup, stores, runbook",
+            "owner": "worker-backend-vacation-data",
+            "reviewer": "independent-release-reviewer",
+            "dependsOn": [],
+            "writes": [
+                "backend/app/models/__init__.py",
+                "backend/app/models/vacation_schedule.py",
+                "backend/app/models/vacation_period.py",
+                "backend/app/models/vacation_name.py",
+                "backend/app/models/assistant_dialog_state.py",
+                "backend/app/vacations/__init__.py",
+                "backend/app/vacations/config.py",
+                "backend/app/vacations/parser.py",
+                "backend/app/vacations/service.py",
+                "backend/app/vacations/store.py",
+                "backend/scripts/ingest_vacations.py",
+                "backend/alembic/versions/015_vacations.py",
+                "backend/tests/unit/vacations/test_parser.py",
+                "backend/tests/unit/vacations/test_lookup.py",
+                "backend/tests/unit/vacations/test_store.py",
+                "backend/tests/integration/test_migration_015_vacations_segment.py",
+                "backend/tests/integration/vacations/test_ingest_cli.py",
+                "backend/.env.example",
+                "docs/deployment/vacation-schedule.md",
+                ".gitignore"
+            ],
+            "readOnly": [
+                "tasks/RAG-docs/vacation_query.py",
+                "backend/app/ingestion/parsers.py",
+                "backend/app/bot/config.py",
+                "backend/alembic/versions/011_settings.py",
+                "backend/alembic/versions/014_message_kind_widen.py",
+                "backend/app/core/config.py",
+                "backend/app/models/user.py"
+            ],
+            "forbiddenWrites": [],
+            "launchGate": "branch feature/2026-11-08-vacation-skill from dev @ dc65e03 (rebase first if the mobile-ux PR lands before start); backend gate per D-11 at base: bash backend/verify.sh (stand venv PYTHON_BIN) — 339 passed / exactly the 4 known POSIX-only ingestion failures, zero new failures; operator stages the REAL schedule xlsx into backend/data/ (gitignored) before the EV-2 run — the file currently lives in tasks/RAG-docs/ (F-6); operator authorization for execution (granted 2026-11-08).",
+            "capabilityHints": ["python", "pytest", "sqlalchemy", "alembic", "openpyxl", "sqlite"],
+            "requiredTools": ["python", "bash"],
+            "contextRefs": ["plan.md", "acceptance-criteria.md", "developer-overview.md", "specification.md", "decisions.md"],
+            "acceptanceIds": ["AC-PARSE", "AC-INGEST", "AC-LOOKUP", "AC-RUNBOOK"],
+            "evidenceIds": ["EV-1", "EV-2"],
+            "executionPolicy": {
+                "maxAttempts": 3,
+                "maxWallSeconds": 5400
+            },
+            "artifactPaths": {
+                "result": "work/2026-11-08-vacation-skill/evidence/WS-BE-DATA/task-result-{attempt}.json",
+                "review": "work/2026-11-08-vacation-skill/evidence/WS-BE-DATA/task-review-{attempt}.json"
+            },
+            "required": true,
+            "plannedItems": [
+                "DATA: 4 models + models/__init__ exports (explicit Base.metadata registration for create_all tests) + migration 015 (down_revision '014_message_kind_widen') + segment roundtrip test",
+                "CONFIG: vacations/config.py frozen settings + .env.example entries (DATA_DIR from __file__, FILE_GLOB, DIALOG_TTL_SECONDS)",
+                "PARSE: parser.py port from tasks/RAG-docs/vacation_query.py + synthetic-xlsx fixture builder covering every dirty format + filename-year case",
+                "INGEST: scripts/ingest_vacations.py replace-per-year transaction with --file/--db + main()-level idempotency tests + EV-2 run on the real file (staged in backend/data/) into a scratch sqlite cross-checked with vacation_query.py",
+                "LOOKUP: VacationService.find token-exact matching (ё/е, Романов≠Романова — new stricter rule, not a port), prefix-direction candidates, difflib hints + format_periods Russian plurals",
+                "STORE: VacationStore surname upsert/delete + TTL state accessors",
+                "RUNBOOK: docs/deployment/vacation-schedule.md operator instruction matching the shipped CLI flags (--file/--db) and the per-year replace semantics (D-13)",
+                "gates: backend gate per D-11 green (only the 4 known ingestion failures), zero new/deleted tests, .gitignore entries backend/data/ and tasks/RAG-docs/"
+            ],
+            "qualityFloor": "Backend gate per D-11 (bash backend/verify.sh, stand venv PYTHON_BIN): every test green except exactly the 4 known POSIX-only ingestion failures in tests/unit/ingestion/test_converter.py, identical before/after, outside the write-set; zero new failures; no file outside the write-set touched; no test deleted; new tests pass on Windows without soffice."
+        },
+        {
+            "id": "WS-BE-FLOW",
+            "title": "Backend: intent, skill state machine, bot hook, LLM answer, privacy, gates",
+            "owner": "worker-backend-vacation-flow",
+            "reviewer": "independent-release-reviewer",
+            "dependsOn": ["WS-BE-DATA"],
+            "writes": [
+                "backend/app/vacations/intent.py",
+                "backend/app/vacations/skill.py",
+                "backend/app/vacations/prompts.py",
+                "backend/app/services/bot.py",
+                "backend/tests/unit/vacations/test_intent.py",
+                "backend/tests/integration/bot/test_vacation_skill_flow.py",
+                "docs/progress/progress_log.md"
+            ],
+            "readOnly": [
+                "backend/app/bot/provider.py",
+                "backend/app/bot/prompts.py",
+                "backend/app/bot/config.py",
+                "backend/tests/integration/bot/test_bot_api.py",
+                "backend/tests/integration/bot/test_bot_streaming.py",
+                "backend/app/services/messages.py",
+                "backend/app/api/v1/endpoints/bot.py"
+            ],
+            "forbiddenWrites": [],
+            "launchGate": "WS-BE-DATA accepted (models/migration/parser/lookup/stores/runbook green); backend gate per D-11 green at the base of this wave; operator authorization for execution (granted 2026-11-08).",
+            "capabilityHints": ["python", "pytest", "fastapi", "sqlalchemy"],
+            "requiredTools": ["python", "bash"],
+            "contextRefs": ["plan.md", "acceptance-criteria.md", "developer-overview.md", "specification.md", "decisions.md"],
+            "acceptanceIds": ["AC-INTENT", "AC-FLOW", "AC-LLMFMT", "AC-PRIVACY", "AC-PROCESS", "AC-LIVE"],
+            "evidenceIds": ["EV-3", "EV-4"],
+            "executionPolicy": {
+                "maxAttempts": 3,
+                "maxWallSeconds": 5400
+            },
+            "artifactPaths": {
+                "result": "work/2026-11-08-vacation-skill/evidence/WS-BE-FLOW/task-result-{attempt}.json",
+                "review": "work/2026-11-08-vacation-skill/evidence/WS-BE-FLOW/task-review-{attempt}.json"
+            },
+            "required": true,
+            "plannedItems": [
+                "INTENT: intent.py classifier (schedule > vacation > yes/no/cancel > None; \\bотпуск(?:noun suffixes)?\\b boundary construction keeps «отпускает» out) + unit pins",
+                "SKILL: skill.py state machine (awaiting_yes / awaiting_surname / fresh; TTL-aware; cancel words; repeated vacation question re-offers; 2 surname attempts; stale-surname recovery deletes the stored name and re-asks once) + prompts.py structured-data messages",
+                "HOOK: services/bot.py pre-rag_search branch (~229) calling VacationSkill(self.session, self.provider).handle(content, user_id=message.user_id) — reply / passthrough_question / None, durable-run and posting paths untouched",
+                "PRIVACY: no arbitrary-surname lookup path + third-party-query pin with a session query counter",
+                "TESTS: integration dialog scenarios 1-7 (incl. да-with-surname, cancel, stale surname), LLM prompt capture (no RAG chunks), BotProviderError template fallback, surname persistence across chats/runs",
+                "PROCESS: progress_log record, D-11 gate evidence, ownership audit clean, no-coauthor conventional commits",
+                "LIVE: AC-LIVE checklist handoff — not worker-executed; final audit stays BLOCKED until the operator files EV-4 (D-3)"
+            ],
+            "qualityFloor": "Backend gate per D-11 (bash backend/verify.sh, stand venv PYTHON_BIN): every test green except exactly the 4 known POSIX-only ingestion failures, identical before/after, outside the write-set; zero new failures; no file outside the write-set touched; no test deleted."
+        }
+    ],
+    "acceptance": {
+        "criteria": [
+            {
+                "id": "AC-PARSE",
+                "title": "Parser survives the dirty real-world formats",
+                "requirementIds": ["REQ-PARSE"],
+                "evidenceIds": ["EV-1"],
+                "independentEvidenceIds": [],
+                "statement": "A synthetic fixture with two department sheets, header and department-only rows, datetime cells, '15/06/2026', '21.09.', '15.06', 'DD.MM.YYYY' strings, empty cells and name-only rows parses to exact start_date/days/full_name/department values; name-only rows land in skipped with a count, never in rows; truncated dates take the year from the file name (график отпусков 2027.xlsx) with a current-year fallback.",
+                "description": "Backend unit tests over a synthetic xlsx built in tmp_path.",
+                "source": "acceptance-criteria.md",
+                "priority": "P1"
+            },
+            {
+                "id": "AC-INGEST",
+                "title": "Idempotent ingest and migration roundtrip",
+                "requirementIds": ["REQ-DATA", "REQ-INGEST"],
+                "evidenceIds": ["EV-1", "EV-2"],
+                "independentEvidenceIds": [],
+                "statement": "scripts/ingest_vacations.py (--file/--db): first run creates the snapshot, a re-run of the same year replaces it without duplicates, another year is added alongside (main()-level tests on scratch sqlite, --db override exercised); migration 015 roundtrips stamp head → downgrade '014_message_kind_widen' → upgrade head with inspect checks for the four tables, FKs and the index; EV-2 records a CLI run on the REAL schedule (staged in backend/data/) into a scratch sqlite whose summary matches the tasks/RAG-docs/vacation_query.py control output on the same file (Сибгатуллин: 20.04.2026/7, 03.08.2026/14, 21.12.2026/7).",
+                "description": "Backend integration tests + a real-file evidence run.",
+                "source": "acceptance-criteria.md",
+                "priority": "P1"
+            },
+            {
+                "id": "AC-RUNBOOK",
+                "title": "Operator update runbook matches reality",
+                "requirementIds": ["REQ-RUNBOOK"],
+                "evidenceIds": ["EV-2"],
+                "independentEvidenceIds": [],
+                "statement": "docs/deployment/vacation-schedule.md exists and documents: staging the file into backend/data/, the exact ingest command with the shipped --file/--db flags, the per-year replace / new-year-add semantics, surname survival across re-ingest, the vanished-person re-ask behavior, verification and rollback steps; every command line in the runbook matches the actually shipped CLI flags.",
+                "description": "Document check tied to the real-file run.",
+                "source": "acceptance-criteria.md",
+                "priority": "P2"
+            },
+            {
+                "id": "AC-LOOKUP",
+                "title": "Matching and formatting proven by pytest",
+                "requirementIds": ["REQ-LOOKUP"],
+                "evidenceIds": ["EV-1"],
+                "independentEvidenceIds": [],
+                "statement": "find(): a FULL normalized name («Гончаров А.Б.») resolves uniquely among two Гончаровы (full-string equality tried first — the bot itself asks for initials, review r2); an exact surname token returns one person with sorted periods; «Романов» does NOT match «Романова К.В.»; the bare surname with two carriers yields an ambiguity list (prefix direction: «Гончар» too); an unknown surname yields difflib hints; normalization covers case and ё→е; format_periods() renders «Сибгатуллин И.Р. с 21.12.2026 на 7 дней» with correct Russian plurals (1 день, 14 дней, 24 дня) sorted by date.",
+                "description": "Backend unit tests.",
+                "source": "acceptance-criteria.md",
+                "priority": "P1"
+            },
+            {
+                "id": "AC-INTENT",
+                "title": "Classifier pins including false positives",
+                "requirementIds": ["REQ-INTENT"],
+                "evidenceIds": ["EV-3"],
+                "independentEvidenceIds": [],
+                "statement": "classify(): «Хочу в отпуск» → vacation; «Когда у меня отпуск по графику?» / «покажи график отпусков» / «мои даты по графику» → schedule (priority over vacation); «меня не отпускает задача» / «отпустите меня с собрания» → None (the \\b…(?:noun suffixes)?\\b construction — verb continuations cannot match); yes/no/cancel word sets match with normalization; «как погода?» → None.",
+                "description": "Backend unit tests.",
+                "source": "acceptance-criteria.md",
+                "priority": "P1"
+            },
+            {
+                "id": "AC-FLOW",
+                "title": "Seven dialog scenarios through the bot with FakeBotProvider",
+                "requirementIds": ["REQ-FLOW", "REQ-STATE"],
+                "evidenceIds": ["EV-3"],
+                "independentEvidenceIds": [],
+                "statement": "Integration scenarios on app+client with the FakeBotProvider seam: (1) generic vacation message → the exact offer with zero LLM calls for that run; (1b) «да» WITH a stored surname → the answer immediately, no surname question; (2) «да» without a surname → surname question → «Сибгатуллин» → the three periods from the ingested fixture and vacation_names holds the canonical name, and a NEW chat with an explicit schedule question answers immediately without re-asking; (3) explicit schedule question from scratch → surname question straight away, no offer; (4) «нет» → the normal path runs with the ORIGINAL question in the prompt, not the word «нет»; (5) an unrelated NON-vacation message during awaiting_yes resets the state and is processed normally, while a repeated vacation question re-offers with the refreshed origin; cancel words at either prompt exit with a brief ack and no attempt burn; (6) two failed surname attempts end with the polite exit and a cleared state, and a TTL-expired state behaves as absent; (7) stale surname — with the stored name vanished from a re-ingested snapshot the bot deletes the stored name, says the schedule changed and re-asks once.",
+                "description": "Backend integration tests.",
+                "source": "acceptance-criteria.md",
+                "priority": "P1"
+            },
+            {
+                "id": "AC-LLMFMT",
+                "title": "LLM phrasing grounded, template on failure",
+                "requirementIds": ["REQ-LLMFMT"],
+                "evidenceIds": ["EV-3"],
+                "independentEvidenceIds": [],
+                "statement": "With a working provider the answer is the model text and the captured prompt contains the structured period lines and no RAG chunks plus the no-invented-dates rule; a scripted provider raising BotProviderError still yields the template answer with the same dates and a succeeded run.",
+                "description": "Backend integration tests.",
+                "source": "acceptance-criteria.md",
+                "priority": "P1"
+            },
+            {
+                "id": "AC-PRIVACY",
+                "title": "Own dates only",
+                "requirementIds": ["REQ-PRIVACY"],
+                "evidenceIds": ["EV-3"],
+                "independentEvidenceIds": [],
+                "statement": "«Когда отпуск у Иванова?» → the own-dates offer, no search by the third-party surname (pinned with a session query counter); no code path performs a lookup by an arbitrary surname from a fresh message.",
+                "description": "Backend integration tests + code inspection.",
+                "source": "acceptance-criteria.md",
+                "priority": "P1"
+            },
+            {
+                "id": "AC-PROCESS",
+                "title": "Gates and bookkeeping",
+                "requirementIds": ["REQ-PROCESS"],
+                "evidenceIds": ["EV-3"],
+                "independentEvidenceIds": [],
+                "statement": "Backend gate green per D-11 (canonical PYTHON_BIN invocation; only the 4 known ingestion failures remain; zero deleted tests; pytest base 339 grown; full before/after output in evidence); ownership audit clean; backend/data/ AND tasks/RAG-docs/ in the root .gitignore; progress_log record on top; decisions journal complete; conventional commits without co-author trailers on the feature branch from dc65e03; plan package committed, work/ not.",
+                "description": "Gate runs captured as evidence.",
+                "source": "acceptance-criteria.md",
+                "priority": "P1"
+            },
+            {
+                "id": "AC-LIVE",
+                "title": "Deferred live dialog smoke — blocks final audit and the PR",
+                "requirementIds": ["REQ-LIVE"],
+                "evidenceIds": ["EV-4"],
+                "independentEvidenceIds": [],
+                "statement": "On the raised compose+Ollama stack the operator walks the scripted dialogs: offer → да → surname → real dates; explicit schedule → immediate answer; нет → normal assistant answer to the original question; third-party query → own-dates offer; repeat entry without the surname question; surname survives an API restart; schedule refresh via the runbook (new summary and answers without a code restart); EV-4 (log/screenshots) lands in work/2026-11-08-vacation-skill/evidence/live/. Until it exists the final audit verdict is BLOCKED and the dev PR is not merged (D-3).",
+                "description": "Operator live gate, deferred while the bot is down.",
+                "source": "acceptance-criteria.md",
+                "priority": "P1"
+            }
+        ]
+    },
+    "validation": {
+        "commands": [
+            "PYTHON_BIN=<backend-venv-python> bash backend/verify.sh — D-11 stand seam: npm run verify:backend does not resolve on this Windows stand; the canonical invocation is bash backend/verify.sh with PYTHON_BIN pointing at the backend venv interpreter (exact stand path in the operator runbook and the evidence log). PASS verdict = every test green EXCEPT exactly the 4 known POSIX-only ingestion failures (tests/unit/ingestion/test_converter.py, WinError 193, identical before and after, outside the write-set), zero new failures, zero deleted tests, full output before/after retained in evidence; new vacation tests must pass on Windows.",
+            "py -3.12 -m agent_lifecycle audit ownership --base HEAD --fail-on-unowned --fail-on-forbidden"
+        ]
+    },
+    "orchestration": {
+        "startMode": "reviewed-plan",
+        "remediationMode": "ask",
+        "maxPlanReviewRounds": 3,
+        "maxTaskAttempts": 3,
+        "maxParallelTasks": 1,
+        "maxValidationRunsPerTask": 2,
+        "stateFile": "work/2026-11-08-vacation-skill/run.state.json",
+        "eventLog": "work/2026-11-08-vacation-skill/events.jsonl",
+        "stepReviewRequired": true,
+        "finalAuditRequired": true
+    },
+    "implementationAudit": {
+        "required": true,
+        "finalRequired": true
+    },
+    "developerOverview": "tasks/2026-11-08-vacation-skill/developer-overview.md",
+    "releaseTarget": {
+        "kind": "local-only",
+        "environment": "compose own-backend + host Ollama",
+        "productionPromotionClaimed": false
+    },
+    "releaseImpact": "Backend-only: a new backend/app/vacations package, four tables via alembic 015, an operator ingest CLI (--file/--db) reading a gitignored xlsx with a documented update runbook, and one pre-rag_search branch inside BotService._execute that posts deterministic/LLM-phrased answers through the existing message path. No API, WS protocol, store-shape or frontend changes; rollback = alembic downgrade of 015 + branch revert. The dev PR is held until the live smoke passes (D-3).",
+    "finalAuditGates": [
+        "[AC-PARSE|EV-1] dirty-format parser pins — pytest",
+        "[AC-INGEST|EV-1] idempotent ingest + migration roundtrip — pytest",
+        "[AC-INGEST|EV-2] real-file CLI cross-check against vacation_query.py control output",
+        "[AC-RUNBOOK|EV-2] update runbook matches the shipped CLI flags and update semantics",
+        "[AC-LOOKUP|EV-1] token-exact matcher + Russian plural formatting — pytest",
+        "[AC-INTENT|EV-3] classifier incl. verb-continuation exclusion — pytest",
+        "[AC-FLOW|EV-3] seven dialog scenarios with FakeBotProvider: offer, да→answer/surname→dates, immediate path, нет→original question, reset/re-offer/cancel, TTL/attempts, stale surname",
+        "[AC-LLMFMT|EV-3] structured prompt without RAG chunks + BotProviderError template fallback",
+        "[AC-PRIVACY|EV-3] third-party query routes to the own-dates offer only",
+        "[AC-PROCESS|EV-3] backend gate per D-11, ownership clean, progress_log, no-coauthor commits, backend/data + tasks/RAG-docs gitignored",
+        "[AC-LIVE|EV-4] live dialog smoke on the raised stack — final audit BLOCKED until the operator files EV-4; the dev PR merges only after (D-3)"
+    ],
+    "securityGates": [
+        {
+            "id": "SEC-NO-PERSONAL-DATA-IN-REPO",
+            "statement": "The real schedule xlsx and the personal RTF templates never enter git: backend/data/ AND tasks/RAG-docs/ are gitignored (the latter already holds untracked personal files today), tests use synthetic openpyxl fixtures, real names appear only in local work/ evidence; the repo stays free of employee personal data.",
+            "evidenceIds": ["EV-1"]
+        },
+        {
+            "id": "SEC-OWN-DATES-ONLY",
+            "statement": "No lookup path by an arbitrary surname from a fresh message exists; the bot answers only from the user's stored surname or the user's direct answer to the bot's surname question; third-party queries get the own-dates offer.",
+            "evidenceIds": ["EV-3"]
+        },
+        {
+            "id": "SEC-NO-CORE-EDGES",
+            "statement": "src/, app/ws, app/api, app/core, app/ingestion and app/bot are forbidden writes; durable bot-run semantics (CAS, statuses, broadcast) and transports stay untouched; the skill rides the existing message-posting path with the service's own session and injected provider.",
+            "evidenceIds": ["EV-3"]
+        }
+    ],
+    "budgetPolicy": {
+        "units": "tokens-and-resources",
+        "reroute": "pause-and-review",
+        "maxTotalTokens": 100000,
+        "maxParallelWorkstreams": 1,
+        "maxRunWallSeconds": 14400,
+        "criticalPathWallSeconds": 10800,
+        "aggregateWorkstreamWallSeconds": 10800,
+        "retryReserveWallSeconds": 3600
+    },
+    "budgets": {
+        "defaultWorkstreamTokens": 40000,
+        "maxEvidenceBytesPerRun": 4194304
+    },
+    "contextLimits": {
+        "profile": "small-context-profile.v1",
+        "maxPlanContextBytes": 120000,
+        "maxRenderedPacketBytes": 40000,
+        "smallContextPacketBytes": 30000,
+        "maxReferenceFilesPerPacket": 12,
+        "includeOnlyOwnedWrites": true,
+        "excludeRuntimeWorkArtifacts": true
+    },
+    "tierResolution": {
+        "status": "RESOLVED",
+        "tier": "S2",
+        "requestedTier": "S2",
+        "reason": "multiple-executable-owners, architecture-risk and security-risk resolved by agent-lifecycle tier resolve",
+        "independentReviewRequired": true,
+        "requestPath": "tasks/2026-11-08-vacation-skill/tier-request.json",
+        "resolutionPath": "tasks/2026-11-08-vacation-skill/tier-resolution.json",
+        "requestDigest": "8b849364e8e53ccc77b52936719a2af1f21071bf83deb7b0b44acc2085975b88"
+    },
+    "planReview": {
+        "required": true,
+        "reviewerClass": "independent-plan-reviewer",
+        "maxRounds": 3,
+        "implementationAuthorized": false,
+        "report": "tasks/2026-11-08-vacation-skill/plan-review.json",
+        "reviewedRevision": 4,
+        "verdict": "READY_TO_FREEZE"
+    },
+    "nonGoals": [
+        "tool-calling / function-calling for the model (no provider support; future contour)",
+        "RAG ingestion or embeddings of the vacation schedule",
+        "third-party vacation lookups, department reports, admin tooling",
+        "any frontend change",
+        "user-managed editing/removal of the stored surname",
+        "native streaming of skill answers",
+        "scheduled/cron automatic re-ingest (manual operator run per the runbook is the update mechanism)"
+    ],
+    "planFiles": [
+        "tasks/2026-11-08-vacation-skill/acceptance-criteria.md",
+        "tasks/2026-11-08-vacation-skill/decisions.md",
+        "tasks/2026-11-08-vacation-skill/developer-overview.md",
+        "tasks/2026-11-08-vacation-skill/plan-review-request.md",
+        "tasks/2026-11-08-vacation-skill/plan-review.json",
+        "tasks/2026-11-08-vacation-skill/plan.manifest.json",
+        "tasks/2026-11-08-vacation-skill/plan.md",
+        "tasks/2026-11-08-vacation-skill/specification.md",
+        "tasks/2026-11-08-vacation-skill/tier-request.json",
+        "tasks/2026-11-08-vacation-skill/tier-resolution.json"
+    ]
+}
