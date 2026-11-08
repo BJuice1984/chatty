@@ -208,7 +208,7 @@ async def test_offer_then_surname_then_answer_and_persistence(client, app, sessi
     for call in provider.calls:
         prompt = '\n'.join(part['content'] for part in call)
         assert 'Даты отпуска из графика' in prompt
-        assert 'Chatty RAG' not in prompt
+        assert 'You are the Chatty assistant' not in prompt
 
 
 async def test_explicit_schedule_from_scratch_asks_surname_without_offer(client, app, session_factory):
@@ -248,7 +248,8 @@ async def test_explicit_schedule_from_scratch_asks_surname_without_offer(client,
     for line in PERIOD_LINES:
         assert line in prompt
     assert 'не выдумывай' in prompt
-    assert 'Chatty RAG' not in prompt  # no document chunks ever enter this prompt
+    # the normal RAG path's system prompt must never enter this compose
+    assert 'You are the Chatty assistant' not in prompt
 
 
 async def test_decline_runs_normal_path_with_the_original_question(client, app, session_factory):
@@ -360,6 +361,68 @@ async def test_stale_stored_surname_recovers_after_reingest(client, app, session
     await say(client, chat_id, 'Вишневский')
     reply = await last_bot_reply(client, chat_id, bot)
     assert 'Вишневский О.Н. с 29.04.2026 на 14 дней' in reply
+
+
+async def test_cancel_at_the_offer_and_ambiguous_surname_and_refreshed_origin(client, app, session_factory):
+    seed_schedule(session_factory)
+    provider = bot_ready(
+        app,
+        ScriptedProvider(
+            answers=[
+                'Ответ на переформулированный вопрос.',
+                'Вишневский А.А., ваш отпуск начинается первого июля.',
+            ]
+        ),
+    )
+    await register(client, 'branches-user@example.com')
+    await register_bot(app)
+    chat_id = await create_ai_chat(client)
+    bot = bot_id(session_factory)
+
+    # cancel works at the OFFER prompt too (AC-FLOW 5: «на любом шаге»)
+    await say(client, chat_id, 'Хочу в отпуск')
+    assert await last_bot_reply(client, chat_id, bot) == OFFER
+    await say(client, chat_id, 'отмена')
+    assert 'не буду' in await last_bot_reply(client, chat_id, bot)
+    await say(client, chat_id, 'Хочу в отпуск')
+    assert await last_bot_reply(client, chat_id, bot) == OFFER
+
+    # a re-offer refreshes the origin: the decline must carry the RESTATEMENT
+    await say(client, chat_id, 'Как оформить отпуск на май?')
+    assert await last_bot_reply(client, chat_id, bot) == OFFER
+    await say(client, chat_id, 'А как оформить отпуск на июль?')
+    assert await last_bot_reply(client, chat_id, bot) == OFFER
+    await say(client, chat_id, 'нет')
+    assert await last_bot_reply(client, chat_id, bot) == 'Ответ на переформулированный вопрос.'
+    prompt = '\n'.join(part['content'] for part in provider.calls[0])
+    assert 'А как оформить отпуск на июль?' in prompt
+    assert 'Как оформить отпуск на май?' not in prompt
+
+    # the ambiguous surname branch lists candidates and resolves by initials
+    with session_factory() as session:
+        schedule = session.scalars(select(VacationSchedule)).one()
+        session.add(
+            VacationPeriod(
+                schedule_id=schedule.id,
+                full_name='Вишневский А.А.',
+                department='Департамент Бета',
+                position='Инженер',
+                start_date=date(2026, 7, 1),
+                days=7,
+            )
+        )
+        session.commit()
+
+    await say(client, chat_id, 'покажи график отпусков')
+    assert 'фамили' in await last_bot_reply(client, chat_id, bot)
+    await say(client, chat_id, 'Вишневский')
+    reply = await last_bot_reply(client, chat_id, bot)
+    assert 'Вишневский О.Н. (Департамент Альфа)' in reply
+    assert 'Вишневский А.А. (Департамент Бета)' in reply
+    await say(client, chat_id, 'Вишневский А.А.')
+    reply = await last_bot_reply(client, chat_id, bot)
+    assert reply == 'Вишневский А.А., ваш отпуск начинается первого июля.'
+    assert 'Вишневский О.Н.' not in reply
 
 
 async def test_third_party_vacation_question_gets_own_dates_offer_only(client, app, session_factory, monkeypatch):
