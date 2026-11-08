@@ -1,0 +1,26 @@
+{
+    "capabilityHints": [
+        "python",
+        "pytest",
+        "fastapi",
+        "sqlalchemy",
+        "alembic"
+    ],
+    "executableOwners": [
+        "worker-backend-forms-core",
+        "worker-backend-forms-flow"
+    ],
+    "externalSpecification": false,
+    "requirementsBytes": 9000,
+    "riskFlags": {
+        "architecture": true,
+        "browser": false,
+        "data": true,
+        "external": true,
+        "migration": true,
+        "performance": false,
+        "release": false,
+        "security": true
+    },
+    "taskCount": 2
+}

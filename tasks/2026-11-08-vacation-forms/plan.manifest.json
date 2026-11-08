@@ -1,0 +1,694 @@
+{
+    "schemaVersion": "agent-plan-manifest.v1",
+    "status": "FROZEN",
+    "planRevision": 2,
+    "package": {
+        "id": "2026-11-08-vacation-forms",
+        "title": "Vacation application forms: the assistant fills the three corporate RTF applications (vacation, transfer, unpaid) from a chat dialog and delivers the file as an attachment",
+        "workspaceRoot": ".",
+        "artifactRoot": "work/2026-11-08-vacation-forms",
+        "planArtifactRoot": "tasks/2026-11-08-vacation-forms"
+    },
+    "packageIntegrity": {
+        "required": true,
+        "lockSchemaVersion": "agent-plan-lock.v2",
+        "inventorySource": "planFiles",
+        "undeclaredTopLevelFiles": "reject",
+        "allowedUnlistedFiles": [
+            "plan.lock.json",
+            "plan-review.json"
+        ]
+    },
+    "author": {
+        "id": "claude-code",
+        "surface": "agent-first-planning",
+        "runId": "2026-11-08-vacation-forms-draft"
+    },
+    "baseRevision": {
+        "ref": "feature/2026-11-08-vacation-skill",
+        "sha": "15b999a36537e89523e7df814657691038c010bc"
+    },
+    "specification": {
+        "tier": "S2",
+        "intent": "Operator request of 2026-11-08: the assistant fills the three corporate vacation application RTF forms (Заявление о переносе отпуска.RTF, заявление на отпуск.RTF, заявление на отпуск свой счет.RTF from tasks/RAG-docs/) — collects the missing fields in a chat dialog, autofills the rest from the ingested 2026 schedule (фамилия from vacation_names, периоды and должность from vacation_periods — the operator confirmed должность IS the first xlsx column and the parser already stores it), renders the RTF deterministically and delivers the ready file as a chat attachment over the existing FileService→MessageCreate(file_id) path. Byte-level facts (feasibility probe + review r1, D-F-18): the originals are r7-office RTF whose entire text is \\uNNNN* escapes — values render in the same profile, and the {\\info} metadata group (carrying a third real name and a legal-DB vendor marker) is removed during derivation. Three operator clarifications: sanitized placeholder templates live in the repo with the real requisites (the header org/addressee values — never in git) supplied from environment config (D-F-1); должность autofills from the schedule, the earlier ask-once proposal is cancelled (D-F-2); vacation dates autofill from the schedule with confirmation and custom dates are typed in the dialog (D-F-3). Autonomy mandate «делай автономно» (D-F-0) authorizes the full run; the live smoke stays a deferred operator gate (EV-4) — final audit BLOCKED, the PR held, mirroring the parent run's D-3. Non-goals: the увольнение form (D-F-15), full-name expansion (D-F-7), LLM phrasing of wizard texts (D-F-6), any frontend change.",
+        "status": "DRAFT",
+        "requirements": [
+            {
+                "id": "REQ-TEMPLATES",
+                "title": "Sanitized RTF templates and the form registry",
+                "description": "backend/app/vacations/templates/{vacation_application.rtf, vacation_transfer.rtf, unpaid_vacation.rtf} derived from the READ-ONLY originals in tasks/RAG-docs/. Encoding profile (byte-verified, D-F-18/F-R1-1): r7-office RTF ({\\rtf1\\ansi\\ansicpg0}) where EVERY character — Cyrillic AND digits/dots/spaces/underscores — is a \\uNNNN* escape (decimal \\u + the '*' fallback byte; zero \\'hh bytes). Derivation rules: (1) the real header requisites are searched as FULLY-ESCAPED runs and replaced with the ASCII tokens {{org_name}} / {{addressee}} (the transfer original carries the org name twice); (2) the {\\info} metadata group is REMOVED entirely — its \\author carries a third real name with a unit tag in two originals and a legal-DB vendor marker in the other (F-R1-2/D-F-10); (3) underscore blanks are consecutive \\u95* runs possibly split by RTF format groups, mapped positionally to the token set of specification.md ({{position}}, {{full_name}}, {{today}}, {{year}}, {{start_date}}, {{days}}, {{days_word}}, {{old_start}}, {{old_days}}, {{old_days_word}}, {{new_start}}, {{new_days}}, {{new_days_word}}), the signature line keeping its подпись underscores; (4) the date slot cluster «\\_\\_.\\_\\_ 202\\_\\_ г.» collapses to «{{start_date}} {{year}} г.» with {{start_date}} = DD.MM (a full date duplicates the year — probe finding, F-R1-7) and {{today}} = DD.MM.YYYY, declared in FormSpec; (5) the «календарных дней» literals parameterize to {{days_word}} = the FULL agreed phrase from a forms-module helper calendar_days_word (1 «календарный день» / 2 «календарных дня» / 14 «календарных дней» — F-R1-3/D-F-9; the parent days_word stays untouched). backend/app/vacations/forms/registry.py: FormSpec(id, title, template_name, tokens, filename_title, value formats) for the three forms + load_template() reading the package dir via Path(__file__). Tests: tests/unit/vacations/test_forms_registry.py — template tokens == registry tokens per form; the structural pin that no template contains {\\info}; fictional-fixture privacy pins (fixture org «ООО «Альфа-Тех»», addressee «Смирнову А.А.» — the REAL marker list lives only in the controller's local work/ evidence, D-F-10/D-F-16). EV-3 (controller, local, artifacts in work/ only) opens every REAL-filled form in Word and cross-checks the extracted text.",
+                "priority": "P1",
+                "source": "operator decision D-F-1 (repo templates, env requisites) + real-file research (Word COM text extraction of the three originals, 2026-11-08)",
+                "acceptanceIds": [
+                    "AC-TEMPLATES",
+                    "AC-REALFORMS"
+                ],
+                "evidenceIds": [
+                    "EV-1",
+                    "EV-3"
+                ],
+                "owner": "WS-BE-FORMS-A"
+            },
+            {
+                "id": "REQ-RTF",
+                "title": "Deterministic RTF renderer",
+                "description": "backend/app/vacations/forms/rtf.py — escape_rtf_text(value): literal safe ASCII passthrough (excluding backslash/braces, which are escaped), EVERYTHING else (Cyrillic, «», —, digits in values stay literal only if ASCII-safe) → \\uNNNN* decimal escapes with the '*' fallback byte — the SAME profile as the originals, so value interpretation never depends on the reader's code page (D-F-18/F-R1-1); code points above 32767 (never occurs for Russian) use the RTF signed-word surrogate policy with a '?' fallback. fill(rtf_bytes, mapping) -> bytes: byte-level replacement of {{token}} strings, PRE-validation that the mapping keys equal the template's token set exactly (ValueError listing missing/extra), post-check that no '{{' remains; template_tokens(rtf_bytes) -> set[str]. Pure stdlib, no new dependencies; deterministic (same input — same output bytes). Tests: tests/unit/vacations/test_rtf.py (escape pins incl. «Абрикосов Т.П.» → \\u1040*-style sequences, brace/backslash escaping, key-set mismatch errors, leftover-token error, byte-identical regeneration, and the FormSpec value formats: DD.MM period dates with the year in its own slot, DD.MM.YYYY today).",
+                "priority": "P1",
+                "source": "RTF byte-profile research (\\uNNNN* escapes in the real files, byte-verified 2026-11-08) + D-F-6 determinism",
+                "acceptanceIds": [
+                    "AC-RTF"
+                ],
+                "evidenceIds": [
+                    "EV-1"
+                ],
+                "owner": "WS-BE-FORMS-A"
+            },
+            {
+                "id": "REQ-DATA2",
+                "title": "Migration 016 (dialog payload), position exposure, payload-aware store",
+                "description": "backend/alembic/versions/016_vacation_forms.py: batch_alter assistant_dialog_state ADD COLUMN payload Text NULL, down_revision = '015_vacations' (the literal revision id), downgrade drops the column; hand-written constraint naming per repo convention; segment roundtrip test tests/integration/test_migration_016_forms_segment.py (stamp head → downgrade '015_vacations' → upgrade head, inspect asserts) per the 011/015 template. backend/app/models/assistant_dialog_state.py gains payload: Mapped[str | None] Text. backend/app/vacations/service.py: VacationPerson gains position (first non-null position among the person's rows — должность from xlsx column 1, D-F-2 operator correction; the parser and ingest already store it, verified ingest_vacations.py:99). backend/app/vacations/store.py: set_state/get_state carry payload (backward compatible — existing calls without payload keep working; TTL semantics unchanged). Tests: position pin added to tests/unit/vacations/test_lookup.py, payload cases in tests/unit/vacations/test_store.py.",
+                "priority": "P1",
+                "source": "operator correction D-F-2 (должность = столбец 1; parser/ingest verified storing it) + wizard state needs (D-F-11)",
+                "acceptanceIds": [
+                    "AC-DATA"
+                ],
+                "evidenceIds": [
+                    "EV-1"
+                ],
+                "owner": "WS-BE-FORMS-A"
+            },
+            {
+                "id": "REQ-CONFIG2",
+                "title": "Requisites configuration",
+                "description": "backend/app/vacations/config.py (existing frozen VacationSettings) gains org_name: str = '' and addressee_name: str = '' from CHATTY_VACATION_ORG_NAME / CHATTY_VACATION_ADDRESSEE_NAME (env parsing per the existing pattern); backend/.env.example documents both with a fictional placeholder and the unset-behavior note; app/core/config.py untouched. Behavior when either is empty: the wizards refuse to start, replying that the requisites are not configured with a pointer to docs/deployment/vacation-forms.md, and NO dialog state is created (AC-WIZARD scenario 13). Real values live only in the operator env (compose) and local evidence — never in the repo (D-F-10).",
+                "priority": "P1",
+                "source": "operator decision D-F-1 + D-F-10 privacy",
+                "acceptanceIds": [
+                    "AC-WIZARD",
+                    "AC-RUNBOOK2"
+                ],
+                "evidenceIds": [
+                    "EV-2"
+                ],
+                "owner": "WS-BE-FORMS-A"
+            },
+            {
+                "id": "REQ-FORMINTENT",
+                "title": "Form intents classified above the vacation intents",
+                "description": "backend/app/vacations/intent.py — classify() returns 'form_vacation' | 'form_transfer' | 'form_unpaid' checked BEFORE 'schedule'/'vacation'. Keyword matching is EXACT word forms at word boundaries — no prefix/stem matching (F-R1-4/D-F-19): the заявление keywords (заявление/заявления/заявление-derivatives listed explicitly) plus отпуск → form_vacation; перенос/перенеси + отпуск → form_transfer; unpaid triggers are CORROBORATED compound phrases only («свой счёт»/«свой счет»/«за свой счёт»/«без сохранения зарплаты»/«без сохранения заработной платы»/«без содержания» with vacation context) — a bare «счёт» and billing phrasings never trigger (F-R1-8/D-F-19); «нужен/хочу отпуск» without a заявление keyword stays vacation. Negatives: «заявление на увольнение» matches NO form kind (увольнение excludes, D-F-15); «Как оформить отпуск?» → vacation (the parent pin — token-exact matching keeps оформить-derivatives out unless a заявление keyword is present; F-R1-4). The existing kinds keep their exact behavior («когда мой отпуск по графику» → schedule, «хочу в отпуск» → vacation — parent regression pins). backend/app/vacations/skill.py — VacationSkill.handle explicitly skips form kinds (a form message must not trigger the dates offer). Tests: tests/unit/vacations/test_intent.py extended with the form pins including the увольнение/stem/billing negatives and the parent regressions.",
+                "priority": "P1",
+                "source": "D-F-12 routing decision + D-F-15 non-goal exclusion + parent classifier research (noun-boundary verb guard)",
+                "acceptanceIds": [
+                    "AC-INTENT2"
+                ],
+                "evidenceIds": [
+                    "EV-2"
+                ],
+                "owner": "WS-BE-FORMS-B"
+            },
+            {
+                "id": "REQ-WIZARD",
+                "title": "FormsSkill: three deterministic wizards over the shared dialog state",
+                "description": "backend/app/vacations/forms/skill.py — VacationFormsSkill(session, files).handle(*, content, user_id) -> FormsOutcome(reply, passthrough_question, attachment: GeneratedForm(filename, content_type, body) | None) | None. Routing: a pending 'form:' state continues the matching wizard; a fresh form intent starts one and CLEARS any parent dialog state (D-F-12 pivot); a form intent of a DIFFERENT kind during an active wizard RESTARTS the wizard with the new kind and a cleared payload (F-R1-9/D-F-19); anything else → None (the parent VacationSkill and the normal path stay next). Pre-steps: requisites-config refusal (REQ-CONFIG2); surname step via the SHARED helper backend/app/vacations/surname_flow.py (D-F-13: the ask/validate/persist loop extracted from the parent skill — token-exact matching, ambiguity list, difflib hints, 2 attempts, cancel words without attempt burn, canonical name persisted on success; the parent skill switches to the helper with its observable behavior pinned by its existing tests). Wizards per specification.md: vacation (period confirm/choice/custom dates), transfer (old period from the schedule, new dates with days defaulting to the old), unpaid (dates always asked, days required); deterministic date parser (dd.mm.yyyy / dd.mm, year from the schedule snapshot; days 1..365; «с … на … дней» tolerated; two malformed attempts end politely); summary confirmation before generation; должность from VacationPerson.position with an in-wizard fallback question when the график row lacks it (D-F-2, no persistence); cancel words / TTL 600 s / unrelated-message reset mirror the parent semantics; states use a CLOSED step dictionary 'form:<kind>:<step>' (longest 'form:vacation:choose_period' = 27 chars; a unit pin walks every declared step and refuses > 32 — F-R1-5/D-F-11) + payload JSON in assistant_dialog_state. Generation: registry + rtf.fill with the form's token values (дата заявления = server today DD.MM.YYYY, period dates DD.MM with the year in its own slot, {{days_word}} from calendar_days_word — D-F-8/D-F-9/D-F-18). Tests: the 13 scenarios of AC-WIZARD.",
+                "priority": "P1",
+                "source": "operator flows D-F-2/D-F-3 + specification.md dialog specs + parent state machine pattern",
+                "acceptanceIds": [
+                    "AC-WIZARD"
+                ],
+                "evidenceIds": [
+                    "EV-2"
+                ],
+                "owner": "WS-BE-FORMS-B"
+            },
+            {
+                "id": "REQ-DELIVER",
+                "title": "Attachment delivery seam in the bot run",
+                "description": "backend/app/api/v1/endpoints/bot.py (the ONLY api file in any write-set — narrow seam exception from the parent run's blanket ban, D-F-5; everything outside the declared writes still fails the ownership audit): the endpoint constructs FileService(db, get_object_storage(settings, request.app.state), settings) — the same composition as the files endpoint — and passes it into BotService as an optional files param (None default keeps every existing construction green). backend/app/services/bot.py: _execute calls VacationFormsSkill(self.session, self._files).handle(content, user_id=message.user_id) BEFORE the parent VacationSkill; a reply WITHOUT attachment posts exactly as today; a reply WITH attachment uploads via FileService.upload(chat_id=chat.id, owner_id=bot_user.id — the bot is an active member by add_member — original_name from GeneratedForm, content_type='application/rtf'), then MessageCreate(content=reply, file_id=file.id), run.attachment_file_id = file.id; files is None with an attachment → fail('form_storage_unavailable'); an upload exception → fail('form_storage_failed') (the durable retry regenerates and re-posts). The existing RAG attachment path, CAS/broadcast/streaming are untouched. Tests: FakeStorage seam in tests/integration/bot/test_vacation_forms_flow.py asserting the uploaded bytes (\\uNNNN*-escaped values inside), the filename, message.file_id, run succeeded + attachment_file_id, and both failure kinds.",
+                "priority": "P1",
+                "source": "research (files.py active-member upload guard, MessageCreate.file_id contract, _is_library_file bot-attachment precedent, endpoint app.state composition) + D-F-5",
+                "acceptanceIds": [
+                    "AC-DELIVER"
+                ],
+                "evidenceIds": [
+                    "EV-2"
+                ],
+                "owner": "WS-BE-FORMS-B"
+            },
+            {
+                "id": "REQ-RUNBOOK2",
+                "title": "Operator runbook for the forms",
+                "description": "docs/deployment/vacation-forms.md (new): (1) requisites env vars CHATTY_VACATION_ORG_NAME / CHATTY_VACATION_ADDRESSEE_NAME — real values live in the operator env (compose), never in the repo; unset behavior; (2) the template contract — where the three RTF files live (backend/app/vacations/templates/), the exact token set per form, how to update a template (edit in Word KEEPING the {{...}} tokens, save as RTF, run the forms tests); (3) what the bot fills from the schedule (фамилия, периоды, должность — столбец 1) and what it asks; (4) verification — the pytest suite + one bot dialog; (5) rollback — revert the commit (templates are code). Every command/path in the runbook must match the shipped reality — a mismatch is a finding.",
+                "priority": "P2",
+                "source": "operator runbook precedent (D-13 parent) + D-F-1 template-update flow",
+                "acceptanceIds": [
+                    "AC-RUNBOOK2"
+                ],
+                "evidenceIds": [
+                    "EV-2"
+                ],
+                "owner": "WS-BE-FORMS-B"
+            },
+            {
+                "id": "REQ-PROCESS2",
+                "title": "Gates, journal and bookkeeping",
+                "description": "Backend gate per the parent D-11 seam — bash backend/verify.sh with the stand venv PYTHON_BIN: everything green except exactly the 4 known POSIX-only ingestion failures (tests/unit/ingestion/test_converter.py, identical before/after, outside the write-set), zero new failures, zero deleted tests, the parent-run base (392 passed) grown by the new forms tests, full output before/after in evidence (the known test_social_api WS-snippet flake documented per D-F-17 — both base outputs retained; the gate contract unchanged). Ownership audit clean (audit ownership --fail-on-unowned --fail-on-forbidden). The controller's repo-wide grep over the REAL marker list (header requisites, the metadata third name + unit tag, the legal-DB vendor — the list itself lives ONLY in work/…/evidence/privacy-markers.md, never in the repo; F-R1-2/D-F-10/D-F-16) proves no real-requisite bytes entered any committed file. docs/progress/progress_log.md run record on top; decisions.md carries D-F-0…D-F-19; conventional commits WITHOUT co-author trailers (D-F-14) on feature/2026-11-08-vacation-forms from 15b999a; plan package committed, work/ never.",
+                "priority": "P1",
+                "source": "repository gate contract + operator rules (D-F-0, D-F-10, D-F-14)",
+                "acceptanceIds": [
+                    "AC-PROCESS2"
+                ],
+                "evidenceIds": [
+                    "EV-2"
+                ],
+                "owner": "WS-BE-FORMS-B"
+            },
+            {
+                "id": "REQ-LIVE2",
+                "title": "Deferred live gate (blocks final audit and the PR)",
+                "description": "AC-LIVE2 is NOT worker-executed: on the raised compose+Ollama stack the operator walks the scripted dialogs — (а) full vacation wizard → the attachment downloads and opens in Word with the right dates/должность; (б) transfer with new dates; (в) unpaid; (г) mid-wizard cancel; (д) regeneration after a schedule re-ingest via the runbook without a code restart; (е) unset requisites → the refusal with the runbook pointer. Evidence EV-4 (log/screenshots) lands in work/2026-11-08-vacation-forms/evidence/live/ (README with the checklist and the canonical receipt template ships with the run). Until EV-4 exists the final audit verdict is BLOCKED (external wait) and the PR is not merged (D-F-0 mirroring the parent D-3; stacking note D-F-4 — if the parent PR lands first, rebase this branch onto dev before its own PR).",
+                "priority": "P1",
+                "source": "operator live-verification deferral (bot down; the parent run's EV-4 pattern) + D-F-0",
+                "acceptanceIds": [
+                    "AC-LIVE2"
+                ],
+                "evidenceIds": [
+                    "EV-4"
+                ],
+                "owner": "WS-BE-FORMS-B"
+            }
+        ],
+        "goal": "A user says «оформи заявление на отпуск» and gets the correctly filled corporate RTF application as a chat attachment — фамилия, период and должность autofilled from the ingested schedule, only the genuinely missing answers asked in the dialog, real org requisites supplied from operator env and never entering the repo — with the parent vacation flow's behavior unchanged.",
+        "constraints": [
+            "The frontend is untouched: no file under src/ is written; the generated form rides the existing message-attachment rendering (file_name in MessageResponse, participant download).",
+            "Real requisites never enter git — not the header org/addressee values, not the originals' {\\info} author metadata (a third real name with a unit tag and a legal-DB vendor marker; the derivation removes the whole {\\info} group and a test pins its absence): sanitized placeholder templates + fictional test fixtures; the controller's real-marker grep list lives only in local work/ evidence; real filled forms exist only in local work/ evidence and the operator env (D-F-10/D-F-16).",
+            "The parent vacation skill's observable behavior must not change: its dialog/intent tests are the regression net; surname logic moves into a shared helper without contract changes (D-F-13).",
+            "The forms flow is deterministic — no LLM calls, no new runtime dependencies; stdlib RTF byte surgery only (D-F-6).",
+            "Existing migrations are never edited; only 016_vacation_forms.py is added (down_revision '015_vacations').",
+            "Durable bot-run semantics (CAS, statuses, broadcast, SSE bridge) are unchanged; the forms outcome posts through the same MessageService path with file_id.",
+            "tasks/RAG-docs stays read-only: the real RTF/xlsx originals are inputs for template derivation and EV-3, never write targets, never committed.",
+            "Conventional commits without co-author trailers; plan package committed; work/ and .alk/ never committed."
+        ],
+        "nonGoals": [
+            "the увольнение application and any other HR form (D-F-15)",
+            "full-name expansion beyond the canonical schedule form (D-F-7)",
+            "LLM phrasing of wizard texts (D-F-6)",
+            "PDF conversion, e-signature, filing/sending the document anywhere",
+            "template editing UI or runtime template loading from the data dir (templates are repo code, D-F-1)",
+            "any frontend change",
+            "vacation_names.position column (cancelled by the operator correction D-F-2)"
+        ],
+        "scope": "two sequential backend workstreams: WS-BE-FORMS-A owns the deterministic core (sanitized RTF templates + registry + renderer + requisites config + migration 016 + position exposure + payload-aware store + unit/integration tests); WS-BE-FORMS-B owns the dialog flow and delivery (form intents, shared surname helper, three wizards, FormsSkill-first hook, FileService seam + attachment posting, 13 integration scenarios, runbook, gates and journal); evidence under work/2026-11-08-vacation-forms/."
+    },
+    "readOnly": [
+        "AGENTS.md",
+        "tasks/README.md",
+        "tasks/RAG-docs/Заявление о переносе отпуска.RTF",
+        "tasks/RAG-docs/заявление на отпуск.RTF",
+        "tasks/RAG-docs/заявление на отпуск свой счет.RTF",
+        "tasks/RAG-docs/график отпусков 2026.xlsx",
+        "backend/app/services/files.py",
+        "backend/app/services/messages.py",
+        "backend/app/models/file.py",
+        "backend/app/bot/provider.py",
+        "backend/app/bot/config.py",
+        "backend/alembic/versions/015_vacations.py",
+        "backend/scripts/ingest_vacations.py",
+        "backend/tests/conftest.py",
+        "backend/tests/integration/bot/test_vacation_skill_flow.py",
+        "backend/tests/integration/test_migration_011_settings_segment.py",
+        "docs/deployment/vacation-schedule.md",
+        "docs/deployment/own-backend.md"
+    ],
+    "forbiddenWrites": [
+        "src",
+        ".env",
+        ".env.development",
+        ".env.own",
+        ".env.compose.local",
+        "docs/project-principles.json",
+        "backend/app/ws",
+        "backend/app/core",
+        "backend/app/ingestion",
+        "backend/app/bot",
+        "backend/tests/unit/ingestion",
+        ".github/workflows",
+        "netlify.toml",
+        "server/server.js",
+        "tasks/RAG-docs"
+    ],
+    "leadOwned": [
+        {
+            "path": "tasks/2026-11-08-vacation-forms",
+            "owner": "controller",
+            "reason": "Controller owns plan-package artifacts."
+        }
+    ],
+    "workstreams": [
+        {
+            "id": "WS-BE-FORMS-A",
+            "title": "Backend: templates, registry, RTF renderer, config, migration 016, data exposure",
+            "owner": "worker-backend-forms-core",
+            "reviewer": "independent-release-reviewer",
+            "dependsOn": [],
+            "writes": [
+                "backend/app/vacations/forms/__init__.py",
+                "backend/app/vacations/forms/registry.py",
+                "backend/app/vacations/forms/rtf.py",
+                "backend/app/vacations/templates/vacation_application.rtf",
+                "backend/app/vacations/templates/vacation_transfer.rtf",
+                "backend/app/vacations/templates/unpaid_vacation.rtf",
+                "backend/app/vacations/config.py",
+                "backend/app/vacations/service.py",
+                "backend/app/vacations/store.py",
+                "backend/app/models/assistant_dialog_state.py",
+                "backend/alembic/versions/016_vacation_forms.py",
+                "backend/tests/unit/vacations/test_rtf.py",
+                "backend/tests/unit/vacations/test_forms_registry.py",
+                "backend/tests/unit/vacations/test_lookup.py",
+                "backend/tests/unit/vacations/test_store.py",
+                "backend/tests/integration/test_migration_016_forms_segment.py",
+                "backend/.env.example"
+            ],
+            "readOnly": [
+                "tasks/RAG-docs/Заявление о переносе отпуска.RTF",
+                "tasks/RAG-docs/заявление на отпуск.RTF",
+                "tasks/RAG-docs/заявление на отпуск свой счет.RTF",
+                "backend/alembic/versions/011_settings.py",
+                "backend/alembic/versions/015_vacations.py",
+                "backend/app/vacations/parser.py",
+                "backend/scripts/ingest_vacations.py"
+            ],
+            "forbiddenWrites": [],
+            "launchGate": "branch feature/2026-11-08-vacation-forms from feature/2026-11-08-vacation-skill @ 15b999a36537e89523e7df814657691038c010bc (stack D-F-4); backend gate per D-11 at base (expected: the parent-run numbers — every test green except exactly the 4 known POSIX-only ingestion failures; re-measured and logged); the real RTF originals are available read-only in tasks/RAG-docs/ for template derivation; operator authorization for execution (mandate «делай автономно» of 2026-11-08, D-F-0).",
+            "capabilityHints": [
+                "python",
+                "pytest",
+                "sqlalchemy",
+                "alembic",
+                "rtf"
+            ],
+            "requiredTools": [
+                "python",
+                "bash"
+            ],
+            "contextRefs": [
+                "plan.md",
+                "acceptance-criteria.md",
+                "developer-overview.md",
+                "specification.md",
+                "decisions.md"
+            ],
+            "acceptanceIds": [
+                "AC-TEMPLATES",
+                "AC-RTF",
+                "AC-DATA",
+                "AC-REALFORMS"
+            ],
+            "evidenceIds": [
+                "EV-1",
+                "EV-3"
+            ],
+            "executionPolicy": {
+                "maxAttempts": 3,
+                "maxWallSeconds": 5400
+            },
+            "artifactPaths": {
+                "result": "work/2026-11-08-vacation-forms/evidence/WS-BE-FORMS-A/task-result-{attempt}.json",
+                "review": "work/2026-11-08-vacation-forms/evidence/WS-BE-FORMS-A/task-review-{attempt}.json"
+            },
+            "required": true,
+            "plannedItems": [
+                "TEMPLATES: derive the three sanitized RTF from the read-only originals ({{org_name}}/{{addressee}} for requisites, token blanks per specification, {{year}}/{{days_word}} parameterizations; layout intact; zero real-requisite bytes)",
+                "REGISTRY: forms/registry.py FormSpec per form + load_template(); token-set equality tests vs the shipped templates; fictional-fixture privacy pins",
+                "RTF: forms/rtf.py escape (\\uNNNN* profile, brace/backslash escaping) + fill with pre/post validation; byte-determinism pins",
+                "CONFIG: org_name/addressee_name env settings + .env.example (unset → wizard refusal lives in wave B)",
+                "DATA: migration 016 payload column (batch_alter, down_revision '015_vacations') + segment roundtrip test; VacationPerson.position; store payload accessors (backward compatible)",
+                "gates: D-11 gate green (only the 4 known ingestion failures), zero new/deleted tests"
+            ],
+            "qualityFloor": "Backend gate per D-11 (bash backend/verify.sh, stand venv PYTHON_BIN): every test green except exactly the 4 known POSIX-only ingestion failures, identical before/after, outside the write-set; zero new failures; no file outside the write-set touched; no test deleted; no real-requisite bytes in any repo file."
+        },
+        {
+            "id": "WS-BE-FORMS-B",
+            "title": "Backend: intents, wizards, bot seam, attachment delivery, runbook, gates",
+            "owner": "worker-backend-forms-flow",
+            "reviewer": "independent-release-reviewer",
+            "dependsOn": [
+                "WS-BE-FORMS-A"
+            ],
+            "writes": [
+                "backend/app/vacations/intent.py",
+                "backend/app/vacations/skill.py",
+                "backend/app/vacations/surname_flow.py",
+                "backend/app/vacations/forms/skill.py",
+                "backend/app/services/bot.py",
+                "backend/app/api/v1/endpoints/bot.py",
+                "backend/tests/unit/vacations/test_intent.py",
+                "backend/tests/integration/bot/test_vacation_forms_flow.py",
+                "docs/deployment/vacation-forms.md",
+                "docs/progress/progress_log.md"
+            ],
+            "readOnly": [
+                "backend/app/services/files.py",
+                "backend/app/services/messages.py",
+                "backend/app/models/file.py",
+                "backend/app/api/v1/endpoints/files.py",
+                "backend/tests/integration/bot/test_bot_api.py",
+                "backend/tests/integration/bot/test_vacation_skill_flow.py"
+            ],
+            "forbiddenWrites": [],
+            "launchGate": "WS-BE-FORMS-A accepted (templates/registry/renderer/config/migration/data exposure green); backend gate per D-11 green at the base of this wave; operator authorization for execution (D-F-0).",
+            "capabilityHints": [
+                "python",
+                "pytest",
+                "fastapi",
+                "sqlalchemy"
+            ],
+            "requiredTools": [
+                "python",
+                "bash"
+            ],
+            "contextRefs": [
+                "plan.md",
+                "acceptance-criteria.md",
+                "developer-overview.md",
+                "specification.md",
+                "decisions.md"
+            ],
+            "acceptanceIds": [
+                "AC-INTENT2",
+                "AC-WIZARD",
+                "AC-DELIVER",
+                "AC-RUNBOOK2",
+                "AC-PROCESS2",
+                "AC-LIVE2"
+            ],
+            "evidenceIds": [
+                "EV-2",
+                "EV-4"
+            ],
+            "executionPolicy": {
+                "maxAttempts": 3,
+                "maxWallSeconds": 5400
+            },
+            "artifactPaths": {
+                "result": "work/2026-11-08-vacation-forms/evidence/WS-BE-FORMS-B/task-result-{attempt}.json",
+                "review": "work/2026-11-08-vacation-forms/evidence/WS-BE-FORMS-B/task-review-{attempt}.json"
+            },
+            "required": true,
+            "plannedItems": [
+                "INTENT: form_vacation/form_transfer/form_unpaid BEFORE schedule/vacation; «заявление на увольнение» negative; parent kinds pinned unchanged; VacationSkill skips form kinds",
+                "SURNAME HELPER: extract the parent loop into vacations/surname_flow.py (both skills call it; parent behavior pinned by existing tests)",
+                "WIZARD: forms/skill.py three state machines ('form:<kind>:<step>' + payload JSON; requisites refusal; period confirm/choice/custom; date parser dd.mm(.yyyy) + days 1..365, 2 attempts; cancel/TTL/unrelated reset; summary confirm; должность fallback question)",
+                "SEAM+DELIVER: endpoints/bot.py constructs and passes FileService (app.state storage); _execute FormsSkill-first; attachment → upload + MessageCreate(file_id) + run.attachment_file_id; form_storage_unavailable/form_storage_failed failure kinds",
+                "TESTS: 13 integration scenarios with FakeStorage (uploaded bytes contain the escaped values; filename; message.file_id; run succeeded) + parent regression («Хочу в отпуск» still offers)",
+                "RUNBOOK+PROCESS: docs/deployment/vacation-forms.md matching shipped flags/paths; progress_log record; D-11 gate evidence; ownership audit; no-coauthor conventional commits; repo-wide no-requisite grep",
+                "LIVE: AC-LIVE2 checklist handoff — not worker-executed; final audit stays BLOCKED until the operator files EV-4 (D-F-0)"
+            ],
+            "qualityFloor": "Backend gate per D-11 (bash backend/verify.sh, stand venv PYTHON_BIN): every test green except exactly the 4 known POSIX-only ingestion failures, identical before/after, outside the write-set; zero new failures; no file outside the write-set touched; no test deleted; parent skill tests unchanged and green."
+        }
+    ],
+    "acceptance": {
+        "criteria": [
+            {
+                "id": "AC-TEMPLATES",
+                "title": "Sanitized templates and registry proven by pytest",
+                "requirementIds": [
+                    "REQ-TEMPLATES"
+                ],
+                "evidenceIds": [
+                    "EV-1"
+                ],
+                "independentEvidenceIds": [],
+                "statement": "The three RTF templates ship in backend/app/vacations/templates/ with the specification's token set; template_tokens == the registry's declared tokens per form; NO template contains an {\\info} group (structural pin — the originals' author metadata carries a third real name and a vendor marker, F-R1-2); no real-requisite bytes anywhere in the repo — pinned by fictional-analogue tests plus the controller's local-marker grep of AC-PROCESS2; the tokens are pure ASCII inside text runs, the date cluster collapsed per D-F-18 (layout otherwise intact).",
+                "description": "Backend unit tests.",
+                "source": "acceptance-criteria.md",
+                "priority": "P1"
+            },
+            {
+                "id": "AC-RTF",
+                "title": "Renderer pins: escapes, validation, determinism",
+                "requirementIds": [
+                    "REQ-RTF"
+                ],
+                "evidenceIds": [
+                    "EV-1"
+                ],
+                "independentEvidenceIds": [],
+                "statement": "escape_rtf_text: safe ASCII literal, \\ { } escaped, everything else → \\uNNNN* decimal escapes with the '*' fallback (the originals' profile — code-page independent, D-F-18/F-R1-1); fill: key-set mismatch → ValueError naming the difference; leftover '{{' after fill → error; identical inputs → byte-identical outputs; FormSpec value formats pinned (period dates DD.MM with the year in its own slot, today DD.MM.YYYY) (pytest).",
+                "description": "Backend unit tests.",
+                "source": "acceptance-criteria.md",
+                "priority": "P1"
+            },
+            {
+                "id": "AC-DATA",
+                "title": "Migration 016 roundtrip, position exposure, payload store",
+                "requirementIds": [
+                    "REQ-DATA2"
+                ],
+                "evidenceIds": [
+                    "EV-1"
+                ],
+                "independentEvidenceIds": [],
+                "statement": "Migration 016 adds assistant_dialog_state.payload (Text NULL) and downgrades cleanly (segment roundtrip test: stamp head → downgrade '015_vacations' → upgrade head with inspect asserts); VacationService.find returns VacationPerson.position from the stored xlsx column 1; VacationStore carries payload with backward-compatible signatures (pytest).",
+                "description": "Backend integration + unit tests.",
+                "source": "acceptance-criteria.md",
+                "priority": "P1"
+            },
+            {
+                "id": "AC-INTENT2",
+                "title": "Form intents classified first; увольнение excluded; parent pinned",
+                "requirementIds": [
+                    "REQ-FORMINTENT"
+                ],
+                "evidenceIds": [
+                    "EV-2"
+                ],
+                "independentEvidenceIds": [],
+                "statement": "classify(): «оформи заявление на отпуск» → form_vacation; «хочу перенести отпуск»/«заявление о переносе» → form_transfer; «отпуск за свой счёт»/«без сохранения зарплаты»/«без содержания» → form_unpaid — all BEFORE schedule/vacation, keywords matched as exact word forms (no prefix/stem matching) and unpaid only via corroborated compound phrases; negatives: «заявление на увольнение» matches NO form kind, «Как оформить отпуск?» → vacation (parent pin), a bare «счёт»/billing phrasing → not form_unpaid, «нужен отпуск» without a заявление keyword → vacation; «когда мой отпуск по графику» → schedule and «хочу в отпуск» → vacation unchanged; VacationSkill skips form kinds (pytest).",
+                "description": "Backend unit tests.",
+                "source": "acceptance-criteria.md",
+                "priority": "P1"
+            },
+            {
+                "id": "AC-WIZARD",
+                "title": "Thirteen dialog scenarios through the bot",
+                "requirementIds": [
+                    "REQ-WIZARD",
+                    "REQ-CONFIG2"
+                ],
+                "evidenceIds": [
+                    "EV-2"
+                ],
+                "independentEvidenceIds": [],
+                "statement": "Integration scenarios per acceptance-criteria.md AC-WIZARD (1)-(13): single-period confirm → file; multi-period choice «2» → file; custom dates parsed; transfer with days defaulting to the old; unpaid with required days and the full agreed phrase «календарный день/календарных дня/календарных дней» (pins 1/2/14, F-R1-3); final «нет» → no file; mid-wizard cancel → clean state, next message normal; form message during parent awaiting_yes → wizard starts and clears the parent state, and a form intent of a DIFFERENT kind during an active wizard restarts it with the new kind and a cleared payload (D-F-19); missing surname → in-wizard surname step resolves and persists; two malformed date inputs → polite exit; TTL-expired state behaves as absent; third-party phrasing → own-channel only; unset requisites → refusal with the runbook pointer, no state created; a unit pin walks every declared form:<kind>:<step> of the closed step dictionary and refuses states longer than 32 chars (D-F-11).",
+                "description": "Backend integration tests.",
+                "source": "acceptance-criteria.md",
+                "priority": "P1"
+            },
+            {
+                "id": "AC-DELIVER",
+                "title": "Attachment posted; graceful storage failures",
+                "requirementIds": [
+                    "REQ-DELIVER"
+                ],
+                "evidenceIds": [
+                    "EV-2"
+                ],
+                "independentEvidenceIds": [],
+                "statement": "FakeStorage receives upload(content_type='application/rtf', filename «Заявление… — ФИО.rtf», bytes containing the \\uNNNN*-escaped values); the reply message carries file_id; run succeeded with attachment_file_id set; files=None with an attachment → run failed 'form_storage_unavailable'; an upload exception → run failed 'form_storage_failed'; the RAG attachment path and CAS semantics untouched.",
+                "description": "Backend integration tests.",
+                "source": "acceptance-criteria.md",
+                "priority": "P1"
+            },
+            {
+                "id": "AC-RUNBOOK2",
+                "title": "Forms runbook matches reality",
+                "requirementIds": [
+                    "REQ-RUNBOOK2"
+                ],
+                "evidenceIds": [
+                    "EV-2"
+                ],
+                "independentEvidenceIds": [],
+                "statement": "docs/deployment/vacation-forms.md documents the requisites env vars (values never in the repo), the template token contract and update flow, what is autofilled vs asked, verification and rollback; every command/path matches the shipped flags and files.",
+                "description": "Document check.",
+                "source": "acceptance-criteria.md",
+                "priority": "P2"
+            },
+            {
+                "id": "AC-PROCESS2",
+                "title": "Gates and bookkeeping",
+                "requirementIds": [
+                    "REQ-PROCESS2"
+                ],
+                "evidenceIds": [
+                    "EV-2"
+                ],
+                "independentEvidenceIds": [],
+                "statement": "Backend gate green per D-11 (only the 4 known ingestion failures; zero deleted tests; the parent base grown; full before/after output in evidence); ownership audit clean; repo-wide grep proves no real-requisite bytes; progress_log record on top; decisions D-F-0…D-F-19 journaled; conventional commits without co-author trailers on the stacked feature branch from 15b999a; plan package committed, work/ not.",
+                "description": "Gate runs captured as evidence.",
+                "source": "acceptance-criteria.md",
+                "priority": "P1"
+            },
+            {
+                "id": "AC-REALFORMS",
+                "title": "Real-file control: generated forms open in Word with the right values",
+                "requirementIds": [
+                    "REQ-TEMPLATES",
+                    "REQ-RTF"
+                ],
+                "evidenceIds": [
+                    "EV-3"
+                ],
+                "independentEvidenceIds": [],
+                "statement": "Controller-local control (artifacts only in work/…/evidence/real-forms/): with the operator's real requisites in env and the REAL график ingested into a scratch sqlite, all three forms are generated for one real person; each file opens in Word (COM) and the extracted text contains the expected ФИО/должность/dates/дни with correct morphology; real values never leave the evidence directory.",
+                "description": "Real-file evidence run (controller, local).",
+                "source": "acceptance-criteria.md",
+                "priority": "P1"
+            },
+            {
+                "id": "AC-LIVE2",
+                "title": "Deferred live smoke — blocks final audit and the PR",
+                "requirementIds": [
+                    "REQ-LIVE2"
+                ],
+                "evidenceIds": [
+                    "EV-4"
+                ],
+                "independentEvidenceIds": [],
+                "statement": "On the raised compose+Ollama stack the operator walks the dialogs а–е of AC-LIVE2 (three wizards with the attachment downloading and opening in Word, mid-wizard cancel, regeneration after a schedule re-ingest, unset-requisites refusal); EV-4 (log/screenshots) lands in work/2026-11-08-vacation-forms/evidence/live/. Until it exists the final audit verdict is BLOCKED and the PR is not merged (D-F-0; stacking note D-F-4).",
+                "description": "Operator live gate, deferred while the bot is down.",
+                "source": "acceptance-criteria.md",
+                "priority": "P1"
+            }
+        ]
+    },
+    "validation": {
+        "commands": [
+            "PYTHON_BIN=<backend-venv-python> bash backend/verify.sh — D-11 stand seam (npm run verify:backend does not resolve on this Windows stand). PASS = every test green EXCEPT exactly the 4 known POSIX-only ingestion failures (tests/unit/ingestion/test_converter.py, WinError 193, identical before and after, outside the write-set), zero new failures, zero deleted tests, full output before/after retained in evidence.",
+            "py -3.12 -m agent_lifecycle audit ownership --base HEAD --fail-on-unowned --fail-on-forbidden"
+        ]
+    },
+    "orchestration": {
+        "startMode": "reviewed-plan",
+        "remediationMode": "ask",
+        "maxPlanReviewRounds": 3,
+        "maxTaskAttempts": 3,
+        "maxParallelTasks": 1,
+        "maxValidationRunsPerTask": 2,
+        "stateFile": "work/2026-11-08-vacation-forms/run.state.json",
+        "eventLog": "work/2026-11-08-vacation-forms/events.jsonl",
+        "stepReviewRequired": true,
+        "finalAuditRequired": true
+    },
+    "implementationAudit": {
+        "required": true,
+        "finalRequired": true
+    },
+    "developerOverview": "tasks/2026-11-08-vacation-forms/developer-overview.md",
+    "releaseTarget": {
+        "kind": "local-only",
+        "environment": "compose own-backend + host Ollama",
+        "productionPromotionClaimed": false
+    },
+    "releaseImpact": "Backend-only: a new deterministic forms core (templates + registry + renderer + two env requisites) inside backend/app/vacations, migration 016 adding one nullable column, a FormsSkill-first branch in BotService._execute with a FileService seam injected at the bot endpoint, and attachments posted through the existing message path. No WS protocol, store-shape or frontend changes; rollback = alembic downgrade of 016 + branch revert. The dev PR is held until the live smoke passes (D-F-0), stacked per D-F-4.",
+    "finalAuditGates": [
+        "[AC-TEMPLATES|EV-1] sanitized templates + registry token equality + no-requisite pins — pytest",
+        "[AC-RTF|EV-1] renderer escapes/validation/determinism — pytest",
+        "[AC-DATA|EV-1] migration 016 segment roundtrip + position exposure + payload store — pytest",
+        "[AC-REALFORMS|EV-3] all three REAL-filled forms open in Word with correct values (controller-local, artifacts in work/ only)",
+        "[AC-INTENT2|EV-2] form intents first, увольнение excluded, parent kinds pinned — pytest",
+        "[AC-WIZARD|EV-2] thirteen dialog scenarios incl. pivot, surname step, TTL, third-party, unset requisites",
+        "[AC-DELIVER|EV-2] FakeStorage attachment bytes/filename/message.file_id + both storage failure kinds",
+        "[AC-RUNBOOK2|EV-2] forms runbook matches shipped flags/paths",
+        "[AC-PROCESS2|EV-2] D-11 gate, ownership clean, no-requisite grep, progress_log, no-coauthor commits",
+        "[AC-LIVE2|EV-4] live smoke on the raised stack — final audit BLOCKED until the operator files EV-4; the PR merges only after (D-F-0)"
+    ],
+    "securityGates": [
+        {
+            "id": "SEC-NO-REAL-REQUISITES-IN-REPO",
+            "statement": "The real org name and the addressee name never enter git: templates carry {{org_name}}/{{addressee}}, tests use fictional fixtures, real values live only in the operator env and local work/ evidence; a repo-wide grep plus tests pin it.",
+            "evidenceIds": [
+                "EV-1",
+                "EV-2"
+            ]
+        },
+        {
+            "id": "SEC-OWN-FORMS-ONLY",
+            "statement": "Forms are generated only for the user's own stored canonical schedule name; there is no third-party generation path; third-party phrasing routes to the own flow.",
+            "evidenceIds": [
+                "EV-2"
+            ]
+        },
+        {
+            "id": "SEC-NO-CORE-EDGES",
+            "statement": "src/, app/ws, app/core, app/ingestion and app/bot are forbidden writes; the only api file written is api/v1/endpoints/bot.py (narrow seam, D-F-5); tasks/RAG-docs is read-only; durable bot-run semantics and transports stay untouched.",
+            "evidenceIds": [
+                "EV-2"
+            ]
+        }
+    ],
+    "budgetPolicy": {
+        "units": "tokens-and-resources",
+        "reroute": "pause-and-review",
+        "maxTotalTokens": 120000,
+        "maxParallelWorkstreams": 1,
+        "maxRunWallSeconds": 14400,
+        "criticalPathWallSeconds": 10800,
+        "aggregateWorkstreamWallSeconds": 10800,
+        "retryReserveWallSeconds": 3600
+    },
+    "budgets": {
+        "defaultWorkstreamTokens": 50000,
+        "maxEvidenceBytesPerRun": 4194304
+    },
+    "contextLimits": {
+        "profile": "small-context-profile.v1",
+        "maxPlanContextBytes": 120000,
+        "maxRenderedPacketBytes": 40000,
+        "smallContextPacketBytes": 30000,
+        "maxReferenceFilesPerPacket": 12,
+        "includeOnlyOwnedWrites": true,
+        "excludeRuntimeWorkArtifacts": true
+    },
+    "tierResolution": {
+        "status": "RESOLVED",
+        "tier": "S2",
+        "requestedTier": "S2",
+        "reason": "multiple-executable-owners, architecture-risk and security-risk resolved by agent-lifecycle tier resolve",
+        "independentReviewRequired": true,
+        "requestPath": "tasks/2026-11-08-vacation-forms/tier-request.json",
+        "resolutionPath": "tasks/2026-11-08-vacation-forms/tier-resolution.json",
+        "requestDigest": "066caff9107239e79e4ef763a121bb6b97b8ce90e840a8bd9364ccc4e1014ffe"
+    },
+    "nonGoals": [
+        "the увольнение application and any other HR form (D-F-15)",
+        "full-name expansion beyond the canonical schedule form (D-F-7)",
+        "LLM phrasing of wizard texts (D-F-6)",
+        "PDF conversion, e-signature, filing/sending the document anywhere",
+        "template editing UI or runtime template loading from the data dir (templates are repo code, D-F-1)",
+        "any frontend change",
+        "vacation_names.position column (cancelled by the operator correction D-F-2)"
+    ],
+    "planFiles": [
+        "tasks/2026-11-08-vacation-forms/acceptance-criteria.md",
+        "tasks/2026-11-08-vacation-forms/decisions.md",
+        "tasks/2026-11-08-vacation-forms/developer-overview.md",
+        "tasks/2026-11-08-vacation-forms/plan-review-request.md",
+        "tasks/2026-11-08-vacation-forms/plan-review.json",
+        "tasks/2026-11-08-vacation-forms/plan.manifest.json",
+        "tasks/2026-11-08-vacation-forms/plan.md",
+        "tasks/2026-11-08-vacation-forms/specification.md",
+        "tasks/2026-11-08-vacation-forms/tier-request.json",
+        "tasks/2026-11-08-vacation-forms/tier-resolution.json"
+    ],
+    "planReview": {
+        "required": true,
+        "reviewerClass": "independent-plan-reviewer",
+        "maxRounds": 3,
+        "implementationAuthorized": false,
+        "report": "tasks/2026-11-08-vacation-forms/plan-review.json",
+        "reviewedRevision": 2,
+        "verdict": "READY_TO_FREEZE"
+    }
+}
