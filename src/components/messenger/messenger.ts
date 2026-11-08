@@ -14,10 +14,11 @@
 import Block from '../../core/Block.ts'
 import { pruneComponentCache } from '../../core/registerComponent.ts'
 import Handlebars from 'handlebars'
-import { Button, Input, Message, MessageAttachment } from '../../utils/types.ts'
+import { Button, ChatUser, Input, Message, MessageAttachment, MessageAuthorBadge } from '../../utils/types.ts'
 import { AppState, withStore } from '../../utils/Store.ts'
 import { fileUrl } from '../../utils/env.ts'
 import { getPreferences, subscribePreferences } from '../../utils/preferences.ts'
+import { SwipePoint, resolveSwipe } from '../../utils/swipe.ts'
 import { messageDayKey } from '../message/message.ts'
 import {
     deleteFeedScroll,
@@ -141,6 +142,9 @@ interface MessengerProps {
     botPending?: boolean
     // раскрыт ли набор эмодзи у сообщения (переключается самим message)
     reactionsOpen?: boolean
+    // кебаб-меню мобильной шапки (<768, 2026-11-08): controller-free
+    // UI-состояние, пункты — те же дескрипторы headerButtons
+    kebabOpen?: boolean
     // Гейт автозагрузки вложений (2026-11-01-settings): начальное значение —
     // из preferences, живые переключения подъезжают подпиской
     autoDownload?: boolean
@@ -152,6 +156,19 @@ interface ChatListUserEntry {
     avatar: string
     display_name?: string
     onClick?: () => void
+    [key: string]: unknown
+}
+
+// Дескриптор кнопки шапки (2026-11-08-mobile-messenger-ux): actionId +
+// menuLabel добавляются для мобильного кебаб-меню — меню зовёт тот же
+// handleClick, что и иконка ряда; шаблон меню строит renderChatActionsMenu
+export interface HeaderActionDescriptor {
+    extraClass?: string
+    src?: string
+    alt?: string
+    actionId?: string
+    menuLabel?: string
+    handleClick?: () => void
     [key: string]: unknown
 }
 
@@ -223,6 +240,23 @@ export function renderDeleteModalContent(chatTitle: unknown): string {
         + '</div>'
 }
 
+// Контент кебаб-меню шапки (2026-11-08-mobile-messenger-ux): один пункт
+// на каждую видимую кнопку шапки — тот же handleClick, что у иконки ряда
+// (десктоп не меняется); «Отмена» закрывает. Подписи статичны,
+// data-testid=chat-action-<actionId> ловит делегированный клик
+export function renderChatActionsMenuContent(buttons: HeaderActionDescriptor[]): string {
+    const items = buttons
+        .filter(button => button.actionId != null && button.menuLabel != null)
+        .map(button => `<button type="button" class="modal__button" data-testid="chat-action-${escapeHtml(button.actionId)}" data-chat-action="${escapeHtml(button.actionId)}">${escapeHtml(button.menuLabel)}</button>`)
+        .join('')
+
+    return ''
+        + '<div class="modal__confirm-flow">'
+        + `<div class="modal__actions">${items}`
+        + '<button type="button" class="modal__button" data-testid="chat-action-cancel" data-chat-action="cancel">Отмена</button>'
+        + '</div></div>'
+}
+
 // Контент меню участника (2026-11-01-chat-leave, узор меню контактов):
 // матрица видимости — чужой аватар: «Добавить в контакты» (id НЕ в контактах
 // вьюера) и «Удалить из чата» (вьюер — владелец); собственный аватар:
@@ -272,9 +306,28 @@ export function renderChatMemberMenuContent(options: {
 // (file.filename сегодня не наполняется адаптерами — фолбэк «Файл»).
 export function mapTypedMessages(
     messages: Message[],
-    currentUserId: number | undefined
-): (Message & { isMine: boolean; fileUrl?: string; showDate: boolean; attachments?: MessageAttachment[]; cacheKey?: string })[] {
+    currentUserId: number | undefined,
+    chatUsers?: ChatUser[]
+): (Message & {
+    isMine: boolean
+    fileUrl?: string
+    showDate: boolean
+    attachments?: MessageAttachment[]
+    cacheKey?: string
+    authorBadge?: MessageAuthorBadge
+    isBot?: boolean
+})[] {
     let previousDayKey: string | undefined
+
+    // Плашка автора и AI-чип (2026-11-08-mobile-messenger-ux): состав чата
+    // уже в сторе (login/email/avatar — контракт members); бот — участник
+    // с серверным is_bot. Гейт плашки — групповой чат (>2 участников,
+    // бот считается); трекер хранит автора предыдущего ЧУЖОГО несистемного
+    // сообщения — свои сообщения серию не рвут (D-2: A, ME, A — одна серия)
+    const authorById = new Map((chatUsers ?? []).map(user => [user.id, user]))
+    const botUserId = (chatUsers ?? []).find(user => user.is_bot === true)?.id
+    const groupChat = (chatUsers ?? []).length > 2
+    let previousForeignAuthor: number | undefined
 
     return messages.map(message => {
         const dayKey = messageDayKey(message.time)
@@ -294,6 +347,33 @@ export function mapTypedMessages(
             attachments = [{ name: message.file_name ?? message.file?.filename ?? 'Файл', url: fileUrlValue }]
         }
 
+        // служебные строки ленты (kind) и pending-плейсхолдер не участвуют
+        // ни в плашке, ни в чипе, ни в трекере автора
+        const plainEntry = message.kind == null && message.isPending !== true
+
+        if (plainEntry && !isMine) {
+            const author = authorById.get(message.user_id)
+            const startsAuthorRun = previousForeignAuthor !== message.user_id
+
+            previousForeignAuthor = message.user_id
+
+            const authorBadge = groupChat && startsAuthorRun && author != null
+                ? { login: author.login, email: author.email, avatar: author.avatar }
+                : undefined
+
+            return {
+                ...message,
+                isMine,
+                fileUrl: fileUrlValue,
+                attachments,
+                showDate,
+                cacheKey: messageCacheKey(message),
+                isSending: message.ownTempId != null,
+                authorBadge,
+                isBot: plainEntry && botUserId != null && message.user_id === botUserId,
+            }
+        }
+
         return {
             ...message,
             isMine,
@@ -302,6 +382,7 @@ export function mapTypedMessages(
             showDate,
             cacheKey: messageCacheKey(message),
             isSending: message.ownTempId != null,
+            isBot: plainEntry && botUserId != null && message.user_id === botUserId,
         }
     })
 }
@@ -319,6 +400,10 @@ class MessengerBase extends Block {
     // черновик композера между перерисовками (componentDidUpdate снимает,
     // render возвращает в новый DOM — см. 2026-11-06-quick)
     private composerDraft = ''
+
+    // стартовая точка свайпа возврата (2026-11-08): null — жеста нет;
+    // жест, начавшийся внутри открытой модалки, игнорируется (F-4)
+    private paneSwipeStart: SwipePoint | null = null
     // отписка от preferences: тумблер автозагрузки в настройках должен
     // перерисовать вложения открытого чата, а утечка подписки — нет
     private unsubscribePreferences: (() => void) | null = null
@@ -472,6 +557,10 @@ class MessengerBase extends Block {
             deleteModalOpen: false,
             replyDraft: null,
             menuTarget: null,
+            kebabOpen: false,
+            onCloseKebab: () => {
+                this.setProps({ kebabOpen: false })
+            },
             // черновик ответа: пузырь поднял событие — превью над инпутом
             onReplyToMessage: (draft: ReplyDraft | null) => {
                 this.setProps({ replyDraft: draft })
@@ -537,6 +626,42 @@ class MessengerBase extends Block {
                         this.commitTitleInput()
                     }
                 },
+                // свайп-возврат к списку чатов (<768, 2026-11-08): тот же
+                // onBack, что кнопка «назад»; жест, начавшийся внутри
+                // открытой модалки (кебаб/добавление/удаление), игнорируется —
+                // диалог не должен деселектить чат (review F-4)
+                touchstart: (event: Event) => {
+                    const target = event.target as HTMLElement | null
+
+                    if (target?.closest('[data-testid="modal"]') != null) {
+                        this.paneSwipeStart = null
+
+                        return
+                    }
+
+                    const touch = (event as TouchEvent).changedTouches?.[0]
+
+                    this.paneSwipeStart = touch != null ? { x: touch.clientX, y: touch.clientY } : null
+                },
+                touchend: (event: Event) => {
+                    const start = this.paneSwipeStart
+
+                    this.paneSwipeStart = null
+
+                    if (start == null) {
+                        return
+                    }
+
+                    const touch = (event as TouchEvent).changedTouches?.[0]
+
+                    if (touch == null) {
+                        return
+                    }
+
+                    if (resolveSwipe(start, { x: touch.clientX, y: touch.clientY }) === 'right') {
+                        (this.props as MessengerProps).onBack?.()
+                    }
+                },
                 click: (event: Event) => {
                     const target = event.target as HTMLElement | null
 
@@ -559,6 +684,38 @@ class MessengerBase extends Block {
 
                     if (target?.closest('[data-testid="messenger-back"]') != null) {
                         (this.props as MessengerProps).onBack?.()
+
+                        return
+                    }
+
+                    // кебаб мобильной шапки (<768): открывает меню действий
+                    // из тех же дескрипторов, что рисуют ряд иконок
+                    if (target?.closest('[data-testid="header-kebab"]') != null) {
+                        this.setProps({ kebabOpen: true })
+
+                        return
+                    }
+
+                    // «Отмена» кебаб-меню — просто закрыть
+                    if (target?.closest('[data-testid="chat-action-cancel"]') != null) {
+                        this.setProps({ kebabOpen: false })
+
+                        return
+                    }
+
+                    // пункт кебаб-меню: тот же handleClick, что у иконки
+                    // ряда; список пересобирается на момент клика (archived-
+                    // фильтр и состояние AI живут в живых пропсах).
+                    // data-chat-action — отдельный атрибут: closest по
+                    // префиксному [data-testid^=] не матчится в jsdom
+                    const menuAction = target?.closest('[data-chat-action]') as HTMLElement | null
+
+                    if (menuAction != null && menuAction.dataset.chatAction != null) {
+                        const actionId = menuAction.dataset.chatAction
+                        const action = this.visibleActions().find(button => button.actionId === actionId)
+
+                        this.setProps({ kebabOpen: false })
+                        action?.handleClick?.()
 
                         return
                     }
@@ -734,6 +891,8 @@ class MessengerBase extends Block {
             headerButtons: [
                 {
                     extraClass: 'close',
+                    actionId: 'delete',
+                    menuLabel: 'Удалить чат',
                     // подтверждение удаления — модалка; сам id читается из
                     // this.props на момент клика по «Удалить» (LIVE-7)
                     handleClick: () => {
@@ -749,6 +908,8 @@ class MessengerBase extends Block {
                     extraClass: 'cross',
                     src: '/images/add-user-icon.svg',
                     alt: 'Иконка. Добавить пользователей',
+                    actionId: 'add-user',
+                    menuLabel: 'Добавить пользователей',
                     handleClick: () => {
                         // открытие модалки поиска: черновой запрос прошлого
                         // сеанса не тянется в новый, ввод начинается сразу —
@@ -849,6 +1010,49 @@ class MessengerBase extends Block {
         super.destroy()
     }
 
+    // «+AI» в ряду кнопок шапки (2026-11-06): включение/выключение бота;
+    // дескриптор собирается на момент клика/рендера — состояние AI читается
+    // из живых пропсов, подпись кебаб-меню следует тому же состоянию
+    private buildAiButton(isAiChat: boolean): HeaderActionDescriptor {
+        return {
+            extraClass: isAiChat ? 'ai ai_active' : 'ai',
+            actionId: 'ai',
+            menuLabel: isAiChat ? 'Выключить AI' : 'Включить AI',
+            handleClick: () => {
+                const live = this.props as MessengerProps
+
+                if (typeof live.selectedChat !== 'number') {
+                    return
+                }
+
+                const liveAi = ((live.chatInfo as { is_ai?: boolean } | undefined)?.is_ai) === true
+
+                if (liveAi) {
+                    live.onDisableAi?.(live.selectedChat)
+                } else {
+                    live.onEnableAi?.(live.selectedChat)
+                }
+            },
+        }
+    }
+
+    // Видимый ряд действий шапки: «+AI» первым + базовые кнопки; архивный
+    // чат теряет и cross, и кнопку AI (она бесполезна в read-only архиве —
+    // прецедент прежнего render-фильтра). Единый источник для ряда иконок
+    // И кебаб-меню — меню не может разойтись с рядом
+    private visibleActions(): HeaderActionDescriptor[] {
+        const props = this.props as MessengerProps
+        const chatInfo = props.chatInfo as { leftAt?: string | null, is_ai?: boolean } | undefined
+        const archived = chatInfo?.leftAt != null
+        const base = (props.headerButtons as HeaderActionDescriptor[] | undefined) ?? []
+
+        if (archived) {
+            return base.filter(button => button.extraClass !== 'cross' && button.extraClass !== 'ai')
+        }
+
+        return [this.buildAiButton(chatInfo?.is_ai === true), ...base]
+    }
+
     render() {
         const props = this.props as MessengerProps
         const chatInfo = props.chatInfo as
@@ -875,29 +1079,9 @@ class MessengerBase extends Block {
             .map(member => (member as { id?: number }).id)
             .filter((id): id is number => typeof id === 'number' && id !== props.meId)
         const emptyChatHint = !archived && !isAiChat && (props.messages ?? []).length === 0 && coMembers.length === 0
-        // «+AI» первым в ряду кнопок: включает бота в текущем чате; в AI-чате
-        // кнопка активна (подсветка) и клик её ВЫКЛЮЧАЕТ (2026-11-07);
-        // архивный чат её не показывает вовсе (вместе с cross)
-        const aiButton = {
-            extraClass: isAiChat ? 'ai ai_active' : 'ai',
-            handleClick: () => {
-                const live = this.props as MessengerProps
-
-                if (typeof live.selectedChat !== 'number') {
-                    return
-                }
-
-                if (isAiChat) {
-                    live.onDisableAi?.(live.selectedChat)
-                } else {
-                    live.onEnableAi?.(live.selectedChat)
-                }
-            },
-        }
-        const headerButtons = (props.headerButtons as { extraClass?: string }[] | undefined) ?? []
-        const visibleHeaderButtons = (archived
-            ? headerButtons.filter(button => button.extraClass !== 'cross')
-            : [aiButton, ...headerButtons])
+        // ряд иконок и кебаб-меню собираются из одного источника —
+        // visibleActions(); клики обоих представлений зовут одни handleClick
+        const visibleHeaderButtons = this.visibleActions()
 
         const fragment = this.compile(template, {
             ...props,
@@ -910,6 +1094,7 @@ class MessengerBase extends Block {
             // renamingTitle (dblclick) ИЛИ авто-режим — шаблон один инпут
             renamingTitle: props.renamingTitle === true || autoTitleInput,
             headerButtons: visibleHeaderButtons,
+            kebabContent: renderChatActionsMenuContent(visibleHeaderButtons),
             menuTitle: menuTarget?.display_name ?? '',
             menuOpen: menuTarget != null,
             menuContent: renderChatMemberMenuContent({
@@ -967,7 +1152,9 @@ const withMessenger = withStore((state: AppState) => {
     // (botPending): мок-вложения сняты, ответы бота рендерят реальный файл
     const isAiChat = (state.chats?.find(chat => chat.id === selectedChatId) as { is_ai?: boolean } | undefined)?.is_ai === true
 
-    const messages = mapTypedMessages(state.messages[selectedChatId], state.user?.id)
+    // chatUsers уже несут login/email/avatar и is_bot — по ним мэппер
+    // вешает плашку автора (групповые) и AI-чип ответам бота
+    const messages = mapTypedMessages(state.messages[selectedChatId], state.user?.id, state.chatUsers)
 
     // кэш живёт размером с текущую ленту: смена чата и удаление сообщения
     // роняют и destroy'ят осевшие ключи (неограниченного роста нет)

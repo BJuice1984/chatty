@@ -77,3 +77,19 @@ describe('profile settings item', () => {
         item.destroy()
     })
 })
+
+// 2026-11-08-mobile-messenger-ux: стрелка пункта настроек вернулась к
+// правому краю на СВОЁМ классе (chat__container-profile-arrow потерял
+// стили в pack-2 — класс из шаблона убран)
+describe('profile settings item arrow', () => {
+    it('the arrow carries its own class pinned to the right edge', () => {
+        const item = new ProfileSettingsItem({ ...itemProps })
+
+        const arrow = item.element?.querySelector('img.profile-settings-item__arrow')
+
+        expect(arrow?.getAttribute('src')).to.eq('/images/arrow.svg')
+        expect(item.element?.querySelector('.chat__container-profile-arrow')).to.eq(null)
+
+        item.destroy()
+    })
+})

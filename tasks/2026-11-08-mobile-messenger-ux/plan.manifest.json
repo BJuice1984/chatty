@@ -1,0 +1,532 @@
+{
+    "schemaVersion": "agent-plan-manifest.v1",
+    "status": "FROZEN",
+    "planRevision": 4,
+    "package": {
+        "id": "2026-11-08-mobile-messenger-ux",
+        "title": "Mobile messenger UX: stories overflow, swipes, kebab menu, author plates, AI badge (8 operator items + bot marker)",
+        "workspaceRoot": ".",
+        "artifactRoot": "work/2026-11-08-mobile-messenger-ux",
+        "planArtifactRoot": "tasks/2026-11-08-mobile-messenger-ux"
+    },
+    "packageIntegrity": {
+        "required": true,
+        "lockSchemaVersion": "agent-plan-lock.v2",
+        "inventorySource": "planFiles",
+        "undeclaredTopLevelFiles": "reject",
+        "allowedUnlistedFiles": [
+            "plan.lock.json",
+            "plan-review.json"
+        ]
+    },
+    "author": {
+        "id": "claude-code",
+        "surface": "agent-first-planning",
+        "runId": "2026-11-08-mobile-messenger-ux-draft"
+    },
+    "baseRevision": {
+        "ref": "origin/dev",
+        "sha": "dc65e03fc48470b9c9aabf605d09ac3886610642"
+    },
+    "specification": {
+        "tier": "S2",
+        "intent": "Eight operator items of 2026-11-08 after PR #57 plus one enabling backend marker: (M1) a long stories row no longer pushes the app off-screen on mobile — the <768 grid track is clamped (minmax(0,1fr), min-width guards) and the stories list scrolls inside itself, proven by a live 390px smoke with 15+ stories; (M2) three touch swipe gestures over one shared pure classifier — story viewer left=next (current marked viewed; past the last closes), right=previous (before the first closes), down=close; the chat pane swiped right returns to the chat list through the same store reset as the back button; the settings page swiped right closes an open section (settings-back branch) or Router.back() on the root; (M3) on mobile messenger__header-buttons-container is hidden behind a three-dot kebab opening a Modal with the SAME header actions (AI toggle labelled by state, add user, delete chat, cancel) driven by the same handleClick callbacks, desktop unchanged; (U1) the auto-title chip drops right and moves to left:70px (mobile left:95px); (U2) the profile-settings arrow returns to the right edge of its row via its own BEM class after pack-2 deleted the borrowed chat__container-profile-arrow styles; (U3) the change-profile avatar pencil underlay (radial-gradient + pencil) paints only on hover so translucent svg avatars stop showing it permanently; (U4) group chats with more than two members render an author plate (small avatar + login, native title=email tooltip) above the first foreign message of each author run — consecutive same-author messages (own messages in between do not break the run) repeat nothing, own/system/pending entries never get one; (U5) bot messages in ALL chats render an AI chip in the chat-list-user__ai-badge visual family, the bot identified by a new additive is_bot field on ChatMemberBrief computed in the single to_member_brief builder (email vs bot config, response-only, no migration). Operator clarified swipes scope (implement all three) and plate cadence (on author change); decisions journaled in decisions.md.",
+        "status": "DRAFT",
+        "requirements": [
+            {
+                "id": "REQ-BOTMARK",
+                "title": "is_bot marker in the member brief form",
+                "description": "backend/app/schemas/chat.py: ChatMemberBrief gains is_bot: bool = False. backend/app/services/chats.py: to_member_brief computes the flag with the SAME lower-casing as the canonical idiom at services/chats.py:569-571 — email.lower() == bot_settings_from_env().user_email (the config value is already normalized; without .lower() an upper-case email silently yields False), lazy import; because the builder is the single assembly point, both GET /chats/{id}/members and the brief members inside GET /chats carry the field with no other changes. Response-only: no migration, no endpoint change. Tests: extend tests/integration/auth/test_settings_api.py (members endpoint — human row is_bot False) and tests/integration/chat/test_chat_ai_toggle_api.py (bot row is_bot True beside the existing bot_rows assertions).",
+                "priority": "P1",
+                "source": "operator item 8 (AI badge needs a reliable bot identity) + research (no marker in the contract today) + decision D-4",
+                "acceptanceIds": ["AC-BOTMARK", "AC-AIBADGE"],
+                "evidenceIds": ["EV-2"],
+                "owner": "WS-BE-BOT"
+            },
+            {
+                "id": "REQ-SWIPES",
+                "title": "Three touch swipe gestures over one shared classifier",
+                "description": "New src/utils/swipe.ts: exported distance/dominance constants and resolveSwipe(start, end) -> 'left' | 'right' | 'down' | null (pure, no DOM; horizontal needs |dx| >= 50px and |dx| > |dy| * 1.5, down needs dy >= 50px and dy > |dx| * 1.5). Wiring through the existing Block events delegation (survives re-renders): storyViewer.ts adds touchstart/touchend on its root and calls props.onSwipe(direction) staying presentational; chat.ts implements onSwipeViewer — 'left' marks the current story viewed and opens the next (past the last closes the viewer), 'right' opens the previous (before the first closes), 'down' runs the normal close path with view marking; messenger.ts maps 'right' to the existing onBack callback (the same closeChatFeed path as the mobile back button) WITH a modal guard: the pane gesture is ignored when its touchstart target lies inside an open Modal (closest('[data-testid=modal]')) — an open kebab/add-user/delete dialog must never deselect the chat (review F-4); the settings page (features/profile/pages/profile/profile.ts) maps 'right' to the settings-back branch when a section is open and to Router.back() on the root (decision D-3). Existing click/Escape/timer paths untouched. Tests: pure classifier cases (thresholds, dominance failures, short gestures) in swipe.test.ts; wiring pins in storyViewer.test.ts / messenger.test.ts / chat.test.ts / profile.test.ts dispatching Event with changedTouches attached via Object.defineProperty (jsdom has no TouchEvent), including the modal-guard negative pin.",
+                "priority": "P1",
+                "source": "operator item 2 + clarification (implement all three) + research (zero touch handling in src/)",
+                "acceptanceIds": ["AC-SWIPES"],
+                "evidenceIds": ["EV-1"],
+                "owner": "WS-FE-MOBILE"
+            },
+            {
+                "id": "REQ-STORIES",
+                "title": "Mobile stories row cannot push the layout off-screen",
+                "description": "src/scss/components/chat.scss mobile block (max-width <768): .chat grid-template-columns becomes minmax(0, 1fr); .chat__container-users gains min-width: 0; .chat__container-stories-list gets width: 100% and max-width: 100% within the same block. Desktop and tablet branches untouched (fixed-width sidebar there). Verification is behavioral: a live smoke at a 390px viewport with 15+ story tiles shows no horizontal document scroll, the row scrolls internally, the pane layout intact (hypothesis and fix rationale in decisions D-5). A regex pin in chat.test.ts asserts the mobile block carries minmax(0, 1fr) and the min-width guard; stylelint green; no comments added to scss.",
+                "priority": "P1",
+                "source": "operator item 1 + research (1fr track without minmax + percentage-width scroll container inflates min-content)",
+                "acceptanceIds": ["AC-STORIES"],
+                "evidenceIds": ["EV-1", "EV-3"],
+                "owner": "WS-FE-MOBILE"
+            },
+            {
+                "id": "REQ-KEBAB",
+                "title": "Mobile three-dot menu for the chat header buttons",
+                "description": "messenger.hbs: a kebab button (class messenger__header-kebab, data-testid=header-kebab, aria-label) beside messenger__header-buttons-container plus a Modal ('Действия') opened by kebabOpen state. Header button descriptors gain menuLabel strings; a renderChatActionsMenuContent builder renders one modal__button per visible header button (AI toggle labelled 'Включить AI'/'Выключить AI' by is_ai state, 'Добавить пользователей', 'Удалить чат') plus 'Отмена'; every entry calls the SAME handleClick as its header icon (delegated click on data-testid=chat-action-* closes the menu and fires the callback). messenger.scss: desktop-first — kebab display:none, shown only in the <768 branch which hides messenger__header-buttons-container (CSS-only visibility, DOM shared by both presentations). archived-chat filtering (cross) keeps applying to the menu exactly as to the row. Tests: kebab opens the modal; each action fires its stub; cancel closes; both the row and the kebab exist in DOM; existing header scenarios stay green.",
+                "priority": "P1",
+                "source": "operator item 3 + Modal/member-menu precedents in messenger.ts",
+                "acceptanceIds": ["AC-KEBAB"],
+                "evidenceIds": ["EV-1"],
+                "owner": "WS-FE-MOBILE"
+            },
+            {
+                "id": "REQ-AUTHOR",
+                "title": "Author plate above foreign messages in group chats",
+                "description": "Gate: the selected chat has more than two members (chatUsers.length > 2, bot included). mapTypedMessages (messenger.ts) is extended with the chatUsers slice and the viewer id context already available in withStore: the mapper tracks the user_id of the previous FOREIGN non-system, non-pending message (own messages NEVER update the tracker — an author run is not broken by the viewer's own messages in between; system/pending entries are skipped without touching it); a foreign message whose user_id differs from the tracked previous foreign author (or has no previous foreign author) AND whose author exists in chatUsers gets authorBadge { login, email, avatar } (own messages never get a plate; a missing author renders none). message.hbs renders above the bubble a meta row with the plate: a small avatar (height matching the plate text line) + the login text, native title=email on the plate; message.ts threads the props. messenger.scss styles the plate (muted line, no layout shift for own messages). Tests: author-run pins (first foreign message of a run shows the plate, consecutive same-author repeats do not, own messages in between do not break the run), system/pending entries never carry it, 2-member chat renders none, unknown author renders none, title carries the email.",
+                "priority": "P1",
+                "source": "operator item 7 + clarification (plate on author change) + research (chatUsers already carry login/email/avatar)",
+                "acceptanceIds": ["AC-AUTHOR"],
+                "evidenceIds": ["EV-1"],
+                "owner": "WS-FE-MOBILE"
+            },
+            {
+                "id": "REQ-AIBADGE",
+                "title": "AI chip on bot messages in all chats",
+                "description": "src/utils/types.ts: ChatUser gains is_bot?: boolean; src/features/chats/api/own.ts getChatUsers maps is_bot: member.is_bot === true (api.test.ts pin). The withStore mapper in messenger.ts resolves the bot member id from chatUsers (first is_bot entry) and marks messages with user_id === botId as isBot; message.hbs renders the chip (star glyph + 'AI') in the same top meta row as the author plate — alone in 1-1 AI chats, beside the plate in groups; messenger.scss styles it in the chat-list-user__ai-badge visual family under its own messenger-scoped class (decision D-8, no cross-file selector coupling). Bot messages keep the author plate in group chats (the bot is a member). Tests: bot message renders the chip, human messages do not, works in a 2-member AI chat, chip coexists with the plate in groups, own adapter mapping pin.",
+                "priority": "P1",
+                "source": "operator item 8 + decision D-4 (server-side marker; display-name heuristic rejected)",
+                "acceptanceIds": ["AC-AIBADGE"],
+                "evidenceIds": ["EV-1", "EV-2"],
+                "owner": "WS-FE-MOBILE"
+            },
+            {
+                "id": "REQ-PENCIL",
+                "title": "Change-profile pencil underlay paints only on hover",
+                "description": "chat.scss .chat__container-profile-ava_type_change-profile: the background-image pair (radial-gradient underlay circle + pencil svg, lines 261-264 today) moves from the base state into the &:hover scope — the whole underlay appears together with the existing img fade instead of being permanently painted under translucent svg avatars. No markup change; hover-fade of the img untouched. Verification: a regex pin in a frontend test asserts the _type_change-profile background-image rule is nested inside a hover scope and absent from the base state; stylelint green.",
+                "priority": "P1",
+                "source": "operator item 6 (underlay visible without hover under svg avatars) + pack-2 REQ-AVATAR history",
+                "acceptanceIds": ["AC-PENCIL"],
+                "evidenceIds": ["EV-1"],
+                "owner": "WS-FE-MOBILE"
+            },
+            {
+                "id": "REQ-HINT",
+                "title": "Auto-title chip repositioned to the left",
+                "description": "messenger.scss messenger__header-title-hint: the right: 180px offset is removed and left: 70px takes over; the <768 branch adds left: 95px. Minor cosmetic tweaks inside the current variable family are allowed and journaled (operator asked to 'change the styles'); the undefined-variable class of bugs from pack-2 must not return. Regex pins for both rules (no right offset in the hint rule, left values present); the live smoke also checks the DESKTOP chip placement — left: 70px must not collide with the chat avatar or the title (review F-7); stylelint green.",
+                "priority": "P2",
+                "source": "operator item 4 (explicit offsets)",
+                "acceptanceIds": ["AC-HINT"],
+                "evidenceIds": ["EV-1"],
+                "owner": "WS-FE-MOBILE"
+            },
+            {
+                "id": "REQ-ARROW",
+                "title": "Settings item arrow back at the right edge",
+                "description": "profile-settings.hbs: the arrow img swaps the borrowed chat__container-profile-arrow class for its own profile-settings-item__arrow (the borrowed class lost its styles when pack-2 correctly deleted them from the profile row). profile-settings-item.scss: the new element rule aligns the arrow to the right edge of the flex row (margin-left: auto; align-self: center) with the hover-opacity affordance (decision D-7). Tests: DOM pin — the img carries profile-settings-item__arrow and the template no longer references chat__container-profile-arrow; stylelint green.",
+                "priority": "P2",
+                "source": "operator item 5 + git history of the deleted &-arrow block (absolute right:10px pre-pack-2)",
+                "acceptanceIds": ["AC-ARROW"],
+                "evidenceIds": ["EV-1"],
+                "owner": "WS-FE-MOBILE"
+            },
+            {
+                "id": "REQ-PROCESS",
+                "title": "Gates, journal and bookkeeping",
+                "description": "npm run verify exit 0 with mocha grown from the 756 baseline and zero deleted tests; the backend gate green per D-11 — bash backend/verify.sh with the stand venv PYTHON_BIN, everything green except exactly the 4 known POSIX-only ingestion failures, zero new failures, zero deleted tests, full output in evidence; node .claude/hooks/scripts/guard-architecture.mjs --all --strict exit 0; ownership audit clean; docs/progress/progress_log.md run record on top; decisions.md carries every controller-resolved blocker (operator delegation); conventional commits without co-author trailers on feature/2026-11-08-mobile-messenger-ux from dev @ dc65e03; live smoke note (390px + desktop chip) in evidence.",
+                "priority": "P1",
+                "source": "repository gate contract + operator delegation message",
+                "acceptanceIds": ["AC-PROCESS"],
+                "evidenceIds": ["EV-3"],
+                "owner": "WS-FE-MOBILE"
+            }
+        ],
+        "goal": "The operator's eight rough edges are closed: on a phone the app keeps its layout with dozens of stories, gestures navigate stories/chat/settings the way every mobile app does, and the cramped header buttons fold into a kebab menu; everywhere the auto-title chip sits where it was asked, the settings arrow returns to the right edge, the pencil underlay waits for hover, group messages are signed by their author with an email hint, and bot answers are visibly AI.",
+        "constraints": [
+            "No WS protocol changes; no new dependencies; no migrations.",
+            "Backend change is exactly the additive ChatMemberBrief.is_bot field computed in to_member_brief.",
+            "Store shape unchanged; the author/bot mapping is computed in the existing withStore mapper per emit (no new store keys).",
+            "Swipes are touch-only (no mouse emulation) and must not fire during vertical feed scrolling (axis dominance + distance threshold).",
+            "No comments in new/edited scss; imports with .ts extension; eslint:fix/stylelint:fix before commit; pre-commit verify is strict.",
+            "Existing suites stay green; no test deleted; mocha counts grow from 756.",
+            "Conventional commits without co-author trailers; plan package committed; work/ never committed."
+        ],
+        "nonGoals": [
+            "swipes on contacts/assistant pages and pull-to-refresh",
+            "long-press menus, haptics, gesture-driven multi-select",
+            "a custom tooltip component (native title is enough)",
+            "message grouping by time or bubble tails",
+            "read receipts or new delivery states",
+            "restoring the pre-pack-2 profile-row arrow"
+        ],
+        "scope": "two sequential workstreams: WS-BE-BOT owns the backend marker (schema + builder + integration pins, verify:backend); WS-FE-MOBILE owns the full frontend write-set (swipe util + three wirings, chat/messenger/message/profile-settings components and templates, chat/messenger scss, chats api adapter, types, tests across all of them, progress log), evidence under work/2026-11-08-mobile-messenger-ux/."
+    },
+    "readOnly": [
+        "AGENTS.md",
+        "tasks/README.md",
+        "tasks/2026-11-07-messenger-ux-pack-2/plan.manifest.json",
+        "src/core/Block.ts",
+        "src/utils/Router.ts",
+        "backend/app/bot/config.py"
+    ],
+    "forbiddenWrites": [
+        ".env",
+        ".env.development",
+        ".env.own",
+        ".env.compose.local",
+        "docs/project-principles.json",
+        "src/utils/HTTPTransport.ts",
+        "src/utils/WSTransport.ts",
+        "src/utils/busyOverlay.ts",
+        "src/utils/Store.ts",
+        "src/utils/Router.ts",
+        "src/features/auth",
+        "src/scss/libs",
+        "src/scss/utils",
+        "backend/alembic",
+        "backend/app/ws",
+        "backend/app/bot",
+        ".github/workflows",
+        "netlify.toml",
+        "server/server.js"
+    ],
+    "leadOwned": [
+        {
+            "path": "tasks/2026-11-08-mobile-messenger-ux",
+            "owner": "controller",
+            "reason": "Controller owns plan-package artifacts."
+        }
+    ],
+    "workstreams": [
+        {
+            "id": "WS-BE-BOT",
+            "title": "Backend: is_bot marker in the member brief",
+            "owner": "worker-backend-bot-marker",
+            "reviewer": "independent-release-reviewer",
+            "dependsOn": [],
+            "writes": [
+                "backend/app/schemas/chat.py",
+                "backend/app/services/chats.py",
+                "backend/tests/integration/auth/test_settings_api.py",
+                "backend/tests/integration/chat/test_chat_ai_toggle_api.py"
+            ],
+            "readOnly": [
+                "backend/app/bot/config.py",
+                "backend/app/api/v1/endpoints/chats.py"
+            ],
+            "forbiddenWrites": [],
+            "launchGate": "branch feature/2026-11-08-mobile-messenger-ux at dc65e03; backend gate per D-11 at base: bash backend/verify.sh (stand venv PYTHON_BIN) — 339 passed / exactly the 4 known POSIX-only ingestion failures, zero new failures, tests untouched at base.",
+            "capabilityHints": ["python", "pytest", "fastapi", "sqlalchemy"],
+            "requiredTools": ["python", "npm"],
+            "contextRefs": ["plan.md", "acceptance-criteria.md", "developer-overview.md", "specification.md", "decisions.md"],
+            "acceptanceIds": ["AC-BOTMARK"],
+            "evidenceIds": ["EV-2"],
+            "executionPolicy": {
+                "maxAttempts": 3,
+                "maxWallSeconds": 3600
+            },
+            "artifactPaths": {
+                "result": "work/2026-11-08-mobile-messenger-ux/evidence/WS-BE-BOT/task-result-{attempt}.json",
+                "review": "work/2026-11-08-mobile-messenger-ux/evidence/WS-BE-BOT/task-review-{attempt}.json"
+            },
+            "required": true,
+            "plannedItems": [
+                "BOTMARK: ChatMemberBrief.is_bot field + to_member_brief computation (email vs bot config, lazy import idiom) flowing into both members surfaces",
+                "BOTMARK-TESTS: human-row False pin (test_settings_api members endpoint) + bot-row True pin (test_chat_ai_toggle_api bot_rows)",
+                "gates: backend gate per D-11 — bash backend/verify.sh (stand venv PYTHON_BIN), all green except exactly the 4 known ingestion failures, zero new/deleted"
+            ],
+            "qualityFloor": "Backend gate per D-11 (bash backend/verify.sh, stand venv PYTHON_BIN): every test green except exactly the 4 known POSIX-only ingestion failures listed in D-11, zero new failures; no file outside the write-set touched; no test deleted."
+        },
+        {
+            "id": "WS-FE-MOBILE",
+            "title": "Frontend: swipes, kebab, stories fix, plates and chips (8 items)",
+            "owner": "worker-frontend-mobile-ux",
+            "reviewer": "independent-release-reviewer",
+            "dependsOn": ["WS-BE-BOT"],
+            "writes": [
+                "src/utils/swipe.ts",
+                "src/utils/swipe.test.ts",
+                "src/utils/types.ts",
+                "src/features/chats/api/own.ts",
+                "src/features/chats/api/api.test.ts",
+                "src/components/messenger/messenger.ts",
+                "src/components/messenger/messenger.hbs",
+                "src/components/messenger/messenger.test.ts",
+                "src/components/message/message.ts",
+                "src/components/message/message.hbs",
+                "src/components/message/message.test.ts",
+                "src/components/story/storyViewer/storyViewer.ts",
+                "src/components/story/storyViewer/storyViewer.test.ts",
+                "src/components/profile-settings/profile-settings.hbs",
+                "src/components/profile-settings/profile-settings.test.ts",
+                "src/features/chats/pages/chat/chat.ts",
+                "src/features/chats/pages/chat/chat.hbs",
+                "src/features/chats/pages/chat/chat.test.ts",
+                "src/features/profile/pages/profile/profile.ts",
+                "src/features/profile/pages/profile/profile.test.ts",
+                "src/scss/components/chat.scss",
+                "src/scss/components/messenger.scss",
+                "src/scss/components/profile-settings-item.scss",
+                "docs/progress/progress_log.md"
+            ],
+            "readOnly": [
+                "src/core/Block.ts",
+                "src/core/registerComponent.ts",
+                "src/utils/Router.ts",
+                "src/utils/Store.ts",
+                "public/images/pencil.svg"
+            ],
+            "forbiddenWrites": [],
+            "launchGate": "WS-BE-BOT accepted (is_bot in the contract); npm run verify green at base (mocha 756); guard strict 0; operator authorization for execution.",
+            "capabilityHints": ["typescript", "handlebars", "scss", "mocha", "sinon", "jsdom"],
+            "requiredTools": ["node", "npm"],
+            "contextRefs": ["plan.md", "acceptance-criteria.md", "developer-overview.md", "specification.md", "decisions.md"],
+            "acceptanceIds": ["AC-STORIES", "AC-SWIPES", "AC-KEBAB", "AC-HINT", "AC-ARROW", "AC-PENCIL", "AC-AUTHOR", "AC-AIBADGE", "AC-PROCESS"],
+            "evidenceIds": ["EV-1", "EV-3"],
+            "executionPolicy": {
+                "maxAttempts": 3,
+                "maxWallSeconds": 10800
+            },
+            "artifactPaths": {
+                "result": "work/2026-11-08-mobile-messenger-ux/evidence/WS-FE-MOBILE/task-result-{attempt}.json",
+                "review": "work/2026-11-08-mobile-messenger-ux/evidence/WS-FE-MOBILE/task-review-{attempt}.json"
+            },
+            "required": true,
+            "plannedItems": [
+                "SWIPES: swipe.ts classifier + tests; storyViewer onSwipe wiring; chat.ts viewer navigation (left/right/down with view marking); messenger pane back; settings section/root back; jsdom wiring pins",
+                "STORIES: chat.scss mobile clamp (minmax(0,1fr), min-width guards, list width caps) + regex pin + live 390px smoke",
+                "KEBAB: header-kebab button + Modal of the same header actions (menuLabel descriptors, data-testid=chat-action-*) + CSS-only mobile visibility",
+                "HINT: chip left:70px / mobile left:95px, right removed + regex pins",
+                "ARROW: profile-settings-item__arrow class + right-edge rule + DOM pin",
+                "PENCIL: _type_change-profile underlay moved into &:hover + regex pin",
+                "AUTHOR: mapTypedMessages authorBadge on author change (group >2, foreign, known author) + message.hbs meta row (avatar+login, title=email) + styles + mapper/component pins",
+                "AIBADGE: ChatUser.is_bot + own.ts mapping + bot id resolution in withStore mapper + AI chip in the meta row + pins",
+                "gates: npm run verify green (mocha 756→), guard strict 0, live smoke note, progress_log record"
+            ],
+            "qualityFloor": "npm run verify green with mocha grown from 756; guard strict 0; no file outside the write-set touched; no test deleted."
+        }
+    ],
+    "acceptance": {
+        "criteria": [
+            {
+                "id": "AC-STORIES",
+                "title": "Mobile layout holds with a long stories row",
+                "requirementIds": ["REQ-STORIES"],
+                "evidenceIds": ["EV-1", "EV-3"],
+                "independentEvidenceIds": [],
+                "statement": "The <768 chat.scss block clamps the grid track (minmax(0, 1fr)) and the sidebar/list min-widths (regex pin); a live 390px smoke with 15+ stories shows no horizontal document scroll and the row scrolls internally; stylelint green.",
+                "description": "Static pins + live smoke.",
+                "source": "acceptance-criteria.md",
+                "priority": "P1"
+            },
+            {
+                "id": "AC-SWIPES",
+                "title": "Three gestures proven by mocha",
+                "requirementIds": ["REQ-SWIPES"],
+                "evidenceIds": ["EV-1"],
+                "independentEvidenceIds": [],
+                "statement": "Pure classifier pins (thresholds, dominance, short gestures); viewer left/right/down navigation incl. view marking and both closing edges; pane right -> onBack with the open-modal guard negative pin (a gesture starting inside [data-testid=modal] never deselects the chat); settings right closes an open section and Router.back() on the root; existing click/Escape/timer paths stay green.",
+                "description": "Frontend unit tests.",
+                "source": "acceptance-criteria.md",
+                "priority": "P1"
+            },
+            {
+                "id": "AC-KEBAB",
+                "title": "Kebab menu actions proven by mocha",
+                "requirementIds": ["REQ-KEBAB"],
+                "evidenceIds": ["EV-1"],
+                "independentEvidenceIds": [],
+                "statement": "header-kebab opens the Modal; each menu entry fires the same callback as its header icon (stubs); AI entry is labelled by chat state; cancel and any action close the menu; the desktop row and the kebab coexist in DOM (CSS-only visibility); archived filtering applies to the menu.",
+                "description": "Frontend unit tests.",
+                "source": "acceptance-criteria.md",
+                "priority": "P1"
+            },
+            {
+                "id": "AC-HINT",
+                "title": "Auto-title chip position",
+                "requirementIds": ["REQ-HINT"],
+                "evidenceIds": ["EV-1"],
+                "independentEvidenceIds": [],
+                "statement": "The hint rule carries left: 70px and no right offset; the mobile branch carries left: 95px (regex pins); the live smoke confirms the desktop chip does not collide with the avatar/title; stylelint green.",
+                "description": "Static/style gates.",
+                "source": "acceptance-criteria.md",
+                "priority": "P2"
+            },
+            {
+                "id": "AC-ARROW",
+                "title": "Settings arrow at the right edge",
+                "requirementIds": ["REQ-ARROW"],
+                "evidenceIds": ["EV-1"],
+                "independentEvidenceIds": [],
+                "statement": "The arrow img carries profile-settings-item__arrow (the borrowed chat__container-profile-arrow is gone from the template, DOM pin) and the scss rule pushes it to the row's right edge; stylelint green.",
+                "description": "Frontend unit test + style gate.",
+                "source": "acceptance-criteria.md",
+                "priority": "P2"
+            },
+            {
+                "id": "AC-PENCIL",
+                "title": "Pencil underlay only on hover",
+                "requirementIds": ["REQ-PENCIL"],
+                "evidenceIds": ["EV-1"],
+                "independentEvidenceIds": [],
+                "statement": "The _type_change-profile background-image (gradient + pencil) lives inside the hover scope and not in the base state (regex pin); the img hover fade is untouched; stylelint green.",
+                "description": "Static/style gates.",
+                "source": "acceptance-criteria.md",
+                "priority": "P1"
+            },
+            {
+                "id": "AC-AUTHOR",
+                "title": "Author plate proven by mocha",
+                "requirementIds": ["REQ-AUTHOR"],
+                "evidenceIds": ["EV-1"],
+                "independentEvidenceIds": [],
+                "statement": "With >2 members: the plate (avatar + login, title=email) renders on the first foreign message of each author run; consecutive same-author messages (own messages in between do not break the run) render none; own/system/pending never; a 2-member chat renders none; an author missing from chatUsers renders none.",
+                "description": "Frontend unit tests.",
+                "source": "acceptance-criteria.md",
+                "priority": "P1"
+            },
+            {
+                "id": "AC-AIBADGE",
+                "title": "AI chip on bot messages proven by mocha",
+                "requirementIds": ["REQ-AIBADGE", "REQ-BOTMARK"],
+                "evidenceIds": ["EV-1", "EV-2"],
+                "independentEvidenceIds": [],
+                "statement": "own.ts maps is_bot; messages from the bot member render the AI chip in all chats (alone in 1-1, beside the author plate in groups); human messages never do.",
+                "description": "Frontend unit tests over the backend contract.",
+                "source": "acceptance-criteria.md",
+                "priority": "P1"
+            },
+            {
+                "id": "AC-BOTMARK",
+                "title": "is_bot in the member form proven by pytest",
+                "requirementIds": ["REQ-BOTMARK"],
+                "evidenceIds": ["EV-2"],
+                "independentEvidenceIds": [],
+                "statement": "ChatMemberBrief carries is_bot; the members endpoint returns True for the bot row and False for a human; the backend gate passes per D-11 (bash backend/verify.sh on the stand venv: everything green except exactly the 4 known POSIX-only ingestion failures) with zero deleted tests.",
+                "description": "Backend integration tests.",
+                "source": "acceptance-criteria.md",
+                "priority": "P1"
+            },
+            {
+                "id": "AC-PROCESS",
+                "title": "Gates and bookkeeping",
+                "requirementIds": ["REQ-PROCESS"],
+                "evidenceIds": ["EV-3"],
+                "independentEvidenceIds": [],
+                "statement": "npm run verify exit 0 (mocha ≥ 756 grown, zero deletions); backend gate green per D-11 (canonical bash invocation; only the 4 known ingestion failures remain); guard --all --strict 0; ownership audit clean; progress_log record on top; decisions.md journal complete; conventional commits without co-author trailers on the feature branch from dc65e03.",
+                "description": "Gate runs captured as evidence.",
+                "source": "acceptance-criteria.md",
+                "priority": "P1"
+            }
+        ]
+    },
+    "validation": {
+        "commands": [
+            "npm run verify",
+            "PYTHON_BIN=<backend-venv-python> bash backend/verify.sh — D-11 stand seam: npm run verify:backend does not resolve on this Windows stand; the canonical invocation is bash backend/verify.sh with PYTHON_BIN pointing at the backend venv interpreter (exact stand path in the operator runbook and the evidence log). PASS verdict = every test green EXCEPT exactly the 4 known POSIX-only ingestion failures (tests/unit/ingestion/test_converter.py, WinError 193, identical before and after, outside the write-set), zero new failures, zero deleted tests; full output before/after retained in evidence.",
+            "node .claude/hooks/scripts/guard-architecture.mjs --all --strict"
+        ]
+    },
+    "orchestration": {
+        "startMode": "reviewed-plan",
+        "remediationMode": "ask",
+        "maxPlanReviewRounds": 3,
+        "maxTaskAttempts": 3,
+        "maxParallelTasks": 1,
+        "maxValidationRunsPerTask": 2,
+        "stateFile": "work/2026-11-08-mobile-messenger-ux/run.state.json",
+        "eventLog": "work/2026-11-08-mobile-messenger-ux/events.jsonl",
+        "stepReviewRequired": true,
+        "finalAuditRequired": true
+    },
+    "implementationAudit": {
+        "required": true,
+        "finalRequired": true
+    },
+    "developerOverview": "tasks/2026-11-08-mobile-messenger-ux/developer-overview.md",
+    "releaseTarget": {
+        "kind": "local-only",
+        "environment": "Vite own mode + compose own-backend",
+        "productionPromotionClaimed": false
+    },
+    "releaseImpact": "Frontend-heavy: a mobile layout clamp, three touch gestures over a shared pure classifier, a kebab Modal over the existing header actions, two scss repositions, a hover-scoped pencil underlay, and a message meta row (author plate + AI chip) computed in the existing store mapper. Backend: one additive response field identifying the bot member. No protocol, store-shape or migration changes.",
+    "finalAuditGates": [
+        "[AC-STORIES|EV-3] mobile clamp pins (EV-1) + live 390px smoke — verify green",
+        "[AC-SWIPES|EV-1] classifier + three wirings — mocha",
+        "[AC-KEBAB|EV-1] kebab menu = same actions — mocha",
+        "[AC-HINT|EV-1] chip left 70/95, no right — regex/stylelint",
+        "[AC-ARROW|EV-1] arrow class + right edge — mocha/stylelint",
+        "[AC-PENCIL|EV-1] underlay hover-only — regex/stylelint",
+        "[AC-AUTHOR|EV-1] plate on author change, group-only — mocha",
+        "[AC-AIBADGE|EV-1] AI chip by is_bot over the backend contract (EV-2) — mocha",
+        "[AC-BOTMARK|EV-2] is_bot True/False — pytest, backend gate green per D-11",
+        "[AC-PROCESS|EV-3] verify + backend gate (D-11) + guard strict 0, ownership clean, progress_log + decisions, clean commits"
+    ],
+    "securityGates": [
+        {
+            "id": "SEC-NO-TRANSPORT-CHANGES",
+            "statement": "WSTransport, HTTPTransport, busyOverlay, Store and Router are forbidden writes; gestures ride plain touch events on existing component roots; the bot marker rides the existing members response.",
+            "evidenceIds": ["EV-2", "EV-3"]
+        },
+        {
+            "id": "SEC-NO-MARKUP-INJECTION",
+            "statement": "The author plate and AI chip render through the normal hbs pipeline with escaped values (login/email never injected as raw HTML); the menu labels are static strings, callbacks only.",
+            "evidenceIds": ["EV-1"]
+        }
+    ],
+    "budgetPolicy": {
+        "units": "tokens-and-resources",
+        "reroute": "pause-and-review",
+        "maxTotalTokens": 110000,
+        "maxParallelWorkstreams": 1,
+        "maxRunWallSeconds": 14400,
+        "criticalPathWallSeconds": 10800,
+        "aggregateWorkstreamWallSeconds": 10800,
+        "retryReserveWallSeconds": 3600
+    },
+    "budgets": {
+        "defaultWorkstreamTokens": 40000,
+        "maxEvidenceBytesPerRun": 4194304
+    },
+    "contextLimits": {
+        "profile": "small-context-profile.v1",
+        "maxPlanContextBytes": 120000,
+        "maxRenderedPacketBytes": 40000,
+        "smallContextPacketBytes": 30000,
+        "maxReferenceFilesPerPacket": 12,
+        "includeOnlyOwnedWrites": true,
+        "excludeRuntimeWorkArtifacts": true
+    },
+    "tierResolution": {
+        "status": "RESOLVED",
+        "tier": "S2",
+        "requestedTier": "S2",
+        "reason": "multiple-executable-owners and browser-risk resolved by agent-lifecycle tier resolve",
+        "independentReviewRequired": true,
+        "requestPath": "tasks/2026-11-08-mobile-messenger-ux/tier-request.json",
+        "resolutionPath": "tasks/2026-11-08-mobile-messenger-ux/tier-resolution.json",
+        "requestDigest": "68f7bb7060897ecd7d2534d16748677f8e1b57e9b6780fff33d6c95cd3844b8b"
+    },
+    "planReview": {
+        "required": true,
+        "reviewerClass": "independent-plan-reviewer",
+        "maxRounds": 4,
+        "implementationAuthorized": false,
+        "report": "tasks/2026-11-08-mobile-messenger-ux/plan-review.json",
+        "reviewedRevision": 4,
+        "verdict": "READY_TO_FREEZE"
+    },
+    "nonGoals": [
+        "swipes on contacts/assistant pages and pull-to-refresh",
+        "long-press menus, haptics, gesture-driven multi-select",
+        "a custom tooltip component (native title is enough)",
+        "message grouping by time or bubble tails",
+        "read receipts or new delivery states",
+        "restoring the pre-pack-2 profile-row arrow"
+    ],
+    "planFiles": [
+        "tasks/2026-11-08-mobile-messenger-ux/acceptance-criteria.md",
+        "tasks/2026-11-08-mobile-messenger-ux/decisions.md",
+        "tasks/2026-11-08-mobile-messenger-ux/developer-overview.md",
+        "tasks/2026-11-08-mobile-messenger-ux/plan-review-request.md",
+        "tasks/2026-11-08-mobile-messenger-ux/plan-review.json",
+        "tasks/2026-11-08-mobile-messenger-ux/plan.manifest.json",
+        "tasks/2026-11-08-mobile-messenger-ux/plan.md",
+        "tasks/2026-11-08-mobile-messenger-ux/specification.md",
+        "tasks/2026-11-08-mobile-messenger-ux/tier-request.json",
+        "tasks/2026-11-08-mobile-messenger-ux/tier-resolution.json"
+    ]
+}

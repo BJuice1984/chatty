@@ -31,6 +31,8 @@ import { AppState, ComponentProps, withStore } from '../../../../utils/Store.ts'
 import type { Button, ChangeUserData, ChatInfo, Input } from '../../../../utils/types.ts'
 import { getPreferences, notificationPermission, setPreference } from '../../../../utils/preferences.ts'
 import { type Theme, getTheme, setTheme } from '../../../../utils/theme.ts'
+import { SwipePoint, resolveSwipe } from '../../../../utils/swipe.ts'
+import Router from '../../../../utils/Router.ts'
 import { getProfileController } from '../../controller.ts'
 import { profileSlice } from '../../store.ts'
 import type { FilesUsage } from '../../ports.ts'
@@ -131,6 +133,10 @@ function requestBrowserPermission(): Promise<void> {
 const optionalPhoneValidator = (value: string): boolean => value === '' || phoneValidator(value)
 
 class ProfilePageBase extends Block<ProfilePageProps> {
+    // стартовая точка свайпа-возврата (2026-11-08): null — жеста нет;
+    // жест, начавшийся внутри модалки, гасится (узор F-4)
+    private settingsSwipeStart: SwipePoint | null = null
+
     constructor(propsFromStore: { user: ProfilePageUser, archivedChats: ChatInfo[] }) {
         super({
             ...(propsFromStore as unknown as ProfilePageProps),
@@ -265,6 +271,46 @@ class ProfilePageBase extends Block<ProfilePageProps> {
                 // и кнопки согласованно — reset-семантика F-4)
                 input: () => {
                     this.updateSubmitButtons()
+                },
+                // свайп-возврат из настроек (2026-11-08): вправо — при
+                // открытой секции вернуться к списку пунктов (та же ветка,
+                // что settings-back), на корне — история назад; жест внутри
+                // модалки (logout-all) игнорируется (узор F-4 мессенджера)
+                touchstart: (event: Event) => {
+                    const target = event.target as HTMLElement | null
+
+                    if (target?.closest('[data-testid="modal"]') != null) {
+                        this.settingsSwipeStart = null
+
+                        return
+                    }
+
+                    const touch = (event as TouchEvent).changedTouches?.[0]
+
+                    this.settingsSwipeStart = touch != null ? { x: touch.clientX, y: touch.clientY } : null
+                },
+                touchend: (event: Event) => {
+                    const start = this.settingsSwipeStart
+
+                    this.settingsSwipeStart = null
+
+                    if (start == null) {
+                        return
+                    }
+
+                    const touch = (event as TouchEvent).changedTouches?.[0]
+
+                    if (touch == null) {
+                        return
+                    }
+
+                    if (resolveSwipe(start, { x: touch.clientX, y: touch.clientY }) === 'right') {
+                        if ((this.props).settingsPaneOpen === true) {
+                            this.setProps({ settingsPaneOpen: false })
+                        } else {
+                            Router.back()
+                        }
+                    }
                 },
                 click: (event: Event) => {
                     const target = event.target as HTMLElement | null

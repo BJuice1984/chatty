@@ -22,4 +22,12 @@
     color: var(--main-text-color);
     padding-left: 6px;
   }
+
+  &__arrow {
+    @include reset;
+    @include hover-opacity;
+
+    margin-left: auto;
+    align-self: center;
+  }
 }

@@ -414,10 +414,14 @@ async def test_display_name_fallback_in_chat_members_is_live(client, app):
         assert names[bob['id']] == 'members-bob'
         assert names[carol['id']] == 'Carol K.'
 
+        # 2026-11-08-mobile-messenger-ux: людям is_bot=False в обеих формах
+        assert {item['is_bot'] for item in members.json()} == {False}
+
         # the same shape in the batched GET /chats members
         chats = await chat_list(client)
         briefs = {item['id']: item['display_name'] for item in chats[chat_id]['members']}
         assert briefs == names
+        assert {item['is_bot'] for item in chats[chat_id]['members']} == {False}
 
         # the brief is computed live: a later rename flows through immediately
         await put_profile(carol_client, app, {'display_name': 'Carol Second'})

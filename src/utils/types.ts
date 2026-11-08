@@ -90,10 +90,22 @@ export interface ChatUser {
     email: string
     phone: string
     avatar: string
+    // бот-аккаунт ассистента (2026-11-08): серверный is_bot из формы
+    // участника — по нему сообщения бота получают чип «✦ AI»
+    is_bot?: boolean
     // архивное членство (участник покинул чат, GET /chats/{id}/members):
     // null/undefined — активный; шапка мессенджера гасит такую иконку
     left_at?: string | null
     [key: string]: unknown
+}
+
+// Плашка автора сообщения (2026-11-08-mobile-messenger-ux): аватар +
+// логин над пузырём первого сообщения серии автора в групповом чате;
+// email уезжает в нативный title плашки
+export interface MessageAuthorBadge {
+    login: string
+    email: string
+    avatar: string
 }
 
 export interface CreateChatData {

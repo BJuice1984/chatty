@@ -548,4 +548,23 @@ describe('chats api social operations (fake XHR)', () => {
         expect(call.body).to.eq(JSON.stringify({ emoji: '👍' }))
         expect(call.headers['X-CSRF-Token']).to.eq('token-1')
     })
+
+    // 2026-11-08-mobile-messenger-ux: серверный is_bot доезжает в ChatUser —
+    // по нему сообщения бота получают чип «✦ AI»; отсутствию — false
+    it('maps the server is_bot flag in getChatUsers', async () => {
+        FakeXHR.responses.push({
+            status: 200,
+            response: [
+                { id: 7, login: 'ada@example.com', display_name: 'ada', is_bot: false },
+                { id: 9, login: 'bot@chatty.local', display_name: 'AI', is_bot: true },
+                { id: 8, login: 'bob@example.com', display_name: 'bob' },
+            ],
+        })
+
+        const members = await ownChatsPort.getChatUsers(3)
+
+        expect(members[0]?.is_bot).to.eq(false)
+        expect(members[1]?.is_bot).to.eq(true)
+        expect(members[2]?.is_bot).to.eq(false)
+    })
 })

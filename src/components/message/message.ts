@@ -1,5 +1,5 @@
 import Block from '../../core/Block.ts'
-import type { MessageAttachment, MessageReplyTo, ReactionSummary } from '../../utils/types.ts'
+import type { MessageAttachment, MessageAuthorBadge, MessageReplyTo, ReactionSummary } from '../../utils/types.ts'
 import template from './message.hbs'
 
 // Фикс-набор реакций (stage chats-social): тот же whitelist, что на бэкенде —
@@ -67,6 +67,12 @@ interface MessageProps {
     // оптимистичная запись своего сообщения (2026-11-07): WS-эхо ещё не
     // приехало — маркер «отправляется»; серверный id гасит его в «✓»
     isSending?: boolean
+    // плашка автора (2026-11-08): аватар + логин над пузырём первого
+    // сообщения серии автора в групповом чате; title несёт email
+    authorBadge?: MessageAuthorBadge
+    // ответ бота (2026-11-08): чип «✦ AI» над пузырём во всех чатах —
+    // пользователь видит, что реплика от ассистента
+    isBot?: boolean
     // eslint-disable-next-line no-unused-vars
     onSetReaction?: (chatId: number, messageId: number, emoji: string) => void
     // eslint-disable-next-line no-unused-vars
@@ -206,6 +212,7 @@ export class Message extends Block {
             emojiSet: MESSAGE_EMOJI_SET,
             hasReactions: (reactions?.length ?? 0) > 0,
             quoteSnippet,
+            hasMeta: (this.props as MessageProps).authorBadge != null || (this.props as MessageProps).isBot === true,
             attachmentViews: ((this.props as MessageProps).attachments ?? []).map(toAttachmentView),
         })
     }

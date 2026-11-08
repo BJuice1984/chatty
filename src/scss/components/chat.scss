@@ -258,10 +258,13 @@
           @include size(150px, 150px);
 
           align-self: center;
-          background-image: radial-gradient(circle at center, var(--overlay-background) 0 34%, transparent 35%), url("../../images/pencil.svg");
-          background-repeat: no-repeat;
-          background-size: 150px, 30px;
-          background-position: center;
+
+          &:hover {
+            background-image: radial-gradient(circle at center, var(--overlay-background) 0 34%, transparent 35%), url("../../images/pencil.svg");
+            background-repeat: no-repeat;
+            background-size: 150px, 30px;
+            background-position: center;
+          }
         }
       }
 
@@ -394,13 +397,19 @@
     /* Мобильная ветка (<768): одна колонка; список и панель чата
        переключаются модификатором корня chat_pane-open (из chatPaneOpen) */
     @media (max-width: ($tablet - 1px)) {
-        grid-template-columns: 1fr;
+        grid-template-columns: minmax(0, 1fr);
         grid-template-rows: 100%;
 
         &__container-users {
             width: 100%;
             height: 100%;
+            min-width: 0;
             border-right: none;
+        }
+
+        &__container-stories-list {
+            width: 100%;
+            max-width: 100%;
         }
 
         &__container-chats {
