@@ -532,3 +532,79 @@ async def test_parent_vacation_offer_still_works(client, app, session_factory, m
     assert provider.calls
     prompt = '\n'.join(part['content'] for part in provider.calls[-1])
     assert 'Хочу в отпуск' in prompt
+
+
+async def test_different_form_kind_restarts_the_wizard(client, app, session_factory, monkeypatch):
+    seed_schedule(session_factory)
+    requisites_ready(monkeypatch)
+    bot_ready(app, ScriptedProvider())
+    await register(client, 'forms-restart@example.com')
+    await register_bot(app)
+    chat_id = await create_ai_chat(client)
+    bot = bot_id(session_factory)
+    user = (await client.get('/api/v1/auth/me')).json()
+    save_surname(session_factory, user['id'], 'Абрикосов Т.П.')
+
+    await say(client, chat_id, 'нужно заявление на отпуск')
+    reply = await last_bot_reply(client, chat_id, bot)
+    assert '1)' in reply  # the vacation wizard is at choose_period
+
+    # a DIFFERENT form intent mid-wizard restarts with the new kind and
+    # a cleared payload (D-F-19/F-R1-9): transfer asks for the OLD period
+    await say(client, chat_id, 'хочу перенести отпуск')
+    reply = await last_bot_reply(client, chat_id, bot)
+    assert '1)' in reply and '2)' in reply
+    state, payload = dialog_state(session_factory, user['id'])
+    assert state == 'form:transfer:choose_period'
+    assert '"kind":"transfer"' in (payload or '')
+    assert '"kind":"vacation"' not in (payload or '')
+
+
+async def test_form_storage_unavailable_fails_the_run(client, app, session_factory, monkeypatch):
+    seed_schedule(session_factory)
+    requisites_ready(monkeypatch)
+    # NO object storage on app.state and no env credentials: the seam stays
+    # None and a generation must fail as form_storage_unavailable (not 500)
+    app.state.embedding_provider = HashEmbeddingProvider()
+    app.state.bot_provider = ScriptedProvider()
+    await register(client, 'forms-nostorage@example.com')
+    await register_bot(app)
+    chat_id = await create_ai_chat(client)
+    user = (await client.get('/api/v1/auth/me')).json()
+    save_surname(session_factory, user['id'], 'Вишневский О.Н.')
+
+    await say(client, chat_id, 'оформи заявление на отпуск')
+    await say(client, chat_id, 'да')  # the only schedule period
+    run = await say(client, chat_id, 'да')  # the summary confirm -> generation
+    assert run['status'] == 'failed'
+    assert run['error_kind'] == 'form_storage_unavailable'
+
+
+async def test_form_storage_failed_on_upload_error(client, app, session_factory, monkeypatch):
+    seed_schedule(session_factory)
+    requisites_ready(monkeypatch)
+
+    class BrokenStorage:
+        def upload(self, object_key, body, content_type):
+            raise RuntimeError('storage down')
+
+        def download(self, object_key):
+            raise AssertionError('never downloads')
+
+        def delete(self, object_key):
+            return None
+
+    app.state.object_storage = BrokenStorage()
+    app.state.embedding_provider = HashEmbeddingProvider()
+    app.state.bot_provider = ScriptedProvider()
+    await register(client, 'forms-brokenstorage@example.com')
+    await register_bot(app)
+    chat_id = await create_ai_chat(client)
+    user = (await client.get('/api/v1/auth/me')).json()
+    save_surname(session_factory, user['id'], 'Вишневский О.Н.')
+
+    await say(client, chat_id, 'оформи заявление на отпуск')
+    await say(client, chat_id, 'да')
+    run = await say(client, chat_id, 'да')
+    assert run['status'] == 'failed'
+    assert run['error_kind'] == 'form_storage_failed'

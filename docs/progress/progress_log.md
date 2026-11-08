@@ -26,7 +26,7 @@ awaiting_yes, D-F-12), доставка: FileService.upload (бот — акти
 участник) → MessageCreate(file_id) → run.attachment_file_id; seam
 инжектится в endpoints/bot.py (единственный api-файл в write-set, D-F-5);
 отказы form_storage_unavailable/form_storage_failed; фронт не тронут.
-Гейты: pytest 392→435 (волна A +22, волна B +21), D-11 зелёный (ровно 4
+Гейты: pytest 392→437 (волна A +22, волна B +23), D-11 зелёный (ровно 4
 известных POSIX-only ingestion-падения; флейк test_social_api
 задокументирован D-F-17), ownership чист, репозиторий без реальных
 реквизитов (маркеры только в локальном evidence, D-F-10/D-F-16 — план-пакет

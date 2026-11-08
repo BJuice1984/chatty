@@ -237,6 +237,13 @@ class VacationFormsSkill:
             self._store.clear_state(user_id)
             return FormsOutcome(reply=CANCEL_ACK)
 
+        # D-F-19: a form intent of a DIFFERENT kind restarts the wizard
+        # with the new kind and a cleared payload; the same kind simply
+        # re-states the current step below
+        fresh_kind = _FORM_KIND_BY_INTENT.get(classify(content) or '')
+        if fresh_kind is not None and fresh_kind != kind:
+            return self._start(fresh_kind, user_id)
+
         if step == 'surname':
             resolution = resolve_answer(self._service, self._store, user_id, content, attempts)
             if resolution.found is not None:
