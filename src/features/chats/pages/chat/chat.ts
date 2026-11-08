@@ -257,6 +257,58 @@ class ChatPageBase extends Block {
         }
     }
 
+    // Свайп-навигация вьюера (2026-11-08-mobile-messenger-ux): вьюер
+    // презентационный — жест приходит колбэком onSwipe, семантика
+    // принадлежит странице вместе с таймером. 'left' — следующая история
+    // (текущая маркируется просмотренной; за последней — close-путь),
+    // 'right' — предыдущая (перед первой — close-путь), 'down' — close.
+    // markViewed идемпотентен на сервере, но каждый путь зовёт его ровно
+    // один раз: продвижение маркирует руками, закрытие — close-путём
+    private handleViewerSwipe(direction: 'left' | 'right' | 'down'): void {
+        const currentId = this.openedStoryId
+
+        if (direction === 'down') {
+            this.closeStory(currentId)
+
+            return
+        }
+
+        if (currentId == null) {
+            return
+        }
+
+        const realStories = this.renderStories.filter(story => story.type !== 'add')
+        const index = realStories.findIndex(story => story.id === currentId)
+
+        if (index < 0) {
+            return
+        }
+
+        if (direction === 'left') {
+            const next = realStories[index + 1]
+
+            if (next != null) {
+                if (currentId !== ADD_STORY_ID) {
+                    StoriesController.markViewed(Number(currentId))
+                }
+
+                this.openStory(next.id)
+            } else {
+                this.closeStory(currentId)
+            }
+
+            return
+        }
+
+        const previous = realStories[index - 1]
+
+        if (previous != null) {
+            this.openStory(previous.id)
+        } else {
+            this.closeStory(currentId)
+        }
+    }
+
     // Фокус на оверлей ради Escape: ставится при открытии и после каждой
     // перерисовки (replaceWith сбрасывает фокус на body). Гвард в кадре:
     // история могла закрыться внутри кадра — не трогаем мёртвый оверлей.
@@ -436,6 +488,9 @@ class ChatPageBase extends Block {
                 // id открытой истории хранит страница (openedStoryId);
                 // viewerStory-объект id не несёт — вьюер презентационный
                 this.closeStory(this.openedStoryId)
+            },
+            onSwipeViewer: (direction: 'left' | 'right' | 'down') => {
+                this.handleViewerSwipe(direction)
             },
             onDeleteViewer: () => {
                 // удаление своей истории: вьюер закрывается БЕЗ маркировки

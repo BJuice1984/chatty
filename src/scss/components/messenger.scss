@@ -75,7 +75,7 @@
 
     position: absolute;
     top: 1px;
-    right: 180px;
+    left: 70px;
     z-index: 3;
     padding: 2px 8px;
     border-radius: 10px;
@@ -263,6 +263,44 @@
     @include reset;
 
     overflow-wrap: anywhere;
+  }
+
+  &__message-meta {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    margin-bottom: 2px;
+    padding-left: 2px;
+  }
+
+  &__message-author {
+    @include text-format(400, 12px, 16px);
+
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    color: var(--second-text-color);
+    cursor: default;
+  }
+
+  &__message-author-avatar {
+    @include size(16px, 16px);
+
+    border-radius: 50%;
+    object-fit: cover;
+  }
+
+  &__message-ai-badge {
+    @include text-format(500, 10px, 14px);
+
+    display: inline-flex;
+    align-items: center;
+    padding: 0 6px;
+    border-radius: 8px;
+    background-color: var(--chat-ai-accent);
+    color: var(--second-text-color);
+    letter-spacing: 0.5px;
+    white-space: nowrap;
   }
 
   &__message-files {
@@ -761,6 +799,10 @@
     display: none;
   }
 
+  &__header-kebab {
+    display: none;
+  }
+
   /* Composer (Telegram-подача): пилюля на всю ширину, инпут и круглая
      кнопка отправки в одну линию; при пустом сообщении кнопка блокируется
      чистым CSS (:placeholder-shown), текст ошибки валидации не показываем —
@@ -910,6 +952,41 @@
 
     &__header-container {
       padding-left: 10px;
+    }
+
+    &__header-title-hint {
+      left: 95px;
+    }
+
+    &__header-buttons-container {
+      display: none;
+    }
+
+    &__header-kebab {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      width: 30px;
+      height: 30px;
+      margin-left: 6px;
+      padding: 0;
+      border: none;
+      border-radius: 50%;
+      background-color: var(--overlay-background);
+      color: var(--main-text-color);
+      font-size: 16px;
+      line-height: 1;
+      cursor: pointer;
+      transition: background-color 0.15s ease-in-out, transform 0.15s ease-in-out;
+
+      &:hover {
+        background-color: var(--overlay-hover-background);
+        transform: scale(1.06);
+      }
+
+      &:active {
+        transform: scale(0.96);
+      }
     }
 
     &__header-avatar {

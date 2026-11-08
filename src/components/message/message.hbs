@@ -8,6 +8,14 @@
             {{#if formattedTime}}<time class="messenger__message-system-time" datetime="{{time}}">{{formattedTime}}</time>{{/if}}
         </div>
     {{else}}
+    {{#if hasMeta}}
+        <div class="messenger__message-meta" data-testid="message-meta">
+            {{#if authorBadge}}
+                <span class="messenger__message-author" data-testid="message-author-badge" title="{{authorBadge.email}}"><img class="messenger__message-author-avatar" src="{{authorBadge.avatar}}" alt="">{{authorBadge.login}}</span>
+            {{/if}}
+            {{#if isBot}}<span class="messenger__message-ai-badge" data-testid="message-ai-badge">✦ AI</span>{{/if}}
+        </div>
+    {{/if}}
     {{#if quoteSnippet}}
         <div class="messenger__message-quote" data-testid="message-quote"><span class="messenger__message-quote-label">В ответ</span><span class="messenger__message-quote-text">{{quoteSnippet}}</span></div>
     {{/if}}

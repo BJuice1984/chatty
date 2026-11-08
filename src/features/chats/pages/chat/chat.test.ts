@@ -1387,3 +1387,163 @@ describe('chat page feed autoscroll decisions', () => {
         }
     })
 })
+
+// 2026-11-08-mobile-messenger-ux: свайп-навигация вьюера историй —
+// страница-владелец превращает onSwipe в next/prev/close с маркировкой
+// просмотра; плюс scss-пины мобильного layout-зажима (истории больше
+// не выпихивают панель за экран) и hover-подложки карандаша
+describe('chat page viewer swipe navigation', () => {
+    let clock: sinon.SinonFakeTimers
+    let storiesSocket: sinon.SinonStub
+
+    const feed = [41, 42, 43].map((id, index) => ({
+        id,
+        owner: `Owner ${index}`,
+        ownerAvatarUrl: '',
+        src: `http://localhost:8000/api/v1/files/1${id}/download`,
+        alt: `История ${index}`,
+        viewed: false,
+        createdAt: '2026-10-25T10:00:00Z',
+    }))
+
+    beforeEach(() => {
+        clock = sinon.useFakeTimers()
+        store.set('stories', feed)
+        storiesSocket = sinon.stub(StoriesController, 'connectStoriesSocket')
+    })
+
+    afterEach(() => {
+        storiesSocket.restore()
+        clock.restore()
+        store.set('chats', undefined)
+        store.set('stories', undefined)
+    })
+
+    function openFirst(page: unknown): void {
+        callbacksOf(page).onSelectStory?.('41')
+    }
+
+    it('swipe left marks the current story viewed and opens the next one', () => {
+        const fetchChats = sinon.stub(ChatsController, 'fetchChats').resolves()
+        const fetchStories = sinon.stub(StoriesController, 'fetchStories').resolves()
+        const markViewed = sinon.stub(StoriesController, 'markViewed')
+
+        try {
+            const page = new ChatPage({} as never)
+
+            openFirst(page)
+            ;(callbacksOf(page) as unknown as { onSwipeViewer: (d: 'left' | 'right' | 'down') => void }).onSwipeViewer('left')
+
+            expect(markViewed.calledOnceWith(41)).to.be.true
+            expect(callbacksOf(page).viewerStory?.src).to.eq(feed[1].src)
+
+            page.destroy()
+        } finally {
+            markViewed.restore()
+            fetchStories.restore()
+            fetchChats.restore()
+        }
+    })
+
+    it('swipe left past the last story closes the viewer via the close path', () => {
+        const fetchChats = sinon.stub(ChatsController, 'fetchChats').resolves()
+        const fetchStories = sinon.stub(StoriesController, 'fetchStories').resolves()
+        const markViewed = sinon.stub(StoriesController, 'markViewed')
+
+        try {
+            const page = new ChatPage({} as never)
+
+            callbacksOf(page).onSelectStory?.('43')
+            ;(callbacksOf(page) as unknown as { onSwipeViewer: (d: 'left' | 'right' | 'down') => void }).onSwipeViewer('left')
+
+            // за последней — close-путь: маркировка ровно один раз, вьюер закрыт
+            expect(markViewed.calledOnceWith(43)).to.be.true
+            expect(callbacksOf(page).viewerStory).to.be.null
+
+            page.destroy()
+        } finally {
+            markViewed.restore()
+            fetchStories.restore()
+            fetchChats.restore()
+        }
+    })
+
+    it('swipe right opens the previous story; before the first it closes', () => {
+        const fetchChats = sinon.stub(ChatsController, 'fetchChats').resolves()
+        const fetchStories = sinon.stub(StoriesController, 'fetchStories').resolves()
+        const markViewed = sinon.stub(StoriesController, 'markViewed')
+
+        try {
+            const page = new ChatPage({} as never)
+            const swipe = (callbacksOf(page) as unknown as { onSwipeViewer: (d: 'left' | 'right' | 'down') => void }).onSwipeViewer
+
+            callbacksOf(page).onSelectStory?.('42')
+            swipe('right')
+            expect(callbacksOf(page).viewerStory?.src).to.eq(feed[0].src)
+            expect(markViewed.called).to.be.false
+
+            swipe('right')
+            // перед первой — close-путь с маркировкой текущей
+            expect(callbacksOf(page).viewerStory).to.be.null
+            expect(markViewed.calledOnceWith(41)).to.be.true
+
+            page.destroy()
+        } finally {
+            markViewed.restore()
+            fetchStories.restore()
+            fetchChats.restore()
+        }
+    })
+
+    it('swipe down runs the plain close path', () => {
+        const fetchChats = sinon.stub(ChatsController, 'fetchChats').resolves()
+        const fetchStories = sinon.stub(StoriesController, 'fetchStories').resolves()
+        const markViewed = sinon.stub(StoriesController, 'markViewed')
+
+        try {
+            const page = new ChatPage({} as never)
+
+            openFirst(page)
+            ;(callbacksOf(page) as unknown as { onSwipeViewer: (d: 'left' | 'right' | 'down') => void }).onSwipeViewer('down')
+
+            expect(callbacksOf(page).viewerStory).to.be.null
+            expect(markViewed.calledOnceWith(41)).to.be.true
+
+            page.destroy()
+        } finally {
+            markViewed.restore()
+            fetchStories.restore()
+            fetchChats.restore()
+        }
+    })
+})
+
+describe('chat scss mobile pins', () => {
+    it('the mobile branch clamps the grid track so a long stories row cannot push the layout', async () => {
+        const { readFileSync } = await import('node:fs')
+        const scss = readFileSync('src/scss/components/chat.scss', 'utf-8')
+        const mobileStart = scss.indexOf('@media (max-width: ($tablet - 1px))')
+        const mobileBlock = scss.slice(mobileStart)
+
+        expect(mobileStart).to.be.greaterThan(-1)
+        expect(mobileBlock).to.contain('grid-template-columns: minmax(0, 1fr)')
+        expect(mobileBlock).to.contain('min-width: 0')
+        expect(mobileBlock).to.contain('max-width: 100%')
+    })
+
+    it('the change-profile pencil underlay paints only on hover', async () => {
+        const { readFileSync } = await import('node:fs')
+        const scss = readFileSync('src/scss/components/chat.scss', 'utf-8')
+        const modifierStart = scss.indexOf('&_type_change-profile')
+        const modifierBlock = scss.slice(modifierStart, scss.indexOf('&-chat-ava', modifierStart))
+        const hoverStart = modifierBlock.indexOf('&:hover')
+
+        expect(modifierStart).to.be.greaterThan(-1)
+        expect(hoverStart).to.be.greaterThan(-1)
+
+        // подложка (radial-gradient + карандаш) живёт ВНУТРИ hover-скуп,
+        // в базовом состоянии блока её нет
+        expect(modifierBlock.slice(hoverStart)).to.contain('background-image')
+        expect(modifierBlock.slice(0, hoverStart)).to.not.contain('background-image')
+    })
+})

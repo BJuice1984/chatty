@@ -22,6 +22,18 @@ function keyOn(element: Element, key: string): void {
     element.dispatchEvent(new dom.window.KeyboardEvent('keydown', { key, bubbles: true }))
 }
 
+// jsdom не знает TouchEvent: обычный Event с досыпанным changedTouches
+// (2026-11-08-mobile-messenger-ux, проводка свайпов)
+function touchOn(element: Element, type: 'touchstart' | 'touchend', x: number, y: number): void {
+    const event = new dom.window.Event(type, { bubbles: true, cancelable: true })
+
+    Object.defineProperty(event, 'changedTouches', {
+        value: [{ clientX: x, clientY: y }],
+        configurable: true,
+    })
+    element.dispatchEvent(event)
+}
+
 describe('story viewer', () => {
     it('renders the open overlay with the story photo and aria state', () => {
         const viewer = new StoryViewer({ story: STORY })
@@ -124,5 +136,44 @@ describe('story viewer', () => {
 
         expect(onDelete.calledOnce).to.be.true
         expect(onClose.called).to.be.false
+    })
+
+    // 2026-11-08-mobile-messenger-ux: вьюер презентационный — жест
+    // классифицируется внутри и уезжает колбэком onSwipe(direction)
+    it('classifies swipes and routes the direction to onSwipe', () => {
+        const onSwipe = sinon.spy()
+        const viewer = new StoryViewer({ story: STORY, onSwipe })
+
+        touchOn(viewer.element!, 'touchstart', 0, 0)
+        touchOn(viewer.element!, 'touchend', 120, 10)
+        expect(onSwipe.calledWith('right')).to.be.true
+
+        touchOn(viewer.element!, 'touchstart', 120, 0)
+        touchOn(viewer.element!, 'touchend', 0, 10)
+        expect(onSwipe.calledWith('left')).to.be.true
+
+        touchOn(viewer.element!, 'touchstart', 0, 0)
+        touchOn(viewer.element!, 'touchend', 5, 130)
+        expect(onSwipe.calledWith('down')).to.be.true
+
+        expect(onSwipe.callCount).to.eq(3)
+
+        viewer.destroy()
+    })
+
+    it('stays quiet on a short tap and on a touchend without a start', () => {
+        const onSwipe = sinon.spy()
+        const viewer = new StoryViewer({ story: STORY, onSwipe })
+
+        // тап короче порога — не жест
+        touchOn(viewer.element!, 'touchstart', 0, 0)
+        touchOn(viewer.element!, 'touchend', 10, 2)
+        expect(onSwipe.called).to.be.false
+
+        // touchend без живого touchstart (жест прерван перерисовкой)
+        touchOn(viewer.element!, 'touchend', 200, 0)
+        expect(onSwipe.called).to.be.false
+
+        viewer.destroy()
     })
 })

@@ -48,6 +48,7 @@ interface MessengerTestProps {
     addUserOpen?: boolean
     autoDownload?: boolean
     deleteModalOpen?: boolean
+    kebabOpen?: boolean
     menuTarget?: { id?: number, display_name?: string } | null
     onReplyToMessage?: (draft: { id?: number; snippet: string }) => void
 }
@@ -1790,5 +1791,293 @@ describe('messenger auto-title input, empty hint and +AI button', () => {
         } finally {
             messenger.destroy()
         }
+    })
+})
+
+// 2026-11-08-mobile-messenger-ux: кебаб-меню мобильной шапки — те же
+// действия, что ряд иконок (дескрипторы с actionId/menuLabel), и
+// свайп-возврат к списку чатов с гвардом открытых модалок (review F-4)
+describe('messenger mobile kebab menu', () => {
+    beforeEach(() => {
+        store.set('chats', [{ id: 5, title: 'рабочий чат', avatar: '', unread_count: 0, owner_id: 7 }])
+        store.set('chatUsers', [{ id: 7, avatar: '', display_name: 'Я' }])
+        store.set('messages', { 5: [] })
+        store.set('selectedChat', 5)
+    })
+
+    afterEach(() => {
+        store.set('messages', undefined)
+        store.set('selectedChat', undefined)
+        store.set('chatUsers', undefined)
+        store.set('chats', undefined)
+    })
+
+    const kebabOf = (messenger: { element?: Element | null }) =>
+        messenger.element?.querySelector<HTMLButtonElement>('[data-testid="header-kebab"]')
+
+    const clickAction = (messenger: { element?: Element | null }, actionId: string) =>
+        messenger.element?.querySelector(`[data-testid="chat-action-${actionId}"]`)
+            ?.dispatchEvent(new MouseEvent('click', { bubbles: true }))
+
+    it('the kebab and the desktop icon row coexist in DOM (CSS-only visibility)', () => {
+        const messenger = new Messenger({} as never)
+
+        try {
+            expect(messenger.element?.querySelector('.messenger__header-buttons-container')).to.exist
+            expect(kebabOf(messenger)).to.exist
+        } finally {
+            messenger.destroy()
+        }
+    })
+
+    it('kebab opens the menu; entries fire the same callbacks as the header icons', () => {
+        const onEnableAi = sinon.spy()
+        const messenger = new Messenger({ onEnableAi } as never)
+
+        try {
+            kebabOf(messenger)?.click()
+
+            const modal = messenger.element?.querySelector('[data-testid="modal"][aria-hidden="false"]')
+
+            expect(modal).to.exist
+
+            const labels = Array.from(messenger.element?.querySelectorAll('[data-testid^="chat-action-"]') ?? [])
+                .map(node => (node as HTMLElement).textContent?.trim())
+
+            expect(labels).to.include('Включить AI')
+            expect(labels).to.include('Добавить пользователей')
+            expect(labels).to.include('Удалить чат')
+            expect(labels).to.include('Отмена')
+
+            clickAction(messenger, 'ai')
+            expect(onEnableAi.calledOnceWith(5)).to.be.true
+            expect(propsOf(messenger).kebabOpen).to.eq(false)
+
+            kebabOf(messenger)?.click()
+            clickAction(messenger, 'add-user')
+            expect(propsOf(messenger).addUserOpen).to.eq(true)
+
+            kebabOf(messenger)?.click()
+            clickAction(messenger, 'delete')
+            expect(propsOf(messenger).deleteModalOpen).to.eq(true)
+        } finally {
+            messenger.destroy()
+        }
+    })
+
+    it('cancel closes the menu without firing actions', () => {
+        const onEnableAi = sinon.spy()
+        const messenger = new Messenger({ onEnableAi } as never)
+
+        try {
+            kebabOf(messenger)?.click()
+            clickAction(messenger, 'cancel')
+
+            expect(propsOf(messenger).kebabOpen).to.eq(false)
+            expect(onEnableAi.called).to.be.false
+        } finally {
+            messenger.destroy()
+        }
+    })
+
+    it('archived chat: the menu carries no add-user entry, delete stays', () => {
+        store.set('chats', [{ id: 5, title: 'архив', avatar: '', unread_count: 0, owner_id: 7, leftAt: '2026-11-01T09:00:00Z' }])
+        const messenger = new Messenger({} as never)
+
+        try {
+            kebabOf(messenger)?.click()
+
+            expect(messenger.element?.querySelector('[data-testid="chat-action-add-user"]')).to.not.exist
+            expect(messenger.element?.querySelector('[data-testid="chat-action-delete"]')).to.exist
+        } finally {
+            messenger.destroy()
+        }
+    })
+})
+
+describe('messenger pane swipe back', () => {
+    beforeEach(() => {
+        store.set('chats', [{ id: 5, title: 'рабочий чат', avatar: '', unread_count: 0, owner_id: 7 }])
+        store.set('chatUsers', [{ id: 7, avatar: '', display_name: 'Я' }])
+        store.set('messages', { 5: [] })
+        store.set('selectedChat', 5)
+    })
+
+    afterEach(() => {
+        store.set('messages', undefined)
+        store.set('selectedChat', undefined)
+        store.set('chatUsers', undefined)
+        store.set('chats', undefined)
+    })
+
+    const touchOn = (element: Element, type: 'touchstart' | 'touchend', x: number, y: number) => {
+        const event = new window.Event(type, { bubbles: true, cancelable: true })
+
+        Object.defineProperty(event, 'changedTouches', { value: [{ clientX: x, clientY: y }], configurable: true })
+        element.dispatchEvent(event)
+    }
+
+    it('a right swipe returns through onBack (the same path as the back button)', () => {
+        const onBack = sinon.spy()
+        const messenger = new Messenger({ onBack } as never)
+
+        try {
+            touchOn(messenger.element!, 'touchstart', 0, 0)
+            touchOn(messenger.element!, 'touchend', 120, 10)
+
+            expect(onBack.calledOnce).to.be.true
+        } finally {
+            messenger.destroy()
+        }
+    })
+
+    it('a gesture starting inside an open modal never deselects the chat (F-4 guard)', () => {
+        const onBack = sinon.spy()
+        const messenger = new Messenger({ onBack } as never)
+
+        try {
+            // открываем кебаб-меню: в DOM появляется живая модалка
+            messenger.element?.querySelector<HTMLButtonElement>('[data-testid="header-kebab"]')?.click()
+
+            const modal = messenger.element?.querySelector('[data-testid="modal"]') as HTMLElement
+
+            expect(modal).to.exist
+
+            // жест начинается ВНУТРИ модалки — гвард гасит его на старте
+            touchOn(modal, 'touchstart', 0, 0)
+            touchOn(messenger.element!, 'touchend', 200, 0)
+
+            expect(onBack.called).to.be.false
+            expect(propsOf(messenger).kebabOpen).to.eq(true)
+        } finally {
+            messenger.destroy()
+        }
+    })
+
+    it('a short tap is not a swipe', () => {
+        const onBack = sinon.spy()
+        const messenger = new Messenger({ onBack } as never)
+
+        try {
+            touchOn(messenger.element!, 'touchstart', 0, 0)
+            touchOn(messenger.element!, 'touchend', 15, 2)
+
+            expect(onBack.called).to.be.false
+        } finally {
+            messenger.destroy()
+        }
+    })
+})
+
+// плашка автора (групповые, при смене автора — свои сообщения серию не
+// рвут, D-2/F-1) и AI-чип ответов бота (по серверному is_bot)
+describe('mapTypedMessages author plate and bot chip', () => {
+    const me = 7
+
+    const groupUsers = [
+        { id: me, login: 'me@x.io', email: 'me@x.io', display_name: 'Я', first_name: '', second_name: '', phone: '', avatar: '/me.png' },
+        { id: 8, login: 'alice@x.io', email: 'alice@x.io', display_name: 'Алиса', first_name: '', second_name: '', phone: '', avatar: '/alice.png' },
+        { id: 9, login: 'bot@chatty.local', email: 'bot@chatty.local', display_name: 'AI', first_name: '', second_name: '', phone: '', avatar: '/bot.png', is_bot: true },
+    ] as never[]
+
+    const message = (user_id: number, extra: Record<string, unknown> = {}) => ({
+        chat_id: 5, time: 't0', type: 'message', user_id, content: 'm', ...extra,
+    })
+
+    it('plates the first foreign message of each author run; own messages do not break the run', () => {
+        const mapped = mapTypedMessages(
+            [message(8), message(8), message(me), message(8), message(9)] as never[],
+            me,
+            groupUsers
+        )
+
+        expect((mapped[0] as { authorBadge?: { login: string } }).authorBadge?.login).to.eq('alice@x.io')
+        expect((mapped[1] as { authorBadge?: unknown }).authorBadge).to.eq(undefined)
+        expect((mapped[2] as { authorBadge?: unknown }).authorBadge).to.eq(undefined)
+        // A, ME, A — серия автора не рвётся своим сообщением (review F-1)
+        expect((mapped[3] as { authorBadge?: unknown }).authorBadge).to.eq(undefined)
+        // бот — участник группового чата, его первая реплика несёт плашку
+        expect((mapped[4] as { authorBadge?: { login: string } }).authorBadge?.login).to.eq('bot@chatty.local')
+    })
+
+    it('marks bot messages with isBot and keeps humans clean', () => {
+        const mapped = mapTypedMessages(
+            [message(8), message(9), message(9, { kind: 'chat_renamed' }), message(9, { isPending: true })] as never[],
+            me,
+            groupUsers
+        )
+
+        expect((mapped[0] as { isBot?: boolean }).isBot).to.eq(false)
+        expect((mapped[1] as { isBot?: boolean }).isBot).to.eq(true)
+        // служебная строка и pending-плейсхолдер чипа не получают
+        expect((mapped[2] as { isBot?: boolean }).isBot).to.eq(false)
+        expect((mapped[3] as { isBot?: boolean }).isBot).to.eq(false)
+    })
+
+    it('a 2-member chat renders no plates but keeps the bot chip', () => {
+        const pairUsers = [groupUsers[0], groupUsers[2]]
+        const mapped = mapTypedMessages([message(9), message(9)] as never[], me, pairUsers)
+
+        expect((mapped[0] as { authorBadge?: unknown }).authorBadge).to.eq(undefined)
+        expect((mapped[1] as { authorBadge?: unknown }).authorBadge).to.eq(undefined)
+        expect((mapped[0] as { isBot?: boolean }).isBot).to.eq(true)
+    })
+
+    it('an author missing from chatUsers renders no plate and breaks nothing', () => {
+        const mapped = mapTypedMessages([message(99), message(8)] as never[], me, groupUsers)
+
+        expect((mapped[0] as { authorBadge?: unknown }).authorBadge).to.eq(undefined)
+        expect((mapped[1] as { authorBadge?: { login: string } }).authorBadge?.login).to.eq('alice@x.io')
+    })
+
+    it('the store-driven messenger renders the plate with the email tooltip', () => {
+        store.set('chats', [{ id: 5, title: 'группа', avatar: '', unread_count: 0 }])
+        store.set('chatUsers', groupUsers)
+        store.set('messages', { 5: [message(8)] })
+        store.set('selectedChat', 5)
+        store.set('user', { id: me })
+
+        const messenger = new Messenger({} as never)
+
+        try {
+            const plate = messenger.element?.querySelector('[data-testid="message-author-badge"]')
+
+            expect(plate?.textContent).to.contain('alice@x.io')
+            expect(plate?.getAttribute('title')).to.eq('alice@x.io')
+        } finally {
+            messenger.destroy()
+            store.set('messages', undefined)
+            store.set('selectedChat', undefined)
+            store.set('chatUsers', undefined)
+            store.set('chats', undefined)
+            store.set('user', undefined)
+        }
+    })
+})
+
+describe('messenger scss pins', () => {
+    it('the auto-title chip is positioned from the left without a right offset', async () => {
+        const { readFileSync } = await import('node:fs')
+        const scss = readFileSync('src/scss/components/messenger.scss', 'utf-8')
+        const ruleStart = scss.indexOf('&__header-title-hint {')
+        const ruleEnd = scss.indexOf('white-space: nowrap', ruleStart)
+        const rule = scss.slice(ruleStart, ruleEnd)
+
+        expect(ruleStart).to.be.greaterThan(-1)
+        expect(rule).to.contain('left: 70px')
+        expect(rule).to.not.match(/right:\s/)
+    })
+
+    it('the mobile branch moves the chip to left: 95px and swaps the icon row for the kebab', async () => {
+        const { readFileSync } = await import('node:fs')
+        const scss = readFileSync('src/scss/components/messenger.scss', 'utf-8')
+        const mobileStart = scss.indexOf('@media (max-width: ($tablet - 1px))')
+        const mobileBlock = scss.slice(mobileStart)
+
+        expect(mobileStart).to.be.greaterThan(-1)
+        expect(mobileBlock).to.contain('&__header-title-hint')
+        expect(mobileBlock).to.contain('left: 95px')
+        expect(mobileBlock).to.contain('&__header-buttons-container')
+        expect(mobileBlock).to.contain('&__header-kebab')
     })
 })

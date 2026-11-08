@@ -55,12 +55,18 @@ def to_member_brief(
     email-хэнл контракта, display_name — редактируемая колонка с fallback
     на локальную часть email — правило UserSearchItem/ContactResponse);
     left_at — архивное членство, значимо только для одиночного эндпоинта
-    участников (краткие составы GET /chats зовут без него)."""
+    участников (краткие составы GET /chats зовут без него);
+    is_bot — аккаунт ассистента (email совпадает с настроенным bot user,
+    сравнение в нижнем регистре — конфиг уже нормализован), клиент метит
+    его сообщения AI-плашкой (2026-11-08-mobile-messenger-ux)."""
+    from app.bot.config import bot_settings_from_env
+
     return ChatMemberBrief(
         id=user_id,
         login=email,
         display_name=display_name or email.split('@')[0],
         avatar_url=file_avatar_url(avatar_file_id),
+        is_bot=email.lower() == bot_settings_from_env().user_email,
         left_at=left_at,
     )
 
