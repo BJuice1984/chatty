@@ -43,3 +43,9 @@ __pycache__/
 *.pyc
 *.egg-info/
 .venv/
+
+# Vacation schedule source data (real employee names — never commit)
+backend/data/
+
+# HR source documents with personal data (real names — never commit)
+tasks/RAG-docs/
