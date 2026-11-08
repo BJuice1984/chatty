@@ -36,6 +36,7 @@ from app.schemas.message import MessageCreate
 from app.services.chats import ChatService
 from app.services.documents import DocumentService
 from app.services.messages import MessageService
+from app.vacations.skill import VacationSkill
 
 logger = logging.getLogger(__name__)
 
@@ -225,11 +226,39 @@ class BotService:
         if not chat.is_ai:
             return fail('bot_disabled')
 
+        # Vacation skill (2026-11-08): deterministic branch BEFORE the RAG
+        # search — the schedule never enters the RAG pipeline (live-инцидент
+        # 2026-11-03); reply posts through the same message path, a decline
+        # passes the ORIGINAL question into the normal path below
+        question = message.content
+        vacation_outcome = VacationSkill(self.session, self.provider).handle(
+            content=message.content,
+            user_id=message.user_id,
+        )
+        if vacation_outcome is not None and vacation_outcome.reply is not None:
+            self.session.expire(chat)
+            if not chat.is_ai:
+                return fail('bot_disabled')
+            response = self.message_service.create(
+                chat.id,
+                bot_user.id,
+                MessageCreate(content=vacation_outcome.reply.strip()[: self.bot.max_answer_chars]),
+            )
+            run.status = 'succeeded'
+            run.error_kind = None
+            run.response_message_id = response.id
+            run.attachment_file_id = None
+            self.session.commit()
+            self.session.refresh(run)
+            return run
+        if vacation_outcome is not None and vacation_outcome.passthrough_question is not None:
+            question = vacation_outcome.passthrough_question
+
         try:
             found = self.rag_search(
                 chat_id=chat.id,
                 user_id=bot_user.id,
-                query=message.content,
+                query=question,
                 top_k=self.bot.rag_top_k,
             )
         except HTTPException as exc:
@@ -246,7 +275,7 @@ class BotService:
 
         try:
             answer = self._answer(
-                build_messages(message.content, [hit.chunk.content for hit in chunks]),
+                build_messages(question, [hit.chunk.content for hit in chunks]),
                 on_delta=on_delta,
             )
         except BotProviderError as exc:

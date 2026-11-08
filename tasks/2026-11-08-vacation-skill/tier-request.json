@@ -1,0 +1,28 @@
+{
+    "capabilityHints": [
+        "python",
+        "pytest",
+        "fastapi",
+        "sqlalchemy",
+        "alembic",
+        "openpyxl",
+        "sqlite"
+    ],
+    "executableOwners": [
+        "worker-backend-vacation-data",
+        "worker-backend-vacation-flow"
+    ],
+    "externalSpecification": false,
+    "requirementsBytes": 12000,
+    "riskFlags": {
+        "architecture": true,
+        "browser": false,
+        "data": true,
+        "external": true,
+        "migration": true,
+        "performance": false,
+        "release": false,
+        "security": true
+    },
+    "taskCount": 2
+}
