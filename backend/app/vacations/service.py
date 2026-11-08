@@ -49,6 +49,9 @@ def days_word(count: int) -> str:
 class VacationPerson:
     full_name: str
     department: str | None
+    # Должность from xlsx column 1 (D-F-2): the parser and ingest already
+    # store it per period row; the forms wizards read the first non-null.
+    position: str | None
     periods: tuple[tuple[date, int], ...]
 
 
@@ -133,7 +136,13 @@ class VacationService:
     def _person(names: dict[str, list[VacationPeriod]], name: str) -> VacationPerson:
         rows = names[name]
         periods = tuple((row.start_date, row.days) for row in rows)
-        return VacationPerson(full_name=name, department=rows[0].department, periods=periods)
+        position = next((row.position for row in rows if row.position), None)
+        return VacationPerson(
+            full_name=name,
+            department=rows[0].department,
+            position=position,
+            periods=periods,
+        )
 
     @staticmethod
     def _labels(names: dict[str, list[VacationPeriod]], name: str) -> str:

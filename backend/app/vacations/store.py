@@ -23,6 +23,9 @@ class DialogState:
     state: str
     origin_content: str | None
     attempts: int
+    # JSON blob for the forms wizards (D-F-11: chosen form kind, period
+    # and the collected dates); None for the parent skill's simple states.
+    payload: str | None = None
 
 
 def _now() -> datetime:
@@ -69,7 +72,12 @@ class VacationStore:
         ttl = vacation_settings_from_env().dialog_ttl_seconds
         if updated + timedelta(seconds=ttl) < _now():
             return None
-        return DialogState(state=row.state, origin_content=row.origin_content, attempts=row.attempts)
+        return DialogState(
+            state=row.state,
+            origin_content=row.origin_content,
+            attempts=row.attempts,
+            payload=row.payload,
+        )
 
     def set_state(
         self,
@@ -77,6 +85,7 @@ class VacationStore:
         state: str,
         origin_content: str | None = None,
         attempts: int = 0,
+        payload: str | None = None,
     ) -> None:
         row = self._session.get(AssistantDialogState, user_id)
         if row is None:
@@ -86,6 +95,7 @@ class VacationStore:
                     state=state,
                     origin_content=origin_content,
                     attempts=attempts,
+                    payload=payload,
                     updated_at=_now(),
                 )
             )
@@ -93,6 +103,7 @@ class VacationStore:
             row.state = state
             row.origin_content = origin_content
             row.attempts = attempts
+            row.payload = payload
             row.updated_at = _now()
         self._session.flush()
 
