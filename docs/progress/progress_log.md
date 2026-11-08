@@ -40,6 +40,10 @@ data-chat-action), backend-гейт по D-11 (339 passed, те же 4 изве�
 POSIX-only ingestion-падения, вывод до/после в evidence), guard
 --all --strict 0, stylelint 0. Живой смоук-харнесс: прод-CSS из dist +
 боевой DOM-скелет + скрипт-вердикт (метод задокументирован в evidence).
+Мидран-амендмент: план rev 3 → 4 — chat.hbs (прокидка onSwipe во вьюер)
+дозаявлен в write-set WS-FE-MOBILE по D-14 (пропуск авторства плана,
+независимый конфирм, re-lock, adopt-plan с сохранением WS-BE-BOT);
+финализация COMPLETE, proof в evidence/final.
 
 
 # 2026-11-07 — Feat(chats): живой UI состава и аватара чата у всех участников
