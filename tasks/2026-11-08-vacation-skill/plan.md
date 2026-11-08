@@ -77,14 +77,14 @@ engine + session; транзакция: удалить `VacationSchedule` с т�
 `backend/app/vacations/service.py`: `VacationService(session)`:
 - `find(query) -> Match`: normalize (lower, ё→е, точки→пробел,
   squeeze); СНАЧАЛА равенство ПОЛНОЙ нормализованной строки ФИО (все
-  токены: «Гончаров А.Б.» резолвится однозначно среди двух Гончаровых
+  токены: «Вишневский А.А.» резолвится однозначно среди двух Вишневских
   — бот сам просит инициалы при коллизии, F-R2-2); затем
   токен-правило: первый токен запроса ДОЛЖЕН РАВНЯТЬСЯ первому
   токену (фамилии) full_name — НОВОЕ, более строгое правило D-7, НЕ
-  порт substring-логики vacation_query.py («Романов» НЕ матчит
-  «Романову К.В.», что старая логика бы сматчила); при нуле точных —
+  порт substring-логики vacation_query.py («Свеклов» НЕ матчит
+  «Свеклову Е.Е.», что старая логика бы сматчила); при нуле точных —
   кандидаты по ПРЕФИКСУ (stored фамилия начинается с токена запроса:
-  «Гончар» → оба Гончарова) списком уточнения; ноль кандидатов →
+  «Вишневск» → оба Вишневские) списком уточнения; ноль кандидатов →
   difflib подсказки по фамильным токенам (n=3, cutoff 0.5);
   результат found / ambiguous / not_found(+suggestions).
 - `format_periods(person) -> list[str]`: строки
@@ -123,7 +123,7 @@ origin_content, attempts)` / `clear_state(user_id)` /
   synthetic_xlsx(tmp_path) со ВСЕМИ форматами (AC-PARSE); год из
   имени файла; skipped-подсчёт.
 - `backend/tests/unit/vacations/test_lookup.py` — AC-LOOKUP
-  (токен-точность, Романов/Романова, префикс-кандидаты «Гончар»,
+  (токен-точность, Свеклов/Свеклова, префикс-кандидаты «Вишневск»,
   подсказки, format_periods склонения).
 - `backend/tests/integration/test_migration_015_vacations_segment.py`
   — roundtrip по шаблону `test_migration_011_settings_segment.py`
@@ -237,8 +237,8 @@ Durable-ран/CAS/broadcast/`MessageService.create` (~261) — без
   сообщение, переспрос); AC-LLMFMT (промпт без RAG-чанков; фейк с
   BotProviderError → шаблон); AC-PRIVACY. FakeBotProvider из
   прецедента `tests/integration/bot/test_bot_api.py`, sqlite,
-  ингестнутая синтетика: Сибгатуллин И.Р. 3 периода + Гончаров×2 +
-  Романов/Романова.
+  ингестнутая синтетика: Абрикосов Т.П. 3 периода + Вишневский×2 +
+  Свеклов/Свеклова.
 - Прогресс-лог: запись прогона сверху в
   `docs/progress/progress_log.md`.
 
