@@ -61,3 +61,49 @@ def test_phrase_helpers_see_through_a_repeated_topic() -> None:
     assert not has_yes('не хочу в отпуск')
     assert has_cancel('стоп, отмена')
     assert not has_yes('дада')
+
+
+# --- vacation-form intents (2026-11-08-vacation-forms, D-F-19) -----------------
+
+
+def test_form_vacation_intent_with_application_word() -> None:
+    assert classify('оформи заявление на отпуск') == 'form_vacation'
+    assert classify('мне нужно заявление на отпуск') == 'form_vacation'
+    assert classify('заявление о переносе отпуска') == 'form_transfer'
+
+
+def test_form_transfer_intent() -> None:
+    assert classify('хочу перенести отпуск') == 'form_transfer'
+    assert classify('перенос отпуска на осень') == 'form_transfer'
+
+
+def test_form_unpaid_intent_corroborated_phrases_only() -> None:
+    assert classify('нужен отпуск за свой счёт') == 'form_unpaid'
+    assert classify('отпуск без сохранения зарплаты') == 'form_unpaid'
+    assert classify('дай заявление на отпуск без содержания') == 'form_unpaid'
+
+
+def test_form_intents_come_before_vacation() -> None:
+    # «заявление на отпуск» contains the vacation noun — the offer must lose
+    assert classify('заявление на отпуск') == 'form_vacation'
+
+
+def test_termination_application_is_not_a_form_intent() -> None:
+    # D-F-15: no vacation noun -> nothing matches
+    assert classify('заявление на увольнение') is None
+
+
+def test_kak_oformit_otpusk_stays_vacation() -> None:
+    # the оформить family is NOT a trigger: the parent pin survives (F-R1-4)
+    assert classify('Как оформить отпуск?') == 'vacation'
+    assert classify('оформить отпуск') == 'vacation'
+
+
+def test_bare_billing_words_are_not_unpaid() -> None:
+    assert classify('проверь счёт за квартиру') is None
+    assert classify('выстави счёт') is None
+
+
+def test_want_vacation_without_application_word_stays_vacation() -> None:
+    assert classify('нужен отпуск') == 'vacation'
+    assert classify('хочу в отпуск') == 'vacation'

@@ -1,3 +1,42 @@
+# 2026-11-09 — Feat(vacations): заявления на отпуск в RTF (ALK 2026-11-08-vacation-forms)
+
+ALK-прогон S2 rev 2 (план заморожен lock manifestHash b1acd1c2, ревью
+r1-r3 READY_TO_FREEZE; ветка feature/2026-11-08-vacation-forms СТЕКОМ на
+feature/2026-11-08-vacation-skill @ 15b999a — D-F-4). Запрос оператора:
+бот заполняет три заявления («на отпуск», «о переносе», «за свой счёт»)
+по RTF-шаблонам из tasks/RAG-docs и выдаёт готовый файл вложением в чат.
+Волна A (ядро, commit ecd667d, ACCEPTED attempt 1): санитизированные
+шаблоны в репо (реальные реквизиты → {{org_name}}/{{addressee}} из env,
+{\info}-метаданные с реальными ФИО/вендором вырезаны — F-R1-2; весь текст
+оригиналов — \uNNNN*-эскейпы, значения рендерятся в том же профиле,
+D-F-18), forms-пакет (registry c per-token форматами дат и
+calendar_days_word «календарный день/дня/дней», рендерер со строгой
+валидацией токенов), миграция 016_vacation_forms (assistant_dialog_state.
+payload), VacationPerson.position (должность = 1-й столбец графика —
+коррекция оператора D-F-2), env CHATTY_VACATION_ORG_NAME/ADDRESSEE_NAME.
+EV-3: все три РЕАЛЬНЫЕ формы открыты в Word с верными датами/морфологией
+(work/evidence/real-forms, контрольное лицо, PASS). Волна B: форм-интенты
+выше отпускных (точные словоформы, «заявление на увольнение» мимо,
+«Как оформить отпуск?» → vacation — F-R1-4), общий surname-флоу
+(surname_flow.py, D-F-13), визарды form:<kind>:<step> + payload (закрытый
+словарь шагов ≤32 симв., пин; перенос: старый период из графика → новые
+даты с днями по умолчанию; свой счёт: даты всегда спрашиваются, морфология
+полной фразой), FormsSkill-first хук в BotService._execute (пивот из
+awaiting_yes, D-F-12), доставка: FileService.upload (бот — активный
+участник) → MessageCreate(file_id) → run.attachment_file_id; seam
+инжектится в endpoints/bot.py (единственный api-файл в write-set, D-F-5);
+отказы form_storage_unavailable/form_storage_failed; фронт не тронут.
+Гейты: pytest 392→435 (волна A +22, волна B +21), D-11 зелёный (ровно 4
+известных POSIX-only ingestion-падения; флейк test_social_api
+задокументирован D-F-17), ownership чист, репозиторий без реальных
+реквизитов (маркеры только в локальном evidence, D-F-10/D-F-16 — план-пакет
+санитизирован после урока D-18 родителя). Ранбук
+docs/deployment/vacation-forms.md (env-реквизиты, контракт
+плейсхолдеров, обновление шаблона, откат). Финальный аудит BLOCKED до
+операторского живого смоука EV-4 (диалоги а–е, README в
+work/2026-11-08-vacation-forms/evidence/live/; PR не вливается до
+квитка — зеркало D-3, мандат D-F-0 «делай автономно»).
+
 # 2026-11-08 — Feat(vacations): отпускной скилл AI-ассистента (ALK 2026-11-08-vacation-skill)
 
 ALK-прогон S2 rev 4 (план заморожен lock 513f81a3, ревью r1-r4

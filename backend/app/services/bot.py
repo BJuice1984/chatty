@@ -35,7 +35,9 @@ from app.repositories.users import UserRepository
 from app.schemas.message import MessageCreate
 from app.services.chats import ChatService
 from app.services.documents import DocumentService
+from app.services.files import FileService
 from app.services.messages import MessageService
+from app.vacations.forms.skill import VacationFormsSkill
 from app.vacations.skill import VacationSkill
 
 logger = logging.getLogger(__name__)
@@ -62,6 +64,7 @@ class BotService:
         rag_search: Callable[..., list[Any]] | None = None,
         clock: Callable[[], datetime] | None = None,
         stream_clock: Callable[[], float] | None = None,
+        files: FileService | None = None,
     ):
         self.session = session
         self.settings = settings
@@ -72,6 +75,7 @@ class BotService:
         self.rag_search = rag_search if rag_search is not None else self._default_rag_search
         self.clock = clock if clock is not None else (lambda: datetime.now(UTC))
         self.stream_clock = stream_clock if stream_clock is not None else time.monotonic
+        self.files = files
         self.runs = BotRunRepository(session)
         self.messages = MessageRepository(session)
         self.users = UserRepository(session)
@@ -226,11 +230,59 @@ class BotService:
         if not chat.is_ai:
             return fail('bot_disabled')
 
+        # Vacation forms skill (2026-11-08-vacation-forms, D-F-12): runs
+        # FIRST — an active wizard owns the dialog, and a form phrasing must
+        # never fall into the dates offer; generated RTF is delivered as a
+        # chat attachment through the FileService seam injected at the
+        # endpoint (D-F-5)
+        forms_outcome = VacationFormsSkill(self.session).handle(
+            content=message.content,
+            user_id=message.user_id,
+        )
+        if forms_outcome is not None and forms_outcome.reply is not None:
+            self.session.expire(chat)
+            if not chat.is_ai:
+                return fail('bot_disabled')
+            attachment_file_id = None
+            if forms_outcome.attachment is not None:
+                if self.files is None:
+                    return fail('form_storage_unavailable')
+                try:
+                    file = self.files.upload(
+                        chat_id=chat.id,
+                        owner_id=bot_user.id,
+                        original_name=forms_outcome.attachment.filename,
+                        content_type=forms_outcome.attachment.content_type,
+                        body=forms_outcome.attachment.body,
+                    )
+                except Exception:
+                    logger.warning('form attachment upload failed', exc_info=True)
+                    return fail('form_storage_failed')
+                attachment_file_id = file.id
+            response = self.message_service.create(
+                chat.id,
+                bot_user.id,
+                MessageCreate(
+                    content=forms_outcome.reply.strip()[: self.bot.max_answer_chars],
+                    file_id=attachment_file_id,
+                ),
+            )
+            run.status = 'succeeded'
+            run.error_kind = None
+            run.response_message_id = response.id
+            run.attachment_file_id = attachment_file_id
+            self.session.commit()
+            self.session.refresh(run)
+            return run
+        if forms_outcome is not None and forms_outcome.passthrough_question is not None:
+            question = forms_outcome.passthrough_question
+        else:
+            question = message.content
+
         # Vacation skill (2026-11-08): deterministic branch BEFORE the RAG
         # search — the schedule never enters the RAG pipeline (live-инцидент
         # 2026-11-03); reply posts through the same message path, a decline
         # passes the ORIGINAL question into the normal path below
-        question = message.content
         vacation_outcome = VacationSkill(self.session, self.provider).handle(
             content=message.content,
             user_id=message.user_id,
