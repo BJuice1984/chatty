@@ -410,6 +410,32 @@ async def test_form_message_pivots_parent_awaiting_yes(client, app, session_fact
     assert state == 'form:vacation:surname'
 
 
+async def test_same_kind_form_intent_at_surname_step_restarts_the_wizard(
+    client, app, session_factory, monkeypatch
+):
+    # live smoke 2026-11-09, backlog NEXT.md п.9: a repeated form phrasing
+    # at the surname step must restart the wizard, never validate as a
+    # surname («Такой фамилии нет…» burned an attempt and leaked hints)
+    seed_schedule(session_factory)
+    requisites_ready(monkeypatch)
+    bot_ready(app, ScriptedProvider())
+    await register(client, 'forms-restart@example.com')
+    await register_bot(app)
+    chat_id = await create_ai_chat(client)
+    bot = bot_id(session_factory)
+    user = (await client.get('/api/v1/auth/me')).json()
+
+    await say(client, chat_id, 'оформи заявление на отпуск')
+    assert 'фамили' in await last_bot_reply(client, chat_id, bot)
+
+    await say(client, chat_id, 'оформи заявление на отпуск')
+    reply = await last_bot_reply(client, chat_id, bot)
+    assert 'фамили' in reply  # the wizard restarted and re-asked
+    assert 'фамилии' not in reply  # «Такой фамилии в графике нет»
+    state, _payload = dialog_state(session_factory, user['id'])
+    assert state == 'form:vacation:surname'
+
+
 async def test_missing_surname_resolves_inside_the_wizard(client, app, session_factory, monkeypatch):
     seed_schedule(session_factory)
     requisites_ready(monkeypatch)

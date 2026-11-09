@@ -54,6 +54,21 @@ def test_schedule_priority_beats_vacation() -> None:
     assert classify('хочу посмотреть график отпусков') == 'schedule'
 
 
+def test_date_noun_cooccurrence_is_schedule() -> None:
+    # п.6: «даты + отпуск» is an explicit schedule question — with a
+    # stored surname it must answer straight away, no offer
+    assert classify('хочу узнать даты отпуска') == 'schedule'
+    assert classify('подскажи даты отпуска') == 'schedule'
+    assert classify('отпуск: какие даты?') == 'schedule'
+    assert classify('даты отпуска на 2027 год') == 'schedule'
+
+
+def test_date_like_words_are_not_schedule_markers() -> None:
+    # exact noun forms only: the verb «дать» and «данные» never trigger
+    assert classify('хочу дать отпуск коллеге') == 'vacation'
+    assert classify('данные по отпуску пришли') == 'vacation'
+
+
 def test_phrase_helpers_see_through_a_repeated_topic() -> None:
     # inside awaiting_yes these phrase checks run BEFORE the topic check
     assert has_yes('да, хочу в отпуск')

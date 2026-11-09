@@ -320,15 +320,43 @@ async def test_two_failed_surnames_end_politely(client, app, session_factory):
 
     await say(client, chat_id, 'покажи график отпусков')
     assert 'фамили' in await last_bot_reply(client, chat_id, bot)
-    await say(client, chat_id, 'Зюганов')
+    # a near-miss surname («Абрикосова» vs «Абрикосов Т.П.»): the miss
+    # never leaks similar schedule surnames (п.7)
+    await say(client, chat_id, 'Абрикосова')
     first = await last_bot_reply(client, chat_id, bot)
     assert 'нет' in first.lower()
-    await say(client, chat_id, 'Зюганова')
+    assert 'Похожие' not in first
+    await say(client, chat_id, 'Зюганов')
     second = await last_bot_reply(client, chat_id, bot)
     assert 'HR' in second
+    assert 'Похожие' not in second
     # the state cleared: the next vacation message offers again
     await say(client, chat_id, 'Хочу в отпуск')
     assert await last_bot_reply(client, chat_id, bot) == OFFER
+
+
+async def test_direct_dates_question_with_stored_surname_answers_immediately(client, app, session_factory):
+    # п.6: «даты отпуска» without the word «график» is still an explicit
+    # schedule question — a stored surname answers straight away, no offer
+    seed_schedule(session_factory)
+    provider = bot_ready(app, ScriptedProvider(error=BotProviderError('provider_unreachable', 'down')))
+    await register(client, 'dates-direct@example.com')
+    await register_bot(app)
+    chat_id = await create_ai_chat(client)
+    bot = bot_id(session_factory)
+    user = (await client.get('/api/v1/auth/me')).json()
+
+    with session_factory() as session:
+        from app.vacations.store import VacationStore
+
+        VacationStore(session).save_surname(user['id'], 'Абрикосов Т.П.')
+        session.commit()
+
+    await say(client, chat_id, 'хочу узнать даты отпуска')
+    reply = await last_bot_reply(client, chat_id, bot)
+    assert reply != OFFER
+    for line in PERIOD_LINES:
+        assert line in reply
 
 
 async def test_stale_stored_surname_recovers_after_reingest(client, app, session_factory):

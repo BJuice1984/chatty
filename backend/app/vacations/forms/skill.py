@@ -238,10 +238,13 @@ class VacationFormsSkill:
             return FormsOutcome(reply=CANCEL_ACK)
 
         # D-F-19: a form intent of a DIFFERENT kind restarts the wizard
-        # with the new kind and a cleared payload; the same kind simply
-        # re-states the current step below
+        # with the new kind and a cleared payload. The SAME kind restarts
+        # too (live smoke 2026-11-09, backlog NEXT.md п.9): a form phrasing
+        # is never a step answer — validated as a surname it burned an
+        # attempt and leaked schedule hints, and at the position step it
+        # would land in the RTF header verbatim
         fresh_kind = _FORM_KIND_BY_INTENT.get(classify(content) or '')
-        if fresh_kind is not None and fresh_kind != kind:
+        if fresh_kind is not None:
             return self._start(fresh_kind, user_id)
 
         if step == 'surname':
