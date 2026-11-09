@@ -47,7 +47,14 @@
         {{#if id}}
             <div class="messenger__message-actions" data-testid="message-actions">
                 <button type="button" class="messenger__message-action" data-testid="message-reply" aria-label="Ответить"></button>
-                <button type="button" class="messenger__message-action messenger__message-action_react" data-testid="message-reactions-toggle" aria-label="Реакции"></button>
+                <button type="button" class="messenger__message-action messenger__message-action_react" data-testid="message-reactions-toggle" aria-label="Реакции">
+                    <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+                        <circle cx="12" cy="12" r="8.6" fill="none" stroke="currentColor" stroke-width="2"/>
+                        <circle cx="8.9" cy="10.1" r="1.35" fill="currentColor"/>
+                        <circle cx="15.1" cy="10.1" r="1.35" fill="currentColor"/>
+                        <path d="M8.3 14.7c.95 1.5 2.15 2.25 3.7 2.25s2.75-.75 3.7-2.25" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+                    </svg>
+                </button>
                 {{#if reactionsOpen}}
                     <div class="messenger__emoji-picker" data-testid="emoji-picker" role="menu" aria-label="Реакции">
                         {{#each emojiSet}}

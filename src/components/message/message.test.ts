@@ -300,6 +300,62 @@ describe('message reactions affordances', () => {
         message.destroy()
     })
 
+    // 2026-11-10: клик мимо сообщения гасит пикер; слушатель document
+    // снимается сам (второй наружный клик — no-op). Сообщение обязано быть
+    // в DOM: отвязанный элемент (isConnected) слушатель игнорирует
+    it('closes the open picker on a click outside the message and drops the document listener', () => {
+        const removeSpy = sinon.spy(document, 'removeEventListener')
+        const message = new Message({ content: 'привет', user_id: 1, chat_id: 3, id: 11 })
+        const outside = document.createElement('div')
+
+        document.body.append(outside, message.element as HTMLElement)
+
+        message.element?.querySelector('[data-testid="message-reactions-toggle"]')?.dispatchEvent(new MouseEvent('click', { bubbles: true }))
+
+        expect(message.element?.querySelector('[data-testid="emoji-picker"]')).to.exist
+
+        outside.dispatchEvent(new MouseEvent('click', { bubbles: true }))
+
+        expect(message.element?.querySelector('[data-testid="emoji-picker"]')).to.not.exist
+        expect(removeSpy.calledWith('click')).to.be.true
+
+        outside.dispatchEvent(new MouseEvent('click', { bubbles: true }))
+        expect(message.element?.querySelector('[data-testid="emoji-picker"]')).to.not.exist
+
+        outside.remove()
+        removeSpy.restore()
+        message.destroy()
+    })
+
+    // то же событие открытия долетает до document — клик внутри сообщения
+    // (включая кнопку-тоггл) пикер не закрывает
+    it('keeps the picker open for clicks inside the message', () => {
+        const message = new Message({ content: 'привет', user_id: 1, chat_id: 3, id: 11 })
+
+        document.body.append(message.element as HTMLElement)
+
+        message.element?.querySelector('[data-testid="message-reactions-toggle"]')?.dispatchEvent(new MouseEvent('click', { bubbles: true }))
+        message.element?.querySelector('.messenger__message-bubble')?.dispatchEvent(new MouseEvent('click', { bubbles: true }))
+
+        expect(message.element?.querySelector('[data-testid="emoji-picker"]')).to.exist
+
+        message.destroy()
+    })
+
+    it('destroy drops the outside-close listener of an open picker', () => {
+        const removeSpy = sinon.spy(document, 'removeEventListener')
+        const message = new Message({ content: 'привет', user_id: 1, chat_id: 3, id: 11 })
+
+        document.body.append(message.element as HTMLElement)
+
+        message.element?.querySelector('[data-testid="message-reactions-toggle"]')?.dispatchEvent(new MouseEvent('click', { bubbles: true }))
+        message.destroy()
+
+        expect(removeSpy.calledWith('click')).to.be.true
+
+        removeSpy.restore()
+    })
+
     it('toggles a reaction from the chip click', () => {
         const onSetReaction = sinon.spy()
         const message = new Message({
