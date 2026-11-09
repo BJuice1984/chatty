@@ -5,7 +5,7 @@
 
 import { expect } from 'chai'
 import { JSDOM } from 'jsdom'
-import { avatarPoolUrl } from '../../../utils/avatarPool.ts'
+import { avatarPoolUrl, BOT_AVATAR_URL } from '../../../utils/avatarPool.ts'
 import { ownChatsPort, toChatInfo } from './own.ts'
 import { chatsPort } from './index.ts'
 
@@ -196,6 +196,17 @@ describe('chats api adapter', () => {
         expect(toChatInfo(ownChat, 7).avatar).to.eq('')
     })
 
+    // 2026-11-09: бот-собеседник (AI-чат) без загрузок — робот-ассет,
+    // не человеческое лицо пула (карточка списка и шапка мессенджера)
+    it('falls back to the bot avatar for the is_bot companion', () => {
+        const chat = toChatInfo(
+            { ...ownChat, members: [member(7), { ...member(42), is_bot: true }] },
+            7
+        )
+
+        expect(chat.avatar).to.eq(BOT_AVATAR_URL)
+    })
+
     it('should return an empty token sentinel for the cookie-auth WS flow', async () => {
         const token = await ownChatsPort.getToken(3)
 
@@ -238,6 +249,23 @@ describe('chats api social operations (fake XHR)', () => {
         globalThis.XMLHttpRequest = originalXHR
         global.document = originalDocument
         dom.window.document.cookie = 'chatty_csrf=; expires=Thu, 01 Jan 1970 00:00:00 GMT'
+    })
+
+    // 2026-11-09: участник-бот без загрузок получает робот-ассет, не лицо
+    // пула — контейнер участников и плашки автора читают этот состав
+    it('maps an is_bot member onto the bot avatar in getChatUsers', async () => {
+        FakeXHR.responses.push({
+            status: 200,
+            response: [
+                { id: 7, login: 'me@example.com', display_name: 'me', avatar_url: null },
+                { id: 42, login: 'bot@example.com', display_name: 'bot', avatar_url: null, is_bot: true },
+            ],
+        })
+
+        const users = await ownChatsPort.getChatUsers(3)
+
+        expect(users.find(user => user.id === 42)?.avatar).to.eq(BOT_AVATAR_URL)
+        expect(users.find(user => user.id === 7)?.avatar).to.eq(avatarPoolUrl(7))
     })
 
     // 2026-10-27-ai-chat-creation: payload POST /chats пиннуется формой

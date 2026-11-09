@@ -13,6 +13,7 @@ import store from '../../utils/Store.ts'
 import { TransportError } from '../../utils/HTTPTransport.ts'
 import { hideBusyOverlay, showBusyOverlay } from '../../utils/busyOverlay.ts'
 import { NEW_CHAT_TITLE } from '../../utils/constants.ts'
+import { avatarPoolUrl } from '../../utils/avatarPool.ts'
 import type { ChatInfo, Message, ReactionSummary } from '../../utils/types.ts'
 import { chatsPort } from './api/index.ts'
 import type { ChatMessagesPort, ChatReactionEvent, ChatsPort, ChatsUserSearchResult } from './ports.ts'
@@ -231,6 +232,7 @@ export class ChatsFeatureController {
             onChatAiToggled: event => this.handleChatAiToggledEvent(event),
             onChatMembersChanged: chatId => this.handleChatMembersChanged(chatId),
             onChatAvatarUpdated: event => this.handleChatAvatarUpdatedEvent(event),
+            onUserAvatarUpdated: event => this.handleUserAvatarUpdatedEvent(event),
             onWsUnexpectedClose: chatId => this.handleWsDied(chatId),
             onWsConnected: chatId => this.handleWsReconnected(chatId),
         })
@@ -286,6 +288,12 @@ export class ChatsFeatureController {
 
         try {
             await this.port.enableAi(chatId)
+
+            // состав рефетчит САМ кликавший (2026-11-09): его оптимистичный
+            // is_ai-патч гасит эхо WS chat_ai_toggled идемпотентным скипом
+            // — бот приезжал в полосу участников только остальным; у
+            // остальных рефетч остаётся на WS-пути (handleChatAiToggled)
+            void this.getChatUsers(chatId)
         } catch (e: unknown) {
             console.error('Ошибка при включении AI в чате:', e)
 
@@ -680,6 +688,41 @@ export class ChatsFeatureController {
                 ? { ...chat, avatar: event.avatar }
                 : chat
         ))
+    }
+
+    // WS user_avatar_updated (2026-11-09): смена аватара участником видна
+    // остальным (и ему самому — сокеты живут, пока жива вкладка) сразу:
+    // контейнер участников и плашки автора читают chatUsers — точечный
+    // патч по user_id, только ОТКРЫТОГО чата (узор handleChatMembersChanged;
+    // пустой avatar (сброса загрузки не бывает) — pool-фолбэк как в адаптере).
+    // Карточки списка (companion-аватар DM/AI-чата) точечно не патчатся —
+    // chats-слайс не несёт составов; полный fetchChats мигал бы лоадером и
+    // гонял цикл коннектов, поэтому тихий рефетч одним GET
+    private handleUserAvatarUpdatedEvent(event: { chat_id: number, user_id: number, avatar: string }): void {
+        if (store.getState().selectedChat === event.chat_id) {
+            const chatUsers = store.getState().chatUsers ?? []
+
+            store.set('chatUsers', chatUsers.map(user =>
+                user.id === event.user_id
+                    ? { ...user, avatar: event.avatar !== '' ? event.avatar : avatarPoolUrl(user.id) }
+                    : user
+            ))
+        }
+
+        void this.refreshChatsSilently()
+    }
+
+    // Тихий рефетч списка чатов (2026-11-09): без лоадера и цикла
+    // WS-коннектов полного fetchChats — для фоновых патчей (смена аватара
+    // участника обновляет companion-аватары карточек)
+    private async refreshChatsSilently(): Promise<void> {
+        try {
+            const chats = await this.port.fetchChats(store.getState().user?.id)
+
+            chatsSlice.setChats(chats)
+        } catch (e: unknown) {
+            console.error('Ошибка при обновлении списка чатов:', e)
+        }
     }
 
     // Сокет чата исчерпал реконнекты (обрыв без восстановления): первый

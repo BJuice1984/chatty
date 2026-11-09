@@ -123,7 +123,33 @@ async def upload_avatar(
 
     files.set_user_avatar(current_user, prepared.file)
 
-    return files.avatar_response(prepared.file)
+    # 2026-11-09: смена аватара пользователя — патч-событие
+    # 'user_avatar_updated' АКТИВНЫМ участникам каждого чата пользователя
+    # (узор chat_avatar_updated, но БЕЗ kind-строки в ленту: личный аватар —
+    # не событие чата). Другие клиенты патчат состав открытого чата
+    # (контейнер участников и плашки автора) и карточки списка; загружающий
+    # клиент тоже получает событие — его сокеты живут, пока открыта вкладка.
+    avatar = files.avatar_response(prepared.file)
+    chats_service = ChatService(db)
+
+    for chat, left_at in chats_service.list_for_user(current_user.id):
+        if left_at is not None:
+            continue
+
+        await hub.broadcast(
+            chat.id,
+            {
+                'type': 'user_avatar_updated',
+                'content': {
+                    'chat_id': chat.id,
+                    'user_id': current_user.id,
+                    'avatar': avatar.avatar_url,
+                },
+            },
+            active_user_ids=chats_service.active_member_ids(chat.id),
+        )
+
+    return avatar
 
 
 @router.get('/usage', response_model=FileUsageResponse)

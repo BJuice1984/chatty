@@ -92,6 +92,25 @@ describe('Store', () => {
 
         expect(handler.called).to.be.false
     })
+
+    it('reset очищает все слайсы и эмитит пустое состояние (п.2/п.10)', () => {
+        // выход из аккаунта: reset — единственный честный способ убрать
+        // ЛЮБЫЕ слайсы разом; эмит обязателен, иначе withStore-подписчики
+        // останутся жить с последними спроецированными пропсами
+        const testStore = new Store()
+        const handler = sinon.stub()
+
+        testStore.update('selectedChat', 5)
+        testStore.update('user', { id: 1, login: 'ada@example.com' } as never)
+        testStore.set('messages', { 5: [{ id: 1 } as never] })
+        testStore.on(StoreEvents.Updated, handler)
+
+        testStore.reset()
+
+        expect(handler.calledOnce).to.be.true
+        expect(handler.firstCall.args[0]).to.deep.eq({})
+        expect(testStore.getState()).to.deep.eq({})
+    })
 })
 
 describe('withStore', () => {

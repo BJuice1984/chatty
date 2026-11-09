@@ -5,15 +5,16 @@ containment of tasks/RAG-docs/vacation_query.py (which would have
 matched «Свеклов» → «Свеклова Е.Е.»): first the FULL normalized name
 must be equal (the bot itself asks for initials when surnames collide),
 then the surname token must be equal, then prefix candidates are listed
-for disambiguation, and difflib hints close misses (D-7, review r2).
-Lookups run against the LATEST schedule snapshot: a re-ingest of the
-same year replaces it wholesale and a new-year file becomes the fresh
-answer source (D-13).
+for disambiguation (D-7, review r2). Misses answer a bare not_found —
+no similar-surname hints: the bot must not list employees to whoever
+asks (operator request 2026-11-09, backlog NEXT.md п.7). Lookups run
+against the LATEST schedule snapshot: a re-ingest of the same year
+replaces it wholesale and a new-year file becomes the fresh answer
+source (D-13).
 """
 
 from __future__ import annotations
 
-import difflib
 import re
 from dataclasses import dataclass
 from datetime import date
@@ -22,9 +23,6 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.models import VacationPeriod, VacationSchedule
-
-_SUGGESTION_COUNT = 3
-_SUGGESTION_CUTOFF = 0.5
 
 
 def normalize_name(value: str) -> str:
@@ -60,7 +58,6 @@ class Match:
     kind: str  # 'found' | 'ambiguous' | 'not_found'
     person: VacationPerson | None = None
     candidates: tuple[str, ...] = ()
-    suggestions: tuple[str, ...] = ()
 
 
 class VacationService:
@@ -116,11 +113,7 @@ class VacationService:
             if len(unique) > 1:
                 return Match(kind='ambiguous', candidates=tuple(self._labels(names, name) for name in unique))
 
-        surnames = sorted({normalize_name(name).split()[0] for name in names})
-        suggestions = tuple(
-            difflib.get_close_matches(query_surname, surnames, n=_SUGGESTION_COUNT, cutoff=_SUGGESTION_CUTOFF)
-        )
-        return Match(kind='not_found', suggestions=suggestions)
+        return Match(kind='not_found')
 
     def format_periods(self, person: VacationPerson) -> list[str]:
         """«Абрикосов Т.П. с 21.12.2026 на 7 дней», sorted by start date."""

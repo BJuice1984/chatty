@@ -8,3 +8,9 @@ export const AVATAR_POOL_SIZE = 8
 export function avatarPoolUrl(userId: number): string {
     return `/images/avatars/${(userId % AVATAR_POOL_SIZE) + 1}.svg`
 }
+
+// Аватар бота-ассистента (2026-11-09): пул — человеческие лица, бот в пуле
+// был неотличим от живого участника; отдельный статический робот-ассет.
+// Серверного avatar_url у бота нет (аккаунт без загрузок) — фолбэк бота
+// всегда идет через эту константу, а не через пул
+export const BOT_AVATAR_URL = '/images/avatars/bot.svg'

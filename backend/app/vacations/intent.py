@@ -19,6 +19,9 @@ _CANCEL_WORDS = frozenset({'отмена', 'отменить', 'стоп', 'пр
 _SCHEDULE_WINDOW = 5
 _WHEN_MY_RE = re.compile(r'\bкогда (?:мой|моя|моё|мои)\b')
 _WORD_RE = re.compile(r'[а-яa-z0-9-]+')
+# exact noun forms only: the verb «дать» and derivatives like «данные»
+# never match, so «хочу дать отпуск коллеге» stays a plain vacation (п.6)
+_DATE_NOUNS = frozenset({'дата', 'даты', 'дате', 'дату', 'датой', 'дат', 'датам', 'датами', 'датах'})
 
 # --- vacation-form intents (2026-11-08-vacation-forms, D-F-19) -------------
 # Exact word forms only — no prefix/stem matching, so «Как оформить отпуск?»
@@ -55,13 +58,18 @@ def is_vacation_noun(word: str) -> bool:
 
 
 def _mentions_schedule(text: str) -> bool:
+    # a schedule marker near a vacation noun: «график отпусков» and the
+    # date-noun co-occurrence «даты отпуска» (operator request 2026-11-09,
+    # backlog NEXT.md п.6 — a direct question about the dates must skip
+    # the offer and answer straight away)
     tokens = words(text)
     for index, token in enumerate(tokens):
-        if token.startswith('график'):
-            if any(is_vacation_noun(other) for other in tokens[index + 1 : index + 1 + _SCHEDULE_WINDOW]):
+        window = tokens[index + 1 : index + 1 + _SCHEDULE_WINDOW]
+        if token.startswith('график') or token in _DATE_NOUNS:
+            if any(is_vacation_noun(other) for other in window):
                 return True
         if is_vacation_noun(token):
-            if any(other.startswith('график') for other in tokens[index + 1 : index + 1 + _SCHEDULE_WINDOW]):
+            if any(other.startswith('график') or other in _DATE_NOUNS for other in window):
                 return True
     if 'мои даты' in text:
         return True

@@ -534,6 +534,25 @@ describe('own ws adapter social events', () => {
         expect(socket.readyState).to.eq(FakeWebSocket.OPEN)
     })
 
+    // 2026-11-09: смена аватара УЧАСТНИКА — сервер фан-аутит событие во все
+    // чаты пользователя; уходит контроллеру как есть, сокет жив (узор
+    // chat_avatar_updated)
+    it('forwards user_avatar_updated to the gateway listener and keeps the socket open', async () => {
+        const onUserAvatarUpdated = sinon.spy()
+
+        setChatsEventListeners({ onUserAvatarUpdated })
+
+        const { socket } = await connectedSocket()
+
+        socket.triggerMessage(JSON.stringify({
+            type: 'user_avatar_updated',
+            content: { chat_id: 3, user_id: 11, avatar: '31/download' },
+        }))
+
+        expect(onUserAvatarUpdated.calledOnceWith({ chat_id: 3, user_id: 11, avatar: '31/download' })).to.be.true
+        expect(socket.readyState).to.eq(FakeWebSocket.OPEN)
+    })
+
     // 2026-11-04 offline (review F-3): chat_deleted закрывает сокет адаптера
     // собственным путём — марка намеренного закрытия стоит, индикатор молчит
     it('chat_deleted close raises NO ws-death indicator (intentional)', async () => {

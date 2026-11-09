@@ -29,6 +29,7 @@ import {
     setFeedScroll,
     setFeedScrollKey,
 } from './feed-scroll.ts'
+import { clearComposerState, loadComposerState, saveComposerState } from './composer-state.ts'
 import template from './messenger.hbs'
 
 // Дебаунс @-поиска: поиск стартует, когда пользователь перестал печатать
@@ -316,20 +317,30 @@ export function mapTypedMessages(
     cacheKey?: string
     authorBadge?: MessageAuthorBadge
     isBot?: boolean
+    glued?: boolean
+    gluedLast?: boolean
 })[] {
     let previousDayKey: string | undefined
 
     // Плашка автора и AI-чип (2026-11-08-mobile-messenger-ux): состав чата
     // уже в сторе (login/email/avatar — контракт members); бот — участник
     // с серверным is_bot. Гейт плашки — групповой чат (>2 участников,
-    // бот считается); трекер хранит автора предыдущего ЧУЖОГО несистемного
-    // сообщения — свои сообщения серию не рвут (D-2: A, ME, A — одна серия)
+    // бот считается).
+    // Серии (2026-11-09, фидбек оператора): склеиваются подряд идущие
+    // реальные сообщения ОДНОГО автора — трекер единый для обеих сторон:
+    // СВОЁ сообщение (правая сторона) серию чужих РВЁТ, служебные kind-строки
+    // и pending-плейсхолдеры тоже. У серии один внешний вид: первая несёт
+    // единственную компактную плашку, продолжения идут без плашек, пузыри
+    // продолжений поджимают верхний ВНЕШНИЙ угол (у своих радиусы
+    // зеркальные — см. модификаторы _glued/_glued_last в messenger.scss),
+    // замыкающее возвращает нижний внешний радиус
     const authorById = new Map((chatUsers ?? []).map(user => [user.id, user]))
     const botUserId = (chatUsers ?? []).find(user => user.is_bot === true)?.id
     const groupChat = (chatUsers ?? []).length > 2
-    let previousForeignAuthor: number | undefined
+    let previousAuthor: number | undefined
+    let previousWasPlain = false
 
-    return messages.map(message => {
+    return messages.map((message, index) => {
         const dayKey = messageDayKey(message.time)
         const showDate = dayKey !== undefined && dayKey !== previousDayKey
 
@@ -348,33 +359,29 @@ export function mapTypedMessages(
         }
 
         // служебные строки ленты (kind) и pending-плейсхолдер не участвуют
-        // ни в плашке, ни в чипе, ни в трекере автора
+        // ни в плашке, ни в чипе, ни в склейке — и серию РВУТ
         const plainEntry = message.kind == null && message.isPending !== true
 
-        if (plainEntry && !isMine) {
-            const author = authorById.get(message.user_id)
-            const startsAuthorRun = previousForeignAuthor !== message.user_id
+        const continuesRun = plainEntry && previousWasPlain && message.user_id === previousAuthor
+        const next = messages[index + 1]
+        const runEndsHere = next == null
+            || next.kind != null
+            || next.isPending === true
+            || next.user_id !== message.user_id
 
-            previousForeignAuthor = message.user_id
-
-            const authorBadge = groupChat && startsAuthorRun && author != null
-                ? { login: author.login, email: author.email, avatar: author.avatar }
-                : undefined
-
-            return {
-                ...message,
-                isMine,
-                fileUrl: fileUrlValue,
-                attachments,
-                showDate,
-                cacheKey: messageCacheKey(message),
-                isSending: message.ownTempId != null,
-                authorBadge,
-                isBot: plainEntry && botUserId != null && message.user_id === botUserId,
-            }
+        if (plainEntry) {
+            previousAuthor = message.user_id
+            previousWasPlain = true
+        } else {
+            previousWasPlain = false
         }
 
-        return {
+        // склейка пузырей: продолжение серии поджимает верхний внешний
+        // угол, замыкающее (в сериях от двух) возвращает нижний
+        const glued = continuesRun
+        const gluedLast = continuesRun && runEndsHere
+
+        const base = {
             ...message,
             isMine,
             fileUrl: fileUrlValue,
@@ -383,7 +390,31 @@ export function mapTypedMessages(
             cacheKey: messageCacheKey(message),
             isSending: message.ownTempId != null,
             isBot: plainEntry && botUserId != null && message.user_id === botUserId,
+            glued,
+            gluedLast,
         }
+
+        // п.4 (2026-11-09, вечер): плашку несёт ТОЛЬКО первое сообщение
+        // чужой серии группового чата — единый компактный стиль; аватар —
+        // тем же правилом, что UserAvatar/ChatAvatar: пути с '/' — статика
+        // приложения (пул), файловые («{id}/download») — через fileUrl
+        // бэкенда, сырой путь в src ломал загруженные аватарки 404
+        if (plainEntry && !isMine && !continuesRun) {
+            const author = authorById.get(message.user_id)
+            const authorBadge = groupChat && author != null
+                ? {
+                    login: author.login,
+                    email: author.email,
+                    avatar: author.avatar === '' || author.avatar.startsWith('/')
+                        ? author.avatar
+                        : fileUrl(author.avatar),
+                }
+                : undefined
+
+            return { ...base, authorBadge }
+        }
+
+        return base
     })
 }
 
@@ -397,9 +428,12 @@ class MessengerBase extends Block {
     // брошенного инстанса разрешается в detached-узле и молчит
     private scrollPlanScheduled = false
 
-    // черновик композера между перерисовками (componentDidUpdate снимает,
-    // render возвращает в новый DOM — см. 2026-11-06-quick)
-    private composerDraft = ''
+    // черновик и выделение композера между перерисовками живут в общем
+    // модуле composer-state (NEXT п.3, 2026-11-09): страница чатов
+    // перерисовывается на каждый стор-эмит и пересоздаёт Messenger-инстанс
+    // — инстансные поля умирали со старым инстансом; componentDidUpdate
+    // снимает значения в модуль, render возвращает их в новый DOM (узор
+    // feed-scroll, каскадный пин — chat.test.ts)
 
     // стартовая точка свайпа возврата (2026-11-08): null — жеста нет;
     // жест, начавшийся внутри открытой модалки, игнорируется (F-4)
@@ -433,13 +467,25 @@ class MessengerBase extends Block {
         // 2026-11-06-quick: черновик композера переживает перерисовку —
         // входящее сообщение (WS message → setProps) раньше стирало
         // набираемый текст пересозданием DOM; смена чата черновик не
-        // переносит (пишем в другой контекст)
+        // переносит (пишем в другой контекст). NEXT п.3 (2026-11-09):
+        // память переехала в общий модуль — она переживает и пересоздание
+        // Messenger-инстанса перерисовкой страницы; сюда же легло
+        // выделение (фокус + каретка) того же контракта
         if (chatChanged) {
-            this.composerDraft = ''
+            clearComposerState()
         } else {
             const input = this.element?.querySelector<HTMLInputElement>('input.messenger__composer-input')
 
-            this.composerDraft = input?.value ?? ''
+            saveComposerState(this.memoryKey(), {
+                draft: input?.value ?? '',
+                selection:
+                    input != null && document.activeElement === input
+                        ? [
+                            input.selectionStart ?? input.value.length,
+                            input.selectionEnd ?? input.value.length,
+                        ]
+                        : null,
+            })
         }
 
         if (chatChanged) {
@@ -515,6 +561,28 @@ class MessengerBase extends Block {
             return
         }
 
+        // факт фокуса снимаем ДО любого стор-эффекта: optimistic-запись ниже
+        // синхронно перерисовывает страницу и пересоздаёт Messenger-инстанс —
+        // DOM композера заменяется, activeElement падает в body (живой репро
+        // NEXT.md п.3, Enter-сабмит — «слепая зона пинов»: rAF-возврат ниже
+        // квэрит уже detached-элемент старого инстанса, а CDU нового не
+        // застанет фокус в инпуте и не сохранит выделение в слот)
+        const hadComposerFocus = input != null && document.activeElement === input
+
+        if (input != null) {
+            // чистим ДО onSendMessage: старый инстанс останется подписан на
+            // тот же стор-эмит и его CDU снимет черновик в слот со СВОЕГО
+            // живого DOM — неочищенное значение воскресло бы в новом инстансе
+            input.value = ''
+        }
+
+        if (hadComposerFocus) {
+            // страховка на случай, когда CDU старого инстанса не случится:
+            // рендер пересозданного инстанса читает слот синхронно внутри
+            // стор-эмит; каретка — в начало очищенного поля
+            saveComposerState(this.memoryKey(), { draft: '', selection: [0, 0] })
+        }
+
         const { onSendMessage, selectedChat, replyDraft } = this.props as MessengerProps
 
         if (typeof selectedChat === 'number') {
@@ -523,10 +591,6 @@ class MessengerBase extends Block {
             if (replyDraft != null) {
                 this.setProps({ replyDraft: null })
             }
-        }
-
-        if (input != null) {
-            input.value = ''
         }
 
         // отправка пишет в стор (optimistic + pending-плейсхолдер) — лента
@@ -1112,18 +1176,41 @@ class MessengerBase extends Block {
             deleteContent: renderDeleteModalContent(chatTitle),
         })
 
-        // вернуть черновик в свежий DOM: render вызывается ПОСЛЕ
-        // componentDidUpdate (значение уже снято со старого узла), а fragment
-        // ещё не вставлен — value едет с узлом в документ. Гвард строго
-        // falsy: первый render() зовётся из конструктора БАЗОВОГО Block —
-        // ДО инициализации полей подкласса, composerDraft там undefined, и
-        // `undefined !== ''` писал в value строку «undefined» (live-баг
-        // 2026-11-06)
-        const draft = this.composerDraft
+        // вернуть черновик и фокус в свежий DOM: render вызывается ПОСЛЕ
+        // componentDidUpdate (значения уже сняты со старого узла в общий
+        // модуль), а fragment ещё не вставлен — value едет с узлом в
+        // документ. Модульная память закрывает и ПЕРЕСОЗДАНИЕ инстанса
+        // перерисовкой страницы (NEXT п.3): новый Messenger читает слот
+        // прямо в первом render из конструктора — гвардов на
+        // неинициализированные поля больше нет вовсе
+        const composerState = loadComposerState(this.memoryKey())
         const nextInput = fragment.querySelector<HTMLInputElement>('input.messenger__composer-input')
 
-        if (draft != null && draft !== '' && nextInput != null) {
-            nextInput.value = draft
+        if (composerState.draft !== '' && nextInput != null) {
+            nextInput.value = composerState.draft
+        }
+
+        // фокус жил в композере — вернуть его и каретку в свежий узел
+        // (NEXT п.3): focus на detached-узле до вставки не работает, а
+        // перерисовка DOM уже сошла — план в следующем кадре по узору
+        // refocusSearchInput; чужой фокус (модалка, rename) не трогаем —
+        // в слот он не пишется
+        if (composerState.selection != null && nextInput != null) {
+            const selection = composerState.selection
+            const restore = () => {
+                const live = this.element?.querySelector<HTMLInputElement>('input.messenger__composer-input')
+
+                if (live != null) {
+                    live.focus()
+                    live.setSelectionRange(selection[0], selection[1])
+                }
+            }
+
+            if (typeof requestAnimationFrame === 'function') {
+                requestAnimationFrame(restore)
+            } else {
+                setTimeout(restore, 0)
+            }
         }
 
         return fragment
@@ -1156,6 +1243,14 @@ const withMessenger = withStore((state: AppState) => {
     // вешает плашку автора (групповые) и AI-чип ответам бота
     const messages = mapTypedMessages(state.messages[selectedChatId], state.user?.id, state.chatUsers)
 
+    // выключенный бот (2026-11-09, фидбек оператора) уходит из полосы
+    // участников: членство на сервере живёт (история бота остаётся
+    // атрибутированной — плашки/AI-чип читают полный chatUsers выше),
+    // полоса — это АКТИВНЫЙ состав: is_bot скрывается, пока чат не AI.
+    // Включение (+AI) патчит is_ai и рефетчит состав — бот возвращается
+    const selectedChatUsers = (state.chatUsers ?? []).filter(user =>
+        !(user.is_bot === true && isAiChat !== true))
+
     // кэш живёт размером с текущую ленту: смена чата и удаление сообщения
     // роняют и destroy'ят осевшие ключи (неограниченного роста нет)
     pruneComponentCache(new Set(
@@ -1172,7 +1267,7 @@ const withMessenger = withStore((state: AppState) => {
 
     return {
         selectedChat: state.selectedChat,
-        selectedChatUsers: state.chatUsers,
+        selectedChatUsers,
         messages,
         chatInfo,
         botPending,

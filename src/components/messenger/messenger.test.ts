@@ -21,6 +21,7 @@ import { pruneComponentCache, registerComponent } from '../../core/registerCompo
 import * as Components from '../components.ts'
 import { mapTypedMessages, Messenger, PENDING_TAIL_CACHE_KEY, USER_SEARCH_DEBOUNCE_MS } from './messenger.ts'
 import store from '../../utils/Store.ts'
+import { fileUrl } from '../../utils/env.ts'
 import { initPreferences, setPreference } from '../../utils/preferences.ts'
 import type { Message } from '../../utils/types.ts'
 
@@ -361,6 +362,77 @@ describe('messenger action dispatch', () => {
         } finally {
             store.set('chats', undefined)
             messenger.destroy()
+        }
+    })
+
+    // NEXT п.3 (2026-11-09): store-эмит (эхо своего, входящее, bot_delta)
+    // пересоздаёт DOM композера — фокус и каретка снимаются в
+    // componentDidUpdate и возвращаются в свежий узел
+    it('keeps the composer focus and caret across an incoming-message rerender', async () => {
+        const messenger = new Messenger({ onSendMessage: () => {} } as never)
+
+        try {
+            const mount = messenger.element as Node
+            document.body.appendChild(mount)
+            store.set('messages', { 5: [] })
+            store.set('selectedChat', 5)
+
+            const input = messenger.element?.querySelector<HTMLInputElement>('input[name="message"]')
+
+            input?.focus()
+            if (input != null) {
+                input.value = 'набираю ответ'
+                input.setSelectionRange(3, 3)
+            }
+            expect(document.activeElement).to.equal(input)
+
+            // входящее сообщение: пропсы меняются — DOM пересобирается
+            store.set('messages', {
+                5: [{ id: 101, chat_id: 5, user_id: 2, content: 'входящее' }] as never,
+            })
+
+            await new Promise(resolve => setTimeout(resolve, 10))
+
+            const revived = messenger.element?.querySelector<HTMLInputElement>('input[name="message"]')
+
+            expect(revived?.value).to.eq('набираю ответ')
+            expect(document.activeElement).to.equal(revived)
+            expect([revived?.selectionStart, revived?.selectionEnd]).to.deep.eq([3, 3])
+        } finally {
+            messenger.element?.remove()
+            messenger.destroy()
+            store.set('selectedChat', null)
+            store.set('messages', undefined)
+        }
+    })
+
+    it('does not steal focus on a rerender when the composer was not focused', async () => {
+        const messenger = new Messenger({ onSendMessage: () => {} } as never)
+
+        try {
+            const mount = messenger.element as Node
+            document.body.appendChild(mount)
+            store.set('messages', { 5: [] })
+            store.set('selectedChat', 5)
+
+            const input = messenger.element?.querySelector<HTMLInputElement>('input[name="message"]')
+
+            input?.blur()
+
+            store.set('messages', {
+                5: [{ id: 102, chat_id: 5, user_id: 2, content: 'входящее' }] as never,
+            })
+
+            await new Promise(resolve => setTimeout(resolve, 10))
+
+            const revived = messenger.element?.querySelector<HTMLInputElement>('input[name="message"]')
+
+            expect(document.activeElement).to.not.equal(revived)
+        } finally {
+            messenger.element?.remove()
+            messenger.destroy()
+            store.set('selectedChat', null)
+            store.set('messages', undefined)
         }
     })
 
@@ -1984,20 +2056,68 @@ describe('mapTypedMessages author plate and bot chip', () => {
         chat_id: 5, time: 't0', type: 'message', user_id, content: 'm', ...extra,
     })
 
-    it('plates the first foreign message of each author run; own messages do not break the run', () => {
+    it('run starts carry the single compact plate, continuations none; own and service entries break the run', () => {
+        // 2026-11-09 (вечер, фидбек оператора): один стиль плашки —
+        // компактный; серия несёт ОДНУ плашку на первом сообщении,
+        // продолжения — без плашек; СВОЁ сообщение (правая сторона)
+        // серию чужих РВЁТ (A, ME, A — две серии), kind-строка тоже
         const mapped = mapTypedMessages(
-            [message(8), message(8), message(me), message(8), message(9)] as never[],
+            [
+                message(8), message(8), message(8),
+                message(me),
+                message(8),
+                message(9),
+                { ...message(8), kind: 'chat_renamed' },
+                message(8),
+            ] as never[],
             me,
             groupUsers
         )
 
-        expect((mapped[0] as { authorBadge?: { login: string } }).authorBadge?.login).to.eq('alice@x.io')
-        expect((mapped[1] as { authorBadge?: unknown }).authorBadge).to.eq(undefined)
-        expect((mapped[2] as { authorBadge?: unknown }).authorBadge).to.eq(undefined)
-        // A, ME, A — серия автора не рвётся своим сообщением (review F-1)
-        expect((mapped[3] as { authorBadge?: unknown }).authorBadge).to.eq(undefined)
-        // бот — участник группового чата, его первая реплика несёт плашку
-        expect((mapped[4] as { authorBadge?: { login: string } }).authorBadge?.login).to.eq('bot@chatty.local')
+        const badge = (i: number) => (mapped[i] as { authorBadge?: { login: string } }).authorBadge
+
+        // серия Алисы из трёх: плашка только на первой
+        expect(badge(0)?.login).to.eq('alice@x.io')
+        expect(badge(1)).to.eq(undefined)
+        expect(badge(2)).to.eq(undefined)
+        // своё сообщение плашки не несёт и серию рвёт
+        expect(badge(3)).to.eq(undefined)
+        // A после ME — новая серия, плашка снова есть
+        expect(badge(4)?.login).to.eq('alice@x.io')
+        // бот — новая серия со своей плашкой
+        expect(badge(5)?.login).to.eq('bot@chatty.local')
+        // kind-строка серию рвёт: следующее A — снова начало серии
+        expect(badge(7)?.login).to.eq('alice@x.io')
+    })
+
+    // склейка пузырей: продолжение серии поджимает верхний угол, замыкающее
+    // возвращает нижний (радиусы сторон — в messenger.scss, здесь флаги)
+    it('glue flags: continuations glued, only run closers are gluedLast', () => {
+        const flags = (i: number) => {
+            const item = mappedItems[i] as { glued?: boolean, gluedLast?: boolean, isMine?: boolean }
+
+            return { glued: item.glued === true, gluedLast: item.gluedLast === true, isMine: item.isMine === true }
+        }
+        const mappedItems = mapTypedMessages(
+            [
+                message(8), message(8), message(8),
+                message(me), message(me),
+                message(8),
+            ] as never[],
+            me,
+            groupUsers
+        )
+
+        // чужая серия из трёх: начало чистое, середина glued, замыкающее
+        // glued+gluedLast (нижний угол возвращается только на последнем)
+        expect(flags(0)).to.deep.eq({ glued: false, gluedLast: false, isMine: false })
+        expect(flags(1)).to.deep.eq({ glued: true, gluedLast: false, isMine: false })
+        expect(flags(2)).to.deep.eq({ glued: true, gluedLast: true, isMine: false })
+        // своя серия из двух — флаги зеркальны (правые углы), второе = последнее
+        expect(flags(3)).to.deep.eq({ glued: false, gluedLast: false, isMine: true })
+        expect(flags(4)).to.deep.eq({ glued: true, gluedLast: true, isMine: true })
+        // одиночное чужое после своей серии — без склейки
+        expect(flags(5)).to.deep.eq({ glued: false, gluedLast: false, isMine: false })
     })
 
     it('marks bot messages with isBot and keeps humans clean', () => {
@@ -2030,22 +2150,85 @@ describe('mapTypedMessages author plate and bot chip', () => {
         expect((mapped[1] as { authorBadge?: { login: string } }).authorBadge?.login).to.eq('alice@x.io')
     })
 
-    it('the store-driven messenger renders the plate with the email tooltip', () => {
+    // 2026-11-09: файловый аватар («{id}/download») плашка гоняет через
+    // fileUrl — сырой путь в src был относительным 404 (загруженная
+    // аватарка не видна у других); статика с '/' не трогается
+    it('runs a file-path badge avatar through fileUrl, keeps static paths as is', () => {
+        const mapped = mapTypedMessages(
+            [message(8), message(10)] as never[],
+            me,
+            [
+                ...groupUsers,
+                { id: 10, login: 'file@x.io', email: 'file@x.io', display_name: 'Ф', first_name: '', second_name: '', phone: '', avatar: '42/download' },
+            ] as never[]
+        )
+
+        expect((mapped[0] as { authorBadge?: { avatar: string } }).authorBadge?.avatar).to.eq('/alice.png')
+        expect((mapped[1] as { authorBadge?: { avatar: string } }).authorBadge?.avatar).to.eq(fileUrl('42/download'))
+    })
+
+    it('the store-driven messenger renders one compact plate per run and glue classes on bubbles', () => {
         store.set('chats', [{ id: 5, title: 'группа', avatar: '', unread_count: 0 }])
         store.set('chatUsers', groupUsers)
-        store.set('messages', { 5: [message(8)] })
+        store.set('messages', { 5: [message(8), message(8), message(8)] })
         store.set('selectedChat', 5)
         store.set('user', { id: me })
 
         const messenger = new Messenger({} as never)
 
         try {
-            const plate = messenger.element?.querySelector('[data-testid="message-author-badge"]')
+            const plates = [...(messenger.element?.querySelectorAll('[data-testid="message-author-badge"]') ?? [])]
 
-            expect(plate?.textContent).to.contain('alice@x.io')
-            expect(plate?.getAttribute('title')).to.eq('alice@x.io')
+            // одна плашка на серию — единый компактный стиль с аватаром
+            expect(plates).to.have.length(1)
+            expect(plates[0]?.textContent).to.contain('alice@x.io')
+            expect(plates[0]?.getAttribute('title')).to.eq('alice@x.io')
+            expect(plates[0]?.querySelector('img')).to.not.eq(null)
+            expect(plates[0]?.classList.contains('messenger__message-author_compact')).to.eq(true)
+
+            const bubbles = [...(messenger.element?.querySelectorAll('.messenger__message-bubble') ?? [])]
+
+            // начало серии — чистый пузырь, продолжение — glued,
+            // замыкающее — glued+glued_last (нижний угол возвращается)
+            expect(bubbles[0]?.classList.contains('messenger__message-bubble_glued')).to.eq(false)
+            expect(bubbles[1]?.classList.contains('messenger__message-bubble_glued')).to.eq(true)
+            expect(bubbles[1]?.classList.contains('messenger__message-bubble_glued_last')).to.eq(false)
+            expect(bubbles[2]?.classList.contains('messenger__message-bubble_glued')).to.eq(true)
+            expect(bubbles[2]?.classList.contains('messenger__message-bubble_glued_last')).to.eq(true)
         } finally {
             messenger.destroy()
+            store.set('messages', undefined)
+            store.set('selectedChat', undefined)
+            store.set('chatUsers', undefined)
+            store.set('chats', undefined)
+            store.set('user', undefined)
+        }
+    })
+
+    // выключенный бот (is_ai=false) уходит из полосы участников, история
+    // остаётся атрибутированной; включение возвращает его в полосу
+    it('the disabled bot leaves the chat users strip, enable brings it back', () => {
+        const botCell = (messenger: InstanceType<typeof Messenger>) =>
+            messenger.element?.querySelector(`.messenger__chat-users-container [data-user-id="9"]`) ?? null
+
+        try {
+            store.set('chats', [{ id: 5, title: 'группа', avatar: '', unread_count: 0, is_ai: false } as never])
+            store.set('chatUsers', groupUsers)
+            store.set('messages', { 5: [message(9)] })
+            store.set('selectedChat', 5)
+            store.set('user', { id: me })
+
+            const messenger = new Messenger({} as never)
+
+            try {
+                expect(botCell(messenger)).to.eq(null)
+
+                store.set('chats', [{ id: 5, title: 'группа', avatar: '', unread_count: 0, is_ai: true } as never])
+                expect(botCell(messenger)).to.not.eq(null)
+            } finally {
+                messenger.destroy()
+            }
+        } finally {
             store.set('messages', undefined)
             store.set('selectedChat', undefined)
             store.set('chatUsers', undefined)

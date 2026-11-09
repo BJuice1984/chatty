@@ -88,10 +88,12 @@ def test_surname_prefix_also_lists_candidates(service: VacationService) -> None:
     assert len(match.candidates) == 2
 
 
-def test_unknown_surname_yields_close_matches(service: VacationService) -> None:
+def test_unknown_surname_answers_bare_not_found(service: VacationService) -> None:
+    # no similar-surname hints — the bot must not list employees (п.7)
     match = service.find('Абрикосова')
     assert match.kind == 'not_found'
-    assert 'абрикосов' in match.suggestions
+    assert match.person is None
+    assert not match.candidates
 
 
 def test_normalization_case_and_yo(service: VacationService) -> None:

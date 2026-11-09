@@ -19,7 +19,7 @@
 
 import HTTPTransport from '../../../utils/HTTPTransport.ts'
 import { readCsrfToken } from '../../../utils/csrf.ts'
-import { avatarPoolUrl } from '../../../utils/avatarPool.ts'
+import { BOT_AVATAR_URL, avatarPoolUrl } from '../../../utils/avatarPool.ts'
 import { toMessage } from '../message-mapping.ts'
 import type { ChatInfo, Message, ReactionSummary } from '../../../utils/types.ts'
 import type { ChatsPort, ChatsUserSearchResult, CreateChatResult, ReactionToggleResult } from '../ports.ts'
@@ -30,6 +30,9 @@ export interface OwnChatMemberResponse {
     display_name: string
     // файловый путь аватара участника ("{file_id}/download") или null
     avatar_url?: string | null
+    // бот-аккаунт ассистента (2026-11-09): фолбэк бота — робот-ассет,
+    // не человеческий пул (GET /chats members несёт is_bot серверно)
+    is_bot?: boolean
 }
 
 // Ответ POST /chats: адаптеру из полного ChatResponse нужен только id
@@ -107,7 +110,9 @@ function companionAvatar(
         return ''
     }
 
-    return companion[0].avatar_url ?? avatarPoolUrl(companion[0].id)
+    // бот-собеседник (AI-чат) без загрузок получает робота, не пул-лицо
+    return companion[0].avatar_url
+        ?? (companion[0].is_bot === true ? BOT_AVATAR_URL : avatarPoolUrl(companion[0].id))
 }
 
 export function toChatInfo(response: OwnChatResponse, meId?: number): ChatInfo {
@@ -257,8 +262,10 @@ export const ownChatsPort: ChatsPort = {
             first_name: member.display_name,
             second_name: '',
             phone: '',
-            // реальный аватар участника, иначе pool-фолбэк
-            avatar: member.avatar_url ?? avatarPoolUrl(member.id),
+            // реальный аватар участника, иначе pool-фолбэк; бот без
+            // загрузок — робот-ассет (2026-11-09), не человеческое лицо
+            avatar: member.avatar_url
+                ?? (member.is_bot === true ? BOT_AVATAR_URL : avatarPoolUrl(member.id)),
             is_bot: member.is_bot === true,
             left_at: member.left_at ?? null,
         }))

@@ -480,6 +480,26 @@ describe('message author plate and ai chip', () => {
         message.destroy()
     })
 
+    // 2026-11-09: склейка серии — модификаторы пузыря (зеркальные углы
+    // сторон — в messenger.scss, здесь проводка пропсов в шаблон)
+    it('carries the glue modifiers on the bubble', () => {
+        const start = new Message({ content: 'первое', user_id: 8, isMine: false, time: localIso(new Date()) })
+        const middle = new Message({ content: 'середина', user_id: 8, isMine: false, glued: true, time: localIso(new Date()) })
+        const last = new Message({ content: 'замыкающее', user_id: 8, isMine: false, glued: true, gluedLast: true, time: localIso(new Date()) })
+
+        const bubbleOf = (item: Message) => item.element?.querySelector('.messenger__message-bubble')
+
+        expect(bubbleOf(start)?.classList.contains('messenger__message-bubble_glued')).to.eq(false)
+        expect(bubbleOf(middle)?.classList.contains('messenger__message-bubble_glued')).to.eq(true)
+        expect(bubbleOf(middle)?.classList.contains('messenger__message-bubble_glued_last')).to.eq(false)
+        expect(bubbleOf(last)?.classList.contains('messenger__message-bubble_glued')).to.eq(true)
+        expect(bubbleOf(last)?.classList.contains('messenger__message-bubble_glued_last')).to.eq(true)
+
+        start.destroy()
+        middle.destroy()
+        last.destroy()
+    })
+
     it('plain human messages and system lines render no meta row', () => {
         const human = new Message({ content: 'привет', user_id: 2, isMine: false, time: localIso(new Date()) })
         const system = new Message({ content: 'переименовал чат', user_id: 2, kind: 'chat_renamed', time: localIso(new Date()) })

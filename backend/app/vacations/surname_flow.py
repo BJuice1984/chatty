@@ -2,9 +2,11 @@
 
 Extracted verbatim from the vacation skill so the forms wizards answer
 the surname question with exactly the same UX: token-exact matching,
-the ambiguity list, difflib hints, two attempts, and persistence of the
-canonical schedule name on success. The parent skill keeps its own
-state machine; only the reply texts and the resolution rules live here.
+the ambiguity list, two attempts, and persistence of the canonical
+schedule name on success. Misses never list similar surnames — the bot
+must not enumerate employees to whoever asks (operator request
+2026-11-09, backlog NEXT.md п.7). The parent skill keeps its own state
+machine; only the reply texts and the resolution rules live here.
 """
 
 from __future__ import annotations
@@ -55,10 +57,9 @@ def resolve_answer(
                 exhausted=True,
             )
         return SurnameResolution(reply=f'В графике несколько таких людей: {listed}. Уточните с инициалами.')
-    hints = f' Похожие фамилии: {", ".join(match.suggestions)}.' if match.suggestions else ''
     if attempts + 1 >= MAX_SURNAME_ATTEMPTS:
         return SurnameResolution(
-            reply=f'Не нашёл вас в графике отпусков.{hints} Уточните у HR — и напишите мне про отпуск позже, я начну заново.',
+            reply='Не нашёл вас в графике отпусков. Уточните у HR — и напишите мне про отпуск позже, я начну заново.',
             exhausted=True,
         )
-    return SurnameResolution(reply=f'Такой фамилии в графике нет.{hints} Попробуйте ещё раз.')
+    return SurnameResolution(reply='Такой фамилии в графике нет. Попробуйте ещё раз.')

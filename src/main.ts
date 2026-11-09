@@ -18,7 +18,9 @@ import { ContactsPage } from './features/contacts/pages/contacts/contacts.ts'
 import { NotFoundPage } from './pages/404/404.ts'
 import { ServerErrorPage } from './pages/500/500.ts'
 import Router from './utils/Router.ts'
-import authController from './features/auth/controller.ts'
+import authController, { registerSessionTeardown } from './features/auth/controller.ts'
+import { closeAllChatSockets } from './features/chats/ws/gateway.ts'
+import { closeStoriesSocket } from './features/chats/stories/ws/own.ts'
 import { initTheme } from './utils/theme.ts'
 import { CONTACTS, MESSENGER, PROFILE, SIGNIN, SIGNUP } from './utils/constants.ts'
 
@@ -34,6 +36,16 @@ export const Routes = {
 }
 
 initTheme()
+
+// Сеансный teardown (backlog п.2/п.10, 2026-11-09): при выходе контроллер
+// auth гасит WS-сокеты через шов registerSessionTeardown — композиционный
+// корень единственный, кто знает обе фичи (guard: между фичами только
+// порты/композиция); оба close идемпотентны, повторный unmount страницы
+// после Router.go молчит
+registerSessionTeardown(() => {
+    closeAllChatSockets()
+    closeStoriesSocket()
+})
 
 Object.entries(Components).forEach(([name, component]) => {
     registerComponent(name, component as typeof Block)
