@@ -49,6 +49,13 @@ type ChatMembersChangedListener = (chatId: number) => void
 // eslint-disable-next-line no-unused-vars
 type ChatAvatarUpdatedListener = (event: { chat_id: number, avatar: string }) => void
 
+// Аватар участника обновлён (2026-11-09): {chat_id, user_id, avatar} —
+// сервер фан-аутит событие во ВСЕ чаты пользователя (узор
+// chat_avatar_updated, но без kind-строки: личный аватар — не событие
+// ленты); контроллер патчит состав открытого чата и рефетчит список
+// eslint-disable-next-line no-unused-vars
+type UserAvatarUpdatedListener = (event: { chat_id: number, user_id: number, avatar: string }) => void
+
 // eslint-disable-next-line no-unused-vars
 type WsUnexpectedCloseListener = (chatId: number) => void
 // eslint-disable-next-line no-unused-vars
@@ -68,6 +75,8 @@ export interface ChatsEventListeners {
 
     onChatAvatarUpdated?: ChatAvatarUpdatedListener
 
+    onUserAvatarUpdated?: UserAvatarUpdatedListener
+
     // Индикатор смерти WS (2026-11-04 offline, review F-3): Close транспорта
     // без payload неотличим от исчерпания реконнектов — адаптер дифференцирует
     // намеренность собственными марками и нотифицирует ТОЛЬКО немаркированные
@@ -83,6 +92,7 @@ let chatRenamedListener: ChatRenamedListener | null = null
 let chatAiToggledListener: ChatAiToggledListener | null = null
 let chatMembersChangedListener: ChatMembersChangedListener | null = null
 let chatAvatarUpdatedListener: ChatAvatarUpdatedListener | null = null
+let userAvatarUpdatedListener: UserAvatarUpdatedListener | null = null
 let wsUnexpectedCloseListener: WsUnexpectedCloseListener | null = null
 let wsConnectedListener: WsConnectedListener | null = null
 
@@ -111,6 +121,10 @@ export function setChatsEventListeners(listeners: ChatsEventListeners): void {
 
     if (listeners.onChatAvatarUpdated !== undefined) {
         chatAvatarUpdatedListener = listeners.onChatAvatarUpdated
+    }
+
+    if (listeners.onUserAvatarUpdated !== undefined) {
+        userAvatarUpdatedListener = listeners.onUserAvatarUpdated
     }
 
     if (listeners.onWsUnexpectedClose !== undefined) {
@@ -144,6 +158,10 @@ export function notifyChatMembersChanged(chatId: number): void {
 
 export function notifyChatAvatarUpdated(event: { chat_id: number, avatar: string }): void {
     chatAvatarUpdatedListener?.(event)
+}
+
+export function notifyUserAvatarUpdated(event: { chat_id: number, user_id: number, avatar: string }): void {
+    userAvatarUpdatedListener?.(event)
 }
 
 export function notifyWsUnexpectedClose(chatId: number): void {

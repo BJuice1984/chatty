@@ -801,6 +801,15 @@ class ChatPageBase extends Block {
         // openDm): CDU-перехода «смена чата» нет — первый рендер монтируется
         // сразу с историей, скроллим низ вручную
         if (this.props.selectedChat != null) {
+            // Состав открытого чата рефетчим и на возврате (2026-11-09):
+            // chatUsers-слайс общий и переживает уход со страницы — возврат
+            // из /settings со свежезагруженной аватаркой иначе рисовался бы
+            // стухшим составом (узор LIVE-3 у fetchChats; страховка на случай
+            // мёртвого WS — патч-событие user_avatar_updated не дошло)
+            if (typeof this.props.selectedChat === 'number') {
+                void ChatsController.getChatUsers(this.props.selectedChat)
+            }
+
             this.planFeedScroll('bottom')
         }
     }

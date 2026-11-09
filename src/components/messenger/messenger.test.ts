@@ -21,6 +21,7 @@ import { pruneComponentCache, registerComponent } from '../../core/registerCompo
 import * as Components from '../components.ts'
 import { mapTypedMessages, Messenger, PENDING_TAIL_CACHE_KEY, USER_SEARCH_DEBOUNCE_MS } from './messenger.ts'
 import store from '../../utils/Store.ts'
+import { fileUrl } from '../../utils/env.ts'
 import { initPreferences, setPreference } from '../../utils/preferences.ts'
 import type { Message } from '../../utils/types.ts'
 
@@ -2111,6 +2112,23 @@ describe('mapTypedMessages author plate and bot chip', () => {
 
         expect((mapped[0] as { authorBadge?: unknown }).authorBadge).to.eq(undefined)
         expect((mapped[1] as { authorBadge?: { login: string } }).authorBadge?.login).to.eq('alice@x.io')
+    })
+
+    // 2026-11-09: файловый аватар («{id}/download») плашка гоняет через
+    // fileUrl — сырой путь в src был относительным 404 (загруженная
+    // аватарка не видна у других); статика с '/' не трогается
+    it('runs a file-path badge avatar through fileUrl, keeps static paths as is', () => {
+        const mapped = mapTypedMessages(
+            [message(8), message(10)] as never[],
+            me,
+            [
+                ...groupUsers,
+                { id: 10, login: 'file@x.io', email: 'file@x.io', display_name: 'Ф', first_name: '', second_name: '', phone: '', avatar: '42/download' },
+            ] as never[]
+        )
+
+        expect((mapped[0] as { authorBadge?: { avatar: string } }).authorBadge?.avatar).to.eq('/alice.png')
+        expect((mapped[1] as { authorBadge?: { avatar: string } }).authorBadge?.avatar).to.eq(fileUrl('42/download'))
     })
 
     it('the store-driven messenger renders the plate with the email tooltip', () => {

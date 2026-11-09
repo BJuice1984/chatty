@@ -364,3 +364,70 @@ def test_chat_avatar_upload_broadcasts_feed_line_and_patch_event(app):
             # the archived socket received nothing
             archived_ws.send_json({'type': 'ping', 'content': {}})
             assert archived_ws.receive_json() == {'type': 'pong', 'content': {}}
+
+
+def test_user_avatar_upload_broadcasts_patch_event_to_every_chat(app):
+    """2026-11-09: смена аватара ПОЛЬЗОВАТЕЛЯ — патч-событие
+    'user_avatar_updated' АКТИВНЫМ участникам каждого чата пользователя
+    (узор chat_avatar_updated, но БЕЗ kind-строки в ленту: личный аватар —
+    не событие чата); загружающий клиент тоже получает событие (сокеты
+    живут, пока открыта вкладка); архивный участник молчит."""
+
+    from fastapi.testclient import TestClient
+
+    password = 'correct horse battery staple'
+    origin = {'Origin': 'http://localhost:3000'}
+
+    def register_sync(client: TestClient, email: str) -> dict:
+        response = client.post('/api/v1/auth/register', json={'email': email, 'password': password})
+        assert response.status_code == 201
+        return response.json()
+
+    app.state.object_storage = MemoryStorage()
+
+    with TestClient(app) as owner_client, TestClient(app) as bob_client, \
+            TestClient(app) as archived_client:
+        owner = register_sync(owner_client, 'uava-ws-owner@example.com')
+        bob = register_sync(bob_client, 'uava-ws-bob@example.com')
+        archived = register_sync(archived_client, 'uava-ws-arch@example.com')
+        first_id = owner_client.post('/api/v1/chats', json={'title': 'WS user avatar 1'}).json()['id']
+        second_id = owner_client.post('/api/v1/chats', json={'title': 'WS user avatar 2'}).json()['id']
+        for chat_id in (first_id, second_id):
+            added = owner_client.post(f'/api/v1/chats/{chat_id}/members', json={'user_id': bob['id']})
+            assert added.status_code == 201
+        added = owner_client.post(f'/api/v1/chats/{first_id}/members', json={'user_id': archived['id']})
+        assert added.status_code == 201
+        assert archived_client.post(f'/api/v1/chats/{first_id}/leave').status_code == 204
+
+        with owner_client.websocket_connect(f'/api/v1/ws/chats/{first_id}', headers=origin) as owner_first_ws, \
+                owner_client.websocket_connect(f'/api/v1/ws/chats/{second_id}', headers=origin) as owner_second_ws, \
+                bob_client.websocket_connect(f'/api/v1/ws/chats/{first_id}', headers=origin) as bob_ws, \
+                archived_client.websocket_connect(f'/api/v1/ws/chats/{first_id}', headers=origin) as archived_ws:
+
+            uploaded = owner_client.post(
+                '/api/v1/files/avatars',
+                data={'kind': 'user'},
+                files={'uploaded': ('ava.png', b'user-avatar', 'image/png')},
+            )
+            assert uploaded.status_code == 201
+            avatar_url = uploaded.json()['avatar_url']
+
+            for websocket, chat_id in (
+                (owner_first_ws, first_id),
+                (bob_ws, first_id),
+                (owner_second_ws, second_id),
+            ):
+                patch = websocket.receive_json()
+                assert patch == {
+                    'type': 'user_avatar_updated',
+                    'content': {'chat_id': chat_id, 'user_id': owner['id'], 'avatar': avatar_url},
+                }
+
+            # ленты событие не пишет (личный аватар — не событие чата):
+            # следующий ответ сокета — pong, не kind-строка
+            owner_first_ws.send_json({'type': 'ping', 'content': {}})
+            assert owner_first_ws.receive_json() == {'type': 'pong', 'content': {}}
+
+            # the archived socket received nothing
+            archived_ws.send_json({'type': 'ping', 'content': {}})
+            assert archived_ws.receive_json() == {'type': 'pong', 'content': {}}

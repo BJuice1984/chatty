@@ -8,7 +8,7 @@ import { NEW_CHAT_TITLE } from '../../utils/constants.ts'
 import { ChatsFeatureController, applyReactionDelta, setContactsIntegration, setDocumentSearch, toggleOwnReaction } from './controller.ts'
 import { ownChatsPort } from './api/own.ts'
 import { chatSearchSlice, chatsSlice } from './store.ts'
-import { notifyChatAiToggled, notifyChatAvatarUpdated, notifyChatDeleted, notifyChatMembersChanged, notifyChatRenamed, notifyReactionEvent, notifyWsConnected, notifyWsUnexpectedClose } from './ws/gateway.ts'
+import { notifyChatAiToggled, notifyChatAvatarUpdated, notifyChatDeleted, notifyChatMembersChanged, notifyChatRenamed, notifyReactionEvent, notifyUserAvatarUpdated, notifyWsConnected, notifyWsUnexpectedClose } from './ws/gateway.ts'
 import { OwnWsAdapter } from './ws/own.ts'
 import type { ChatsPort } from './ports.ts'
 import type { ChatInfo, ChatSearchMatch, Message, ReactionSummary } from '../../utils/types.ts'
@@ -432,6 +432,50 @@ describe('chats controller create-and-select and enable-ai', () => {
         notifyChatAvatarUpdated({ chat_id: 99, avatar: 'x/download' })
 
         expect(chatsSlice.getChats()).to.have.length(1)
+    })
+
+    // 2026-11-09: смена аватара УЧАСТНИКА (WS user_avatar_updated, фан-аут
+    // во все чаты пользователя) — точечный патч chatUsers ОТКРЫТОГО чата
+    // (контейнер участников и плашки автора), чужой чат состав не трогает;
+    // карточки списка обновляет тихий рефетч (chats-слайс без составов)
+    it('user_avatar_updated patches chatUsers of the OPEN chat and silently refetches chats', async () => {
+        store.set('selectedChat', 7)
+        store.set('chatUsers', [
+            { id: 11, avatar: '/images/avatars/4.svg' },
+            { id: 12, avatar: '/images/avatars/5.svg' },
+        ] as never)
+        const fetchChats = sinon.stub().resolves([])
+        new ChatsFeatureController(makePort({ fetchChats }), makeMessages())
+
+        notifyUserAvatarUpdated({ chat_id: 7, user_id: 11, avatar: '31/download' })
+        await new Promise(resolve => setTimeout(resolve, 0))
+
+        let users = store.getState().chatUsers ?? []
+
+        expect(users.find(user => user.id === 11)?.avatar).to.eq('31/download')
+        expect(users.find(user => user.id === 12)?.avatar).to.eq('/images/avatars/5.svg')
+        expect(fetchChats.callCount).to.eq(1)
+
+        // событие другого чата не затирает состав открытого, список рефетчится
+        notifyUserAvatarUpdated({ chat_id: 9, user_id: 11, avatar: '32/download' })
+        await new Promise(resolve => setTimeout(resolve, 0))
+
+        users = store.getState().chatUsers ?? []
+
+        expect(users.find(user => user.id === 11)?.avatar).to.eq('31/download')
+        expect(fetchChats.callCount).to.eq(2)
+    })
+
+    // пустой avatar события — pool-фолбэк по user_id (паритет с адаптером)
+    it('user_avatar_updated with empty avatar falls back to the avatar pool', async () => {
+        store.set('selectedChat', 7)
+        store.set('chatUsers', [{ id: 12, avatar: '/images/avatars/5.svg' }] as never)
+        new ChatsFeatureController(makePort({ fetchChats: async () => [] }), makeMessages())
+
+        notifyUserAvatarUpdated({ chat_id: 7, user_id: 12, avatar: '' })
+        await new Promise(resolve => setTimeout(resolve, 0))
+
+        expect((store.getState().chatUsers ?? []).find(user => user.id === 12)?.avatar).to.eq('/images/avatars/5.svg')
     })
 
     // 2026-11-06-quick: вход в чат с непрочитанными при живом сокете —

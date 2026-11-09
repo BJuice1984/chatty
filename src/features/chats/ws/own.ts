@@ -37,7 +37,7 @@ import type { HistoryMessage } from '../history/types.ts'
 // в бандл через импорт ws-адаптера (components фичи не импортируют —
 // guard-блокер).
 import '../history/view.ts'
-import { appendMessages, notifyChatAiToggled, notifyChatAvatarUpdated, notifyChatDeleted, notifyChatMembersChanged, notifyChatRenamed, notifyReactionEvent, notifyWsConnected, notifyWsUnexpectedClose } from './gateway.ts'
+import { appendMessages, notifyChatAiToggled, notifyChatAvatarUpdated, notifyChatDeleted, notifyChatMembersChanged, notifyChatRenamed, notifyReactionEvent, notifyUserAvatarUpdated, notifyWsConnected, notifyWsUnexpectedClose } from './gateway.ts'
 
 interface OwnWsEvent {
     type: string
@@ -389,6 +389,20 @@ export class OwnWsAdapter {
                 const content = wsEvent.content as { chat_id: number, avatar: string }
 
                 notifyChatAvatarUpdated({ chat_id: content.chat_id, avatar: content.avatar })
+            }
+
+            // Аватар участника обновлён (2026-11-09): сервер фан-аутит во
+            // все чаты пользователя; патч chatUsers открытого чата и
+            // рефетч списка делает контроллер через gateway-слушатель,
+            // сокет жив — узор chat_avatar_updated
+            if (wsEvent.type === 'user_avatar_updated' && wsEvent.content != null) {
+                const content = wsEvent.content as { chat_id: number, user_id: number, avatar: string }
+
+                notifyUserAvatarUpdated({
+                    chat_id: content.chat_id,
+                    user_id: content.user_id,
+                    avatar: content.avatar,
+                })
             }
         })
         wsTransport.on(WSTransportEvents.Close, () => {

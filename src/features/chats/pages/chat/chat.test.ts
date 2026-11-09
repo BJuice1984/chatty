@@ -1659,4 +1659,28 @@ describe('chat page composer state across rerenders', () => {
             teardown(page)
         }
     })
+
+    // 2026-11-09: возврат на страницу с уже выбранным чатом (например из
+    // /settings после смены аватара) рефетчит состав открытого чата —
+    // chatUsers-слайс общий и переживает уход, иначе возврат рисовался бы
+    // стухшим составом (узор LIVE-3 у fetchChats в этом же CDM)
+    it('refetches the open chat members when mounted with a selected chat', async () => {
+        const fetchChats = sinon.stub(ChatsController, 'fetchChats').resolves()
+        const fetchStories = sinon.stub(StoriesController, 'fetchStories').resolves()
+        const connectStories = sinon.stub(StoriesController, 'connectStoriesSocket').resolves()
+        const getChatUsers = sinon.stub(ChatsController, 'getChatUsers').resolves()
+        const { page } = await setup()
+
+        try {
+            page.dispatchComponentDidMount()
+
+            expect(getChatUsers.calledOnceWith(5)).to.equal(true)
+        } finally {
+            getChatUsers.restore()
+            connectStories.restore()
+            fetchStories.restore()
+            fetchChats.restore()
+            teardown(page)
+        }
+    })
 })
