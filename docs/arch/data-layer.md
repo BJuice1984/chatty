@@ -1,57 +1,88 @@
-# Слой данных: контроллеры, API, транспорт
+# Слой данных: фичи, контроллеры, порты и транспорт
 
-## Контроллеры — `src/controllers/`
+## Фичи-модули — `src/features/`
 
-Бизнес-логика приложения. Паттерн единообразный: класс с приватным полем `api`, методы оборачивают вызовы API в `try/catch` (ошибки — в `console.error` через `handleError`) и результат кладут в Store. Экспортируются **готовыми синглтонами**:
+Самодостаточные модули приложения. Каждая фича несёт свои страницы,
+компоненты, контроллер и API-слой за **портом** (`ports.ts`): UI знает
+только интерфейс порта, единственная реализация — own-адаптер над
+HTTPTransport/WS собственного бэкенда (`features/*/api/`).
 
-```ts
-export default new AuthController()
-```
-
-| Контроллер | Ответственность | Пишет в Store |
+| Фича | Ответственность | Слайсы Store |
 |---|---|---|
-| `AuthController` | `signin`, `signup`, `fetchUser`, `logout` | `user` |
-| `UserController` | поиск пользователя, смена данных, смена аватара (`FormData`) | `user` |
-| `ChatsController` | список/создание/удаление чатов, аватар чата, пользователи чата, токен WS | `chats`, `chatUsers`, `selectedChat` |
-| `MessagesController` | WebSocket-соединения чатов, отправка/история сообщений | `messages.<chatId>` |
+| `auth` | signin/signup, fetchUser, logout, auth-гард маршрутов, CSRF-политика | `user`, `authError`, `authLoading` |
+| `chats` | список/создание/удаление чатов, участники, переименование, `+AI`, поиск, отправка сообщений, WS-шлюз ленты, история, stories | `chats`, `chatUsers`, `selectedChat`, `messages.<chatId>`, `stories` |
+| `profile` | профиль, настройки (тема, приватность, уведомления), архив чатов | `user` |
+| `contacts` | адресная книга, добавление, создание диалога | `contacts` (тип живёт во фиче — store-cast-идиома, как у `stories`) |
+| `ai-assistant` | страница `/assistant`, RAG-поиск документов, создание AI-чата | — |
 
-WS-сообщения живут не через HTTP API: шлюз `src/features/chats/ws/gateway.ts` (замена legacy `MessagesController`) держит `Map<chatId, WSTransport>` активных сокетов и открывает `ws://<host>/ws/chats/<chatId>` с cookie-аутентификацией. Входящие сообщения аккумулируются в `messages.<chatId>`, история подгружается событием `history` с курсором `before_id`.
+Межфичевые зависимости легальны только в композиционном корне
+`src/features/index.ts` через consumer-side сеттеры (`setChatOpener`,
+`setContactsIntegration`, `setDocumentSearch`, `setProfileSeams`, …) —
+фичи друг про друга не знают; границу следит guard-хук.
 
-## API-классы — `src/api/`
+## Контроллеры
 
-REST-клиенты собственного бэкенда (HTTP-адаптеры фич — `src/features/*/api/`). `BaseApi` (legacy `src/api/BaseApi.ts`) — абстрактный базовый класс с контрактом CRUD (`create`/`read`/`update`/`delete`) и защищённым `http: HTTPTransport`, инициализированным префиксом эндпоинта:
-
-```ts
-class AuthAPI extends BaseAPI {
-    constructor() {
-        super('/auth')
-    }
-    // this.http.get('/me') → GET http://localhost:8000/api/v1/auth/me
-}
-```
-
-Конкретные клиенты: `AuthApi.ts`, `UserApi.ts`, `ChatsApi.ts`. Типы DTO (`SigninData`, `ChatInfo`, `ChatUser`, …) экспортируются из тех же модулей и переиспользуются контроллерами и страницами.
+Контроллер фичи (`features/*/controller.ts`, экспорт — синглтон) —
+единственное место бизнес-логики фронта: вызывает порт/адаптер, результат
+пишет в Store, ошибки переводит в человекочитаемые слайсы. Пример
+контракта: `ChatsController.selectChat(id)` открывает WS-сокет чата,
+подтягивает состав и историю, пишет `selectedChat` + `messages.<id>`;
+`AuthFeatureController.logout()` гасит WS-сокеты через сеансный шов
+`registerSessionTeardown` и делает полный `Store.reset()`.
 
 ## HTTPTransport — `src/utils/HTTPTransport.ts`
 
-Обёртка над **XMLHttpRequest** (не fetch). Характеристики:
+Обёртка над **XMLHttpRequest** (не fetch):
 
 - базовый URL — из env (`VITE_API_URL`, локально `http://localhost:8000/api/v1`);
-- методы `get/put/post/delete`; GET-параметры сериализуются через `queryStringify` в query string;
-- `withCredentials = true` (cookie-сессия own-бэкенда + CSRF double-submit), `responseType = 'json'`;
-- тело: `FormData` уходит как multipart, объект — как JSON (`Content-Type: application/json`);
-- успех — 2xx, иначе `reject(new Error('Запрос не выполнен. Статус: N'))`; сетевые ошибки/таймаут/abort — отдельные reject'ы.
+- `get/put/post/delete`, GET-параметры сериализуются в query string;
+- `withCredentials = true` (cookie-сессия own-бэкенда + CSRF-токен в
+  заголовке на мутациях), `responseType = 'json'`;
+- тело: `FormData` → multipart, объект → JSON; дефолтный timeout 30с,
+  per-request override;
+- успех — 2xx, иначе reject с кодом статуса; сетевые ошибки/таймаут/abort —
+  отдельные reject'ы.
+
+Поверх транспорта — глобальная политика повторов
+(`features/auth/transportPolicy.ts`, ставится в композиции):
+**401 → single-flight refresh + повтор запроса**, неудачный refresh →
+локальный выход; **5xx → лестница повторов**; busy-оверлеем владеет
+только политика.
+
+## WS-шлюз чатов — `src/features/chats/ws/`
+
+Замена легаси `MessagesController`: модуль держит `Map<chatId, WSTransport>`
+активных сокетов, открывает `ws://<host>/ws/chats/<chatId>` с
+cookie-аутентификацией. Входящие события шлюза распределяет gateway:
+`message` — аккумулируется в `messages.<chatId>` (дедуп по id),
+`history` — prepend-merge с курсором `before_id`, `bot_delta` — наращивание
+pending-хвоста, патч-события (`chat_renamed`, `chat_ai_toggled`,
+`*_avatar_updated`) — точечные обновления слайсов. Собственные закрытия
+сокетов маркируются (намеренность) — индикатор смерти WS показывается
+только по немаркированному исчерпанию попыток.
+
+Отдельный сокет `features/chats/stories/ws/` слушает глобальный канал
+stories; коннективность (`features/chats/ws/connectivity.ts`): offline →
+reconnect-оверлей, online → force-дроп застрявших в backoff сокетов +
+рефетч списка с ресинком.
 
 ## WSTransport — `src/utils/WSTransport.ts`
 
-Обёртка над `WebSocket`, расширяющая `EventBus`. События — enum `WSTransportEvents`: `Connected`, `Message`, `Error`, `Close`.
+Обёртка над `WebSocket`, расширяющая `EventBus`. События `WSTransportEvents`:
+`Connected`, `Message`, `Error`, `Close`.
 
-- `connect()` — открывает сокет, подписывается на его события и резолвит промис по `Connected`;
-- держит соединение пингом `{type: 'ping', content: {}}` каждые 5 секунд, `pong` от сервера игнорируется;
-- `send(data)` — JSON-сериализация; `close()` — закрытие (пинг-интервал очищается по событию `Close`).
+- `connect()` — открывает сокет, резолвится по `Connected`, при исчерпании
+  попыток — reject;
+- **bounded-реконнект**: растущий backoff с потолком попыток;
+- ping `{type: 'ping'}` каждые 5 секунд (сервер отвечает `pong`);
+- `close()` — явное закрытие: **не реконнектит**, чистит ping-интервал и
+  слушателей; публичный readonly `isOpen`.
 
 ## Сопутствующие хелперы — `src/helpers/`
 
-- `helpers.ts` — `set(obj, path, value)` для записи в Store по keypath и `merge` (глубокое слияние с fallback в присваивание);
-- `isEqual.ts` — строгое `===` (не глубокое сравнение);
-- `fetchWithRetry.ts` — retry-обёртка над fetch; **в проекте не используется** (мёртвый код, оставлен как заготовка).
+- `helpers.ts` — `set(obj, path, value)` для записи в Store по keypath и
+  `merge` (глубокое слияние с fallback в присваивание);
+- `isEqual.ts` — строгое `===` (глубокого сравнения нет; селективность
+  `withStore` обеспечена `shallowEqual` в Store);
+- `fetchWithRetry.ts` — мёртвый код (не импортируется), см.
+  [known-issues.md](known-issues.md).
