@@ -49,3 +49,6 @@ backend/data/
 
 # HR source documents with personal data (real names — never commit)
 tasks/RAG-docs/
+
+# Конкурсная заявка (внутренние цифры и фактура — не коммитить)
+docs/competition/
