@@ -149,6 +149,17 @@ export function formatMessageDay(time?: string): string | undefined {
 }
 
 export class Message extends Block {
+    // Закрытие пикера реакций кликом мимо (2026-11-10): пока пикер открыт,
+    // на document висит слушатель. Клик ВНУТРИ сообщения (кнопка/эмодзи)
+    // разбирается делегированным обработчиком выше, наружный — гасит пикер.
+    // То же событие открытия игнорируется сравнением с sourceEvent: setProps
+    // перерисовывает li (replaceWith), цель клика остаётся в снятом элементе
+    // и выглядит «мимо». Message — retained-инстанс (keyed-кэш) и переживает
+    // перерендеры ленты: слушатель отвязанного от DOM элемента снимает себя
+    // сам (isConnected), destroy() (смена чата, prune кэша) снимает явно
+    // eslint-disable-next-line no-unused-vars
+    private reactionsOutsideClick: ((event: Event) => void) | null = null
+
     constructor(props: MessageProps) {
         super({
             ...props,
@@ -168,6 +179,7 @@ export class Message extends Block {
                     if (canReact && emojiOption?.dataset.emoji != null) {
                         current.onSetReaction?.(current.chat_id as number, current.id as number, emojiOption.dataset.emoji)
                         this.setProps({ reactionsOpen: false })
+                        this.detachReactionsOutsideClose()
 
                         return
                     }
@@ -182,7 +194,15 @@ export class Message extends Block {
                     }
 
                     if (target?.closest('[data-testid="message-reactions-toggle"]') != null) {
-                        this.setProps({ reactionsOpen: (this.props as MessageProps).reactionsOpen !== true })
+                        const opening = (this.props as MessageProps).reactionsOpen !== true
+
+                        this.setProps({ reactionsOpen: opening })
+
+                        if (opening) {
+                            this.attachReactionsOutsideClose(event)
+                        } else {
+                            this.detachReactionsOutsideClose()
+                        }
 
                         return
                     }
@@ -196,6 +216,52 @@ export class Message extends Block {
                 },
             } as unknown as Record<string, () => void>,
         })
+    }
+
+    private attachReactionsOutsideClose(sourceEvent: Event): void {
+        if (this.reactionsOutsideClick != null) {
+            return
+        }
+
+        const onOutside = (event: Event) => {
+            if (event === sourceEvent) {
+                return
+            }
+
+            const root = this.element
+
+            if (root == null || !root.isConnected) {
+                this.detachReactionsOutsideClose()
+
+                return
+            }
+
+            const target = event.target as Node | null
+
+            if (target != null && root.contains(target)) {
+                return
+            }
+
+            this.detachReactionsOutsideClose()
+            this.setProps({ reactionsOpen: false })
+        }
+
+        this.reactionsOutsideClick = onOutside
+        document.addEventListener('click', onOutside)
+    }
+
+    private detachReactionsOutsideClose(): void {
+        if (this.reactionsOutsideClick == null) {
+            return
+        }
+
+        document.removeEventListener('click', this.reactionsOutsideClick)
+        this.reactionsOutsideClick = null
+    }
+
+    destroy(): void {
+        this.detachReactionsOutsideClose()
+        super.destroy()
     }
 
     render() {
