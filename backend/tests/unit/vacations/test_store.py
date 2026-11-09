@@ -105,3 +105,34 @@ def test_expired_state_behaves_as_absent(store: VacationStore, session: Session,
     )
     session.commit()
     assert store.get_state(user_id) is not None
+
+
+def test_state_payload_roundtrip(store: VacationStore, session: Session, user_id: int) -> None:
+    # D-F-11: the forms wizards keep their collected data in the payload
+    # JSON; the parent skill's plain states keep payload=None
+    store.set_state(
+        user_id,
+        'form:transfer:new_dates',
+        origin_content='хочу перенести отпуск',
+        attempts=1,
+        payload='{"kind":"transfer","old_start":"21.12","old_days":7}',
+    )
+    session.commit()
+    state = store.get_state(user_id)
+    assert state is not None
+    assert state.state == 'form:transfer:new_dates'
+    assert state.attempts == 1
+    assert state.payload == '{"kind":"transfer","old_start":"21.12","old_days":7}'
+
+    store.bump_attempts(user_id)
+    session.commit()
+    state = store.get_state(user_id)
+    assert state is not None
+    assert state.attempts == 2
+    assert state.payload is not None  # bump preserves the payload
+
+    store.set_state(user_id, 'awaiting_yes', origin_content='отпуск?')
+    session.commit()
+    state = store.get_state(user_id)
+    assert state is not None
+    assert state.payload is None  # backward compatible: a plain reset clears it

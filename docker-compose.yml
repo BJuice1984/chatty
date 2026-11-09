@@ -36,6 +36,11 @@ services:
       CHATTY_BOT_USER_EMAIL: ${CHATTY_BOT_USER_EMAIL:-bot@chatty.local}
       CHATTY_BOT_RAG_TOP_K: ${CHATTY_BOT_RAG_TOP_K:-3}
       CHATTY_BOT_MAX_ANSWER_CHARS: ${CHATTY_BOT_MAX_ANSWER_CHARS:-4000}
+      # Vacation forms requisites (backend/app/vacations/forms/config.py):
+      # empty by default — the wizard answers with the requisites refusal
+      # until the operator env provides the real header values.
+      CHATTY_VACATION_ORG_NAME: ${CHATTY_VACATION_ORG_NAME:-}
+      CHATTY_VACATION_ADDRESSEE_NAME: ${CHATTY_VACATION_ADDRESSEE_NAME:-}
     command: >-
       sh -c "alembic upgrade head && python -m app.seed &&
       uvicorn app.main:app --host 0.0.0.0 --port 8000"

@@ -23,6 +23,7 @@ from app.repositories.messages import MessageRepository
 from app.schemas.bot import BotRunCreate, BotRunResponse
 from app.services.bot import BotService
 from app.services.chats import ChatService
+from app.services.files import FileService, get_object_storage
 from app.services.messages import MessageService
 from app.ws.hub import hub
 
@@ -98,6 +99,17 @@ async def create_bot_run(
 ) -> BotRunResponse:
     bot = bot_settings_from_env()
     rag = rag_settings_from_env()
+    # The forms skill delivers generated RTF as a chat attachment through
+    # the same storage composition the files endpoint uses (D-F-5). Built
+    # lazily: without configured storage (some tests, bare dev runs) the
+    # seam stays None and a form generation fails gracefully as
+    # form_storage_unavailable instead of 500-ing every bot run.
+    files = None
+    if (
+        getattr(request.app.state, 'object_storage', None) is not None
+        or (settings.object_storage_access_key and settings.object_storage_secret_key)
+    ):
+        files = FileService(db, get_object_storage(settings, request.app.state), settings)
     service = BotService(
         db,
         settings,
@@ -105,6 +117,7 @@ async def create_bot_run(
         rag,
         provider=get_bot_provider(request.app.state, bot),
         rag_provider=get_provider(request.app.state, rag),
+        files=files,
     )
     # The bot answer is written straight to the database by the service;
     # without this broadcast the messenger feed only saw it on a refetch.

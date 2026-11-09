@@ -5,7 +5,7 @@ from __future__ import annotations
 from datetime import date
 
 import pytest
-from sqlalchemy import create_engine
+from sqlalchemy import create_engine, select
 from sqlalchemy.orm import Session
 from sqlalchemy.pool import StaticPool
 
@@ -148,3 +148,42 @@ def test_lookup_uses_only_the_latest_snapshot(session: Session, service: Vacatio
     match = service.find('Абрикосов')
     assert match.kind == 'found'
     assert match.person.periods == ((date(2027, 3, 2), 14),)
+
+
+def test_found_person_carries_position_from_the_schedule(service: VacationService) -> None:
+    # D-F-2 (operator correction): должность is xlsx column 1 — already
+    # stored per period row; VacationService exposes the first non-null
+    match = service.find('Абрикосов')
+    assert match.kind == 'found'
+    assert match.person is not None
+    assert match.person.position == 'Инженер'
+
+
+def test_position_takes_the_first_non_null_row(session: Session, service: VacationService) -> None:
+    # a dirty schedule may leave должность empty on some rows only
+    schedule = session.scalars(select(VacationSchedule)).one()
+    session.add(
+        VacationPeriod(
+            schedule_id=schedule.id,
+            full_name='Рябинов С.С.',
+            department='Департамент Дельта',
+            position=None,
+            start_date=date(2026, 5, 4),
+            days=14,
+        )
+    )
+    session.add(
+        VacationPeriod(
+            schedule_id=schedule.id,
+            full_name='Рябинов С.С.',
+            department='Департамент Дельта',
+            position='Ведущий аналитик',
+            start_date=date(2026, 9, 7),
+            days=7,
+        )
+    )
+    session.commit()
+    match = service.find('Рябинов')
+    assert match.kind == 'found'
+    assert match.person is not None
+    assert match.person.position == 'Ведущий аналитик'

@@ -21,16 +21,19 @@ from sqlalchemy.orm import Session
 
 from app.bot.provider import BotProvider, BotProviderError
 from app.vacations import prompts
-from app.vacations.intent import classify, has_cancel, has_no, has_yes, normalize
+from app.vacations.intent import classify, has_cancel, has_no, has_yes, is_form_intent, normalize
 from app.vacations.service import Match, VacationService
 from app.vacations.store import VacationStore
+from app.vacations.surname_flow import (
+    MAX_SURNAME_ATTEMPTS,
+    STALE_SCHEDULE_PREFIX,
+    SURNAME_QUESTION,
+    resolve_answer,
+)
 
 logger = logging.getLogger(__name__)
 
 OFFER_TEXT = 'Хотите узнать свои даты по графику отпусков?'
-SURNAME_QUESTION = 'Подскажите вашу фамилию — найду вас в графике отпусков.'
-STALE_SCHEDULE_PREFIX = 'График отпусков обновился, и вашей сохранённой фамилии в нём больше нет.'
-MAX_SURNAME_ATTEMPTS = 2
 
 
 @dataclass(frozen=True)
@@ -62,6 +65,10 @@ class VacationSkill:
 
     def _fresh(self, content: str, user_id: int) -> SkillOutcome | None:
         kind = classify(content)
+        if is_form_intent(kind):
+            # the forms skill owns application phrasing (D-F-12) — never
+            # answer «оформи заявление на отпуск» with the dates offer
+            return None
         if kind == 'schedule':
             return self._answer_or_ask(user_id)
         if kind == 'vacation':
@@ -98,25 +105,13 @@ class VacationSkill:
         if has_cancel(content):
             self._store.clear_state(user_id)
             return SkillOutcome(reply='Хорошо, спросим позже — просто напишите про отпуск.')
-        match = self._service.find(content)
-        if match.kind == 'found':
-            self._store.save_surname(user_id, match.person.full_name)
+        resolution = resolve_answer(self._service, self._store, user_id, content, attempts)
+        if resolution.found is not None:
             self._store.clear_state(user_id)
-            return SkillOutcome(reply=self._compose_answer(match))
-        self._store.bump_attempts(user_id)
-        if match.kind == 'ambiguous':
-            listed = '; '.join(match.candidates)
-            if attempts + 1 >= MAX_SURNAME_ATTEMPTS:
-                self._store.clear_state(user_id)
-                return SkillOutcome(reply=f'Всё ещё неоднозначно: {listed}. Начните заново, написав про отпуск.')
-            return SkillOutcome(reply=f'В графике несколько таких людей: {listed}. Уточните с инициалами.')
-        hints = f' Похожие фамилии: {", ".join(match.suggestions)}.' if match.suggestions else ''
-        if attempts + 1 >= MAX_SURNAME_ATTEMPTS:
+            return SkillOutcome(reply=self._compose_answer(resolution.found))
+        if resolution.exhausted:
             self._store.clear_state(user_id)
-            return SkillOutcome(
-                reply=f'Не нашёл вас в графике отпусков.{hints} Уточните у HR — и напишите мне про отпуск позже, я начну заново.'
-            )
-        return SkillOutcome(reply=f'Такой фамилии в графике нет.{hints} Попробуйте ещё раз.')
+        return SkillOutcome(reply=resolution.reply)
 
     # --- answer composition ---------------------------------------------------
 
