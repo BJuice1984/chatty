@@ -13,7 +13,7 @@ import { TransportError } from '../../utils/HTTPTransport.ts'
 import Router from '../../utils/Router.ts'
 import { SIGNIN } from '../../utils/constants.ts'
 import store from '../../utils/Store.ts'
-import { AUTH_NETWORK_ERROR_MESSAGE, AuthFeatureController } from './controller.ts'
+import { AUTH_NETWORK_ERROR_MESSAGE, AuthFeatureController, registerSessionTeardown } from './controller.ts'
 import type { AuthPort, AuthUser } from './ports.ts'
 
 const dom = new JSDOM()
@@ -238,5 +238,91 @@ describe('auth controller: localSignOut — локальный выход пос
 
         expect(store.getState().user ?? null).to.eq(null)
         expect(go.calledOnceWith(SIGNIN)).to.be.true
+    })
+})
+
+describe('auth controller: выход сбрасывает сессию целиком (backlog п.2/п.10)', () => {
+    // Живой смоук 2026-11-09: при выходе и входе другим аккаунтом
+    // мессенджер показывал выбранный чат и ленту ПРЕДЫДУЩЕГО пользователя —
+    // logout сбрасывал только user; сюда же п.10: мёртвый чат-сокет после
+    // ре-логина ронял эхо и запуск бота
+    beforeEach(() => {
+        sinon.stub(Router, 'go')
+    })
+
+    afterEach(() => {
+        sinon.restore()
+        registerSessionTeardown(() => {})
+        store.reset()
+    })
+
+    const seedSession = () => {
+        store.set('user', { id: 1, login: 'ada@example.com' } as never)
+        store.set('selectedChat', 5)
+        store.set('messages', { 5: [{ id: 1, chat_id: 5, user_id: 1 } as never] })
+        store.set('chats', [{ id: 5, title: 'Чат' } as never])
+        store.set('chatUsers', [{ user_id: 2 } as never])
+        store.set('stories', [{} as never])
+        store.set('contacts', [{} as never])
+    }
+
+    it('logout очищает ВСЕ слайсы стора, а не только user', async () => {
+        const controller = new AuthFeatureController(makePort())
+        seedSession()
+
+        await controller.logout()
+
+        const state = store.getState() as Record<string, unknown>
+        expect(state.user ?? null).to.eq(null)
+        expect(state.selectedChat).to.be.undefined
+        expect(state.messages).to.be.undefined
+        expect(state.chats).to.be.undefined
+        expect(state.chatUsers).to.be.undefined
+        expect(state.stories).to.be.undefined
+        // contacts пишется фичей через строковый keypath — в AppState тип
+        // не входит, но переживать выход он обязан так же
+        expect(state.contacts).to.be.undefined
+    })
+
+    it('logout гасит realtime-сокеты через сеансный шов ДО сброса стора', async () => {
+        const teardown = sinon.spy(() => {
+            // шов обязан отработать по ЖИВОМУ стору — до reset
+            if (store.getState().user == null) {
+                throw new Error('teardown вызван после сброса стора')
+            }
+        })
+        registerSessionTeardown(teardown)
+        const controller = new AuthFeatureController(makePort())
+        seedSession()
+
+        await controller.logout()
+
+        expect(teardown.calledOnce).to.be.true
+    })
+
+    it('logout при лежащем сервере всё равно завершает локальную сессию', async () => {
+        const controller = new AuthFeatureController(makePort({
+            logout: () => Promise.reject(networkError),
+        }))
+        seedSession()
+
+        await controller.logout()
+
+        expect(store.getState().user ?? null).to.eq(null)
+        expect(store.getState().selectedChat).to.be.undefined
+        expect((Router.go as sinon.SinonStub).calledWith(SIGNIN)).to.be.true
+    })
+
+    it('localSignOut сбрасывает всё состояние, не только пользователя', () => {
+        const controller = new AuthFeatureController(makePort())
+        seedSession()
+
+        controller.localSignOut()
+
+        const state = store.getState()
+        expect(state.user ?? null).to.eq(null)
+        expect(state.selectedChat).to.be.undefined
+        expect(state.messages).to.be.undefined
+        expect(state.chats).to.be.undefined
     })
 })

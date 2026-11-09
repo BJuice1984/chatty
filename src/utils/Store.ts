@@ -132,6 +132,19 @@ export class Store extends EventBus {
         this.set(slice, data)
     }
 
+    // Полный сброс состояния (backlog NEXT.md п.2/п.10, 2026-11-09): выход
+    // из аккаунта раньше сбрасывал только user — selectedChat, messages,
+    // chats, chatUsers, stories и contacts переживали смену аккаунта, и
+    // лента предыдущего пользователя была достижима следующему. reset
+    // восстанавливает пустое состояние и эмитит Updated: каждый
+    // withStore-подписчик перерисуется с пустыми слайсами — единственный
+    // честный смысл reset в том, что ЭМИТ обязателен, иначе подписчики
+    // останутся жить с последними спроецированными пропсами.
+    public reset() {
+        this.state = {}
+        this.emit(StoreEvents.Updated, this.getState())
+    }
+
     public getState() {
         return this.state
     }

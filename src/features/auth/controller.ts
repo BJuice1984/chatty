@@ -8,9 +8,23 @@
 import Router from '../../utils/Router.ts'
 import { MESSENGER, PROFILE, SIGNIN } from '../../utils/constants.ts'
 import { TransportError } from '../../utils/HTTPTransport.ts'
+import store from '../../utils/Store.ts'
 import { authPort } from './api/index.ts'
 import type { AuthPort, SignInRequest, SignUpRequest } from './ports.ts'
 import { authSlice } from './store.ts'
+
+// Сеансный teardown-шов (backlog NEXT.md п.2/п.10, 2026-11-09): при выходе
+// нужно гасить WS-сокеты чатов и stories, но фичи не импортируют друг друга
+// напрямую (guard: только через порты/композицию). Узор chatSearchOpener:
+// фича выставляет регистрацию, композиционный корень (main.ts) injects
+// реализацию — он единственный, кому разрешено знать обе стороны.
+type SessionTeardown = () => void
+
+let sessionTeardown: SessionTeardown = () => {}
+
+export function registerSessionTeardown(fn: SessionTeardown): void {
+    sessionTeardown = fn
+}
 
 export const AUTH_NETWORK_ERROR_MESSAGE = 'Нет связи с сервером. Проверьте подключение и попробуйте позже'
 
@@ -115,10 +129,13 @@ export class AuthFeatureController {
     async logout(): Promise<void> {
         try {
             await this.port.logout()
-            authSlice.setUser(null)
-            Router.go(SIGNIN)
         } catch (e: unknown) {
             console.error('Ошибка при выходе из системы:', e)
+        } finally {
+            // отказ сервера не оставляет чужие данные на экране: локальная
+            // сессия завершается в любом исходе (приватность п.2 важнее
+            // строгости серверного logout — куки перевыпустит следующий логин)
+            this.resetSession()
         }
     }
 
@@ -127,7 +144,19 @@ export class AuthFeatureController {
     // следующий за ним POST /auth/logout едет уже с пустым csrf и падает
     // 403 csrf_failed, оставляя юзера на странице настроек
     localSignOut(): void {
-        authSlice.setUser(null)
+        this.resetSession()
+    }
+
+    // Единое завершение локальной сессии (backlog п.2/п.10, 2026-11-09):
+    // полный сброс стора + гарантированное закрытие WS-сокетов через шов.
+    // Раньше выход сбрасывал только user: selectedChat, messages, chats,
+    // chatUsers, stories и контакты переживали смену аккаунта — лента
+    // первого пользователя была видна следующему, а мёртвый чат-сокет
+    // ломал эхо и запуск бота после ре-логина. Сокеты гасим ДО reset:
+    // их обработчики ещё живы и не должны реагировать на уже пустой стор.
+    private resetSession(): void {
+        sessionTeardown()
+        store.reset()
         Router.go(SIGNIN)
     }
 }
