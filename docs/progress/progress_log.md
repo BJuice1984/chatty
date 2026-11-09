@@ -203,6 +203,23 @@ test_same_kind_form_intent_at_surname_step_restarts_the_wizard
 П.5 (притворство человеком графика) отложен оператором: возможна
 проверка фамилии при регистрации. Гейты: vacation-зона 101 passed;
 backend verify: PASS — pytest 448 passed, alembic head 016_vacation_forms.
+# 2026-11-09 — Chore(alk): стенд Windows на ALK 2.44.1 (плагин + CLI синхронно)
+
+Сервисное обновление агентской среды по runbook directory-source:
+плагин agent-lifecycle-kit 2.43.0 → 2.44.1 (claude plugin update,
+installed_plugins 2.44.1 @ f8a2d208) и CLI agent-lifecycle
+2.43.0 → 2.44.1 (PyPI, py -3.12). Upstream main == тег v2.44.1
+(f8a2d208), ff-merge без reset; локальный патч marketplace.json
+(source: "./" + description) переживён stash pop — конфликт только
+в source-блоке, разрешён в пользу directory-source, version из
+upstream. Содержательное в 2.44.0: стейдж-биндинги адаптеров/моделей/
+reasoning per workflow stage с ревью discovery, раздельные проверки
+локальной конфигурации и авторизованной живой availability, generic
+declared source для ограниченного нативного учёта модель-тасок,
+детерминированные рецепты артефакт-операций (EN/RU); 2.44.1 — патч
+закрытия owned SQLite schema template после commit/rollback.
+Прогонные конверты/квитки v2 не менялись; применение плагина —
+после рестарта Claude Code.
 
 # 2026-11-09 — Feat(vacations): заявления на отпуск в RTF (ALK 2026-11-08-vacation-forms)
 
