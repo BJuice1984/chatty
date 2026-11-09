@@ -288,6 +288,12 @@ export class ChatsFeatureController {
 
         try {
             await this.port.enableAi(chatId)
+
+            // состав рефетчит САМ кликавший (2026-11-09): его оптимистичный
+            // is_ai-патч гасит эхо WS chat_ai_toggled идемпотентным скипом
+            // — бот приезжал в полосу участников только остальным; у
+            // остальных рефетч остаётся на WS-пути (handleChatAiToggled)
+            void this.getChatUsers(chatId)
         } catch (e: unknown) {
             console.error('Ошибка при включении AI в чате:', e)
 

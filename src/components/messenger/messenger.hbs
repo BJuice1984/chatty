@@ -52,7 +52,7 @@
           {{/if}}
           {{{ ChatHistory }}}
           {{#each messages}}
-            {{{ Message content=this.content user_id=this.user_id chat_id=this.chat_id id=this.id kind=this.kind isMine=this.isMine isError=this.isError isPending=this.isPending isSending=this.isSending fileUrl=this.fileUrl attachments=this.attachments autoDownload=../this.autoDownload time=this.time showDate=this.showDate replyTo=this.replyTo reactions=this.reactions authorBadge=this.authorBadge isBot=this.isBot onSetReaction=../this.onSetReaction onReply=../this.onReplyToMessage cacheKey=this.cacheKey }}}
+            {{{ Message content=this.content user_id=this.user_id chat_id=this.chat_id id=this.id kind=this.kind isMine=this.isMine isError=this.isError isPending=this.isPending isSending=this.isSending fileUrl=this.fileUrl attachments=this.attachments autoDownload=../this.autoDownload time=this.time showDate=this.showDate replyTo=this.replyTo reactions=this.reactions authorBadge=this.authorBadge isBot=this.isBot glued=this.glued gluedLast=this.gluedLast onSetReaction=../this.onSetReaction onReply=../this.onReplyToMessage cacheKey=this.cacheKey }}}
           {{/each}}
         </ul>
         {{#if replyDraft}}

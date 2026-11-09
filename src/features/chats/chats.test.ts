@@ -340,6 +340,29 @@ describe('chats controller create-and-select and enable-ai', () => {
         expect((chatsSlice.getChats().find(chat => chat.id === 7) as ChatInfo).is_ai).to.eq(false)
     })
 
+    // 2026-11-09 (вечер): успех включения рефетчит состав и у САМОГО
+    // кликавшего — его оптимистичный is_ai-патч гасит собственное WS-эхо
+    // chat_ai_toggled идемпотентным скипом, бот иначе не приезжал в полосу
+    // участников до перевыбора чата; на ошибке порта рефетча нет
+    it('enableAi refetches members for the clicker on success, not on failure', async () => {
+        chatsSlice.setChats([chatRow({ id: 7 })])
+        const getChatUsers = sinon.stub().resolves()
+        const okPort = makePort({ enableAi: sinon.stub().resolves(), getChatUsers })
+        const okController = new ChatsFeatureController(okPort, makeMessages())
+
+        await okController.enableAi(7)
+
+        expect(getChatUsers.calledOnceWith(7)).to.be.true
+
+        const failGetChatUsers = sinon.stub().resolves()
+        const failPort = makePort({ enableAi: sinon.stub().rejects(new Error('boom')), getChatUsers: failGetChatUsers })
+        const failController = new ChatsFeatureController(failPort, makeMessages())
+
+        await failController.enableAi(7)
+
+        expect(failGetChatUsers.called).to.be.false
+    })
+
     // обратный «+AI» (2026-11-07): активная кнопка выключает бота — тот же
     // оптимистичный патч (false) и откат (true) по ошибке порта
     it('disableAi patches is_ai to false optimistically and reverts on port error', async () => {

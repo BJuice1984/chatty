@@ -73,6 +73,11 @@ interface MessageProps {
     // ответ бота (2026-11-08): чип «✦ AI» над пузырём во всех чатах —
     // пользователь видит, что реплика от ассистента
     isBot?: boolean
+    // склейка серии автора (2026-11-09): продолжение серии поджимает
+    // верхний ВНЕШНИЙ угол пузыря (у своих — зеркально, правый),
+    // замыкающее серии возвращает нижний внешний радиус
+    glued?: boolean
+    gluedLast?: boolean
     // eslint-disable-next-line no-unused-vars
     onSetReaction?: (chatId: number, messageId: number, emoji: string) => void
     // eslint-disable-next-line no-unused-vars

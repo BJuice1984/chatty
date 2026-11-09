@@ -317,20 +317,30 @@ export function mapTypedMessages(
     cacheKey?: string
     authorBadge?: MessageAuthorBadge
     isBot?: boolean
+    glued?: boolean
+    gluedLast?: boolean
 })[] {
     let previousDayKey: string | undefined
 
     // Плашка автора и AI-чип (2026-11-08-mobile-messenger-ux): состав чата
     // уже в сторе (login/email/avatar — контракт members); бот — участник
     // с серверным is_bot. Гейт плашки — групповой чат (>2 участников,
-    // бот считается); трекер хранит автора предыдущего ЧУЖОГО несистемного
-    // сообщения — свои сообщения серию не рвут (D-2: A, ME, A — одна серия)
+    // бот считается).
+    // Серии (2026-11-09, фидбек оператора): склеиваются подряд идущие
+    // реальные сообщения ОДНОГО автора — трекер единый для обеих сторон:
+    // СВОЁ сообщение (правая сторона) серию чужих РВЁТ, служебные kind-строки
+    // и pending-плейсхолдеры тоже. У серии один внешний вид: первая несёт
+    // единственную компактную плашку, продолжения идут без плашек, пузыри
+    // продолжений поджимают верхний ВНЕШНИЙ угол (у своих радиусы
+    // зеркальные — см. модификаторы _glued/_glued_last в messenger.scss),
+    // замыкающее возвращает нижний внешний радиус
     const authorById = new Map((chatUsers ?? []).map(user => [user.id, user]))
     const botUserId = (chatUsers ?? []).find(user => user.is_bot === true)?.id
     const groupChat = (chatUsers ?? []).length > 2
-    let previousForeignAuthor: number | undefined
+    let previousAuthor: number | undefined
+    let previousWasPlain = false
 
-    return messages.map(message => {
+    return messages.map((message, index) => {
         const dayKey = messageDayKey(message.time)
         const showDate = dayKey !== undefined && dayKey !== previousDayKey
 
@@ -349,50 +359,29 @@ export function mapTypedMessages(
         }
 
         // служебные строки ленты (kind) и pending-плейсхолдер не участвуют
-        // ни в плашке, ни в чипе, ни в трекере автора
+        // ни в плашке, ни в чипе, ни в склейке — и серию РВУТ
         const plainEntry = message.kind == null && message.isPending !== true
 
-        if (plainEntry && !isMine) {
-            const author = authorById.get(message.user_id)
-            const startsAuthorRun = previousForeignAuthor !== message.user_id
+        const continuesRun = plainEntry && previousWasPlain && message.user_id === previousAuthor
+        const next = messages[index + 1]
+        const runEndsHere = next == null
+            || next.kind != null
+            || next.isPending === true
+            || next.user_id !== message.user_id
 
-            previousForeignAuthor = message.user_id
-
-            // п.4 (2026-11-09): плашку несёт КАЖДОЕ чужое сообщение группового
-            // чата — первое сообщение серии полной (аватар + логин),
-            // продолжения компактной (уменьшенный аватар + приглушённый
-            // логин): до этого продолжения серии плашки не несли вовсе, и
-            // в диалоговом паттерне (свои сообщения серию не рвут) плашки
-            // практически исчезали из ленты — живой фидбек оператора.
-            // Аватар — тем же правилом, что UserAvatar/ChatAvatar: пути
-            // с '/' — статика приложения (пул), файловые («{id}/download»)
-            // — через fileUrl бэкенда, сырой путь в src ломал загруженные
-            // аватарки относительным 404
-            const authorBadge = groupChat && author != null
-                ? {
-                    login: author.login,
-                    email: author.email,
-                    avatar: author.avatar === '' || author.avatar.startsWith('/')
-                        ? author.avatar
-                        : fileUrl(author.avatar),
-                    compact: !startsAuthorRun,
-                }
-                : undefined
-
-            return {
-                ...message,
-                isMine,
-                fileUrl: fileUrlValue,
-                attachments,
-                showDate,
-                cacheKey: messageCacheKey(message),
-                isSending: message.ownTempId != null,
-                authorBadge,
-                isBot: plainEntry && botUserId != null && message.user_id === botUserId,
-            }
+        if (plainEntry) {
+            previousAuthor = message.user_id
+            previousWasPlain = true
+        } else {
+            previousWasPlain = false
         }
 
-        return {
+        // склейка пузырей: продолжение серии поджимает верхний внешний
+        // угол, замыкающее (в сериях от двух) возвращает нижний
+        const glued = continuesRun
+        const gluedLast = continuesRun && runEndsHere
+
+        const base = {
             ...message,
             isMine,
             fileUrl: fileUrlValue,
@@ -401,7 +390,31 @@ export function mapTypedMessages(
             cacheKey: messageCacheKey(message),
             isSending: message.ownTempId != null,
             isBot: plainEntry && botUserId != null && message.user_id === botUserId,
+            glued,
+            gluedLast,
         }
+
+        // п.4 (2026-11-09, вечер): плашку несёт ТОЛЬКО первое сообщение
+        // чужой серии группового чата — единый компактный стиль; аватар —
+        // тем же правилом, что UserAvatar/ChatAvatar: пути с '/' — статика
+        // приложения (пул), файловые («{id}/download») — через fileUrl
+        // бэкенда, сырой путь в src ломал загруженные аватарки 404
+        if (plainEntry && !isMine && !continuesRun) {
+            const author = authorById.get(message.user_id)
+            const authorBadge = groupChat && author != null
+                ? {
+                    login: author.login,
+                    email: author.email,
+                    avatar: author.avatar === '' || author.avatar.startsWith('/')
+                        ? author.avatar
+                        : fileUrl(author.avatar),
+                }
+                : undefined
+
+            return { ...base, authorBadge }
+        }
+
+        return base
     })
 }
 
@@ -1230,6 +1243,14 @@ const withMessenger = withStore((state: AppState) => {
     // вешает плашку автора (групповые) и AI-чип ответам бота
     const messages = mapTypedMessages(state.messages[selectedChatId], state.user?.id, state.chatUsers)
 
+    // выключенный бот (2026-11-09, фидбек оператора) уходит из полосы
+    // участников: членство на сервере живёт (история бота остаётся
+    // атрибутированной — плашки/AI-чип читают полный chatUsers выше),
+    // полоса — это АКТИВНЫЙ состав: is_bot скрывается, пока чат не AI.
+    // Включение (+AI) патчит is_ai и рефетчит состав — бот возвращается
+    const selectedChatUsers = (state.chatUsers ?? []).filter(user =>
+        !(user.is_bot === true && isAiChat !== true))
+
     // кэш живёт размером с текущую ленту: смена чата и удаление сообщения
     // роняют и destroy'ят осевшие ключи (неограниченного роста нет)
     pruneComponentCache(new Set(
@@ -1246,7 +1267,7 @@ const withMessenger = withStore((state: AppState) => {
 
     return {
         selectedChat: state.selectedChat,
-        selectedChatUsers: state.chatUsers,
+        selectedChatUsers,
         messages,
         chatInfo,
         botPending,

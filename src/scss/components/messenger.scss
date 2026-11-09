@@ -639,6 +639,22 @@
       border-bottom-left-radius: 4px;
     }
 
+    &_mine#{&}_glued {
+      border-top-right-radius: 4px;
+    }
+
+    &_mine#{&}_glued_last {
+      border-bottom-right-radius: $bubbleRadius;
+    }
+
+    &_theirs#{&}_glued {
+      border-top-left-radius: 4px;
+    }
+
+    &_theirs#{&}_glued_last {
+      border-bottom-left-radius: $bubbleRadius;
+    }
+
     /* Системная ошибка (провайдер бота недоступен): жёлтая подсветка
        поверх стороны пузыря; текст наследует color отсюда */
 
