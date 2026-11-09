@@ -358,8 +358,19 @@ export function mapTypedMessages(
 
             previousForeignAuthor = message.user_id
 
-            const authorBadge = groupChat && startsAuthorRun && author != null
-                ? { login: author.login, email: author.email, avatar: author.avatar }
+            // п.4 (2026-11-09): плашку несёт КАЖДОЕ чужое сообщение группового
+            // чата — первое сообщение серии полной (аватар + логин),
+            // продолжения компактной (уменьшенный аватар + приглушённый
+            // логин): до этого продолжения серии плашки не несли вовсе, и
+            // в диалоговом паттерне (свои сообщения серию не рвут) плашки
+            // практически исчезали из ленты — живой фидбек оператора
+            const authorBadge = groupChat && author != null
+                ? {
+                    login: author.login,
+                    email: author.email,
+                    avatar: author.avatar,
+                    compact: !startsAuthorRun,
+                }
                 : undefined
 
             return {

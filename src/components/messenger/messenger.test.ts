@@ -2055,20 +2055,32 @@ describe('mapTypedMessages author plate and bot chip', () => {
         chat_id: 5, time: 't0', type: 'message', user_id, content: 'm', ...extra,
     })
 
-    it('plates the first foreign message of each author run; own messages do not break the run', () => {
+    it('every foreign group message carries a plate: run starts full, continuations compact; own messages do not break the run', () => {
+        // п.4 (2026-11-09): до этого продолжения серии плашки не несли — в
+        // диалоговом паттерне (свои сообщения серию не рвут) плашки почти
+        // исчезали из ленты; теперь: первая серии — полная (аватар+логин),
+        // продолжения — компактная (логин, compact:true)
         const mapped = mapTypedMessages(
             [message(8), message(8), message(me), message(8), message(9)] as never[],
             me,
             groupUsers
         )
 
-        expect((mapped[0] as { authorBadge?: { login: string } }).authorBadge?.login).to.eq('alice@x.io')
-        expect((mapped[1] as { authorBadge?: unknown }).authorBadge).to.eq(undefined)
-        expect((mapped[2] as { authorBadge?: unknown }).authorBadge).to.eq(undefined)
-        // A, ME, A — серия автора не рвётся своим сообщением (review F-1)
-        expect((mapped[3] as { authorBadge?: unknown }).authorBadge).to.eq(undefined)
-        // бот — участник группового чата, его первая реплика несёт плашку
-        expect((mapped[4] as { authorBadge?: { login: string } }).authorBadge?.login).to.eq('bot@chatty.local')
+        const badge = (i: number) => (mapped[i] as { authorBadge?: { login: string, compact?: boolean } }).authorBadge
+
+        expect(badge(0)?.login).to.eq('alice@x.io')
+        expect(badge(0)?.compact).to.eq(false)
+        expect(badge(1)?.login).to.eq('alice@x.io')
+        expect(badge(1)?.compact).to.eq(true)
+        // своё сообщение плашки не несёт
+        expect(badge(2)).to.eq(undefined)
+        // A, ME, A — серия автора не рвётся своим сообщением (review F-1):
+        // второе A — продолжение, компактная плашка
+        expect(badge(3)?.login).to.eq('alice@x.io')
+        expect(badge(3)?.compact).to.eq(true)
+        // бот — участник группового чата, его первая реплика — полная плашка
+        expect(badge(4)?.login).to.eq('bot@chatty.local')
+        expect(badge(4)?.compact).to.eq(false)
     })
 
     it('marks bot messages with isBot and keeps humans clean', () => {
@@ -2104,17 +2116,25 @@ describe('mapTypedMessages author plate and bot chip', () => {
     it('the store-driven messenger renders the plate with the email tooltip', () => {
         store.set('chats', [{ id: 5, title: 'группа', avatar: '', unread_count: 0 }])
         store.set('chatUsers', groupUsers)
-        store.set('messages', { 5: [message(8)] })
+        store.set('messages', { 5: [message(8), message(8)] })
         store.set('selectedChat', 5)
         store.set('user', { id: me })
 
         const messenger = new Messenger({} as never)
 
         try {
-            const plate = messenger.element?.querySelector('[data-testid="message-author-badge"]')
+            const plates = [...(messenger.element?.querySelectorAll('[data-testid="message-author-badge"]') ?? [])]
 
-            expect(plate?.textContent).to.contain('alice@x.io')
-            expect(plate?.getAttribute('title')).to.eq('alice@x.io')
+            // первое сообщение серии — полная плашка с аватаром
+            expect(plates[0]?.textContent).to.contain('alice@x.io')
+            expect(plates[0]?.getAttribute('title')).to.eq('alice@x.io')
+            expect(plates[0]?.querySelector('img')).to.not.eq(null)
+            expect(plates[0]?.classList.contains('messenger__message-author_compact')).to.eq(false)
+            // продолжение серии — компактная: уменьшенный аватар + логин,
+            // класс-модификатор отличает от полной (п.4)
+            expect(plates[1]?.textContent).to.contain('alice@x.io')
+            expect(plates[1]?.querySelector('img')).to.not.eq(null)
+            expect(plates[1]?.classList.contains('messenger__message-author_compact')).to.eq(true)
         } finally {
             messenger.destroy()
             store.set('messages', undefined)

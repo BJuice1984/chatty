@@ -11,7 +11,7 @@
     {{#if hasMeta}}
         <div class="messenger__message-meta" data-testid="message-meta">
             {{#if authorBadge}}
-                <span class="messenger__message-author" data-testid="message-author-badge" title="{{authorBadge.email}}"><img class="messenger__message-author-avatar" src="{{authorBadge.avatar}}" alt="">{{authorBadge.login}}</span>
+                <span class="messenger__message-author{{#if authorBadge.compact}} messenger__message-author_compact{{/if}}" data-testid="message-author-badge" title="{{authorBadge.email}}"><img class="messenger__message-author-avatar" src="{{authorBadge.avatar}}" alt="">{{authorBadge.login}}</span>
             {{/if}}
             {{#if isBot}}<span class="messenger__message-ai-badge" data-testid="message-ai-badge">✦ AI</span>{{/if}}
         </div>

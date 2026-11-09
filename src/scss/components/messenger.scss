@@ -290,6 +290,17 @@
     object-fit: cover;
   }
 
+  &__message-author_compact {
+    @include text-format(400, 10px, 12px);
+
+    gap: 3px;
+    opacity: 0.7;
+  }
+
+  &__message-author_compact &__message-author-avatar {
+    @include size(12px, 12px);
+  }
+
   &__message-ai-badge {
     @include text-format(500, 10px, 14px);
 
