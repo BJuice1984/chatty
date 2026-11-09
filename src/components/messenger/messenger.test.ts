@@ -364,6 +364,77 @@ describe('messenger action dispatch', () => {
         }
     })
 
+    // NEXT п.3 (2026-11-09): store-эмит (эхо своего, входящее, bot_delta)
+    // пересоздаёт DOM композера — фокус и каретка снимаются в
+    // componentDidUpdate и возвращаются в свежий узел
+    it('keeps the composer focus and caret across an incoming-message rerender', async () => {
+        const messenger = new Messenger({ onSendMessage: () => {} } as never)
+
+        try {
+            const mount = messenger.element as Node
+            document.body.appendChild(mount)
+            store.set('messages', { 5: [] })
+            store.set('selectedChat', 5)
+
+            const input = messenger.element?.querySelector<HTMLInputElement>('input[name="message"]')
+
+            input?.focus()
+            if (input != null) {
+                input.value = 'набираю ответ'
+                input.setSelectionRange(3, 3)
+            }
+            expect(document.activeElement).to.equal(input)
+
+            // входящее сообщение: пропсы меняются — DOM пересобирается
+            store.set('messages', {
+                5: [{ id: 101, chat_id: 5, user_id: 2, content: 'входящее' }] as never,
+            })
+
+            await new Promise(resolve => setTimeout(resolve, 10))
+
+            const revived = messenger.element?.querySelector<HTMLInputElement>('input[name="message"]')
+
+            expect(revived?.value).to.eq('набираю ответ')
+            expect(document.activeElement).to.equal(revived)
+            expect([revived?.selectionStart, revived?.selectionEnd]).to.deep.eq([3, 3])
+        } finally {
+            messenger.element?.remove()
+            messenger.destroy()
+            store.set('selectedChat', null)
+            store.set('messages', undefined)
+        }
+    })
+
+    it('does not steal focus on a rerender when the composer was not focused', async () => {
+        const messenger = new Messenger({ onSendMessage: () => {} } as never)
+
+        try {
+            const mount = messenger.element as Node
+            document.body.appendChild(mount)
+            store.set('messages', { 5: [] })
+            store.set('selectedChat', 5)
+
+            const input = messenger.element?.querySelector<HTMLInputElement>('input[name="message"]')
+
+            input?.blur()
+
+            store.set('messages', {
+                5: [{ id: 102, chat_id: 5, user_id: 2, content: 'входящее' }] as never,
+            })
+
+            await new Promise(resolve => setTimeout(resolve, 10))
+
+            const revived = messenger.element?.querySelector<HTMLInputElement>('input[name="message"]')
+
+            expect(document.activeElement).to.not.equal(revived)
+        } finally {
+            messenger.element?.remove()
+            messenger.destroy()
+            store.set('selectedChat', null)
+            store.set('messages', undefined)
+        }
+    })
+
     it('restores the composer input focus after a send (rAF after rerender)', async () => {
         // отправка пишет в стор — лента перерисовывается и пересоздаёт DOM
         // композера; фокус возвращается в следующем кадре (2026-11-02)

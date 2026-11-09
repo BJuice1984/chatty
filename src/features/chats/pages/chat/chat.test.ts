@@ -1547,3 +1547,82 @@ describe('chat scss mobile pins', () => {
         expect(modifierBlock.slice(0, hoverStart)).to.not.contain('background-image')
     })
 })
+
+describe('chat page composer state across rerenders', () => {
+    // NEXT п.3 (2026-11-09): mapStateToProps страницы строит новый список
+    // чатов на каждый стор-эмит — страница перерисовывается и chat.hbs
+    // ПЕРЕСОЗДАЁТ Messenger-инстанс (registerComponent без cacheKey);
+    // черновик и фокус обязаны жить в общем модуле композера (узор
+    // feed-scroll), а не в полях инстанса. Каскад пинится именно через
+    // реальную страницу — юнит-пин Messenger напрямую каскад не видит.
+    const setup = async (): Promise<{ page: InstanceType<typeof ChatPage>, input: () => HTMLInputElement | null | undefined }> => {
+        store.set('chats', [{ id: 5, title: 'Чат', avatar: '', unread_count: 0 } as never])
+        store.set('messages', { 5: [] })
+        store.set('selectedChat', 5)
+
+        const page = new ChatPage({} as never)
+
+        document.body.appendChild(page.element as Node)
+        const input = () => page.element?.querySelector<HTMLInputElement>('input[name="message"]')
+
+        return { page, input }
+    }
+
+    const teardown = (page: InstanceType<typeof ChatPage>) => {
+        page.element?.remove()
+        page.destroy()
+        store.set('selectedChat', undefined)
+        store.set('messages', undefined)
+        store.set('chats', undefined)
+    }
+
+    it('keeps the composer draft and focus when an incoming message rerenders the page', async () => {
+        const { page, input } = await setup()
+
+        try {
+            input()?.focus()
+            if (input() != null) {
+                input()!.value = 'набираю ответ'
+                input()!.setSelectionRange(3, 3)
+            }
+            expect(document.activeElement).to.equal(input())
+
+            // входящее сообщение: страница перерисовалась, Messenger-инстанс
+            // пересоздан — черновик, фокус и каретка обязаны вернуться
+            store.set('messages', {
+                5: [{ id: 101, chat_id: 5, user_id: 2, content: 'входящее' } as never],
+            })
+
+            await new Promise(resolve => setTimeout(resolve, 10))
+
+            expect(input()?.value).to.eq('набираю ответ')
+            expect(document.activeElement).to.equal(input())
+            expect([input()?.selectionStart, input()?.selectionEnd]).to.deep.eq([3, 3])
+        } finally {
+            teardown(page)
+        }
+    })
+
+    it('does not move the composer state into another chat', async () => {
+        const { page, input } = await setup()
+
+        try {
+            if (input() != null) {
+                input()!.value = 'черновик чата 5'
+            }
+
+            store.set('chats', [
+                { id: 5, title: 'Чат', avatar: '', unread_count: 0 } as never,
+                { id: 6, title: 'Другой', avatar: '', unread_count: 0 } as never,
+            ])
+            store.set('messages', { 5: [], 6: [] })
+            store.set('selectedChat', 6)
+
+            await new Promise(resolve => setTimeout(resolve, 10))
+
+            expect(input()?.value).to.eq('')
+        } finally {
+            teardown(page)
+        }
+    })
+})

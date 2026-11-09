@@ -29,6 +29,7 @@ import {
     setFeedScroll,
     setFeedScrollKey,
 } from './feed-scroll.ts'
+import { clearComposerState, loadComposerState, saveComposerState } from './composer-state.ts'
 import template from './messenger.hbs'
 
 // Дебаунс @-поиска: поиск стартует, когда пользователь перестал печатать
@@ -397,9 +398,12 @@ class MessengerBase extends Block {
     // брошенного инстанса разрешается в detached-узле и молчит
     private scrollPlanScheduled = false
 
-    // черновик композера между перерисовками (componentDidUpdate снимает,
-    // render возвращает в новый DOM — см. 2026-11-06-quick)
-    private composerDraft = ''
+    // черновик и выделение композера между перерисовками живут в общем
+    // модуле composer-state (NEXT п.3, 2026-11-09): страница чатов
+    // перерисовывается на каждый стор-эмит и пересоздаёт Messenger-инстанс
+    // — инстансные поля умирали со старым инстансом; componentDidUpdate
+    // снимает значения в модуль, render возвращает их в новый DOM (узор
+    // feed-scroll, каскадный пин — chat.test.ts)
 
     // стартовая точка свайпа возврата (2026-11-08): null — жеста нет;
     // жест, начавшийся внутри открытой модалки, игнорируется (F-4)
@@ -433,13 +437,25 @@ class MessengerBase extends Block {
         // 2026-11-06-quick: черновик композера переживает перерисовку —
         // входящее сообщение (WS message → setProps) раньше стирало
         // набираемый текст пересозданием DOM; смена чата черновик не
-        // переносит (пишем в другой контекст)
+        // переносит (пишем в другой контекст). NEXT п.3 (2026-11-09):
+        // память переехала в общий модуль — она переживает и пересоздание
+        // Messenger-инстанса перерисовкой страницы; сюда же легло
+        // выделение (фокус + каретка) того же контракта
         if (chatChanged) {
-            this.composerDraft = ''
+            clearComposerState()
         } else {
             const input = this.element?.querySelector<HTMLInputElement>('input.messenger__composer-input')
 
-            this.composerDraft = input?.value ?? ''
+            saveComposerState(this.memoryKey(), {
+                draft: input?.value ?? '',
+                selection:
+                    input != null && document.activeElement === input
+                        ? [
+                            input.selectionStart ?? input.value.length,
+                            input.selectionEnd ?? input.value.length,
+                        ]
+                        : null,
+            })
         }
 
         if (chatChanged) {
@@ -1112,18 +1128,41 @@ class MessengerBase extends Block {
             deleteContent: renderDeleteModalContent(chatTitle),
         })
 
-        // вернуть черновик в свежий DOM: render вызывается ПОСЛЕ
-        // componentDidUpdate (значение уже снято со старого узла), а fragment
-        // ещё не вставлен — value едет с узлом в документ. Гвард строго
-        // falsy: первый render() зовётся из конструктора БАЗОВОГО Block —
-        // ДО инициализации полей подкласса, composerDraft там undefined, и
-        // `undefined !== ''` писал в value строку «undefined» (live-баг
-        // 2026-11-06)
-        const draft = this.composerDraft
+        // вернуть черновик и фокус в свежий DOM: render вызывается ПОСЛЕ
+        // componentDidUpdate (значения уже сняты со старого узла в общий
+        // модуль), а fragment ещё не вставлен — value едет с узлом в
+        // документ. Модульная память закрывает и ПЕРЕСОЗДАНИЕ инстанса
+        // перерисовкой страницы (NEXT п.3): новый Messenger читает слот
+        // прямо в первом render из конструктора — гвардов на
+        // неинициализированные поля больше нет вовсе
+        const composerState = loadComposerState(this.memoryKey())
         const nextInput = fragment.querySelector<HTMLInputElement>('input.messenger__composer-input')
 
-        if (draft != null && draft !== '' && nextInput != null) {
-            nextInput.value = draft
+        if (composerState.draft !== '' && nextInput != null) {
+            nextInput.value = composerState.draft
+        }
+
+        // фокус жил в композере — вернуть его и каретку в свежий узел
+        // (NEXT п.3): focus на detached-узле до вставки не работает, а
+        // перерисовка DOM уже сошла — план в следующем кадре по узору
+        // refocusSearchInput; чужой фокус (модалка, rename) не трогаем —
+        // в слот он не пишется
+        if (composerState.selection != null && nextInput != null) {
+            const selection = composerState.selection
+            const restore = () => {
+                const live = this.element?.querySelector<HTMLInputElement>('input.messenger__composer-input')
+
+                if (live != null) {
+                    live.focus()
+                    live.setSelectionRange(selection[0], selection[1])
+                }
+            }
+
+            if (typeof requestAnimationFrame === 'function') {
+                requestAnimationFrame(restore)
+            } else {
+                setTimeout(restore, 0)
+            }
         }
 
         return fragment
