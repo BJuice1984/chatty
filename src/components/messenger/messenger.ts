@@ -531,6 +531,28 @@ class MessengerBase extends Block {
             return
         }
 
+        // факт фокуса снимаем ДО любого стор-эффекта: optimistic-запись ниже
+        // синхронно перерисовывает страницу и пересоздаёт Messenger-инстанс —
+        // DOM композера заменяется, activeElement падает в body (живой репро
+        // NEXT.md п.3, Enter-сабмит — «слепая зона пинов»: rAF-возврат ниже
+        // квэрит уже detached-элемент старого инстанса, а CDU нового не
+        // застанет фокус в инпуте и не сохранит выделение в слот)
+        const hadComposerFocus = input != null && document.activeElement === input
+
+        if (input != null) {
+            // чистим ДО onSendMessage: старый инстанс останется подписан на
+            // тот же стор-эмит и его CDU снимет черновик в слот со СВОЕГО
+            // живого DOM — неочищенное значение воскресло бы в новом инстансе
+            input.value = ''
+        }
+
+        if (hadComposerFocus) {
+            // страховка на случай, когда CDU старого инстанса не случится:
+            // рендер пересозданного инстанса читает слот синхронно внутри
+            // стор-эмит; каретка — в начало очищенного поля
+            saveComposerState(this.memoryKey(), { draft: '', selection: [0, 0] })
+        }
+
         const { onSendMessage, selectedChat, replyDraft } = this.props as MessengerProps
 
         if (typeof selectedChat === 'number') {
@@ -539,10 +561,6 @@ class MessengerBase extends Block {
             if (replyDraft != null) {
                 this.setProps({ replyDraft: null })
             }
-        }
-
-        if (input != null) {
-            input.value = ''
         }
 
         // отправка пишет в стор (optimistic + pending-плейсхолдер) — лента

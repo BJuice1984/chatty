@@ -1625,4 +1625,38 @@ describe('chat page composer state across rerenders', () => {
             teardown(page)
         }
     })
+
+    it('returns focus to the composer after an Enter submit rerenders the page', async () => {
+        // живой репро NEXT.md п.3 (2026-11-09): сабмит по Enter — фокус был в
+        // композере, optimistic-запись перерисовала страницу и пересоздала
+        // Messenger-инстанц; rAF-возврат сабмиттера квэрил detached-элемент
+        // старого инстанса, а CDU нового не находил фокус в инпуте — слот
+        // выделения не сохранялся, фокус оставался в body
+        const send = sinon.stub(ChatsController, 'sendMessage').callsFake(async () => {
+            store.set('messages', {
+                5: [{ id: 100, chat_id: 5, user_id: 1, content: 'вопрос' } as never],
+            })
+        })
+        const { page, input } = await setup()
+
+        try {
+            input()?.focus()
+            if (input() != null) {
+                input()!.value = 'вопрос'
+            }
+            expect(document.activeElement).to.equal(input())
+
+            const form = page.element?.querySelector<HTMLFormElement>('form[data-testid="composer-form"]')
+            form?.dispatchEvent(new window.Event('submit', { bubbles: true, cancelable: true }))
+
+            await new Promise(resolve => setTimeout(resolve, 30))
+
+            expect(send.calledOnce).to.equal(true)
+            expect(input()?.value).to.eq('')
+            expect(document.activeElement).to.equal(input())
+        } finally {
+            send.restore()
+            teardown(page)
+        }
+    })
 })
