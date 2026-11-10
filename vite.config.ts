@@ -10,10 +10,11 @@ export default defineConfig({
         outDir: resolve(projectRoot, 'dist'),
     },
     server: {
-        port: 3001,
-        // строгий порт: занятый 3001 — loud-отказ вместо молчаливого
+        port: 3006,
+        // строгий порт: занятый 3006 — loud-отказ вместо молчаливого
         // переезда на соседний (молчаливый сдвиг рассинхронизирует
-        // фронт-origin с CHATTY_ALLOWED_ORIGINS бэкенда)
+        // фронт-origin с CHATTY_ALLOWED_ORIGINS бэкенда); 3005 на хосте
+        // занят ssh-туннелем к стенду chatty-vm, локальный фронт всегда 3006
         strictPort: true,
     },
     plugins: [vitePluginHandlebarsPrecompile()],
