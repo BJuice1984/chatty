@@ -7,7 +7,9 @@ the collected data. The wizards ask only what the schedule cannot
 answer: фамилия (shared surname_flow UX, D-F-13), должность when the
 график row lacks it (D-F-2), and the dates the form still needs
 (D-F-3). Answers are fully deterministic — no LLM calls (D-F-6) — and
-generation is byte-deterministic RTF filling; the file is delivered as
+generation is byte-deterministic RTF filling; the header requisites
+decline deterministically too (declension.py: дательный адресат,
+родительный автор после «от»); the file is delivered as
 a chat attachment by BotService (D-F-5).
 
 Flows: vacation — period confirm/choice (custom dates allowed) → summary
@@ -27,6 +29,7 @@ from datetime import UTC, date, datetime
 from sqlalchemy.orm import Session
 
 from app.vacations.config import vacation_settings_from_env
+from app.vacations.forms.declension import dative_addressee, genitive_full_name, genitive_position
 from app.vacations.forms.registry import FORMS, attachment_filename, calendar_days_word, load_template
 from app.vacations.forms.rtf import fill
 from app.vacations.intent import classify, has_cancel, has_no, has_yes, normalize
@@ -429,9 +432,15 @@ class VacationFormsSkill:
         today = datetime.now(UTC).date()
         values: dict[str, str] = {
             'org_name': self._settings.org_name,
-            'addressee': self._settings.addressee_name,
-            'position': (payload.get('position') or person.position or '')[:MAX_POSITION_CHARS],
+            # the header requisites print declined (declension.py): the
+            # addressee line in the dative, the author block after «от» in
+            # the genitive; already-declined operator input passes through
+            'addressee': dative_addressee(self._settings.addressee_name),
+            'position': genitive_position(
+                (payload.get('position') or person.position or '')[:MAX_POSITION_CHARS]
+            ),
             'full_name': person.full_name,
+            'full_name_gen': genitive_full_name(person.full_name),
         }
         if kind == 'transfer':
             old_start = date.fromisoformat(payload['old_start'])

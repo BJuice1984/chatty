@@ -58,8 +58,9 @@ def test_fill_is_byte_deterministic() -> None:
     values = {
         'org_name': 'ООО «Альфа-Тех»',
         'addressee': 'Смирнову А.А.',
-        'position': 'финансовый менеджер',
+        'position': 'финансового менеджера',
         'full_name': 'Абрикосов Т.П.',
+        'full_name_gen': 'Абрикосова Т.П.',
         'days': '14',
         'days_word': 'календарных дней',
         'start_date': '05.02',
@@ -83,8 +84,9 @@ def test_fill_real_template_with_fictional_values_is_valid_rtf_shape() -> None:
         {
             'org_name': 'ООО «Альфа-Тех»',
             'addressee': 'Смирнову А.А.',
-            'position': 'менеджер проекта',
+            'position': 'менеджера проекта',
             'full_name': 'Абрикосов Т.П.',
+            'full_name_gen': 'Абрикосова Т.П.',
             'days': '5',
             'days_word': 'календарных дней',
             'start_date': '12.01.2027',

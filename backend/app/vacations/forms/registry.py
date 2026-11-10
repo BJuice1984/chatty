@@ -12,6 +12,11 @@ its own year («с ___ 2026 г.») the date token carries DD.MM and the year
 rides in a separate {{year}} slot; where it does not (the unpaid form,
 the transfer's new period, the vacation signature date) the token
 carries the full DD.MM.YYYY.
+
+The author's name is printed twice and declines differently: the header
+block after «от» takes {{full_name_gen}} (родительный: «Сибгатуллина
+И.Р.»), the signature расшифровка keeps {{full_name}} (именительный).
+Both are filled by the wizard from one person record (declension.py).
 """
 
 from __future__ import annotations
@@ -60,17 +65,17 @@ class FormSpec:
 
 
 _VACATION_TOKENS = (
-    'org_name', 'addressee', 'position', 'full_name',
+    'org_name', 'addressee', 'position', 'full_name', 'full_name_gen',
     'days', 'days_word', 'start_date', 'year', 'today',
 )
 _TRANSFER_TOKENS = (
-    'org_name', 'addressee', 'position', 'full_name',
+    'org_name', 'addressee', 'position', 'full_name', 'full_name_gen',
     'old_start', 'old_days', 'old_days_word',
     'new_start', 'new_days', 'new_days_word',
     'year', 'today',
 )
 _UNPAID_TOKENS = (
-    'org_name', 'addressee', 'position', 'full_name',
+    'org_name', 'addressee', 'position', 'full_name', 'full_name_gen',
     'days', 'days_word', 'start_date', 'today',
 )
 

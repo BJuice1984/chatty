@@ -119,14 +119,14 @@ def test_unpaid_golden_body() -> None:
 
 
 _GOLDEN_VACATION = (
-    'org_name addressee От position (должность) full_name (ФИО) ЗАЯВЛЕНИЕ '
+    'org_name addressee От position (должность) full_name_gen (ФИО) ЗАЯВЛЕНИЕ '
     'Прошу предоставить мне ежегодный основной оплачиваемый отпуск '
     'на days days_word с start_date year г. '
     'today ___________/full_name/ (дата) (подпись) (ФИО полностью)'
 )
 
 _GOLDEN_TRANSFER = (
-    'org_name addressee от position full_name (должность) (ФИО) Заявление '
+    'org_name addressee от position full_name_gen (должность) (ФИО) Заявление '
     'В соответствии с графиком отпусков org_name на year г. очередной '
     'оплачиваемый отпуск должен быть предоставлен мне с old_start.year г. '
     'сроком old_days old_days_word. '
@@ -137,7 +137,7 @@ _GOLDEN_TRANSFER = (
 )
 
 _GOLDEN_UNPAID = (
-    'org_name addressee от position full_name (должность и ФИО) ЗАЯВЛЕНИЕ '
+    'org_name addressee от position full_name_gen (должность и ФИО) ЗАЯВЛЕНИЕ '
     'На основании ст. 128 ТК РФ прошу предоставить мне отпуск '
     'без сохранения заработной платы продолжительностью days days_word '
     'с start_date г. today (дата) ______________________/ full_name / '
