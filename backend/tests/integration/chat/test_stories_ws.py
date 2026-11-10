@@ -112,6 +112,39 @@ def test_story_created_fans_out_to_everyone_then_deleted_reaches_all(app):
             assert third.receive_json() == deletion
 
 
+def test_adding_member_pushes_chat_added_to_their_stories_socket(app):
+    """2026-11-10 bug regression: the added user's chat list stayed empty
+    until F5 — the member-add fan-out only hit the chat's OWN sockets, and
+    the new member holds no socket to a chat their list does not know. The
+    user-scoped stories channel now carries {'type': 'chat_added'} to them;
+    an idempotent re-add (membership already active) stays silent."""
+    with TestClient(app) as owner_client, TestClient(app) as newbie_client:
+        register(owner_client, 'chat-add-owner@example.com')
+        newbie = register(newbie_client, 'chat-add-newbie@example.com')
+        chat = owner_client.post('/api/v1/chats', json={'title': 'Fresh'}).json()
+
+        with newbie_client.websocket_connect('/api/v1/ws/stories', headers=ORIGIN) as newbie_socket:
+            added = owner_client.post(
+                f"/api/v1/chats/{chat['id']}/members",
+                json={'user_id': newbie['id']},
+            )
+            assert added.status_code == 201
+            assert newbie_socket.receive_json() == {
+                'type': 'chat_added',
+                'content': {'chat_id': chat['id']},
+            }
+
+            # повторное добавление активного участника — идемпотентный 201
+            # без второго пуша (следующий кадр на сокете — только pong)
+            repeat = owner_client.post(
+                f"/api/v1/chats/{chat['id']}/members",
+                json={'user_id': newbie['id']},
+            )
+            assert repeat.status_code == 201
+            newbie_socket.send_json({'type': 'ping', 'content': {}})
+            assert newbie_socket.receive_json() == {'type': 'pong', 'content': {}}
+
+
 def test_story_events_skip_disconnected_recipient(app):
     app.state.object_storage = MemoryStorage()
     with TestClient(app) as owner_client, \

@@ -106,6 +106,22 @@ class StoriesHub:
         if not sockets:
             self._user_sockets.pop(user_id, None)
 
+    async def send_to_user(self, user_id: int, payload: dict[str, object]) -> None:
+        """Point delivery to ONE user's sockets (multi-tab): the chat-scoped
+        ChatHub cannot reach a user who has no socket to THAT chat yet —
+        e.g. a freshly added member (the chat_added push, 2026-11-10). The
+        broadcast precedent: dead sockets are collected and dropped, the
+        snapshot keeps the await-yields iteration safe."""
+
+        stale: list[WebSocket] = []
+        for websocket in tuple(self._user_sockets.get(user_id, ())):
+            try:
+                await websocket.send_json(payload)
+            except Exception:
+                stale.append(websocket)
+        for websocket in stale:
+            await self.disconnect(user_id, websocket)
+
     async def broadcast(
         self,
         payload: dict[str, object],

@@ -8,7 +8,7 @@ import { expect } from 'chai'
 import sinon from 'sinon'
 import { ownStoriesUrl } from './own.ts'
 import { connectStoriesSocket, closeStoriesSocket, reconnectStoriesSocket } from './own.ts'
-import { setStoriesSocketListener, type StoriesSocketEvent } from './gateway.ts'
+import { setChatAddedListener, setStoriesSocketListener, type StoriesSocketEvent } from './gateway.ts'
 
 type SocketListener = (event: { data?: string }) => void
 
@@ -91,6 +91,7 @@ describe('stories ws adapter', () => {
         globalThis.WebSocket = originalWebSocket
         clock.restore()
         setStoriesSocketListener(() => undefined)
+        setChatAddedListener(() => undefined)
     })
 
     it('opens one /ws/stories socket and is idempotent on repeated connects', async () => {
@@ -143,6 +144,24 @@ describe('stories ws adapter', () => {
         created[0].triggerMessage(JSON.stringify({ type: 'story_created' }))
         created[0].triggerMessage(JSON.stringify({ type: 'story_deleted' }))
 
+        expect(events).to.have.lengthOf(0)
+    })
+
+    // 2026-11-10 (баг «новый чат только после F5»): кадр chat_added уходит
+    // ОТДЕЛЬНОМУ слушателю chats-контроллера, stories-слушатель его не видит
+    it('routes chat_added frames to the chat-added listener', async () => {
+        const added: number[] = []
+
+        setChatAddedListener(chatId => added.push(chatId))
+
+        const connected = connectStoriesSocket()
+
+        created[0].triggerOpen()
+        await connected
+
+        created[0].triggerMessage(JSON.stringify({ type: 'chat_added', content: { chat_id: 12 } }))
+
+        expect(added).to.deep.eq([12])
         expect(events).to.have.lengthOf(0)
     })
 

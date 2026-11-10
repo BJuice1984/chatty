@@ -9,6 +9,7 @@ import { ChatsFeatureController, applyReactionDelta, setContactsIntegration, set
 import { ownChatsPort } from './api/own.ts'
 import { chatSearchSlice, chatsSlice } from './store.ts'
 import { notifyChatAiToggled, notifyChatAvatarUpdated, notifyChatDeleted, notifyChatMembersChanged, notifyChatRenamed, notifyReactionEvent, notifyUserAvatarUpdated, notifyWsConnected, notifyWsUnexpectedClose } from './ws/gateway.ts'
+import { notifyChatAdded } from './stories/ws/gateway.ts'
 import { OwnWsAdapter } from './ws/own.ts'
 import type { ChatsPort } from './ports.ts'
 import type { ChatInfo, ChatSearchMatch, Message, ReactionSummary } from '../../utils/types.ts'
@@ -516,6 +517,38 @@ describe('chats controller create-and-select and enable-ai', () => {
         controller.selectChat(4)
 
         expect(loadHistory.calledOnceWith(3, null, 50)).to.be.true
+    })
+
+    // 2026-11-10 (баг «новый чат только после F5»): юзера добавили в чат —
+    // stories-канал приносит chat_added, контроллер ТИХО рефетчит список
+    // (карточка приезжает без лоадера и полного fetchChats-цикла коннектов)
+    // и точечно открывает сокет нового чата — без сокета чат мёртв (ни
+    // ленты, ни отправки) до перезагрузки страницы
+    it('chat_added silently refetches the list and connects the new chat socket', async () => {
+        const fetchChats = sinon.stub().resolves([chatRow({ id: 5, title: 'fresh' })])
+        const connect = sinon.spy()
+        new ChatsFeatureController(makePort({ fetchChats }), makeMessages({ connect }))
+
+        notifyChatAdded(5)
+        await new Promise(resolve => setTimeout(resolve, 0))
+
+        expect(fetchChats.callCount).to.eq(1)
+        expect(chatsSlice.getChats().map(chat => chat.id)).to.deep.eq([5])
+        expect(connect.calledOnceWith(5, 'token-5')).to.be.true
+    })
+
+    // сервер не вернул чат в рефетче (событие устарело/членство откатилось)
+    // — сокет не открываем
+    it('chat_added for a chat missing from the refetched list skips the socket connect', async () => {
+        const fetchChats = sinon.stub().resolves([])
+        const connect = sinon.spy()
+        new ChatsFeatureController(makePort({ fetchChats }), makeMessages({ connect }))
+
+        notifyChatAdded(99)
+        await new Promise(resolve => setTimeout(resolve, 0))
+
+        expect(fetchChats.callCount).to.eq(1)
+        expect(connect.notCalled).to.be.true
     })
 })
 
