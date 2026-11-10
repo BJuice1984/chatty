@@ -225,8 +225,11 @@ async def test_vacation_wizard_single_period_full_flow(client, app, session_fact
     text = body.decode('latin-1')
     assert escape_rtf_text(ORG) in text
     assert escape_rtf_text(ADDRESSEE) in text
+    # the header carries the declined requisites (родительный после «от»),
+    # the signature расшифровка keeps the nominative
+    assert escape_rtf_text('Вишневского О.Н.') in text
+    assert escape_rtf_text('Инженера') in text
     assert escape_rtf_text('Вишневский О.Н.') in text
-    assert escape_rtf_text('Инженер') in text
     assert '29.04' in text and '2026' in text and '14' in text
     # the wizard finished and the surname persisted
     assert dialog_state(session_factory, user['id']) is None
