@@ -5,8 +5,11 @@ from __future__ import annotations
 import pytest
 
 from app.bot.config import (
+    DEFAULT_FREQUENCY_PENALTY,
     DEFAULT_MAX_ANSWER_CHARS,
     DEFAULT_MAX_ATTEMPTS,
+    DEFAULT_MAX_TOKENS,
+    DEFAULT_PRESENCE_PENALTY,
     DEFAULT_USER_EMAIL,
     bot_settings_from_env,
 )
@@ -24,6 +27,33 @@ def test_defaults_from_clean_env():
     assert bot.user_email == 'bot@chatty.local'
     assert bot.rag_top_k == 3
     assert bot.max_answer_chars == 4000
+    assert bot.max_tokens == 768
+    assert bot.frequency_penalty == DEFAULT_FREQUENCY_PENALTY
+    assert bot.presence_penalty == DEFAULT_PRESENCE_PENALTY
+
+
+def test_generation_limits_overrides_are_parsed():
+    bot = bot_settings_from_env({
+        'CHATTY_BOT_MAX_TOKENS': '1200',
+        'CHATTY_BOT_FREQUENCY_PENALTY': '0.5',
+        'CHATTY_BOT_PRESENCE_PENALTY': '0.2',
+    })
+
+    assert bot.max_tokens == 1200
+    assert bot.frequency_penalty == 0.5
+    assert bot.presence_penalty == 0.2
+
+
+def test_generation_limits_out_of_range_fall_back():
+    bot = bot_settings_from_env({
+        'CHATTY_BOT_MAX_TOKENS': '10',
+        'CHATTY_BOT_FREQUENCY_PENALTY': '5.0',
+        'CHATTY_BOT_PRESENCE_PENALTY': '-0.1',
+    })
+
+    assert bot.max_tokens == DEFAULT_MAX_TOKENS
+    assert bot.frequency_penalty == DEFAULT_FREQUENCY_PENALTY
+    assert bot.presence_penalty == DEFAULT_PRESENCE_PENALTY
 
 
 def test_env_overrides_are_parsed():

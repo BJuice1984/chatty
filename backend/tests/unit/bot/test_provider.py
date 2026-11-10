@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+from dataclasses import replace
 
 import httpx
 import pytest
@@ -157,6 +158,79 @@ def test_openai_complete_posts_chat_completions_and_parses_content():
     assert str(requests[0].url) == 'http://openai.test/v1/chat/completions'
 
 
+def test_openai_body_carries_generation_limits():
+    bodies: list[dict] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        body = json.loads(request.content.decode())
+        bodies.append(body)
+        if body['stream']:
+            chunk = {'choices': [{'delta': {'content': 'ok'}}]}
+            return httpx.Response(200, text=f"data: {json.dumps(chunk)}\n\ndata: [DONE]\n\n")
+        return httpx.Response(
+            200, json={'choices': [{'message': {'role': 'assistant', 'content': 'ok'}}]}
+        )
+
+    limited = OpenAIChatProvider(
+        url='http://openai.test',
+        model='qwen3.5-9b',
+        timeout_seconds=5.0,
+        transport=httpx.MockTransport(handler),
+        max_tokens=768,
+        frequency_penalty=0.3,
+        presence_penalty=0.2,
+    )
+
+    limited.complete([{'role': 'user', 'content': 'q'}])
+    deltas = list(limited.complete_stream([{'role': 'user', 'content': 'q'}]))
+
+    assert deltas == ['ok']
+    assert len(bodies) == 2
+    for body in bodies:
+        assert body['max_tokens'] == 768
+        assert body['frequency_penalty'] == 0.3
+        assert body['presence_penalty'] == 0.2
+
+
+def test_openai_body_omits_neutral_generation_limits():
+    def handler(request: httpx.Request) -> httpx.Response:
+        body = json.loads(request.content.decode())
+        assert 'max_tokens' not in body
+        assert 'frequency_penalty' not in body
+        assert 'presence_penalty' not in body
+        return httpx.Response(
+            200, json={'choices': [{'message': {'role': 'assistant', 'content': 'ok'}}]}
+        )
+
+    openai_provider(handler).complete([{'role': 'user', 'content': 'q'}])
+
+
+def test_ollama_body_carries_num_predict():
+    def handler(request: httpx.Request) -> httpx.Response:
+        body = json.loads(request.content.decode())
+        assert body['options'] == {'num_predict': 768}
+        return httpx.Response(200, json={'message': {'role': 'assistant', 'content': 'ok'}})
+
+    bounded = OllamaBotProvider(
+        url='http://ollama.test',
+        model='qwen3:14b',
+        timeout_seconds=5.0,
+        transport=httpx.MockTransport(handler),
+        max_tokens=768,
+    )
+
+    bounded.complete([{'role': 'user', 'content': 'q'}])
+
+
+def test_ollama_body_without_limit_has_no_options():
+    def handler(request: httpx.Request) -> httpx.Response:
+        body = json.loads(request.content.decode())
+        assert 'options' not in body
+        return httpx.Response(200, json={'message': {'role': 'assistant', 'content': 'ok'}})
+
+    provider(handler).complete([{'role': 'user', 'content': 'q'}])
+
+
 def test_openai_http_error_is_explicit():
     failing = openai_provider(lambda request: httpx.Response(503))
 
@@ -226,3 +300,18 @@ def test_default_provider_dispatches_by_provider_api():
     assert openai_result.model == 'qwen3:14b'
     assert openai_result.timeout_seconds == 5.0
     assert isinstance(ollama_result, OllamaBotProvider)
+
+
+def test_default_provider_wires_generation_limits():
+    base = bot(provider_api='openai')
+    settings = replace(
+        base, max_tokens=512, frequency_penalty=0.4, presence_penalty=0.1
+    )
+
+    openai_result = default_provider(settings)
+    ollama_result = default_provider(replace(settings, provider_api='ollama'))
+
+    assert openai_result.max_tokens == 512
+    assert openai_result.frequency_penalty == 0.4
+    assert openai_result.presence_penalty == 0.1
+    assert ollama_result.max_tokens == 512
