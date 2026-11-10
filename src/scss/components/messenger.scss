@@ -263,6 +263,102 @@
     @include reset;
 
     overflow-wrap: anywhere;
+
+    &_md {
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+      min-width: 0;
+
+      p {
+        @include reset;
+        @include text;
+      }
+
+      h4,
+      h5,
+      h6 {
+        @include reset;
+
+        font-weight: 600;
+        font-size: 15px;
+        line-height: 20px;
+      }
+
+      h5,
+      h6 {
+        font-size: 14px;
+        line-height: 18px;
+      }
+
+      ul,
+      ol {
+        @include reset;
+
+        display: flex;
+        flex-direction: column;
+        gap: 2px;
+        padding-left: 20px;
+      }
+
+      ul {
+        list-style: disc;
+      }
+
+      ol {
+        list-style: decimal;
+      }
+
+      li {
+        overflow-wrap: anywhere;
+      }
+
+      a {
+        color: var(--bubble-mine-text-color);
+        text-decoration: underline;
+
+        &:hover {
+          opacity: 0.8;
+        }
+      }
+
+      code {
+        padding: 0 4px;
+        border-radius: 4px;
+        background-color: rgb(0 0 0 / 18%);
+        font-family: monospace;
+        font-size: 13px;
+      }
+
+      pre {
+        @include reset;
+
+        max-width: 100%;
+        padding: 6px 8px;
+        border-radius: 8px;
+        background-color: rgb(0 0 0 / 18%);
+        overflow-x: auto;
+
+        code {
+          padding: 0;
+          background-color: transparent;
+        }
+      }
+
+      blockquote {
+        @include reset;
+
+        padding-left: 10px;
+        border-left: 3px solid var(--third-text-color);
+      }
+
+      hr {
+        @include reset;
+
+        border: none;
+        border-top: 1px solid var(--bubble-time-text-color);
+      }
+    }
   }
 
   &__message-meta {

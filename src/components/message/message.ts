@@ -1,5 +1,6 @@
 import Block from '../../core/Block.ts'
 import type { MessageAttachment, MessageAuthorBadge, MessageReplyTo, ReactionSummary } from '../../utils/types.ts'
+import { renderMarkdown } from '../../utils/markdown.ts'
 import template from './message.hbs'
 
 // Фикс-набор реакций (stage chats-social): тот же whitelist, что на бэкенде —
@@ -272,11 +273,21 @@ export class Message extends Block {
             ? replyTo.snippet
             : undefined
 
+        // Markdown-ветка (2026-11-10): ответ бота размечается в HTML
+        // безопасным рендерером (сырой HTML экранируется — см. utils/markdown).
+        // Гейт только isBot: сообщения людей остаются дословным текстом —
+        // их ** и # обязаны показываться как написаны
+        const currentProps = this.props as MessageProps
+        const contentHtml = currentProps.isBot === true && typeof currentProps.content === 'string'
+            ? renderMarkdown(currentProps.content)
+            : undefined
+
         // Чистое форматирование вида: значения вычисляются здесь, шаблон
         // только рендерит их — невалидная метка даёт undefined и блоки
         // времени/маркера просто не собираются
         return this.compile(template, {
             ...this.props,
+            contentHtml,
             isSystem: kind != null,
             formattedTime: formatMessageTime(time),
             dayMarker: showDate === true ? formatMessageDay(time) : undefined,

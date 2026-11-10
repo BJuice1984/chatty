@@ -567,3 +567,81 @@ describe('message author plate and ai chip', () => {
         system.destroy()
     })
 })
+
+// 2026-11-10: ответы бота рендерятся markdown-веткой (utils/markdown) —
+// жирный/списки/переносы вместо сырых маркеров сплошным текстом; сообщения
+// людей и системные строки остаются дословным экранированным текстом
+describe('message markdown rendering', () => {
+    // репро оператора: ответ бота про согласие на работу в выходной
+    const botAnswer = [
+        'Да, согласие **в рамках командировки** обычно требуется.',
+        'В документах есть два варианта:',
+        '1. **Согласие за отгул** — работник отказывается от двойной оплаты.',
+        '2. **Согласие за деньги** — двойная оплата.',
+    ].join('\n')
+
+    it('renders the bot answer with bold and an ordered list', () => {
+        const message = new Message({ content: botAnswer, user_id: 9, isMine: false, isBot: true, time: localIso(new Date()) })
+
+        const host = message.element?.querySelector('[data-testid="message-markdown"]')
+
+        expect(host?.classList.contains('messenger__message-content_md')).to.be.true
+        expect(host?.querySelectorAll('ol li')).to.have.length(2)
+        expect(host?.querySelector('strong')?.textContent).to.equal('в рамках командировки')
+
+        message.destroy()
+    })
+
+    it('renders the parenthesis-marker periods as a list (operator repro)', () => {
+        const content = [
+            'Ваши периоды по графику:',
+            '1) с 20.04.2026 на 7 дней',
+            '2) с 03.08.2026 на 14 дней',
+            '3) с 21.12.2026 на 7 дней',
+            'Напишите номер периода — или свою дату.',
+        ].join('\n')
+        const message = new Message({ content, user_id: 9, isMine: false, isBot: true, time: localIso(new Date()) })
+
+        expect(message.element?.querySelectorAll('[data-testid="message-markdown"] ol li')).to.have.length(3)
+
+        message.destroy()
+    })
+
+    it('keeps human messages verbatim: no markdown branch, markers stay visible', () => {
+        const message = new Message({ content: 'моя **звёздочка** и 1) нумерация', user_id: 2, isMine: true, time: localIso(new Date()) })
+
+        expect(message.element?.querySelector('[data-testid="message-markdown"]')).to.not.exist
+        expect(message.element?.querySelector('.messenger__message-content')?.textContent)
+            .to.equal('моя **звёздочка** и 1) нумерация')
+        expect(message.element?.querySelector('strong')).to.not.exist
+
+        message.destroy()
+    })
+
+    it('escapes hostile html inside the bot answer (XSS)', () => {
+        const message = new Message({
+            content: '**<script>alert(1)</script>** и [ссылка](javascript:alert(2))',
+            user_id: 9,
+            isMine: false,
+            isBot: true,
+            time: localIso(new Date()),
+        })
+
+        expect(message.element?.querySelector('script')).to.not.exist
+        expect(message.element?.querySelector('[data-testid="message-markdown"]')?.innerHTML)
+            .to.contain('&lt;script&gt;')
+
+        message.destroy()
+    })
+
+    it('renders the pending placeholder and system lines outside the markdown branch', () => {
+        const pending = new Message({ content: 'Ассистент печатает…', user_id: -1, isMine: false, isPending: true, time: localIso(new Date()) })
+        const system = new Message({ content: 'переименовал чат', user_id: 2, kind: 'chat_renamed', time: localIso(new Date()) })
+
+        expect(pending.element?.querySelector('[data-testid="message-markdown"]')).to.not.exist
+        expect(system.element?.querySelector('[data-testid="message-markdown"]')).to.not.exist
+
+        pending.destroy()
+        system.destroy()
+    })
+})
