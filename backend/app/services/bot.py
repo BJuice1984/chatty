@@ -21,6 +21,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.bot.config import BotSettings
+from app.bot.generation import collapse_repeated_tail
 from app.bot.prompts import build_messages
 from app.bot.provider import BotProvider, BotProviderError, default_provider
 from app.core.config import Settings
@@ -294,7 +295,7 @@ class BotService:
             response = self.message_service.create(
                 chat.id,
                 bot_user.id,
-                MessageCreate(content=vacation_outcome.reply.strip()[: self.bot.max_answer_chars]),
+                MessageCreate(content=collapse_repeated_tail(vacation_outcome.reply.strip())[: self.bot.max_answer_chars]),
             )
             run.status = 'succeeded'
             run.error_kind = None
@@ -332,7 +333,10 @@ class BotService:
             )
         except BotProviderError as exc:
             return fail(exc.kind)
-        content = answer.strip()[: self.bot.max_answer_chars]
+        # Вырожденный повторяющийся хвост (live-инцидент 2026-11-10) не
+        # доезжает до чата: повтор одного шаблона блоков >= 3 раз
+        # схлопывается в первое вхождение ещё до обрезки по символам
+        content = collapse_repeated_tail(answer.strip())[: self.bot.max_answer_chars]
 
         self.session.expire(chat)
         if not chat.is_ai:

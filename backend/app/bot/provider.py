@@ -99,18 +99,25 @@ class BotProvider(Protocol):
 class OllamaBotProvider:
     """Synchronous Ollama ``/api/chat`` client used behind an async boundary."""
 
-    def __init__(self, *, url: str, model: str, timeout_seconds: float = 60.0, transport: httpx.BaseTransport | None = None):
+    def __init__(self, *, url: str, model: str, timeout_seconds: float = 60.0, transport: httpx.BaseTransport | None = None, max_tokens: int | None = None):
         self.url = url
         self.model = model
         self.timeout_seconds = timeout_seconds
+        self.max_tokens = max_tokens
         self._transport = transport
+
+    def _chat_body(self, messages: list[dict[str, str]], *, stream: bool) -> dict[str, object]:
+        body: dict[str, object] = {'model': self.model, 'messages': messages, 'stream': stream}
+        if self.max_tokens is not None:
+            body['options'] = {'num_predict': self.max_tokens}
+        return body
 
     def complete(self, messages: list[dict[str, str]]) -> str:
         try:
             with httpx.Client(timeout=_provider_timeout(self.timeout_seconds), transport=self._transport) as client:
                 response = client.post(
                     f'{self.url}/api/chat',
-                    json={'model': self.model, 'messages': messages, 'stream': False},
+                    json=self._chat_body(messages, stream=False),
                 )
         except httpx.ConnectTimeout as exc:
             raise BotProviderError('provider_unreachable', 'provider host unreachable: connect timed out') from exc
@@ -168,11 +175,17 @@ class OpenAIChatProvider:
         timeout_seconds: float = 60.0,
         transport: httpx.BaseTransport | None = None,
         enable_thinking: bool = True,
+        max_tokens: int | None = None,
+        frequency_penalty: float | None = None,
+        presence_penalty: float | None = None,
     ):
         self.url = url
         self.model = model
         self.timeout_seconds = timeout_seconds
         self.enable_thinking = enable_thinking
+        self.max_tokens = max_tokens
+        self.frequency_penalty = frequency_penalty
+        self.presence_penalty = presence_penalty
         self._transport = transport
 
     def _request_body(self, messages: list[dict[str, str]], *, stream: bool) -> dict[str, object]:
@@ -181,6 +194,15 @@ class OpenAIChatProvider:
             # llama-server knob: a thinking model (Qwen3.5) skips its long
             # reasoning phase and the first token arrives fast
             body['chat_template_kwargs'] = {'enable_thinking': False}
+        # Границы генерации (live-инцидент 2026-11-10): без лимита токенов и
+        # штрафов модель изредка зацикливалась на повторе блока до предела
+        # контекста; нейтральные нулевые штрафы в тело не пишутся
+        if self.max_tokens is not None:
+            body['max_tokens'] = self.max_tokens
+        if self.frequency_penalty:
+            body['frequency_penalty'] = self.frequency_penalty
+        if self.presence_penalty:
+            body['presence_penalty'] = self.presence_penalty
         return body
 
     def complete(self, messages: list[dict[str, str]]) -> str:
@@ -305,8 +327,16 @@ def default_provider(bot: BotSettings) -> OllamaBotProvider | OpenAIChatProvider
             model=bot.model,
             timeout_seconds=bot.timeout_seconds,
             enable_thinking=bot.enable_thinking,
+            max_tokens=bot.max_tokens,
+            frequency_penalty=bot.frequency_penalty,
+            presence_penalty=bot.presence_penalty,
         )
-    return OllamaBotProvider(url=bot.provider_url, model=bot.model, timeout_seconds=bot.timeout_seconds)
+    return OllamaBotProvider(
+        url=bot.provider_url,
+        model=bot.model,
+        timeout_seconds=bot.timeout_seconds,
+        max_tokens=bot.max_tokens,
+    )
 
 
 def get_bot_provider(state: object, bot: BotSettings) -> BotProvider:

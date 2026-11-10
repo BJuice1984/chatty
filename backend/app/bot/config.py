@@ -21,6 +21,9 @@ USER_EMAIL = 'CHATTY_BOT_USER_EMAIL'
 RAG_TOP_K = 'CHATTY_BOT_RAG_TOP_K'
 RAG_MIN_SCORE = 'CHATTY_BOT_RAG_MIN_SCORE'
 MAX_ANSWER_CHARS = 'CHATTY_BOT_MAX_ANSWER_CHARS'
+MAX_TOKENS = 'CHATTY_BOT_MAX_TOKENS'
+FREQUENCY_PENALTY = 'CHATTY_BOT_FREQUENCY_PENALTY'
+PRESENCE_PENALTY = 'CHATTY_BOT_PRESENCE_PENALTY'
 
 DEFAULT_PROVIDER_API = 'ollama'
 PROVIDER_APIS = ('ollama', 'openai')
@@ -43,6 +46,17 @@ DEFAULT_RAG_TOP_K = 3
 # RAG_RELEVANT_MIN_SCORE в src/features/ai-assistant/documents.ts)
 DEFAULT_RAG_MIN_SCORE = 0.5
 DEFAULT_MAX_ANSWER_CHARS = 4000
+# Границы генерации (2026-11-10, live-инцидент «бесконечный цикл»): без
+# лимита токенов и штрафов за повторы Qwen3-VL-4B изредка сваливался в
+# вырожденное повторение одного блока — модель генерировала его до предела
+# контекста (~2 минуты), ответ обрезался на MAX_ANSWER_CHARS. Лимит токенов
+# ограничивает ущерб, frequency-штраф снижает вероятность входа в цикл
+DEFAULT_MAX_TOKENS = 768
+DEFAULT_FREQUENCY_PENALTY = 0.3
+DEFAULT_PRESENCE_PENALTY = 0.0
+MIN_MAX_TOKENS = 64
+MAX_MAX_TOKENS = 4096
+MAX_PENALTY = 2.0
 
 
 @dataclass(frozen=True)
@@ -59,6 +73,9 @@ class BotSettings:
     max_answer_chars: int
     enable_thinking: bool = True
     streaming: bool = True
+    max_tokens: int = DEFAULT_MAX_TOKENS
+    frequency_penalty: float = DEFAULT_FREQUENCY_PENALTY
+    presence_penalty: float = DEFAULT_PRESENCE_PENALTY
 
 
 def _env_flag(env: dict[str, str], name: str, default: bool) -> bool:
@@ -102,6 +119,18 @@ def bot_settings_from_env(environ: dict[str, str] | None = None) -> BotSettings:
         max_answer_chars = int(env.get(MAX_ANSWER_CHARS, DEFAULT_MAX_ANSWER_CHARS))
     except ValueError:
         max_answer_chars = DEFAULT_MAX_ANSWER_CHARS
+    try:
+        max_tokens = int(env.get(MAX_TOKENS, DEFAULT_MAX_TOKENS))
+    except ValueError:
+        max_tokens = DEFAULT_MAX_TOKENS
+    try:
+        frequency_penalty = float(env.get(FREQUENCY_PENALTY, DEFAULT_FREQUENCY_PENALTY))
+    except ValueError:
+        frequency_penalty = DEFAULT_FREQUENCY_PENALTY
+    try:
+        presence_penalty = float(env.get(PRESENCE_PENALTY, DEFAULT_PRESENCE_PENALTY))
+    except ValueError:
+        presence_penalty = DEFAULT_PRESENCE_PENALTY
     return BotSettings(
         provider_api=provider_api,
         provider_url=env.get(PROVIDER_URL, DEFAULT_PROVIDER_URL).rstrip('/'),
@@ -119,6 +148,19 @@ def bot_settings_from_env(environ: dict[str, str] | None = None) -> BotSettings:
         ),
         enable_thinking=_env_flag(env, ENABLE_THINKING, DEFAULT_ENABLE_THINKING),
         streaming=_env_flag(env, STREAMING, DEFAULT_STREAMING),
+        max_tokens=(
+            max_tokens if MIN_MAX_TOKENS <= max_tokens <= MAX_MAX_TOKENS else DEFAULT_MAX_TOKENS
+        ),
+        frequency_penalty=(
+            frequency_penalty
+            if 0.0 <= frequency_penalty <= MAX_PENALTY
+            else DEFAULT_FREQUENCY_PENALTY
+        ),
+        presence_penalty=(
+            presence_penalty
+            if 0.0 <= presence_penalty <= MAX_PENALTY
+            else DEFAULT_PRESENCE_PENALTY
+        ),
     )
 
 
