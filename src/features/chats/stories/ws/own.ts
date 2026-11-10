@@ -8,7 +8,7 @@
 import WSTransport, { WSTransportEvents } from '../../../../utils/WSTransport.ts'
 import { env, joinUrl } from '../../../../utils/env.ts'
 import type { OwnStoryResponse } from '../api/own.ts'
-import { notifyStoriesSocketEvent } from './gateway.ts'
+import { notifyChatAdded, notifyStoriesSocketEvent } from './gateway.ts'
 
 export function ownStoriesUrl(): string {
     return joinUrl(env.wsUrl, '/ws/stories')
@@ -36,6 +36,17 @@ export function connectStoriesSocket(): void {
 
         if (wsEvent.type === 'story_deleted' && wsEvent.content != null) {
             notifyStoriesSocketEvent({ kind: 'story_deleted', content: wsEvent.content as { story_id: number } })
+
+            return
+        }
+
+        // Юзера добавили в чат (2026-11-10): ключевой кадр канала не для
+        // stories — chats-контроллер рефетчит список и открывает сокет
+        // нового чата; сокета к нему заведомо нет (карточки не было в списке)
+        if (wsEvent.type === 'chat_added' && wsEvent.content != null) {
+            const content = wsEvent.content as { chat_id: number }
+
+            notifyChatAdded(content.chat_id)
         }
         // неизвестные типы молча игнорируются (pong отфильтрован транспортом)
     })

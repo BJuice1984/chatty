@@ -24,7 +24,7 @@ from app.services.chats import ChatService
 from app.services.messages import MessageService
 from app.ws.autotitle import schedule_autotitle
 from app.ws.feed import broadcast_feed_message as _broadcast_feed_message
-from app.ws.hub import hub
+from app.ws.hub import hub, stories_hub
 
 
 router = APIRouter(prefix='/chats', tags=['chats'])
@@ -225,6 +225,17 @@ async def add_chat_member(
     if member_event is not None:
         # 2026-11-07: «X добавил Y» — раньше события состояния, лента живая
         await _broadcast_feed_message(db, chat_id, member_event, current_user.id, active_user_ids)
+        # 2026-11-10: added member's OWN chat-list push. The chat-scoped
+        # broadcast above cannot reach them: their client holds NO socket to
+        # this chat yet (the list does not know the chat — the very bug:
+        # the card appeared only after F5). The user-scoped stories channel
+        # delivers instead; member_event is not None exactly when a human's
+        # membership really appeared/reactivated (bot adds and idempotent
+        # repeats stay silent).
+        await stories_hub.send_to_user(
+            payload.user_id,
+            {'type': 'chat_added', 'content': {'chat_id': chat_id}},
+        )
     if new_title is not None:
         await hub.broadcast(
             chat_id,

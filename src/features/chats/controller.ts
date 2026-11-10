@@ -19,6 +19,7 @@ import { chatsPort } from './api/index.ts'
 import type { ChatMessagesPort, ChatReactionEvent, ChatsPort, ChatsUserSearchResult } from './ports.ts'
 import { chatSearchSlice, chatsSlice } from './store.ts'
 import { chatMessagesPort, reconnectAllChatSockets, setChatsEventListeners } from './ws/gateway.ts'
+import { setChatAddedListener } from './stories/ws/gateway.ts'
 
 // Контактный шов (2026-11-01-chat-leave): «Добавить в контакты» из меню
 // участника и бутстрап списка контактов — логика contacts-фичи. Шов живёт
@@ -236,6 +237,11 @@ export class ChatsFeatureController {
             onWsUnexpectedClose: chatId => this.handleWsDied(chatId),
             onWsConnected: chatId => this.handleWsReconnected(chatId),
         })
+
+        // Stories-канал доставляет чужое добавление в чат (2026-11-10):
+        // чат-сокетов нового чата у этого клиента нет — событие приходит по
+        // user-scoped /ws/stories, а не по /ws/chats/{id}
+        setChatAddedListener(chatId => void this.handleChatAdded(chatId))
     }
 
     // create (2026-10-27-ai-chat-creation): is_ai чекбокса/плитки летит в
@@ -722,6 +728,31 @@ export class ChatsFeatureController {
             chatsSlice.setChats(chats)
         } catch (e: unknown) {
             console.error('Ошибка при обновлении списка чатов:', e)
+        }
+    }
+
+    // Stories-кадр chat_added (2026-11-10, баг «новый чат только после F5»):
+    // юзера добавили в чат — карточка приезжает в список тихим рефетчем, а
+    // WS-сокет нового чата открываем точечно (refreshChatsSilently циклом
+    // коннектов не занимается; без сокета чат мёртв — ни ленты, ни отправки).
+    // Реактивация архивного членства приходит тем же кадром: потушенная
+    // карточка оживает, сокет возвращается. connect идемпотентен гардом
+    // sockets.has адаптера, повторный кадр безопасен
+    private async handleChatAdded(chatId: number): Promise<void> {
+        await this.refreshChatsSilently()
+
+        const known = ((store.getState().chats ?? []) as ChatInfo[]).some(chat => chat.id === chatId)
+
+        if (!known) {
+            return
+        }
+
+        try {
+            const res = await this.port.getToken(chatId)
+
+            await this.messages.connect(chatId, res.token)
+        } catch (e: unknown) {
+            console.error(`Ошибка при подключении к новому чату ${chatId}:`, e)
         }
     }
 
